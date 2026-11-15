@@ -1,6 +1,6 @@
 import { act, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { createRoutesStub } from 'react-router';
+import { createRoutesStub, useActionData } from 'react-router';
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { matchStatus } from '../matching/status';
 import { type FilingDetails, filingDetailsText, type GiftPageView } from '../server/matching/views';
@@ -104,6 +104,42 @@ async function page(gift: GiftPageView, result?: GiftPageResult) {
 	]);
 	const root = await mount(<Stub initialEntries={['/gift/tok_1']} />);
 	return { root, posts };
+}
+
+/**
+ * the page as the route mounts it, `result` the action's own answer: each post is recorded, held
+ * until `release` lets it answer, and answered with `answer`.
+ */
+async function answering(gift: GiftPageView, answer: GiftPageResult) {
+	const posts: Record<string, string>[] = [];
+	let release = () => {};
+	const Stub = createRoutesStub([
+		{
+			path: '/gift/:token',
+			Component: function Mounted() {
+				const result = useActionData() as GiftPageResult | undefined;
+				return (
+					<GiftPage
+						orgName={ORG}
+						logo={null}
+						look={{ brandColour: null }}
+						gift={gift}
+						result={result}
+					/>
+				);
+			},
+			action: async ({ request }) => {
+				const fields = await request.formData();
+				posts.push(Object.fromEntries([...fields].map(([key, value]) => [key, String(value)])));
+				await new Promise<void>((resolve) => {
+					release = resolve;
+				});
+				return answer;
+			}
+		}
+	]);
+	const root = await mount(<Stub initialEntries={['/gift/tok_1']} />);
+	return { root, posts, release: () => release() };
 }
 
 /** the cards the page stands, by their headings. */
@@ -320,6 +356,65 @@ describe('the posts', () => {
 		type(box(root), 'Contoso');
 		await press(button(root, copy.SAVE_EMPLOYER));
 		expect(posts).toEqual([{ intent: 'employer', employer: 'Contoso' }]);
+	});
+
+	it.each([
+		['Save employer', copy.SAVE_EMPLOYER, { done: 'employer' }],
+		['I’ve filed it', copy.MARK_FILED, { done: 'filed' }]
+	] as const)(
+		'holds %s while its post is in flight, and sends one post for two presses',
+		async (_, words, answer) => {
+			const { root, posts, release } = await answering(view(), answer);
+			if (words === copy.SAVE_EMPLOYER) type(box(root), EMPLOYER);
+			const pressed = button(root, words);
+
+			await press(pressed);
+			expect(pressed.getAttribute('aria-busy')).toBe('true');
+			expect(pressed.getAttribute('aria-disabled')).toBe('true');
+			await press(pressed);
+			expect(posts).toHaveLength(1);
+
+			await act(async () => {
+				release();
+				for (let at = 0; at < 20; at += 1) await Promise.resolve();
+			});
+		}
+	);
+
+	it('closes the box on Cancel over the saved name, posting nothing, with the caret back on Change', async () => {
+		const { root, posts } = await page(view(NAMED));
+
+		await press(button(root, copy.CHANGE_EMPLOYER));
+		type(box(root), 'Contoso');
+		await press(button(root, copy.CANCEL_EMPLOYER));
+
+		expect(root.querySelector('input[name="employer"]')).toBeNull();
+		expect(root.querySelector('.gift-employer-name')?.textContent).toBe(EMPLOYER);
+		expect(document.activeElement).toBe(button(root, copy.CHANGE_EMPLOYER));
+		expect(posts).toEqual([]);
+	});
+
+	it('offers no Cancel where nobody is named yet', async () => {
+		const { root } = await page(view());
+
+		expect(() => button(root, copy.CANCEL_EMPLOYER)).toThrow();
+	});
+
+	it('closes the box on a save of the same name, says it saved, and puts the caret on the name', async () => {
+		const { root, posts, release } = await answering(view(NAMED), { done: 'employer' });
+
+		await press(button(root, copy.CHANGE_EMPLOYER));
+		await press(button(root, copy.SAVE_EMPLOYER));
+		await act(async () => {
+			release();
+			for (let at = 0; at < 20; at += 1) await Promise.resolve();
+		});
+
+		expect(posts).toEqual([{ intent: 'employer', employer: EMPLOYER }]);
+		expect(root.querySelector('input[name="employer"]')).toBeNull();
+		const shown = root.querySelector('.gift-employer');
+		expect(document.activeElement).toBe(shown);
+		expect(shown?.textContent).toContain(copy.EMPLOYER_SAVED);
 	});
 
 	it('puts the caret on the row a filed post landed on', async () => {

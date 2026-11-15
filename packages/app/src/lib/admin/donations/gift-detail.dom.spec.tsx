@@ -313,4 +313,11 @@ describe('the missing mailing address', () => {
 	it('is not drawn while the profile holds an address', () => {
 		expect(notice(screen().root)).toBeNull();
 	});
+
+	it.each([
+		['the gift predates matching', null],
+		['the donor named no employer', { status: 'filed', employer: null, history: [] }]
+	] as const)('is not drawn where %s, since the donor is handed nothing to file', (_, match) => {
+		expect(notice(screen({ mailingAddressMissing: true, match }).root)).toBeNull();
+	});
 });

@@ -436,8 +436,8 @@ body {
    heading tight over its hint and its parts `--_sp4` apart; the details are a key-value list with a
    separator over each row, the label column `--page-detail-label` wide from 30rem, or its longest
    label where that is wider, and stacked over the value under it. the registry's presses keep their own width from 30rem and run the
-   card's width under it. the name and the title are a step smaller below 60rem, the profile head's
-   long-name step. */
+   card's width under it. the name and the title take the profile head's long-name step at every
+   width. */
 .stage.gift {
 	max-inline-size: calc(var(--page-measure) + 2 * var(--page-gutter));
 }
@@ -578,10 +578,18 @@ body {
 	color: var(--_ok-ink);
 }
 
-/* the thank-you's employer ask on this page: its two presses are the registry's md press, a row
-   tall while they stack below 30rem, and their own height side by side from it (below). */
+/* the /donate card's thank-you employer ask (`.employer-actions` in ./takeover.tsx): its two presses
+   are the registry's md press, a row tall while they stack below 30rem, and their own height side by
+   side from it (below). */
 .page .employer-actions > .ds-btn {
 	min-block-size: var(--_row-min);
+}
+
+/* the employer box's presses, Save and Cancel where a name is being changed: stacked at the card's
+   width below 30rem like the card's one press, and side by side at their own width from it (below). */
+.gift-presses {
+	display: grid;
+	gap: var(--_sp3);
 }
 
 /* a refused filed press, under the press it describes, in the word the card says a refusal in. */
@@ -603,6 +611,11 @@ body {
 
 	.gift-card > .ds-btn {
 		justify-self: start;
+	}
+
+	.gift-presses {
+		display: flex;
+		flex-wrap: wrap;
 	}
 }
 

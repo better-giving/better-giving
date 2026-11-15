@@ -686,6 +686,9 @@ export const SAVE_EMPLOYER = 'Save employer';
 export const CHANGE_EMPLOYER = 'Change';
 /** its accessible name, the visible word first. */
 export const CHANGE_EMPLOYER_NAME = 'Change your employer';
+export const CANCEL_EMPLOYER = 'Cancel';
+/** said with the employer's row when a save lands on it, the same name or a new one. */
+export const EMPLOYER_SAVED = 'Saved.';
 /** `remindOn` is null once the reminder is no longer coming: it went, or the gift was marked filed. */
 export function employerEmailed(sentOn: string, remindOn: string | null): string {
 	const emailed = `We emailed the details on ${sentOn}.`;

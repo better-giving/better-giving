@@ -3,7 +3,7 @@ import { Button } from '@better-giving/operator/components/controls/Button';
 import { DataTable } from '@better-giving/operator/components/data/DataTable';
 import { Mark } from '@better-giving/operator/components/status/Mark';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
-import { type ChangeEvent, type ReactNode, useId } from 'react';
+import { type ChangeEvent, type ReactNode, useId, useState } from 'react';
 import { Form, href, Link, useSubmit } from 'react-router';
 import { GiftNote, PublicMessagesLink } from '$lib/admin/messages/gift-note';
 import { byDayShown, type Received } from '$lib/admin/received-order';
@@ -248,12 +248,23 @@ const FILTER_ORDER = [
  * `match`. Any is the empty value, and choosing it drops the parameter rather than posting it
  * blank. a choice navigates straight away rather than waiting on a press, and keeps the page where
  * it was, since what changes is the rows under it.
+ *
+ * the box is controlled and never remounted, so the focus stays on it across the navigation a
+ * choice makes. it shows the last choice made here until the list is read under another filter
+ * (Back, a pasted address), which it then shows instead.
  */
 export function MatchFilterSelect({ value }: { readonly value: MatchFilter | null }) {
 	const id = useId();
 	const submit = useSubmit();
+	const [shown, setShown] = useState(value ?? '');
+	const [readUnder, setReadUnder] = useState(value);
+	if (readUnder !== value) {
+		setReadUnder(value);
+		setShown(value ?? '');
+	}
 	const choose = (event: ChangeEvent<HTMLSelectElement>) => {
 		const chosen = event.currentTarget.value;
+		setShown(chosen);
 		void submit(chosen === '' ? {} : { match: chosen }, {
 			method: 'get',
 			preventScrollReset: true
@@ -263,16 +274,7 @@ export function MatchFilterSelect({ value }: { readonly value: MatchFilter | nul
 		<Form method="get" className="adm-actions" preventScrollReset>
 			<label htmlFor={id}>Match</label>
 			<div className="ds-select ds-select-inline">
-				{/* keyed by the value the list was read under, so a navigation that changes it (Back, a
-				    pasted address) redraws the box holding it rather than the last choice made here. */}
-				<select
-					key={value ?? ''}
-					id={id}
-					name="match"
-					className="ds-field-input"
-					defaultValue={value ?? ''}
-					onChange={choose}
-				>
+				<select id={id} name="match" className="ds-field-input" value={shown} onChange={choose}>
 					<option value="">Any</option>
 					{FILTER_ORDER.map((filter) => (
 						<option key={filter} value={filter}>

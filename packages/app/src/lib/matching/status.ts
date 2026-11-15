@@ -27,14 +27,17 @@ export const MATCH_FILTERS = ['no_employer', ...MATCH_STATUSES] as const;
 
 export type MatchFilter = (typeof MATCH_FILTERS)[number];
 
-/** the word a screen draws for each status. */
+/**
+ * the word a screen draws for each status, in the vocabulary the gift's history speaks
+ * (`EVENT_LABELS` in $lib/admin/donations/gift-detail.tsx): the pack is the details email.
+ */
 export const MATCH_STATUS_LABELS: Record<MatchStatus, string> = {
 	voided: 'Voided',
 	matched: 'Matched',
 	filed: 'Filed',
-	send_failed: 'Send failed',
+	send_failed: 'Details email failed',
 	reminded: 'Reminded',
-	pack_sent: 'Pack sent'
+	pack_sent: 'Details emailed'
 };
 
 /** what each filter is called on the gifts list's Match select. */

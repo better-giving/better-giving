@@ -4,7 +4,7 @@ import registryTextButton from '@better-giving/operator/registry/styles/text-but
 import { GLYPHS as FORM_GLYPHS } from '@better-giving/form/glyph';
 import { MAX_EMPLOYER } from '@better-giving/form/v1';
 import { type RefObject, useEffect, useId, useRef, useState } from 'react';
-import { Form } from 'react-router';
+import { Form, useNavigation } from 'react-router';
 import { formatMinor } from '../donations/money';
 import { imageSrc } from '../page/image-src';
 import type { GiftPageView } from '../server/matching/views';
@@ -28,7 +28,9 @@ import { SETTLE_MS } from './sections/share';
 // the request is closed and never why — the view carries no reason.
 //
 // both posts are `<Form method="post">` to the page's own address with a flat `intent` field, and
-// work without script: `employer` with one `employer` box, `filed` with nothing else.
+// work without script: `employer` with one `employer` box, `filed` with nothing else. with script,
+// a press whose post is in flight is held — `aria-disabled` and `aria-busy`, so it keeps the focus —
+// and its form refuses a second submit until the answer lands.
 
 /** what the action answers a post with. `intent` places a refusal at the control that was pressed. */
 export type GiftPageResult =
@@ -78,6 +80,11 @@ export function GiftPage({ orgName, logo, look, gift, result }: GiftPageProps) {
 	const filed = filedLine !== null;
 	const { filing } = gift;
 	const refusal = result !== undefined && 'error' in result ? result : null;
+	const saved =
+		result !== undefined && 'done' in result && result.done === 'employer' ? result : null;
+	const navigation = useNavigation();
+	const posting = (intent: 'employer' | 'filed') =>
+		navigation.state === 'submitting' && navigation.formData?.get('intent') === intent;
 
 	const employerShown = useRef<HTMLDivElement | null>(null);
 	const employerBox = useRef<HTMLInputElement | null>(null);
@@ -143,6 +150,8 @@ export function GiftPage({ orgName, logo, look, gift, result }: GiftPageProps) {
 						gift={gift}
 						filed={filed}
 						refusal={refusal?.intent === 'employer' ? refusal.error : null}
+						saved={saved}
+						pending={posting('employer')}
 						shownRef={employerShown}
 						boxRef={employerBox}
 					/>
@@ -158,6 +167,7 @@ export function GiftPage({ orgName, logo, look, gift, result }: GiftPageProps) {
 					<FiledCard
 						orgName={orgName}
 						refusal={refusal?.intent === 'filed' ? refusal.error : null}
+						pending={posting('filed')}
 					/>
 				) : null}
 			</main>
@@ -328,35 +338,55 @@ function FilingCard({ gift, orgName }: { readonly gift: GiftPageView; readonly o
 	);
 }
 
+/** a Change press: the name it was pressed beside, and the saved answer standing when it was. */
+type Changing = { readonly employer: string; readonly savedUnder: GiftPageResult | null };
+
 /**
  * the employer: a box to name them where nobody is named, and the name with its emails line where
  * someone is. Change opens the box over the name until a filed or matched gift, after which the
- * name stands as it is.
+ * name stands as it is; Cancel closes it on the saved name.
  */
 function EmployerCard({
 	gift,
 	filed,
 	refusal,
+	saved,
+	pending,
 	shownRef,
 	boxRef
 }: {
 	readonly gift: GiftPageView;
 	readonly filed: boolean;
 	readonly refusal: string | null;
+	/** the action's answer to a saved employer, a new object on every save. */
+	readonly saved: GiftPageResult | null;
+	readonly pending: boolean;
 	readonly shownRef: RefObject<HTMLDivElement | null>;
 	readonly boxRef: RefObject<HTMLInputElement | null>;
 }) {
 	const headingId = useId();
 	const { employer } = gift;
-	// Change opens the box over the name it was pressed beside, so a saved name closes it again.
-	const [changing, setChanging] = useState<string | null>(null);
-	const editing = employer === null || (changing === employer && !filed);
-	// the box takes the caret on the press that opened it, never on a first paint.
+	// the box stays open over the name Change was pressed beside until a save answers — a new name,
+	// or a fresh saved answer for the same one — while a refusal keeps it open to be corrected.
+	const [changing, setChanging] = useState<Changing | null>(null);
+	const editing =
+		employer === null ||
+		(!filed &&
+			changing?.employer === employer &&
+			(refusal !== null || saved === changing.savedUnder));
+	// the box takes the caret on the press that opened it, and Change takes it back on Cancel; never
+	// on a first paint, and never on a save, whose answer GiftPage moves the caret for.
 	const opened = useRef(false);
+	const cancelled = useRef(false);
+	const change = useRef<HTMLButtonElement | null>(null);
 	useEffect(() => {
-		if (!editing || !opened.current) return;
-		opened.current = false;
-		boxRef.current?.focus();
+		if (editing && opened.current) {
+			opened.current = false;
+			boxRef.current?.focus();
+		} else if (!editing && cancelled.current) {
+			cancelled.current = false;
+			change.current?.focus();
+		}
 	}, [editing, boxRef]);
 
 	if (!editing) {
@@ -369,14 +399,18 @@ function EmployerCard({
 				<CardHead id={headingId} title={copy.EMPLOYER_HEADING} />
 				<div className="gift-employer" tabIndex={-1} ref={shownRef}>
 					<span className="gift-employer-name">{employer}</span>
+					{/* read with the row when a save's answer puts the caret on it; the row closing over
+					    the name is what a sighted donor sees. */}
+					{saved === null ? null : <span className="vh">{copy.EMPLOYER_SAVED}</span>}
 					{filed ? null : (
 						<button
+							ref={change}
 							type="button"
 							className="ds-text-btn ds-text-btn-primary"
 							aria-label={copy.CHANGE_EMPLOYER_NAME}
 							onClick={() => {
 								opened.current = true;
-								setChanging(employer);
+								setChanging({ employer, savedUnder: saved });
 							}}
 						>
 							{copy.CHANGE_EMPLOYER}
@@ -396,7 +430,16 @@ function EmployerCard({
 			headingId={headingId}
 			named={employer}
 			refusal={refusal}
+			pending={pending}
 			boxRef={boxRef}
+			onCancel={
+				employer === null
+					? null
+					: () => {
+							cancelled.current = true;
+							setChanging(null);
+						}
+			}
 		/>
 	);
 }
@@ -405,12 +448,17 @@ function EmployerForm({
 	headingId,
 	named,
 	refusal,
-	boxRef
+	pending,
+	boxRef,
+	onCancel
 }: {
 	readonly headingId: string;
 	readonly named: string | null;
 	readonly refusal: string | null;
+	readonly pending: boolean;
 	readonly boxRef: RefObject<HTMLInputElement | null>;
+	/** closes the box on the saved name; `null` where nobody is named yet. */
+	readonly onCancel: (() => void) | null;
 }) {
 	const boxId = useId();
 	const hintId = useId();
@@ -427,10 +475,11 @@ function EmployerForm({
 			method="post"
 			className="gift-card"
 			aria-labelledby={headingId}
-			// `aria-disabled` rather than `disabled`, so Save stays in the tab order; a blank box is
-			// stopped here, and the action refuses one that arrives without script.
+			// `aria-disabled` rather than `disabled`, so Save stays in the tab order; a blank box and a
+			// second submit while the first is in flight are stopped here, and the action refuses a
+			// blank box that arrives without script.
 			onSubmit={(event) => {
-				if (blank) event.preventDefault();
+				if (blank || pending) event.preventDefault();
 			}}
 		>
 			<CardHead id={headingId} title={copy.EMPLOYER_HEADING} hint={hint} hintId={hintId} />
@@ -457,29 +506,52 @@ function EmployerForm({
 					</p>
 				)}
 			</div>
-			<button type="submit" className="ds-btn ds-btn-primary" aria-disabled={blank || undefined}>
-				{copy.SAVE_EMPLOYER}
-			</button>
+			<div className="gift-presses">
+				<button
+					type="submit"
+					className="ds-btn ds-btn-primary"
+					aria-disabled={blank || pending || undefined}
+					aria-busy={pending || undefined}
+				>
+					{copy.SAVE_EMPLOYER}
+				</button>
+				{onCancel === null ? null : (
+					<button type="button" className="ds-btn ds-btn-secondary" onClick={onCancel}>
+						{copy.CANCEL_EMPLOYER}
+					</button>
+				)}
+			</div>
 		</Form>
 	);
 }
 
 function FiledCard({
 	orgName,
-	refusal
+	refusal,
+	pending
 }: {
 	readonly orgName: string;
 	readonly refusal: string | null;
+	readonly pending: boolean;
 }) {
 	const headingId = useId();
 	const refusalId = useId();
 	return (
-		<Form method="post" className="gift-card" aria-labelledby={headingId}>
+		<Form
+			method="post"
+			className="gift-card"
+			aria-labelledby={headingId}
+			onSubmit={(event) => {
+				if (pending) event.preventDefault();
+			}}
+		>
 			<CardHead id={headingId} title={copy.FILED_HEADING} hint={copy.filedHint(orgName)} />
 			<input type="hidden" name="intent" value="filed" />
 			<button
 				type="submit"
 				className="ds-btn ds-btn-primary"
+				aria-disabled={pending || undefined}
+				aria-busy={pending || undefined}
 				aria-describedby={refusal === null ? undefined : refusalId}
 			>
 				{copy.MARK_FILED}

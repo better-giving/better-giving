@@ -78,7 +78,10 @@ export type GiftDetailProps = {
 		readonly employer: string | null;
 		readonly history: readonly MatchHistoryRow[];
 	} | null;
-	/** the profile holds no whole mailing address, so donors' pages and mail leave it out. */
+	/**
+	 * the profile holds no whole mailing address, so donors' pages and mail leave it out. said only
+	 * on a gift whose match names an employer.
+	 */
 	readonly mailingAddressMissing: boolean;
 	/** whether this viewer may open Settings ($lib/admin/destinations.ts), where the address is saved. */
 	readonly canOpenSettings: boolean;
@@ -157,7 +160,11 @@ export function GiftDetail({
 				}
 			/>
 
-			{mailingAddressMissing ? <MissingAddressNotice canOpenSettings={canOpenSettings} /> : null}
+			{/* only over a match a donor named an employer on: the address is a line in what that
+			    donor is handed to file with, and a gift with nobody named hands them nothing. */}
+			{mailingAddressMissing && match?.employer != null ? (
+				<MissingAddressNotice canOpenSettings={canOpenSettings} />
+			) : null}
 
 			{result !== undefined && 'done' in result ? (
 				<Banner tone="note" word={DONE_WORDS[result.done]} />

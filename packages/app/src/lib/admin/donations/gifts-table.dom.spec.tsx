@@ -1,8 +1,8 @@
 import { act, createElement, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { createRoutesStub, useLocation } from 'react-router';
+import { createRoutesStub, useLocation, useSearchParams } from 'react-router';
 import { describe, expect, it, onTestFinished } from 'vitest';
-import type { MatchStatus } from '$lib/matching/status';
+import type { MatchFilter, MatchStatus } from '$lib/matching/status';
 import { type GiftRow, GiftsTable, type GiftsTableProps } from './gifts-table';
 
 // the gifts list's Match column and filter, drawn: the donor pinned first and linking to the gift,
@@ -106,12 +106,12 @@ describe('the columns', () => {
 
 describe('the Match cell', () => {
 	it.each([
-		['pack_sent', 'Pack sent', 'ds-badge ds-badge-neutral'],
+		['pack_sent', 'Details emailed', 'ds-badge ds-badge-neutral'],
 		['reminded', 'Reminded', 'ds-badge ds-badge-neutral'],
 		['filed', 'Filed', 'ds-badge ds-badge-warning'],
 		['matched', 'Matched', 'ds-badge ds-badge-primary'],
 		['voided', 'Voided', 'ds-badge ds-badge-outline'],
-		['send_failed', 'Send failed', 'ds-badge ds-badge-destructive']
+		['send_failed', 'Details email failed', 'ds-badge ds-badge-destructive']
 	] as const satisfies readonly (readonly [MatchStatus, string, string])[])(
 		'draws %s as its word on its rung, with the employer under it',
 		(status, word, drawn) => {
@@ -160,12 +160,12 @@ describe('the filter', () => {
 		expect([...(box?.options ?? [])].map((o) => o.textContent)).toEqual([
 			'Any',
 			'No employer named',
-			'Pack sent',
+			'Details emailed',
 			'Reminded',
 			'Filed',
 			'Matched',
 			'Voided',
-			'Send failed'
+			'Details email failed'
 		]);
 	});
 
@@ -191,6 +191,33 @@ describe('the filter', () => {
 			box.dispatchEvent(new Event('change', { bubbles: true }));
 		});
 		expect(address()).toBe('');
+	});
+
+	it('keeps the focus on the box across the navigation a choice makes', async () => {
+		// the list read under the address's own filter, as the route reads it.
+		function Listed() {
+			const [search] = useSearchParams();
+			return createElement(GiftsTable, {
+				donations: [gift()],
+				limit: 500,
+				hasMore: false,
+				match: (search.get('match') as MatchFilter | null) ?? null
+			});
+		}
+		const Stub = createRoutesStub([{ path: '/admin/donations', Component: Listed }]);
+		const root = mount(createElement(Stub, { initialEntries: ['/admin/donations'] }));
+		const box = select(root);
+		if (box === null) throw new Error('no filter');
+		box.focus();
+
+		await act(async () => {
+			box.value = 'filed';
+			box.dispatchEvent(new Event('change', { bubbles: true }));
+		});
+
+		expect(select(root)).toBe(box);
+		expect(document.activeElement).toBe(box);
+		expect(box.value).toBe('filed');
 	});
 
 	it('says a filter matched nothing, and counts what it matched', () => {
