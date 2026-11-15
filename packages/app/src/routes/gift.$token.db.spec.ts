@@ -157,8 +157,8 @@ describe('the page', () => {
 	it('carries its own gift’s employer and no other’s', async () => {
 		const mine = await gift();
 		const theirs = await gift();
-		await nameEmployer(db, { donationId: mine.donationId }, 'Northwind Traders', T0);
-		await nameEmployer(db, { donationId: theirs.donationId }, 'Contoso Zeppelin 8812', T0);
+		await nameEmployer(db, { donationId: mine.donationId }, 'Northwind Traders');
+		await nameEmployer(db, { donationId: theirs.donationId }, 'Contoso Zeppelin 8812');
 		const answered = serialized((await visit(mine.token)).data);
 		expect(answered).toContain('Northwind Traders');
 		expect(answered).not.toContain('Contoso Zeppelin 8812');

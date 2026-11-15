@@ -8,18 +8,20 @@ import { giftPageUrl } from './links';
 import { inBooks } from './match';
 import type { PackDeps } from './pack';
 
-// the one reminder, three days after the employer was first named, while the gift is not filed,
-// matched or voided. `CRON_RUNS` in src/cron-runs.ts runs the sweep on a schedule of its own.
+// the one reminder, three days after the pack was sent, while the gift is not filed, matched or
+// voided. `CRON_RUNS` in src/cron-runs.ts runs the sweep on a schedule of its own.
 //
-// it survives a restart because the due time is the row's (`reminder_due_at`, armed by
-// `nameEmployer` in ./match.ts), never a timer, and it sends once because the claim decides: the
-// claim pattern ../donations/receipt.ts states for the receipt. a row is selected by the predicate
-// `gift_match_reminder_due_idx` is built on ($lib/server/db/schema.ts; the plan is pinned by
+// it survives a restart because the due time is the row's (`reminder_due_at`, armed by the pack's
+// claim, `sendOwedPack` in ./pack.ts), never a timer, and it sends once because the claim decides:
+// the claim pattern ../donations/receipt.ts states for the receipt. a row is selected by the
+// predicate `gift_match_reminder_due_idx` is built on ($lib/server/db/schema.ts; the plan is pinned by
 // ../db/gift-match-schema.db.spec.ts and ./reminders.db.spec.ts), then claimed by one UPDATE that
 // stamps `reminded_at` only where it is still null and the gift is still unfiled, unmatched and
 // unvoided, and only a claim that returned its row sends. a send that did not go hands the claim
 // back and moves the due time on by `REMINDER_RETRY_AFTER_MS`, so a reminder that cannot go is
-// retried and never hammered, and never keeps a due one behind it out of the run.
+// retried and never hammered, and never keeps a due one behind it out of the run. one that can never
+// go — no donor address, no gift, nothing to sign it with — is handed back disarmed instead, its
+// due time cleared, so it leaves the sweep and is logged once.
 //
 // no log line carries the employer.
 
@@ -90,19 +92,26 @@ async function remind(
 		if (claimed === undefined) return;
 		held = true;
 
-		const why = await send(deps, origin, donationId, claimed.token, claimed.employer ?? '');
-		if (why === null) return;
-		await handBack(deps, donationId, now);
-		console.error(`the employer match reminder for gift ${donationId} was not sent: ${why}`);
+		const unsent = await send(deps, origin, donationId, claimed.token, claimed.employer ?? '');
+		if (unsent === null) return;
+		await handBack(deps, donationId, unsent.permanent ? null : retryAt(now));
+		console.error(
+			`the employer match reminder for gift ${donationId} was not sent${unsent.permanent ? ', and will not be retried' : ''}: ${unsent.why}`
+		);
 	} catch (error) {
 		try {
-			if (held) await handBack(deps, donationId, now);
+			if (held) await handBack(deps, donationId, retryAt(now));
 		} catch {
 			// the row keeps a claim for a reminder that did not go, and the log below is its only record.
 		}
 		console.error(`the employer match reminder for gift ${donationId} faulted:`, error);
 	}
 }
+
+/** why a reminder did not go, and whether a later sweep could send it. */
+type Unsent = { readonly why: string; readonly permanent: boolean };
+
+const never = (why: string): Unsent => ({ why, permanent: true });
 
 /** the reminder rendered and sent, or why it was not. */
 async function send(
@@ -111,13 +120,13 @@ async function send(
 	donationId: string,
 	token: string,
 	employer: string
-): Promise<string | null> {
+): Promise<Unsent | null> {
 	const [gift, org] = await Promise.all([
 		readMatchGift(deps.db, donationId),
 		readOrgProfile(deps.db)
 	]);
-	if (gift === null) return 'the gift is gone';
-	if (gift.donorEmail === null) return 'the donor has no email address';
+	if (gift === null) return never('the gift is gone');
+	if (gift.donorEmail === null) return never('the donor has no email address');
 	const rendered = await renderMatchReminder({
 		// the profile holds a legal name and no display name, so the prose names the organisation
 		// by its legal name.
@@ -129,15 +138,17 @@ async function send(
 		givenAt: gift.receivedAt,
 		giftPageUrl: giftPageUrl(origin, token)
 	});
-	if (!rendered.ok) return rendered.detail;
+	if (!rendered.ok) return never(rendered.detail);
 	const sent = await deps.email.send({ to: gift.donorEmail, ...rendered.message });
-	return sent.ok ? null : `${sent.reason}: ${sent.detail}`;
+	return sent.ok ? null : { why: `${sent.reason}: ${sent.detail}`, permanent: false };
 }
 
-/** the claim handed back, due again once the retry wait is up. */
-async function handBack(deps: PackDeps, donationId: string, now: Date): Promise<void> {
+const retryAt = (now: Date) => new Date(now.getTime() + REMINDER_RETRY_AFTER_MS);
+
+/** the claim handed back, due again at `dueAgain`, or disarmed where that is `null`. */
+async function handBack(deps: PackDeps, donationId: string, dueAgain: Date | null): Promise<void> {
 	await deps.db
 		.update(giftMatch)
-		.set({ remindedAt: null, reminderDueAt: new Date(now.getTime() + REMINDER_RETRY_AFTER_MS) })
+		.set({ remindedAt: null, reminderDueAt: dueAgain })
 		.where(eq(giftMatch.donationId, donationId));
 }

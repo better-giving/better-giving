@@ -33,7 +33,7 @@ export const SYSTEM = 'system';
 /** the void reason a refund writes. */
 export const REFUND_REASON = 'Gift refunded';
 
-/** how long after the employer is first named its one reminder falls due. */
+/** how long after the pack is sent (`sendOwedPack` in ./pack.ts) its one reminder falls due. */
 export const REMINDER_AFTER_MS = 3 * 24 * 60 * 60_000;
 
 /** the most characters an employer may hold, as `gift_match_employer_length_check` counts them. */
@@ -182,32 +182,31 @@ export function refundVoidStatement(db: Db, donationId: string, now: Date) {
 		.where(and(eq(giftMatch.donationId, donationId), isNull(giftMatch.voidedAt)));
 }
 
-/** what the donor typed, as the column takes it, or `null` where it is blank or too long. */
+/**
+ * what the donor typed, as the column takes it, or `null` where it is blank, too long, or holds a
+ * control character: SQLite's `length()` in the length check stops counting at a NUL, and the name
+ * is printed into mail.
+ */
 export function employerOf(typed: string): string | null {
 	const trimmed = typed.trim();
 	const chars = [...trimmed].length;
-	return chars === 0 || chars > MAX_EMPLOYER_CHARS ? null : trimmed;
+	if (chars === 0 || chars > MAX_EMPLOYER_CHARS || CONTROL.test(trimmed)) return null;
+	return trimmed;
 }
 
+const CONTROL = /\p{Cc}/u;
+
 /**
- * the donor naming the employer, or changing it. the first naming arms the one reminder; a change
- * keeps the due time it set and leaves a sent reminder sent. whether a pack is owed is the caller's
- * to act on through ./pack.ts, which sends one only where none has gone.
+ * the donor naming the employer, or changing it. it arms no reminder: the pack's claim does, and a
+ * change leaves the due time and a sent reminder as they stand. whether a pack is owed is the
+ * caller's to act on through ./pack.ts, which sends one only where none has gone.
  */
-export async function nameEmployer(
-	db: Db,
-	key: MatchKey,
-	typed: string,
-	now: Date
-): Promise<MatchWrite> {
+export async function nameEmployer(db: Db, key: MatchKey, typed: string): Promise<MatchWrite> {
 	const employer = employerOf(typed);
 	if (employer === null) return { ok: false, reason: 'employer_invalid' };
 	const written = await db
 		.update(giftMatch)
-		.set({
-			employer,
-			reminderDueAt: sql`coalesce(${giftMatch.reminderDueAt}, ${now.getTime() + REMINDER_AFTER_MS})`
-		})
+		.set({ employer })
 		.where(
 			and(keyed(key), open(), or(isNull(giftMatch.employer), ne(giftMatch.employer, employer)))
 		)

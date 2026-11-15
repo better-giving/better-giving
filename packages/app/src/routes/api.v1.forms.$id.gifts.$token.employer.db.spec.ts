@@ -1,4 +1,6 @@
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { REMINDER_AFTER_MS } from '$lib/server/matching/match';
+import { writeOrgRow } from '$lib/server/org/org-row.testing';
 import { createDeferredWork } from '$lib/server/runtime/deferred';
 import { CLIENT_IP_HEADER } from '$lib/server/runtime/client-ip';
 import { mountRoutes } from '../route-request.testing';
@@ -8,6 +10,20 @@ import { client, first, run, stmt } from '$lib/server/db/database.testing';
 
 // the donor naming their employer from the thank-you, driven through react router under the
 // `/api/v1` layout so the surface's limit is in front of it, against a real database.
+
+type Message = { to: string; subject: string; html: string; text: string };
+
+const sent = vi.hoisted(() => [] as Message[]);
+
+// the mailer is the one thing stubbed, so the pack's going is read off the message it sent.
+vi.mock('$lib/server/email/factory', () => ({
+	createEmailProvider: () => ({
+		async send(message: Message) {
+			sent.push(message);
+			return { ok: true as const };
+		}
+	})
+}));
 
 const routes = mountRoutes([
 	{ path: 'api/v1', module: surface },
@@ -50,6 +66,9 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
+	sent.length = 0;
+	await client.execute('delete from org_profile');
+	await writeOrgRow(client, { tax_id: '12-3456789' });
 	await client.batch([
 		stmt('delete from payment'),
 		stmt('delete from gift_match'),
@@ -102,8 +121,16 @@ function post(
 }
 
 const stored = () =>
-	first<{ employer: string | null; pack_failed_at: number | null; reminder_due_at: number | null }>(
-		stmt('select employer, pack_failed_at, reminder_due_at from gift_match where token = ?', TOKEN)
+	first<{
+		employer: string | null;
+		pack_sent_at: number | null;
+		pack_failed_at: number | null;
+		reminder_due_at: number | null;
+	}>(
+		stmt(
+			'select employer, pack_sent_at, pack_failed_at, reminder_due_at from gift_match where token = ?',
+			TOKEN
+		)
 	);
 
 describe('naming the employer', () => {
@@ -115,18 +142,60 @@ describe('naming the employer', () => {
 		expect(await answer.json()).toEqual({ ok: true });
 		expect(answer.headers.get('access-control-allow-origin')).toBe(ALLOWED);
 		await settled();
-		// this spec's env delivers no mail, so the pack the write owed is stamped as failed.
-		expect(await stored()).toMatchObject({
+		const row = await stored();
+		expect(row).toMatchObject({
 			employer: 'Northwind Logistics',
-			reminder_due_at: expect.any(Number),
-			pack_failed_at: expect.any(Number)
+			pack_sent_at: expect.any(Number),
+			pack_failed_at: null
 		});
+		expect(row?.reminder_due_at).toBe((row?.pack_sent_at ?? 0) + REMINDER_AFTER_MS);
+		expect(sent).toHaveLength(1);
+		expect(sent[0]).toMatchObject({ to: 'maya@example.org' });
+		expect(sent[0]?.subject).toContain('Northwind Logistics');
 	});
 
-	it('answers ok again for the same employer, changing nothing', async () => {
-		await (await post({ employer: 'Northwind' }).response).text();
-		const again = await post({ employer: 'Northwind' }).response;
-		expect(again.status).toBe(200);
+	it('stores it and stamps the pack as failed, arming no reminder, where the pack cannot be written', async () => {
+		await client.execute('delete from org_profile');
+		const { response, settled } = post({ employer: 'Northwind' });
+		expect((await response).status).toBe(200);
+		await settled();
+
+		expect(await stored()).toMatchObject({
+			employer: 'Northwind',
+			pack_sent_at: null,
+			pack_failed_at: expect.any(Number),
+			reminder_due_at: null
+		});
+		expect(sent).toHaveLength(0);
+	});
+
+	it('answers ok again for the same employer, changing nothing and sending no second pack', async () => {
+		const first = post({ employer: 'Northwind' });
+		await (await first.response).text();
+		await first.settled();
+		const before = await stored();
+
+		const again = post({ employer: 'Northwind' });
+		expect((await again.response).status).toBe(200);
+		await again.settled();
+
+		expect(await stored()).toEqual(before);
+		expect(before).toMatchObject({ employer: 'Northwind', pack_sent_at: expect.any(Number) });
+		expect(sent).toHaveLength(1);
+	});
+
+	it('stores a changed employer after the pack went, keeping its reminder and sending no second pack', async () => {
+		const first = post({ employer: 'Northwind' });
+		await (await first.response).text();
+		await first.settled();
+		const before = await stored();
+
+		const changed = post({ employer: 'Contoso' });
+		expect((await changed.response).status).toBe(200);
+		await changed.settled();
+
+		expect(await stored()).toEqual({ ...before, employer: 'Contoso' });
+		expect(sent).toHaveLength(1);
 	});
 
 	it.each([
@@ -134,6 +203,7 @@ describe('naming the employer', () => {
 		['no employer', {}],
 		['a blank employer', { employer: '   ' }],
 		['an employer past 200 characters', { employer: 'x'.repeat(201) }],
+		['an employer holding a NUL', { employer: 'North\u0000wind' }],
 		['an employer that is not text', { employer: 42 }]
 	])('refuses %s with 400, a sentence and the CORS header', async (_, body) => {
 		const answer = await post(body).response;
@@ -141,6 +211,24 @@ describe('naming the employer', () => {
 		const refusal = (await answer.json()) as { message?: string; fix?: string };
 		expect(refusal.message).toEqual(expect.any(String));
 		expect(refusal.fix).toEqual(expect.any(String));
+		expect(answer.headers.get('access-control-allow-origin')).toBe(ALLOWED);
+		expect((await stored())?.employer).toBeNull();
+	});
+});
+
+describe('a closed match', () => {
+	it.each([
+		[
+			'voided',
+			`update gift_match set voided_at = 1, voided_by = 'staff', void_reason = 'Duplicate gift' where token = ?`
+		],
+		['matched', `update gift_match set matched_at = 1, matched_by = 'staff' where token = ?`]
+	])('refuses a %s gift with 409, a sentence and the CORS header', async (_, close) => {
+		await run(stmt(close, TOKEN));
+		const answer = await post({ employer: 'Northwind' }).response;
+		expect(answer.status).toBe(409);
+		const refusal = (await answer.json()) as Record<string, unknown>;
+		expect(Object.keys(refusal).sort()).toEqual(['fix', 'message']);
 		expect(answer.headers.get('access-control-allow-origin')).toBe(ALLOWED);
 		expect((await stored())?.employer).toBeNull();
 	});

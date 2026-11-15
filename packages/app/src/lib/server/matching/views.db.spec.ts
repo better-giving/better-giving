@@ -118,7 +118,7 @@ describe('the gift page', () => {
 
 	it('names the employer and the stamps, never the void reason or who voided it', async () => {
 		const { donationId, token } = await gift();
-		await nameEmployer(db, { donationId }, 'Northwind Logistics', T0);
+		await nameEmployer(db, { donationId }, 'Northwind Logistics');
 		await voidMatch(db, { donationId }, STAFF, 'Donor asked us to stop', T1);
 
 		const page = await readGiftPage(db, token);
@@ -180,7 +180,7 @@ describe('the copied details', () => {
 describe('the staff gift detail', () => {
 	it('carries the history with who and when, and the void reason', async () => {
 		const { donationId } = await gift();
-		await nameEmployer(db, { donationId }, 'Northwind Logistics', T0);
+		await nameEmployer(db, { donationId }, 'Northwind Logistics');
 		await run(
 			stmt('update gift_match set pack_sent_at = ? where donation_id = ?', T0.getTime(), donationId)
 		);

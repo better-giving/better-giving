@@ -3791,7 +3791,7 @@ export function mintGiftMatchToken(): string {
 /**
  * one gift's employer match: the donor's own page for it at `/gift/{token}`, with no sign-in, and
  * the stamps of what has happened to the claim since. at most one row per donation, written by the
- * app; a gift recorded before migrations/0039 has none until the app writes it.
+ * app; a gift recorded before migrations/0039 has none, since the row is written only in the batch that records the gift.
  *
  * status is the set of stamps, not a column: each `_at` is when, and each `_by` beside it is who,
  * as `'donor'`, `'system'` (a refund's void), or the staff member as better-auth names them —

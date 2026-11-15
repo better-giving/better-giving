@@ -3,6 +3,7 @@ import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createDb, type Db } from '../db/client';
 import { client, run, stmt } from '../db/database.testing';
 import { giftMatch } from '../db/schema';
+import { sendReceipt } from '../donations/receipt';
 import type { EmailMessage, EmailProvider } from '../email/provider';
 import { nameEmployer, voidMatch } from './match';
 import { employerNamed, sendOwedPack } from './pack';
@@ -11,6 +12,7 @@ import { employerNamed, sendOwedPack } from './pack';
 // not go is stamped as failed rather than thrown at the donor.
 
 const CONTACT_ID = '019fb800-0000-7000-8000-000000000001';
+const NO_EMAIL_CONTACT_ID = '019fb800-0000-7000-8000-000000000002';
 const ORIGIN = 'https://give.example.org';
 const T0 = new Date('2026-11-12T12:00:00.000Z');
 
@@ -29,6 +31,33 @@ function mailer(ok = true) {
 		}
 	};
 	return { port, sent };
+}
+
+/**
+ * a mailer that holds the first pack it is handed until `release`, and says when it has one: the
+ * claim that sent it is then in force while the test runs whatever else it means to race against it.
+ */
+function holdingMailer() {
+	const sent: EmailMessage[] = [];
+	let release: () => void = () => {};
+	const held = new Promise<void>((resolve) => {
+		release = resolve;
+	});
+	let reach: () => void = () => {};
+	const reached = new Promise<void>((resolve) => {
+		reach = resolve;
+	});
+	const port: EmailProvider = {
+		async send(message) {
+			sent.push(message);
+			if (sent.length === 1) {
+				reach();
+				await held;
+			}
+			return { ok: true };
+		}
+	};
+	return { port, sent, release, reached };
 }
 
 const orgProfile = () =>
@@ -82,13 +111,20 @@ beforeAll(async () => {
 			CONTACT_ID
 		)
 	);
+	await run(
+		stmt(
+			`insert into contact (id, kind, display_name, created_at, updated_at)
+			 values (?, 'individual', 'Sam Okafor', 0, 0)`,
+			NO_EMAIL_CONTACT_ID
+		)
+	);
 });
 
 beforeEach(async () => {
 	await run(stmt('delete from org_profile'));
 	await orgProfile();
 	donationId = await gift();
-	await nameEmployer(db, { donationId }, 'Northwind Logistics', T0);
+	await nameEmployer(db, { donationId }, 'Northwind Logistics');
 });
 
 describe('the pack', () => {
@@ -111,7 +147,7 @@ describe('the pack', () => {
 
 	it('is not sent for a gift that has not reached the books', async () => {
 		const pending = await gift(false);
-		await nameEmployer(db, { donationId: pending }, 'Northwind', T0);
+		await nameEmployer(db, { donationId: pending }, 'Northwind');
 		const mail = mailer();
 
 		expect(await sendOwedPack({ db, email: mail.port, giftOrigin: ORIGIN }, pending, T0)).toBe(
@@ -140,6 +176,67 @@ describe('the pack', () => {
 		expect(await row()).toMatchObject({ packSentAt: null, packFailedAt: T0 });
 	});
 
+	it('stamps a donor with no email address as failed, arms no reminder and sends nothing', async () => {
+		await run(
+			stmt('update donation set contact_id = ? where id = ?', NO_EMAIL_CONTACT_ID, donationId)
+		);
+		const mail = mailer();
+
+		expect(await sendOwedPack({ db, email: mail.port, giftOrigin: ORIGIN }, donationId, T0)).toBe(
+			'failed'
+		);
+
+		expect(mail.sent).toHaveLength(0);
+		expect(await row()).toMatchObject({ packSentAt: null, packFailedAt: T0, reminderDueAt: null });
+	});
+
+	// the first call holds its claim inside the send while the second runs to its end, so the second
+	// reaches a row whose `pack_sent_at` is already set and only the claim's guard refuses it.
+	it('sends one pack when two calls race for it', async () => {
+		const held = holdingMailer();
+		const first = sendOwedPack({ db, email: held.port, giftOrigin: ORIGIN }, donationId, T0);
+		await held.reached;
+
+		const second = await sendOwedPack({ db, email: held.port, giftOrigin: ORIGIN }, donationId, T0);
+		held.release();
+
+		expect(second).toBe('not_owed');
+		expect(await first).toBe('sent');
+		expect(held.sent).toHaveLength(1);
+		expect(await row()).toMatchObject({ packSentAt: T0, packFailedAt: null });
+	});
+
+	it('sends one pack when the receipt step asks while a call holds the claim', async () => {
+		const held = holdingMailer();
+		const first = sendOwedPack({ db, email: held.port, giftOrigin: ORIGIN }, donationId, T0);
+		await held.reached;
+
+		await sendReceipt(
+			{ db, email: held.port, giftOrigin: ORIGIN },
+			{
+				donationId,
+				donorName: 'Maya Reyes',
+				donorEmail: 'maya@example.org',
+				contribution: {
+					totalMinor: 15_000,
+					nonDeductibleMinor: 0,
+					coveredFeeMinor: 0,
+					currency: 'USD',
+					receivedAt: T0
+				},
+				tribute: null,
+				program: null,
+				crypto: null
+			}
+		);
+		held.release();
+		await first;
+
+		const packs = held.sent.filter((m) => m.subject.includes('Northwind Logistics'));
+		expect(packs).toHaveLength(1);
+		expect(held.sent).toHaveLength(2);
+	});
+
 	it('stamps a refusal to render the same way, and throws nothing', async () => {
 		await run(stmt('delete from org_profile'));
 		const mail = mailer();
@@ -148,6 +245,26 @@ describe('the pack', () => {
 		);
 		expect(mail.sent).toHaveLength(0);
 		expect(await row()).toMatchObject({ packSentAt: null, packFailedAt: T0 });
+	});
+
+	it('arms the one reminder three days after it goes, not when the employer was named', async () => {
+		const pending = await gift(false);
+		await nameEmployer(db, { donationId: pending }, 'Northwind');
+		expect((await row(pending)).reminderDueAt).toBeNull();
+
+		const settledAt = new Date(T0.getTime() + 5 * 24 * 60 * 60_000);
+		await run(stmt("update payment set status = 'succeeded' where donation_id = ?", pending));
+		await sendOwedPack({ db, email: mailer().port, giftOrigin: ORIGIN }, pending, settledAt);
+
+		expect(await row(pending)).toMatchObject({
+			packSentAt: settledAt,
+			reminderDueAt: new Date(settledAt.getTime() + 3 * 24 * 60 * 60_000)
+		});
+	});
+
+	it('arms no reminder where the send failed', async () => {
+		await sendOwedPack({ db, email: mailer(false).port, giftOrigin: ORIGIN }, donationId, T0);
+		expect(await row()).toMatchObject({ packSentAt: null, reminderDueAt: null });
 	});
 
 	it('clears an earlier failure when a later send goes', async () => {

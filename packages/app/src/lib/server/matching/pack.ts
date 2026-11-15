@@ -6,14 +6,18 @@ import type { MailDeps } from '../email/alert';
 import { renderMatchPack } from '../email/match';
 import { readOrgProfile } from '../org/queries';
 import { giftPageUrl } from './links';
-import { inBooks, type MatchKey, type MatchWrite, nameEmployer } from './match';
+import { inBooks, type MatchKey, type MatchWrite, nameEmployer, REMINDER_AFTER_MS } from './match';
 
 // the pack: the filing details, mailed at once when the donor first names an employer.
+//
+// the claim arms the one reminder (./reminders.ts) `REMINDER_AFTER_MS` after it, as the pack's own
+// copy promises (packages/emails/src/templates/match-pack.tsx), and handing a claim back disarms it:
+// no reminder falls due for a pack that did not go.
 //
 // claimed before the send and only over a row still owed one, the claim pattern
 // ../donations/receipt.ts states for the receipt: `pack_sent_at` set where it is null, the send, and
 // on every way out that did not send the claim handed back with `pack_failed_at` stamped in the same
-// statement, which the gifts list shows as "Send failed". a send that went clears an earlier
+// statement, which the gifts list shows as "Details email failed". a send that went clears an earlier
 // failure in its claim.
 //
 // owed only once the gift is in the books. a donor can name the employer on the thank-you before
@@ -43,7 +47,11 @@ export async function sendOwedPack(
 	try {
 		const [claimed] = await deps.db
 			.update(giftMatch)
-			.set({ packSentAt: now, packFailedAt: null })
+			.set({
+				packSentAt: now,
+				packFailedAt: null,
+				reminderDueAt: new Date(now.getTime() + REMINDER_AFTER_MS)
+			})
 			.where(
 				and(
 					eq(giftMatch.donationId, donationId),
@@ -109,11 +117,11 @@ async function send(
 	return sent.ok ? null : `${sent.reason}: ${sent.detail}`;
 }
 
-/** the claim handed back, stamped as a send that failed. */
+/** the claim handed back, stamped as a send that failed, and the reminder it armed disarmed. */
 async function failed(db: Db, donationId: string, now: Date): Promise<void> {
 	await db
 		.update(giftMatch)
-		.set({ packSentAt: null, packFailedAt: now })
+		.set({ packSentAt: null, packFailedAt: now, reminderDueAt: null })
 		.where(eq(giftMatch.donationId, donationId));
 }
 
@@ -133,7 +141,7 @@ export async function employerNamed(
 	typed: string,
 	now: Date
 ): Promise<MatchWrite> {
-	const written = await nameEmployer(deps.db, key, typed, now);
+	const written = await nameEmployer(deps.db, key, typed);
 	if (written.ok && written.changed && written.state.packSentAt === null) {
 		deps.defer(sendOwedPack(deps, written.state.donationId, now));
 	}

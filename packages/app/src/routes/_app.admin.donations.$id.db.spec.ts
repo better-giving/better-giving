@@ -338,7 +338,7 @@ describe('the three presses', () => {
 			form: { id: string; result: { status: string; error: Record<string, string[]> } };
 		};
 		expect(answered.form.id).toBe('match-void');
-		expect(answered.form.result.error.reason).toBeDefined();
+		expect(answered.form.result.error.reason).toEqual(['required']);
 		expect((await stamps())?.voided_at).toBeNull();
 	});
 

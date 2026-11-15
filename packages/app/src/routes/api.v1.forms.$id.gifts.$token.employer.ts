@@ -10,8 +10,8 @@ import type { Route } from './+types/api.v1.forms.$id.gifts.$token.employer';
 // the donor naming the employer that may match their gift, from the donation form's thank-you:
 // `EmployerRequest` in packages/form/src/v1.ts in, `EmployerAnswer` out. it does what naming the
 // employer on the gift page does (`employerNamed` in $lib/server/matching/pack.ts): the employer
-// stored, the one reminder armed on the first naming, and the pack mailed after the answer where
-// none has gone.
+// stored, and the pack mailed after the answer where none has gone, which arms the one reminder. a
+// voided or matched gift's is refused with the gift page's 409.
 //
 // a resource route: `POST` reaches the `action`, and `GET`, `HEAD` and `OPTIONS` the `loader`.
 //
@@ -66,7 +66,19 @@ export async function action({ context, params, request }: Route.ActionArgs): Pr
 		typed,
 		new Date()
 	);
-	if (written.ok) return Response.json({ ok: true } satisfies EmployerAnswer, { headers });
+	if (written.ok) {
+		const closed = written.state.voidedAt !== null || written.state.matchedAt !== null;
+		if (!closed) return Response.json({ ok: true } satisfies EmployerAnswer, { headers });
+		// the 409 the gift page's action answers (./gift.$token.tsx); `createEmployerWrite` in
+		// packages/form/src/embed/api.ts counts any non-OK status as the write failing.
+		return Response.json(
+			{
+				message: 'This gift’s match request is closed, so the employer can no longer be changed.',
+				fix: 'Nothing to resend: the organisation closed the match, or the employer’s gift arrived.'
+			},
+			{ status: 409, headers }
+		);
+	}
 	if (written.reason === 'not_found') {
 		// no `error` code: `API_ERROR_CODES` in packages/form/src/v1.ts names screens that fix a
 		// refusal, and no screen fixes a token the caller holds wrong.
@@ -80,8 +92,8 @@ export async function action({ context, params, request }: Route.ActionArgs): Pr
 	}
 	return Response.json(
 		{
-			message: `The employer is blank or longer than ${MAX_EMPLOYER} characters once trimmed.`,
-			fix: `Send the name the donor typed, trimmed, between 1 and ${MAX_EMPLOYER} characters.`
+			message: `The employer is blank, longer than ${MAX_EMPLOYER} characters once trimmed, or holds a control character.`,
+			fix: `Send the name the donor typed, trimmed, between 1 and ${MAX_EMPLOYER} characters and on one line.`
 		},
 		{ status: 400, headers }
 	);

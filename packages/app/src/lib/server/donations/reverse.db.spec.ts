@@ -254,7 +254,7 @@ async function matchOf(donationId: string) {
 }
 
 describe('recordReversal() — the gift’s employer match', () => {
-	it('is voided by the refund, by system, with the reason Gift refunded', async () => {
+	it('is voided by a partial refund, by system, with the reason Gift refunded', async () => {
 		const gift = await settledGift();
 
 		await recordReversal(deps(), refund({ amountMinor: 2_500 }), 'evt_r1');

@@ -189,59 +189,61 @@ describe('the refund void', () => {
 	});
 
 	it('is a no-op for a gift with no row', async () => {
-		await expect(db.batch([refundVoidStatement(db, fresh(), T0)])).resolves.toBeDefined();
+		await db.batch([refundVoidStatement(db, fresh(), T0)]);
+		expect(await row()).toMatchObject({ voidedAt: null, voidedBy: null, voidReason: null });
 	});
 });
 
 describe('naming the employer', () => {
-	it('trims, stores it, and arms the one reminder three days out', async () => {
-		const named = await nameEmployer(db, { donationId }, '  Northwind Logistics ', T0);
+	it('trims and stores it, and arms no reminder: the pack does', async () => {
+		const named = await nameEmployer(db, { donationId }, '  Northwind Logistics ');
 		expect(named).toMatchObject({ ok: true, changed: true });
-		expect(await row()).toMatchObject({
-			employer: 'Northwind Logistics',
-			reminderDueAt: new Date(T0.getTime() + REMINDER_AFTER_MS)
-		});
-		expect(REMINDER_AFTER_MS).toBe(3 * 24 * 60 * 60_000);
+		expect(await row()).toMatchObject({ employer: 'Northwind Logistics', reminderDueAt: null });
 	});
 
 	it('is a no-op naming the same employer again', async () => {
-		await nameEmployer(db, { donationId }, 'Northwind', T0);
-		expect(await nameEmployer(db, { donationId }, 'Northwind', T1)).toMatchObject({
+		await nameEmployer(db, { donationId }, 'Northwind');
+		expect(await nameEmployer(db, { donationId }, 'Northwind')).toMatchObject({
 			ok: true,
 			changed: false
 		});
 	});
 
-	it('changing it later keeps the first due time and never re-arms a sent reminder', async () => {
-		await nameEmployer(db, { donationId }, 'Northwind', T0);
+	it('changing it later keeps the due time and never re-arms a sent reminder', async () => {
+		await nameEmployer(db, { donationId }, 'Northwind');
+		const due = new Date(T0.getTime() + REMINDER_AFTER_MS);
 		await run(
-			stmt('update gift_match set reminded_at = ? where donation_id = ?', T1.getTime(), donationId)
+			stmt(
+				'update gift_match set reminder_due_at = ?, reminded_at = ? where donation_id = ?',
+				due.getTime(),
+				T1.getTime(),
+				donationId
+			)
 		);
-		await nameEmployer(db, { donationId }, 'Contoso', T1);
-		expect(await row()).toMatchObject({
-			employer: 'Contoso',
-			reminderDueAt: new Date(T0.getTime() + REMINDER_AFTER_MS),
-			remindedAt: T1
-		});
+		await nameEmployer(db, { donationId }, 'Contoso');
+		expect(await row()).toMatchObject({ employer: 'Contoso', reminderDueAt: due, remindedAt: T1 });
 	});
 
 	it.each([
 		['blank', '   '],
-		['past 200 characters', 'é'.repeat(201)]
+		['past 200 characters', 'é'.repeat(201)],
+		['holding a NUL', 'North\u0000wind'],
+		['holding a line break', 'North\nwind'],
+		['holding a C1 control', 'North\u0085wind']
 	])('refuses one that is %s', async (_, typed) => {
-		expect(await nameEmployer(db, { donationId }, typed, T0)).toEqual({
+		expect(await nameEmployer(db, { donationId }, typed)).toEqual({
 			ok: false,
 			reason: 'employer_invalid'
 		});
 	});
 
 	it('takes 200 characters', async () => {
-		expect(await nameEmployer(db, { donationId }, 'é'.repeat(200), T0)).toMatchObject({ ok: true });
+		expect(await nameEmployer(db, { donationId }, 'é'.repeat(200))).toMatchObject({ ok: true });
 	});
 
 	it('is refused on a voided or matched gift', async () => {
 		await voidMatch(db, { donationId }, STAFF, 'Duplicate gift', T0);
-		expect(await nameEmployer(db, { donationId }, 'Northwind', T1)).toMatchObject({
+		expect(await nameEmployer(db, { donationId }, 'Northwind')).toMatchObject({
 			ok: true,
 			changed: false,
 			state: { status: 'voided' }
@@ -251,8 +253,8 @@ describe('naming the employer', () => {
 
 	it('finds the gift by its token', async () => {
 		const { token } = await row();
-		expect(await nameEmployer(db, { token }, 'Northwind', T0)).toMatchObject({ changed: true });
-		expect(await nameEmployer(db, { token: 'x'.repeat(32) }, 'Northwind', T0)).toEqual({
+		expect(await nameEmployer(db, { token }, 'Northwind')).toMatchObject({ changed: true });
+		expect(await nameEmployer(db, { token: 'x'.repeat(32) }, 'Northwind')).toEqual({
 			ok: false,
 			reason: 'not_found'
 		});
