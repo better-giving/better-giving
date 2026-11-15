@@ -6,6 +6,9 @@
 // packages/operator (AGENTS.md → Workspace), so it keeps its own copies beside its own source, and
 // the CLI takes one `dir` per lock.
 //
+// `--strict` is what makes an item that is only behind the registry fail: without it `diff --check`
+// warns and exits 0 for that case and fails only for an edited or missing file.
+//
 // the `bg-design` CLI is one file the registry serves itself (https://design.better.giving/registry/cli.mjs,
 // Node 24, no dependencies), so it is fetched into a temporary directory for each run rather than
 // copied into this repository, where it would drift from the registry it checks against.
@@ -67,12 +70,16 @@ try {
 	const cli = join(dir, 'cli.mjs');
 	writeFileSync(cli, source);
 	for (const lock of LOCKS) {
-		const result = spawnSync(process.execPath, [cli, 'diff', '--check', '--lock', lock], {
-			stdio: 'inherit',
-			cwd: ROOT,
-			// each lock's own `dir` is the truth; the CLI would let BG_DESIGN_DIR override it.
-			env: Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'BG_DESIGN_DIR'))
-		});
+		const result = spawnSync(
+			process.execPath,
+			[cli, 'diff', '--check', '--strict', '--lock', lock],
+			{
+				stdio: 'inherit',
+				cwd: ROOT,
+				// each lock's own `dir` is the truth; the CLI would let BG_DESIGN_DIR override it.
+				env: Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'BG_DESIGN_DIR'))
+			}
+		);
 		if (result.status === null) {
 			console.error(
 				`design:check could not run the bg-design CLI (${result.error?.message ?? `killed by ${result.signal}`}).`
