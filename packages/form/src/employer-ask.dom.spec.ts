@@ -81,6 +81,19 @@ it('draws Send unavailable over a blank box yet still pressable, and Skip beside
 	expect(send.hasAttribute('aria-disabled')).toBe(false);
 });
 
+// the registry keeps an aria-disabled button focusable so a line can say why it is off
+// (../registry/styles/button-css.usage.md); the hint over the box is that line.
+it('describes the unavailable Send by the hint, and drops the description once the box is given', () => {
+	const { block, find } = mount();
+	block.update(SCREEN, CONTROLS);
+
+	const send = find<HTMLButtonElement>('[part~="action"]');
+	expect(send.getAttribute('aria-describedby')).toBe(find('.employer-hint').id);
+
+	block.update(SCREEN, { ...CONTROLS, value: 'Northwind', given: true });
+	expect(send.hasAttribute('aria-describedby')).toBe(false);
+});
+
 it('hands back what is typed and each press, and draws nothing of the closed ask', () => {
 	const { block, handlers, find } = mount();
 	block.update(SCREEN, CONTROLS);
@@ -227,4 +240,31 @@ it('draws nothing on a thank-you with no ask, and leaves Enter to the screen', (
 	block.update(null, CONTROLS);
 	expect(block.root.hidden).toBe(true);
 	expect(find<HTMLButtonElement>('[part~="action"]').type).toBe('button');
+});
+
+it('draws Send available in the sent and closed phases whatever the box holds', () => {
+	const { block, find } = mount();
+
+	block.update({ ...SCREEN, phase: 'sent', doneHeading: 'Details sent' }, CONTROLS);
+	const send = find<HTMLButtonElement>('[part~="action"]');
+	expect(send.hasAttribute('aria-disabled')).toBe(false);
+	expect(send.hasAttribute('aria-describedby')).toBe(false);
+
+	block.update({ ...SCREEN, phase: 'skipped', doneHeading: 'Employer matching' }, CONTROLS);
+	expect(send.hasAttribute('aria-disabled')).toBe(false);
+	expect(send.hasAttribute('aria-describedby')).toBe(false);
+});
+
+it('draws Send busy and unavailable while sending if the box was emptied mid-send, and available when it still holds a value', () => {
+	const { block, find } = mount();
+
+	block.update({ ...SCREEN, phase: 'sending' }, { value: '', busy: true, given: false });
+	const send = find<HTMLButtonElement>('[part~="action"]');
+	expect(send.getAttribute('aria-busy')).toBe('true');
+	expect(send.getAttribute('aria-disabled')).toBe('true');
+	expect(send.disabled).toBe(false);
+
+	block.update({ ...SCREEN, phase: 'sending' }, { value: 'Northwind', busy: true, given: true });
+	expect(send.getAttribute('aria-busy')).toBe('true');
+	expect(send.hasAttribute('aria-disabled')).toBe(false);
 });

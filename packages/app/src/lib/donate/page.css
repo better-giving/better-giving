@@ -585,6 +585,13 @@ body {
 	min-block-size: var(--_row-min);
 }
 
+/* Send over a blank box is drawn in the registry's disabled look, whose `transform: none` takes
+   the registry's own press nudge off; the form's motion.css presses `[part~='action']` with
+   `scale`, a property of its own, so the press comes off here too. */
+.page .employer-actions > .ds-btn[aria-disabled='true']:active {
+	scale: none;
+}
+
 /* the employer box's presses, Save and Cancel where a name is being changed: stacked at the card's
    width below 30rem like the card's one press, and side by side at their own width from it (below). */
 .gift-presses {

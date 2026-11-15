@@ -550,11 +550,13 @@ function EmployerForm({
 			</div>
 			<div className="gift-presses">
 				{/* `aria-disabled` rather than `disabled` over a blank box or while a post is out, so Save
-				    keeps the focus and a blank press still reaches the refusal above. */}
+				    keeps the focus and a blank press still reaches the refusal above; over a blank box the
+				    card's hint says why it is off. */}
 				<button
 					type="submit"
 					className="ds-btn ds-btn-primary"
 					aria-disabled={pending || blank || undefined}
+					aria-describedby={blank && hint !== undefined ? hintId : undefined}
 					aria-busy={pending || undefined}
 				>
 					{copy.SAVE_EMPLOYER}

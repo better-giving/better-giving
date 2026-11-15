@@ -8125,6 +8125,10 @@ describe('the employer ask on the thank-you', () => {
 		expect(send.hasAttribute('aria-disabled')).toBe(false);
 		await settle();
 		expect(card.text('.vh[role="status"]')).toBe(thanks);
+
+		type(box, '');
+		expect(send.getAttribute('aria-disabled')).toBe('true');
+		expect(send.disabled).toBe(false);
 	});
 
 	// Enter in the box, or a second press: `focus()` on the box the caret is already in announces

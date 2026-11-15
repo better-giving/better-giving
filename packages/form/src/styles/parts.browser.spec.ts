@@ -163,6 +163,51 @@ function landed(element: HTMLElement): Promise<unknown> {
 	);
 }
 
+/** the middle of an element in the outer page's coordinates, for a real pointer. */
+function centre(element: HTMLElement): { x: number; y: number } {
+	const box = element.getBoundingClientRect();
+	const frame = window.frameElement?.getBoundingClientRect();
+	const scale = frame ? frame.width / window.innerWidth : 1;
+	return {
+		x: (frame?.left ?? 0) + (box.left + box.width / 2) * scale,
+		y: (frame?.top ?? 0) + (box.top + box.height / 2) * scale
+	};
+}
+
+/**
+ * what `read` takes off a real pressed button, its fill unless told otherwise, read while it is held
+ * and released after. `:active` holds only under a pointer the browser itself pressed, so a
+ * dispatched event would read the button at rest.
+ */
+async function pressed(
+	element: HTMLElement,
+	read: (drawn: CSSStyleDeclaration) => string = (drawn) => drawn.backgroundColor
+): Promise<string> {
+	const session = cdp();
+	const { x, y } = centre(element);
+	await session.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+	await session.send('Input.dispatchMouseEvent', {
+		type: 'mousePressed',
+		x,
+		y,
+		button: 'left',
+		clickCount: 1
+	});
+	try {
+		await new Promise((resolve) => requestAnimationFrame(resolve));
+		await landed(element);
+		return read(getComputedStyle(element));
+	} finally {
+		await session.send('Input.dispatchMouseEvent', {
+			type: 'mouseReleased',
+			x,
+			y,
+			button: 'left',
+			clickCount: 1
+		});
+	}
+}
+
 /**
  * one element on the page, upgraded, carrying the sheets its own code adopted.
  *
@@ -4752,44 +4797,6 @@ describe('the inherited text properties the card puts back', () => {
 // the amount tray is one grey plane with the amounts standing on it: the tray carries `--_n3` edge
 // to edge, a resting amount draws no ground, and only the chosen one is a white piece.
 describe('the amount tray’s plane', () => {
-	/** the middle of an element in the outer page's coordinates, for a real pointer. */
-	function centre(element: HTMLElement): { x: number; y: number } {
-		const box = element.getBoundingClientRect();
-		const frame = window.frameElement?.getBoundingClientRect();
-		const scale = frame ? frame.width / window.innerWidth : 1;
-		return {
-			x: (frame?.left ?? 0) + (box.left + box.width / 2) * scale,
-			y: (frame?.top ?? 0) + (box.top + box.height / 2) * scale
-		};
-	}
-
-	/** the fill under a real pressed button, read while it is held and released after. */
-	async function pressed(element: HTMLElement): Promise<string> {
-		const session = cdp();
-		const { x, y } = centre(element);
-		await session.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
-		await session.send('Input.dispatchMouseEvent', {
-			type: 'mousePressed',
-			x,
-			y,
-			button: 'left',
-			clickCount: 1
-		});
-		try {
-			await new Promise((resolve) => requestAnimationFrame(resolve));
-			await landed(element);
-			return getComputedStyle(element).backgroundColor;
-		} finally {
-			await session.send('Input.dispatchMouseEvent', {
-				type: 'mouseReleased',
-				x,
-				y,
-				button: 'left',
-				clickCount: 1
-			});
-		}
-	}
-
 	const TRANSPARENT = 'rgba(0, 0, 0, 0)';
 
 	it('draws rest, hover and press of an unchosen amount as nothing, rung 4 and rung 5, over the tray’s rung 3', async () => {
@@ -5100,6 +5107,23 @@ describe('the employer ask on the thank-you', () => {
 			);
 			expect(getComputedStyle(send(shadow)).color).toBe(used(shadow, '--primary-fg'));
 		}
+	});
+
+	// the registry takes the press nudge off an aria-disabled button (`button.ds-btn[aria-disabled]`
+	// in ../registry/styles/button-css.css), and the card's own press is a `scale` that rule does not
+	// name (./motion.css).
+	it('leaves the send unmoved under a press over a blank box, and pressed in once typed into', async () => {
+		const shadow = await thanked('1440px');
+		send(shadow).scrollIntoView({ block: 'center' });
+		const resting = getComputedStyle(send(shadow)).scale;
+		expect(send(shadow).getAttribute('aria-disabled')).toBe('true');
+		expect(await pressed(send(shadow), (drawn) => drawn.scale)).toBe(resting);
+
+		fill(shadow, '#employer', 'Northwind Logistics');
+		await settle();
+		await landed(send(shadow));
+		expect(send(shadow).hasAttribute('aria-disabled')).toBe(false);
+		expect(await pressed(send(shadow), (drawn) => drawn.scale)).not.toBe(resting);
 	});
 
 	it('draws Skip as the registry’s secondary press rather than the quiet text control', async () => {

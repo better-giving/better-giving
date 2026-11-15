@@ -195,8 +195,8 @@ export function GiftDetail({
 							{gift.receiptSentAt === null ? (
 								'Not sent'
 							) : (
-								// one span: `.adm-setting__value` is a flex row whose gap would stand between
-								// the word and the day as a second space.
+								// one span: `.adm-setting__value` is a flex row whose gap would stand in for the
+								// space between the word and the day.
 								<span>
 									Sent <LocalTime at={gift.receiptSentAt} style="day" />
 								</span>

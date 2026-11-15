@@ -2,7 +2,8 @@
 //
 // a block of its own the takeover holds under the receipt, the way ./deposit.ts is the address
 // screen's. it draws what it is handed — the words are the card's (`takeoverFor` in ./views.ts) and
-// the box's value and whether its write is in flight are the flow's (`employerField` and
+// the box's value, whether its write is in flight and whether it holds an answer the flow would
+// send, which decides whether Send is `aria-disabled`, are the flow's (`employerField` and
 // `sendEmployerButton` in ./connect.ts) — and decides nothing about the flow.
 //
 // what the donor types leaves through `input` and nowhere else: no attribute, no event, no console.
@@ -187,7 +188,10 @@ export function createEmployerAsk(doc: Document, handlers: EmployerAskHandlers):
 			text(skip, screen.skip);
 			attribute(send, 'type', open ? 'submit' : 'button');
 			attribute(send, 'aria-busy', controls.busy ? 'true' : null);
-			attribute(send, 'aria-disabled', open && !controls.given ? 'true' : null);
+			const unavailable = open && !controls.given;
+			attribute(send, 'aria-disabled', unavailable ? 'true' : null);
+			// the hint says what the box is for, which is why the send is off.
+			attribute(send, 'aria-describedby', unavailable ? HINT_ID : null);
 			attribute(send, 'part', partWhen('action', { busy: controls.busy }));
 
 			if (screen.refusal !== '' && refusal.hidden && !screen.boxRefused) handlers.refused();

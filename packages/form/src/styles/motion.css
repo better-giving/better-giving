@@ -93,7 +93,9 @@
 /*
  * the press landed, and the surface answered the pointer. `scale` rather than a size, so no
  * neighbour moves, and a fill, an ink and an edge, which nothing else on the card is measured
- * against.
+ * against. an `aria-disabled` control does not move, as the registry takes its own press nudge off
+ * one (`button.ds-btn[aria-disabled]` in ../registry/styles/button-css.css), whose `transform: none`
+ * leaves `scale` alone.
  *
  * the `scale` is the one thing here that reads `--_move-press`; the fill, the ink and the edge are a
  * state arriving and read `--_move-state`, so a press moves the surface on one curve while what it
@@ -135,7 +137,7 @@
 	[part~='action-quiet'],
 	[part~='frequency-option'],
 	[part~='amount-option']
-):active {
+):active:where(:not([aria-disabled='true'])) {
 	scale: 0.985;
 }
 

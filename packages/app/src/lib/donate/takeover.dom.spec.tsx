@@ -594,6 +594,35 @@ describe('the thank-you’s employer ask', () => {
 		expect(document.activeElement).toBe(box);
 	});
 
+	it('describes a blank Send by the ask hint, and drops it once a name is given', () => {
+		let give = (_: boolean) => {};
+		function Mounted() {
+			const [given, setGiven] = useState(false);
+			give = setGiven;
+			return (
+				<EmployerAskBlock
+					screen={takeoverFor(asked(null), CONFIG, money).employer}
+					box={{ name: 'employer', value: '', onChange: () => {} }}
+					busy={false}
+					given={given}
+					onSend={() => {}}
+					onSkip={() => {}}
+				/>
+			);
+		}
+		const root = mount(<Mounted />);
+		const send = root.querySelector('.employer-actions > button[type="submit"]');
+		if (!(send instanceof HTMLButtonElement)) throw new Error('no Send');
+
+		const hint = document.getElementById(send.getAttribute('aria-describedby') ?? '');
+		expect(hint?.textContent).toBe(copy.EMPLOYER_ASK_HINT);
+		expect(root.contains(hint)).toBe(true);
+
+		act(() => give(true));
+		expect(send.hasAttribute('aria-disabled')).toBe(false);
+		expect(send.hasAttribute('aria-describedby')).toBe(false);
+	});
+
 	it('puts the caret back in the box on a blank Send repeated', () => {
 		const { box, send, sends, refuseWith } = block();
 		refuseWith('blank');

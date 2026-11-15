@@ -349,15 +349,15 @@ describe('the gift card', () => {
 	});
 
 	it('states the receipt as one run with one space between the word and the day', () => {
-		const at = '2026-11-15T12:00:00.000Z';
-		const { root } = screen({ gift: { ...props().gift, receiptSentAt: at } });
+		browserIn('Asia/Manila');
+		const { root } = screen({
+			gift: { ...props().gift, receiptSentAt: '2026-11-15T12:00:00.000Z' }
+		});
 		const receipt = value(root, 'Receipt');
-		const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
 		// the value cell is a flex row with a gap, so the word and the day are one item in it.
 		expect(receipt.childNodes).toHaveLength(1);
-		expect(receipt.textContent).toBe(`Sent ${formatInstant(at, zone, 'day')}`);
-		expect(receipt.textContent).toMatch(/^Sent \d{1,2} Nov 2026$/);
+		expect(receipt.textContent).toBe('Sent 15 Nov 2026');
 	});
 
 	it('states a receipt not sent in words', () => {

@@ -661,6 +661,8 @@ export function EmployerAskBlock({
 						className={EMPLOYER_SEND_CLASS}
 						aria-busy={busy || undefined}
 						aria-disabled={(open && !given) || undefined}
+						// the hint says why a Send over a blank box is off.
+						aria-describedby={open && !given ? EMPLOYER_HINT_ID : undefined}
 						onClick={() => {
 							onSend(document.activeElement === field.current);
 							// a blank press repeated changes nothing the flow holds, so no effect moves the caret.

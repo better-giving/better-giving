@@ -501,8 +501,8 @@
 		   a size and a line height are separate tokens here rather than one `font` shorthand,
 		   because the shorthand resets `font-variant-numeric` and a money column silently stops
 		   lining up wherever one is applied over it. a figure-bearing element states
-		   `--admin-figures-tabular` for itself. the zero stays plain, as the registry's
-		   table-css draws a column's figures: a slashed zero is the code face's mark, and an
+		   `--admin-figures-tabular` for itself. the zero stays plain, as it does in
+		   the registry's table-css figures: a slashed zero is the code face's mark, and an
 		   amount is not a literal.
 
 		   sentence case everywhere, and there is no caps role: a screen that wants one is asking

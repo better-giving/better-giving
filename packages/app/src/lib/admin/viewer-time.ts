@@ -8,7 +8,7 @@
 /** the cookie the browser writes its IANA zone to, and the layout loader reads. */
 export const VIEWER_ZONE_COOKIE = 'admin_zone';
 
-/** the four ways an /admin screen writes an instant. */
+/** the ways an /admin screen writes an instant. */
 export type InstantStyle = 'iso-day' | 'day' | 'day-time' | 'moment';
 
 /**
@@ -21,7 +21,7 @@ export function parseViewerZone(raw: string | null | undefined): string | null {
 
 const MONTH = new Intl.DateTimeFormat('en-US', { month: 'short', timeZone: 'UTC' });
 
-// one wall-clock format per zone, built on first use: the four styles all read the same parts.
+// one wall-clock format per zone, built on first use: every style reads the same parts.
 // IANA's names, links included, number under a thousand, but `Intl` takes any casing of each, so
 // the cache is emptied past that rather than grown by whatever the cookie names.
 const WALL_CLOCK_LIMIT = 1000;

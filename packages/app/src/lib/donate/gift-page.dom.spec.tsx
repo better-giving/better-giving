@@ -434,6 +434,34 @@ describe('the posts', () => {
 		expect(save.hasAttribute('aria-disabled')).toBe(false);
 	});
 
+	it('describes a blank Save by the card hint, and drops it once a name is typed', async () => {
+		const { root } = await page(view());
+		const save = button(root, copy.SAVE_EMPLOYER);
+
+		const hint = document.getElementById(save.getAttribute('aria-describedby') ?? '');
+		expect(hint?.textContent).toBe(copy.EMPLOYER_HINT);
+		expect(root.contains(hint)).toBe(true);
+
+		type(box(root), EMPLOYER);
+		expect(save.hasAttribute('aria-describedby')).toBe(false);
+	});
+
+	it('posts nothing for a blank Save pressed while an employer post is out, and Save stays unavailable', async () => {
+		const { root, posts } = await reloading(view());
+
+		type(box(root), EMPLOYER);
+		await press(button(root, copy.SAVE_EMPLOYER));
+		expect(posts).toEqual([{ intent: 'employer', employer: EMPLOYER }]);
+		expect(button(root, copy.SAVE_EMPLOYER).getAttribute('aria-busy')).toBe('true');
+
+		type(box(root), '');
+		await press(button(root, copy.SAVE_EMPLOYER));
+
+		expect(posts).toHaveLength(1);
+		expect(button(root, copy.SAVE_EMPLOYER).getAttribute('aria-disabled')).toBe('true');
+		expect(root.querySelector('.ds-field-err')?.textContent).toBe(copy.EMPLOYER_BLANK);
+	});
+
 	it('posts the filed press once while its answer is still landing', async () => {
 		const { root, posts, reload } = await reloading(view());
 
