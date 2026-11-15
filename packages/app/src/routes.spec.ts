@@ -122,17 +122,20 @@ const CAMPAIGN_PAGE = 'routes/$slug.tsx';
 /** a supporter's fundraiser, at `/f/{slug}`. */
 const FUNDRAISER_PAGE = 'routes/f.$slug.tsx';
 
+/** a donor's own page for one gift, at `/gift/{token}`. */
+const GIFT_PAGE = 'routes/gift.$token.tsx';
+
 /**
  * the donor's pages, which with the preview below are the screens outside the layout that wear no
  * operator stylesheet.
  *
- * each draws the donation form's own card and links the form's sheets in its own `links`, and
+ * each links the form's sheets in its own `links` — all but the gift page draw the form's card — and
  * those are unlayered while every operator declaration is layered (src/app.css) — so a
  * document holding both would let one side outrank the other on properties only one of them sets.
  * they are named here so the sweep below can hold every *other* screen outside the layout to
  * carrying the operator sheet without holding these to it.
  */
-const DONOR_PAGES: readonly string[] = [DONOR_PAGE, CAMPAIGN_PAGE, FUNDRAISER_PAGE];
+const DONOR_PAGES: readonly string[] = [DONOR_PAGE, CAMPAIGN_PAGE, FUNDRAISER_PAGE, GIFT_PAGE];
 
 /**
  * the editor's preview of a page, the one route outside the protected layout that is behind the
@@ -272,6 +275,13 @@ const PUBLIC_ROUTE_FILES: readonly string[] = [
 	// and only while the connection that asked for it stands ($lib/server/connector/photos.ts). its
 	// write lands in the page's draft alone, through the dashboard's own guarded writer.
 	'routes/photo.$token.tsx',
+	// a donor's own page for one gift, opened from their receipt, the pack or the thank-you with no
+	// session: the 160-bit token is the permission, as the photo link's is, and the page reads one
+	// gift by it. it charges nothing, as ./routes/reset.tsx charges nothing — a random token is not
+	// one anybody guesses at — and its two writes are bounded by the row itself: the employer is one
+	// conditional update and mails at most one pack per gift, ever (`sendOwedPack` in
+	// $lib/server/matching/pack.ts), and filed stamps once. a write from another origin is refused.
+	GIFT_PAGE,
 	// a supporter's fundraiser, opened from a link its supporter shared, and public for the reasons
 	// a campaign's page is: no session, no submission, the gift through the endpoint above against the
 	// fundraiser's own settings row, which serves only while the page is live and shown. its loader
