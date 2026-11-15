@@ -265,6 +265,17 @@ describe('the cards a gift’s stamps stand', () => {
 		expect(root.querySelector('.ds-badge')?.textContent).toBe(copy.GIFT_REFUNDED_BADGE);
 	});
 
+	it('states what was given on a gift refunded whole, beside the badge', async () => {
+		const { root } = await page(
+			view({ filing: { amountMinor: 0 }, refundedAt: new Date('2026-11-20T10:00:00Z') })
+		);
+
+		expect(root.querySelector('.gift-sum > span')?.textContent).toBe(
+			'$150.00 on November 12, 2026'
+		);
+		expect(root.textContent).not.toContain('after refunds');
+	});
+
 	it('keeps the details on a voided gift and hides the employer and the filed card', async () => {
 		const { root } = await page(view({ ...NAMED, voidedAt: new Date('2026-11-18T10:00:00Z') }));
 

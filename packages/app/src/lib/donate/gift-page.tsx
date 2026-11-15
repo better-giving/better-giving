@@ -139,7 +139,13 @@ export function GiftPage({ orgName, logo, look, gift, result }: GiftPageProps) {
 				<header className="gift-head">
 					<h1 className="gift-title">{copy.GIFT_HEADING}</h1>
 					<p className="gift-sum">
-						<span>{copy.giftSummary(amountStated(filing), day(filing.givenAt))}</span>
+						<span>
+							{copy.giftSummary(
+								// a gift refunded whole has nothing left to state beside the Refunded badge.
+								refunded ? formatMinor(filing.givenMinor, filing.currency) : amountStated(filing),
+								day(filing.givenAt)
+							)}
+						</span>
 						{refunded ? (
 							<span className="ds-badge ds-badge-outline">{copy.GIFT_REFUNDED_BADGE}</span>
 						) : null}
