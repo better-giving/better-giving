@@ -53,7 +53,7 @@ A status, badge, count or icon beside text that can wrap sits on the text's firs
 </div>
 ```
 
-- Its states come from the class: hover fills `--gray-4` and turns the edge `--input-hover`, inside `@media (hover: hover)`; pressed fills `--gray-5`, with no nudge; `:focus-visible` draws a 2px `--ring` outline 2px out.
+- Its states come from the class: hover fills `--gray-4` and turns the edge `--input-hover`, inside `@media (hover: hover) and (pointer: fine)`; pressed fills `--gray-5`, with no nudge; `:focus-visible` draws a 2px `--ring` outline 2px out.
 - Disabled is `aria-disabled="true"`, never the native attribute, so it stays focusable and a reason beside it (`aria-describedby`) can be read: `--gray-3` fill, `--hairline` edge, `--gray-11` ink, a not-allowed cursor. On a `<button>`, stop the click in script. On an `<a>`, the class takes the pointer off it, and the attribute alone does not stop Enter: stop it in script, or drop the `href`.
 
 ## Accessibility

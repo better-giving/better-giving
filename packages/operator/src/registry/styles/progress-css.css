@@ -16,13 +16,12 @@
   --ds-text-sm: calc(0.875 * var(--ds-rem, 1rem));
   --ds-text-sm-lh: calc(1.25 / 0.875);
   --ds-font-weight-semibold: 600;
-  --ds-ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
   --ds-inset-shadow-track: inset 0 2px 4px 0
     color-mix(in oklch, var(--shadow-ink) 5%, transparent);
   --ds-shadow-track-fill: 0 1px 2px 0
     color-mix(in oklch, var(--shadow-ink) 5%, transparent);
   display: flex;
-  align-items: center;
+  align-items: safe center;
   gap: calc(var(--ds-spacing) * 3);
 }
 .ds-progress-track {
@@ -39,7 +38,7 @@
   box-shadow: var(--ds-shadow-track-fill);
   transition-property: width;
   transition-duration: var(--duration-slow);
-  transition-timing-function: var(--ds-ease-in-out);
+  transition-timing-function: linear;
 }
 .ds-progress-track[data-state="met"] > .ds-progress-fill {
   background-color: var(--success);
@@ -64,7 +63,7 @@
 /* aria-hidden: the track's aria-valuetext already says the percentage */
 .ds-progress-label {
   min-inline-size: calc(var(--ds-spacing) * 13);
-  text-align: right;
+  text-align: end;
   font-family: var(--font-display);
   font-variant-numeric: tabular-nums;
   font-size: var(--ds-text-sm);

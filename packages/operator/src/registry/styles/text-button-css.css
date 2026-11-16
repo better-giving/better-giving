@@ -13,7 +13,7 @@
 .ds-text-btn {
   --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
   --ds-font-weight-semibold: 600;
-  --ds-ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ds-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --ds-tone: var(--gray-11);
   --ds-tone-hover: var(--gray-12);
   position: relative;
@@ -35,7 +35,7 @@
     color, background-color, border-color, outline-color, text-decoration-color,
     fill, stroke;
   transition-duration: var(--duration-fast);
-  transition-timing-function: var(--ds-ease-in-out);
+  transition-timing-function: var(--ds-ease-out);
 }
 .ds-text-btn-primary {
   --ds-tone: var(--link);
@@ -82,7 +82,7 @@
   inset-inline: min(0px, calc((100% - var(--ds-hit-target)) / 2));
 }
 
-@media (hover: hover) {
+@media (hover: hover) and (pointer: fine) {
   .ds-text-btn:hover:not(
     :disabled,
     [aria-disabled="true"],

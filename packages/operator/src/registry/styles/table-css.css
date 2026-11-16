@@ -22,7 +22,7 @@
      first and last labels */
   --ds-table-corner: var(--radius);
   box-sizing: border-box;
-  min-width: 100%;
+  min-inline-size: 100%;
   border-collapse: separate;
   border-spacing: 0;
   /* tabular figures so a column lines up; the zero stays plain */
@@ -36,7 +36,7 @@
 .ds-table :is(th, td) {
   box-sizing: border-box;
   padding: calc(var(--ds-spacing) * 3) calc(var(--ds-spacing) * 4);
-  text-align: left;
+  text-align: start;
   border: 0 solid var(--hairline);
 }
 .ds-table th {
@@ -58,13 +58,13 @@
   color: var(--gray-12);
 }
 .ds-table :is(tbody, tfoot) > tr > :is(th, td) {
-  border-top-width: 1px;
+  border-block-start-width: 1px;
 }
 .ds-table tbody > tr > * {
   transition: background-color var(--duration-fast);
 }
 /* only where a pointer can hover: a tap leaves `:hover` on the row it hit */
-@media (hover: hover) {
+@media (hover: hover) and (pointer: fine) {
   .ds-table tbody > tr:hover > * {
     background-color: var(--gray-4);
   }
@@ -99,7 +99,7 @@
 
 /* a money or count column: header and cells both carry it */
 .ds-table :is(th, td).ds-num {
-  text-align: right;
+  text-align: end;
 }
 
 /* the load-more row: a neutral control resting transparent, gray-4 hovered
@@ -107,10 +107,10 @@
 .ds-table tfoot button {
   box-sizing: border-box;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  align-items: safe center;
+  justify-content: safe center;
   gap: calc(var(--ds-spacing) * 2);
-  width: 100%;
+  inline-size: 100%;
   padding: calc(var(--ds-spacing) * 2);
   border: 0 solid var(--hairline);
   border-end-start-radius: var(--ds-table-corner);
@@ -129,7 +129,7 @@
      colour on every element */
   outline-color: var(--ring);
 }
-@media (hover: hover) {
+@media (hover: hover) and (pointer: fine) {
   .ds-table tfoot button:hover:not(:disabled, [aria-disabled="true"]) {
     background-color: var(--gray-4);
   }
@@ -197,7 +197,7 @@
 .ds-table-scroll thead th:first-child {
   background-color: var(--panel);
 }
-@media (hover: hover) {
+@media (hover: hover) and (pointer: fine) {
   .ds-table-scroll tbody tr:hover > :first-child {
     background-color: var(--gray-4);
   }
@@ -207,7 +207,7 @@
 @media (width < 40rem) {
   .ds-table-scroll
     :is(th, td):first-child:not(:where(tfoot > tr > :only-child)) {
-    min-width: calc(var(--ds-spacing) * 44);
+    min-inline-size: calc(var(--ds-spacing) * 44);
   }
 }
 
@@ -224,7 +224,7 @@
 .ds-table-scroll tfoot > tr > :only-child > * {
   position: sticky;
   inset-inline-start: 0;
-  width: 100cqi;
+  inline-size: 100cqi;
 }
 /* flush with the frame's edges, which clip an outer ring: the 2px ring is
    drawn 2px in from the child's edges, as site-nav-css draws its full-height

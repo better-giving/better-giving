@@ -30,14 +30,15 @@
   --ds-text-lg: calc(1.125 * var(--ds-rem, 1rem));
   --ds-text-lg-lh: calc(1.75 / 1.125);
   --ds-field-size: calc(var(--ds-spacing) * 12 + 2px);
-  --ds-ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ds-ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ds-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   /* published for ds-btn-icon, which squares a button on its tier's height */
   --ds-btn-size: calc(var(--ds-spacing) * 9);
   --ds-btn-edge: 1px;
   box-sizing: border-box;
   display: flex;
-  justify-content: center;
-  align-items: center;
+  justify-content: safe center;
+  align-items: safe center;
   border: var(--ds-btn-edge) solid transparent;
   outline-color: var(--ring);
   font-family: inherit;
@@ -52,7 +53,7 @@
   cursor: pointer;
   transition-property: color, background-color, border-color;
   transition-duration: var(--duration-fast);
-  transition-timing-function: var(--ds-ease-in-out);
+  transition-timing-function: var(--ds-ease-out);
   /* an icon beside the label; the tiers restate both */
   --ds-btn-icon: calc(var(--ds-spacing) * 4);
   gap: calc(var(--ds-spacing) * 2);
@@ -69,13 +70,15 @@
   color: var(--gray-12);
   border: 1px solid var(--gray-7);
 }
-.ds-btn-secondary:hover:not(
-  :disabled,
-  [aria-disabled="true"],
-  [aria-busy="true"]
-) {
-  background-color: var(--gray-4);
-  border-color: var(--gray-8);
+@media (hover: hover) and (pointer: fine) {
+  .ds-btn-secondary:hover:not(
+    :disabled,
+    [aria-disabled="true"],
+    [aria-busy="true"]
+  ) {
+    background-color: var(--gray-4);
+    border-color: var(--gray-8);
+  }
 }
 .ds-btn-secondary:active:not(
   :disabled,
@@ -89,8 +92,14 @@
   background-color: transparent;
   color: inherit;
 }
-.ds-btn-ghost:hover:not(:disabled, [aria-disabled="true"], [aria-busy="true"]) {
-  background-color: var(--gray-4);
+@media (hover: hover) and (pointer: fine) {
+  .ds-btn-ghost:hover:not(
+    :disabled,
+    [aria-disabled="true"],
+    [aria-busy="true"]
+  ) {
+    background-color: var(--gray-4);
+  }
 }
 .ds-btn-ghost:active:not(
   :disabled,
@@ -110,8 +119,14 @@
   background-color: var(--gray-3);
   color: var(--gray-12);
 }
-.ds-btn-soft:hover:not(:disabled, [aria-disabled="true"], [aria-busy="true"]) {
-  background-color: var(--gray-4);
+@media (hover: hover) and (pointer: fine) {
+  .ds-btn-soft:hover:not(
+    :disabled,
+    [aria-disabled="true"],
+    [aria-busy="true"]
+  ) {
+    background-color: var(--gray-4);
+  }
 }
 .ds-btn-soft:active:not(:disabled, [aria-disabled="true"], [aria-busy="true"]) {
   background-color: var(--gray-5);
@@ -125,12 +140,14 @@
   background-color: var(--primary-hover);
   transform: translateY(1px);
 }
-.ds-btn-primary:hover:not(
-  :disabled,
-  [aria-disabled="true"],
-  [aria-busy="true"]
-) {
-  background-color: var(--primary-hover);
+@media (hover: hover) and (pointer: fine) {
+  .ds-btn-primary:hover:not(
+    :disabled,
+    [aria-disabled="true"],
+    [aria-busy="true"]
+  ) {
+    background-color: var(--primary-hover);
+  }
 }
 
 .ds-btn-destructive {
@@ -141,12 +158,14 @@
   background-color: var(--destructive-hover);
   transform: translateY(1px);
 }
-.ds-btn-destructive:hover:not(
-  :disabled,
-  [aria-disabled="true"],
-  [aria-busy="true"]
-) {
-  background-color: var(--destructive-hover);
+@media (hover: hover) and (pointer: fine) {
+  .ds-btn-destructive:hover:not(
+    :disabled,
+    [aria-disabled="true"],
+    [aria-busy="true"]
+  ) {
+    background-color: var(--destructive-hover);
+  }
 }
 
 /* the destructive action that opens a confirm step: no solid fill, so no press
@@ -159,7 +178,7 @@
 }
 /* only where a pointer can hover: a tap opens the confirm and leaves `:hover`
    on the button under it */
-@media (hover: hover) {
+@media (hover: hover) and (pointer: fine) {
   .ds-btn-destructive-outline:hover:not(
     :disabled,
     [aria-disabled="true"],
@@ -184,12 +203,14 @@
   background-color: var(--success-hover);
   transform: translateY(1px);
 }
-.ds-btn-success:hover:not(
-  :disabled,
-  [aria-disabled="true"],
-  [aria-busy="true"]
-) {
-  background-color: var(--success-hover);
+@media (hover: hover) and (pointer: fine) {
+  .ds-btn-success:hover:not(
+    :disabled,
+    [aria-disabled="true"],
+    [aria-busy="true"]
+  ) {
+    background-color: var(--success-hover);
+  }
 }
 
 .ds-btn-warning {
@@ -200,12 +221,14 @@
   background-color: var(--warning-hover);
   transform: translateY(1px);
 }
-.ds-btn-warning:hover:not(
-  :disabled,
-  [aria-disabled="true"],
-  [aria-busy="true"]
-) {
-  background-color: var(--warning-hover);
+@media (hover: hover) and (pointer: fine) {
+  .ds-btn-warning:hover:not(
+    :disabled,
+    [aria-disabled="true"],
+    [aria-busy="true"]
+  ) {
+    background-color: var(--warning-hover);
+  }
 }
 
 /* the filled button on a brand fill: it inverts to the fill's own ink and has
@@ -236,12 +259,14 @@
   border: var(--ds-btn-edge) solid
     color-mix(in oklab, currentColor 40%, transparent);
 }
-.ds-btn-outline:hover:not(
-  :disabled,
-  [aria-disabled="true"],
-  [aria-busy="true"]
-) {
-  background-color: color-mix(in oklab, currentColor 10%, transparent);
+@media (hover: hover) and (pointer: fine) {
+  .ds-btn-outline:hover:not(
+    :disabled,
+    [aria-disabled="true"],
+    [aria-busy="true"]
+  ) {
+    background-color: color-mix(in oklab, currentColor 10%, transparent);
+  }
 }
 .ds-btn-outline:active:not(
   :disabled,
@@ -346,15 +371,17 @@ button.ds-btn[aria-disabled="true"] {
   outline: 2px solid var(--form-ring);
   outline-offset: 2px;
 }
-.ds-btn-form-primary:hover:not(
-  :disabled,
-  [aria-disabled="true"],
-  [aria-busy="true"]
-) {
-  background-color: var(
-    --form-primary-hover,
-    color-mix(in oklch, var(--form-primary) 90%, black)
-  );
+@media (hover: hover) and (pointer: fine) {
+  .ds-btn-form-primary:hover:not(
+    :disabled,
+    [aria-disabled="true"],
+    [aria-busy="true"]
+  ) {
+    background-color: var(
+      --form-primary-hover,
+      color-mix(in oklch, var(--form-primary) 90%, black)
+    );
+  }
 }
 .ds-btn-form-primary:active:not(
   :disabled,
@@ -544,12 +571,14 @@ button.ds-btn[aria-disabled="true"] {
 ) {
   border-color: var(--accent-7);
 }
-.ds-btn-secondary[aria-pressed="true"]:hover:not(
-  :disabled,
-  [aria-disabled="true"],
-  [aria-busy="true"]
-) {
-  border-color: var(--accent-8);
+@media (hover: hover) and (pointer: fine) {
+  .ds-btn-secondary[aria-pressed="true"]:hover:not(
+    :disabled,
+    [aria-disabled="true"],
+    [aria-busy="true"]
+  ) {
+    border-color: var(--accent-8);
+  }
 }
 
 /* done: the work succeeded and the button says so for a moment, then returns

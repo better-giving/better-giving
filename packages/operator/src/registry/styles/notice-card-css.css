@@ -49,7 +49,7 @@
 /* one title line tall, so the 20px glyph centers on the title's first line */
 .ds-notice-card-icon {
   display: flex;
-  align-items: center;
+  align-items: safe center;
   block-size: calc(var(--ds-spacing) * 6);
   flex-shrink: 0;
   color: var(--ds-tone-ink);
@@ -85,7 +85,7 @@
 
 .ds-notice-card-actions {
   display: flex;
-  align-items: center;
+  align-items: safe center;
   justify-content: flex-end;
   gap: calc(var(--ds-spacing) * 4);
 }

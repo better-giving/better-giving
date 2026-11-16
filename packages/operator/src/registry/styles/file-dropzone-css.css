@@ -12,14 +12,14 @@
   --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
   --ds-text-sm: calc(0.875 * var(--ds-rem, 1rem));
   --ds-text-sm-lh: calc(1.25 / 0.875);
-  --ds-ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ds-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   /* the strong-border step, dashed: a shape over an existing role */
   --ds-dropzone-edge: 1px dashed var(--input-hover);
   position: relative;
   box-sizing: border-box;
   display: grid;
-  align-content: center;
-  justify-items: center;
+  align-content: safe center;
+  justify-items: safe center;
   gap: calc(var(--ds-spacing) * 2);
   min-block-size: calc(var(--ds-spacing) * 32);
   padding: calc(var(--ds-spacing) * 5) calc(var(--ds-spacing) * 4);
@@ -35,13 +35,13 @@
     color, background-color, border-color, outline-color, text-decoration-color,
     fill, stroke;
   transition-duration: var(--duration-fast);
-  transition-timing-function: var(--ds-ease-in-out);
+  transition-timing-function: var(--ds-ease-out);
 }
 .ds-dropzone > svg {
   inline-size: calc(var(--ds-spacing) * 6);
   block-size: calc(var(--ds-spacing) * 6);
 }
-@media (hover: hover) {
+@media (hover: hover) and (pointer: fine) {
   .ds-dropzone:hover:not([aria-disabled="true"], [aria-busy="true"]) {
     background-color: var(--gray-4);
   }
@@ -124,7 +124,7 @@
   --ds-text-sm: calc(0.875 * var(--ds-rem, 1rem));
   --ds-text-sm-lh: calc(1.25 / 0.875);
   display: flex;
-  align-items: center;
+  align-items: safe center;
   gap: calc(var(--ds-spacing) * 3);
   inline-size: 100%;
   min-inline-size: 0;
@@ -149,6 +149,9 @@
   line-height: var(--ds-leading-tight);
 }
 .ds-dropzone-name > b {
+  min-inline-size: 0;
+  /* hidden, not clip: engines before chrome 150 and safari 27 draw no
+     ellipsis on clipped text */
   overflow: hidden;
   color: var(--gray-12);
   font-weight: var(--ds-font-weight-semibold);
@@ -172,7 +175,7 @@
   box-sizing: border-box;
   inline-size: 100%;
   aspect-ratio: 16 / 9;
-  overflow: hidden;
+  overflow: clip;
   border: 1px solid var(--hairline);
   border-radius: var(--radius);
 }
@@ -186,7 +189,7 @@
   --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: safe center;
   gap: calc(var(--ds-spacing) * 2) calc(var(--ds-spacing) * 3);
   inline-size: 100%;
 }

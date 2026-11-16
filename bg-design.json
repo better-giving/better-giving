@@ -1,133 +1,133 @@
 {
   "schemaVersion": 1,
   "dir": "packages/operator/src/registry",
-  "registryVersion": "2.4.0",
+  "registryVersion": "2.5.0",
   "items": {
     "avatar-css": {
-      "version": "1.0.0",
+      "version": "1.0.1",
       "files": {
-        "styles/avatar-css.css": "14a21333d6d124ceaff40cb4f6e7054e94721a4d56dc78b9982398f1ea627a69",
+        "styles/avatar-css.css": "e27bcf235efe58c1e3b824d2be3810b85422c75668bb6790dff2e11e10227a31",
         "styles/avatar-css.usage.md": "17e0866bce99cab5e4980ab29a339c16d77f5b5138eb20f61000727c911d6be7"
       }
     },
     "badge-css": {
-      "version": "1.2.0",
+      "version": "1.2.1",
       "files": {
-        "styles/badge-css.css": "c94e66790a2a5c0be2b2200ee807e3c880b7c84d5ae2be88f91602b3ffbec075",
+        "styles/badge-css.css": "340ce27334250454e7a413f4a35d8a7f8238cb4bbfebe33236effdbd478b35e4",
         "styles/badge-css.usage.md": "b2481ee71ee6084bf276d89843d7bc64bc5027fae8d492507419768687382060"
       }
     },
     "button-css": {
-      "version": "1.2.1",
+      "version": "1.2.2",
       "files": {
-        "styles/button-css.css": "5b2b1d26472df80d57ce3d27b6043f763ffedc8db82d4dca9707befbd52b707d",
-        "styles/button-css.usage.md": "775cfc6322f8b80ed5adf9df124c2fef61ec67c3ec4c13a1a1c31acddad6afad"
+        "styles/button-css.css": "628fedfd32bcd1e4395be22317ed2ae34acc0f75c4bba7d4fddb1c04e351c55b",
+        "styles/button-css.usage.md": "cb62c507bf1c11b4bc25610364539224da6de4612ae4c562c6fc6c515ea452b5"
       }
     },
     "card-css": {
-      "version": "1.2.1",
+      "version": "1.2.2",
       "files": {
-        "styles/card-css.css": "05edcdaee1ace7c600aa69dc621597eb88fab9870c33648b61a6d672a96d319a",
-        "styles/card-css.usage.md": "a2a2eaddf23d77dead1176d22d36004284daf31f4915cc0521a68f5fe95b37dd"
+        "styles/card-css.css": "ac06cdb52b106e2a991e7f288a5ba6b037434c8b99f0d6399e197f3104d4efea",
+        "styles/card-css.usage.md": "735729249ba2ad5d681105c25d3266457e4f3cfaa3f9a51f5580cbbcfa3613da"
       }
     },
     "dialog-css": {
-      "version": "1.0.1",
+      "version": "1.1.0",
       "files": {
-        "styles/dialog-css.css": "0c2f322d6ac89ab8406ff27f0e37d99a5a26b38adbfbbf36a4127bf698851164",
-        "styles/dialog-css.usage.md": "a5b368ddd66e9e88a4c9e523555743f6bb06c447027355b942cd9c61304d5cee"
+        "styles/dialog-css.css": "aef272130adc151be4df0ea7d2edcab37454210c9c747737c827951b689ae847",
+        "styles/dialog-css.usage.md": "7f68211a8f2df997ebd2162920df21ebe33cc62be4ec7121a47d66f3d235daa3"
       }
     },
     "field-css": {
-      "version": "1.3.0",
+      "version": "1.4.0",
       "files": {
-        "styles/field-css.css": "04ba9f676d87b4f77d20110a4406b3085e201b2203eab163660c4200a651b8d5",
+        "styles/field-css.css": "eea5cd0a4af4ed3d0d9aa802d8bccfdbc3fce4745daaf4f46f2e522e602481e5",
         "styles/field-css.usage.md": "0206f8468701bf01c666e0e79ac17de296a8035d28516b41d5c8024ca74f06b8"
       }
     },
     "file-dropzone-css": {
-      "version": "1.0.0",
+      "version": "1.0.1",
       "files": {
-        "styles/file-dropzone-css.css": "564b0ab6afc0afdfcb54202a3f983627cb2b709f5fad7399746147385554e0a6",
+        "styles/file-dropzone-css.css": "7d634fc8476de8dfff3e0437c009cfee6a5ff753904bb206466169e1472fb555",
         "styles/file-dropzone-css.usage.md": "b187dfe356f7a023750531e33212f06a9cc10fcdef78fec3454641fd32bb5a19"
       }
     },
     "lead-css": {
-      "version": "1.0.0",
+      "version": "1.0.1",
       "files": {
-        "styles/lead-css.css": "196c7b8b69233312951c638610138b0af2dbf7dc8b5e73c69178ed03019e802d",
+        "styles/lead-css.css": "e6e6c9075507b39f1b66cc86cdc2c158139a805b4e900e5b68124d2dadc26e03",
         "styles/lead-css.usage.md": "9a3d23137b4b3c1b9d71fc6efbcab88f216638c141768fc1b4fb812436c0c10d"
       }
     },
     "notice-card-css": {
-      "version": "1.1.0",
+      "version": "1.1.1",
       "files": {
-        "styles/notice-card-css.css": "df28b327d97cdb7d32f768f73d3dd23510e6a63ebd9b4b86fd9f82ad00e0b960",
+        "styles/notice-card-css.css": "1ca6a691c1487f1bda5c7fd85c395c11817d2c0446b8b3f40f3b4a600b0d6a95",
         "styles/notice-card-css.usage.md": "9e292cebd3344ad7c000fa5582b79a1851bec60ab4b19d2a5af37f3288264fd7"
       }
     },
     "progress-css": {
-      "version": "1.1.0",
+      "version": "1.1.1",
       "files": {
-        "styles/progress-css.css": "6d8ab32b3df7e0666de9e153bfaf036f0647d145804bff218158a71234e93b64",
+        "styles/progress-css.css": "f761d141b9a2961ed11b9454fcf484bee078086c836749796041f3808f3be192",
         "styles/progress-css.usage.md": "75b11f158a8b85da2272ffde8ace604fac9c16202e288007d668cf34540f6907"
       }
     },
     "select-css": {
-      "version": "1.1.1",
+      "version": "1.1.2",
       "files": {
-        "styles/select-css.css": "060c6ad8a95b32d5eeddb652bc9a8538348d8298272ba45615a21a1ad706c38e",
+        "styles/select-css.css": "69d01ccae954586421970d1be8ffe22eba411c0c72a0b496ad9d7d2caafcfc85",
         "styles/select-css.usage.md": "9f0f9f6421cf3085cdf1d6bc20051f65f5c8cc1838db4571971b11cf1c0f6a1a"
       }
     },
     "spam-check-css": {
-      "version": "1.0.0",
+      "version": "1.0.1",
       "files": {
-        "styles/spam-check-css.css": "06438c1436c347c82a5a44a32ff2c9f15f651eb98ae69c502a13bf6c47aa8f34",
+        "styles/spam-check-css.css": "cfa03e5c60318e6dd9246b3ebe03231050955834097ba5420fa9c5f7aa4b5209",
         "styles/spam-check-css.usage.md": "9c627e55b491bbdfd9fcc412c354f56dedff4cc429ca64c8acea315bbf6c4809"
       }
     },
     "spinner-css": {
-      "version": "1.0.0",
+      "version": "1.0.1",
       "files": {
-        "styles/spinner-css.css": "6b218ecc740c517f46918d7d1cc48c19991f00544e6d2ba53cc31d879fa066a7",
+        "styles/spinner-css.css": "8f3629f4ba32f527f8617f64b0f337b24dd954105c51571e9e7221a823ae8a85",
         "styles/spinner-css.usage.md": "7930ca9748309847dfce826640fecd4383b5fd7b7d3503d5cd45d384172405af"
       }
     },
     "state-card-css": {
-      "version": "1.1.0",
+      "version": "1.1.1",
       "files": {
-        "styles/state-card-css.css": "2c3ddad6e69b25d59fc621012e7dbe24319e97c6cf51a7db01ad21bddbd3ece6",
+        "styles/state-card-css.css": "b94c39a5e8b7d1f01aab4c6794fefdc091f3ae0a0a935ae81ef6e6175217e450",
         "styles/state-card-css.usage.md": "b6ce1d1f0298ebb37fd0f002fcdd4ce5d78dbf39290e6a1ba78abc572f8de272"
       }
     },
     "switch-css": {
-      "version": "1.1.0",
+      "version": "1.1.1",
       "files": {
-        "styles/switch-css.css": "603be1ce4eaef791b251f8790c4f8d4d407b004a53208e6e90728c78750304af",
+        "styles/switch-css.css": "284729d7bbdf6ab9703b28faa6637a86859ce7643f3d2cb99fc1e085871b205f",
         "styles/switch-css.usage.md": "02d4c49417ba30e3950ca5d9b1f8f8f069a4342b36a664ef12f3d149740b49d3"
       }
     },
     "table-css": {
-      "version": "1.1.0",
+      "version": "1.1.1",
       "files": {
-        "styles/table-css.css": "298de382baf000d8616eaa39779ea8613a483e99207f8ecf250b2327f154c6bc",
+        "styles/table-css.css": "3deb69588aca2496dc59aeccf109ce9547cac4e7f330791ead48e398fd2ca5e6",
         "styles/table-css.usage.md": "4037054f845934c728b28e316ebe9bcc4550be4abf5f779fbebaf3944b248a3f"
       }
     },
     "text-button-css": {
-      "version": "1.0.0",
+      "version": "1.0.1",
       "files": {
-        "styles/text-button-css.css": "1795c6bca3296894b3d347665c595158f6f1fd0f4e9c56174a168ddccefbdc47",
+        "styles/text-button-css.css": "f5f8db18f4eeac123a3c81d927538df158acc1160c177bf74c4efb8a11c7c8f6",
         "styles/text-button-css.usage.md": "8d59a8c7e9a37eb74dae3b1c4528a794293f81b163cb166c006c8126ce5e011d"
       }
     },
     "variables": {
-      "version": "1.3.0",
+      "version": "1.4.0",
       "files": {
         "styles/colors.css": "092f1bd986929b2416f92cee21c3fef87323d95e129eff82bb81ebf8d9d63f7b",
         "styles/themes/default.css": "a823dc572937a1a4112eb0943ec085a1a8c83a2fd420eee60278763e1e6f17a6",
-        "styles/variables.css": "ec349e1f176883e1619f305059a962ce3c92274242e2978656144ad074876f7d",
+        "styles/variables.css": "35ec1071284c030ee39beb9ca1b0ace9c545dfb160df450c12c6d1064bb54b0c",
         "styles/variables.usage.md": "11105c837eb7d1b93bbaf23b0447f5adf309bafbd03cf78cad6b2f1df8b4d03d"
       }
     }

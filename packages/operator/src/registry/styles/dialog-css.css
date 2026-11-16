@@ -15,24 +15,26 @@
   --ds-container-lg: calc(32 * var(--ds-rem, 1rem));
   --ds-container-2xl: calc(42 * var(--ds-rem, 1rem));
   --ds-container-3xl: calc(48 * var(--ds-rem, 1rem));
-  --ds-ease-out: cubic-bezier(0, 0, 0.2, 1);
-  --ds-ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ds-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   box-sizing: border-box;
   /* the browser's dialog box, undone: its edge swapped for the hairline, no
      fill or size cap. centred by its margins, never a translate, as modal_box
      is */
   position: fixed;
-  inset: 0;
+  /* the bottom edge --ds-view-lift (0.2) of the height up: the box's middle
+     sits at 40% of the viewport. the height is capped at that band, so a
+     taller box never starts above the viewport */
+  inset: 0 0 calc(100dvh * var(--ds-view-lift, 0.2));
   margin: auto;
   padding: 0;
   /* the floating layer's edge; the sheet draws it only from 40rem */
   border: 1px solid var(--hairline);
   background-color: transparent;
   color: inherit;
-  inline-size: 90vw;
+  inline-size: 90%;
   max-inline-size: none;
   block-size: fit-content;
-  max-block-size: 90dvh;
+  max-block-size: min(90dvh, calc(100dvh * (1 - var(--ds-view-lift, 0.2))));
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: var(--ring) var(--gray-6);
@@ -46,7 +48,7 @@
   opacity: 0;
   transition-property: opacity, scale, overlay, display;
   transition-duration: var(--duration-fast);
-  transition-timing-function: var(--ds-ease-in);
+  transition-timing-function: var(--ds-ease-out);
   transition-behavior: allow-discrete;
 }
 /* none, not 1, at rest: any scale is a transform, which would make the box the
@@ -70,7 +72,7 @@
   opacity: 0;
   transition-property: opacity, overlay, display;
   transition-duration: var(--duration-base);
-  transition-timing-function: var(--ds-ease-in);
+  transition-timing-function: var(--ds-ease-out);
   transition-behavior: allow-discrete;
 }
 .ds-dialog[open]::backdrop {
@@ -90,7 +92,7 @@
 }
 
 /* the size scale from 40rem: sm (512px) is the bare box; below it every size
-   but the sheet is 90vw */
+   but the sheet is 90% */
 @media (width >= 40rem) {
   .ds-dialog {
     inline-size: 100%;
@@ -111,11 +113,12 @@
    set only while open: the browser's own display: none is what keeps a closed
    dialog off the page */
 .ds-dialog-sheet {
+  inset-block-end: 0;
   margin: 0;
   inline-size: 100%;
   block-size: 100dvh;
   max-block-size: none;
-  overflow: hidden;
+  overflow: clip;
   scrollbar-width: auto;
   scrollbar-color: auto;
   border-radius: 0;
@@ -127,11 +130,12 @@
 }
 @media (width >= 40rem) {
   .ds-dialog-sheet {
+    inset-block-end: calc(100dvh * var(--ds-view-lift, 0.2));
     margin: auto;
     inline-size: 480px;
     max-inline-size: none;
     block-size: fit-content;
-    max-block-size: 90dvh;
+    max-block-size: min(90dvh, calc(100dvh * (1 - var(--ds-view-lift, 0.2))));
     overflow-x: visible;
     overflow-y: auto;
     border-radius: var(--radius-card);

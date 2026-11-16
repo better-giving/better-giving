@@ -80,10 +80,10 @@
 .ds-select-trigger {
   --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
   --ds-field-size: calc(var(--ds-spacing) * 12 + 2px);
-  --ds-ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ds-ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
   block-size: var(--ds-field-size);
   display: flex;
-  align-items: center;
+  align-items: safe center;
   justify-content: space-between;
   gap: calc(var(--ds-spacing) * 3);
   cursor: pointer;
@@ -97,6 +97,9 @@
   color: var(--gray-11);
 }
 .ds-select-trigger > :first-child {
+  min-inline-size: 0;
+  /* hidden, not clip: engines before chrome 150 and safari 27 draw no
+     ellipsis on clipped text */
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -140,7 +143,7 @@
 .ds-option {
   --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
   display: flex;
-  align-items: center;
+  align-items: safe center;
   justify-content: space-between;
   gap: calc(var(--ds-spacing) * 3);
   padding: calc(var(--ds-spacing) * 2) calc(var(--ds-spacing) * 4);
@@ -150,13 +153,25 @@
 .ds-option[aria-selected="true"] {
   background-color: var(--secondary-active);
 }
-.ds-option[data-highlighted],
-.ds-option:hover {
+.ds-option:active:not([aria-disabled="true"]) {
+  background-color: var(--secondary-active);
+}
+.ds-option[data-highlighted] {
   background-color: var(--secondary-hover);
 }
+@media (hover: hover) and (pointer: fine) {
+  .ds-option:hover {
+    background-color: var(--secondary-hover);
+  }
+}
 /* the checked row keeps step 5 under the keyboard or the pointer */
-.ds-option[aria-selected="true"]:is([data-highlighted], :hover) {
+.ds-option[aria-selected="true"][data-highlighted] {
   background-color: var(--secondary-active);
+}
+@media (hover: hover) and (pointer: fine) {
+  .ds-option[aria-selected="true"]:hover {
+    background-color: var(--secondary-active);
+  }
 }
 .ds-option[aria-disabled="true"] {
   pointer-events: none;
@@ -182,9 +197,13 @@
   color: var(--gray-11);
 }
 .ds-option[aria-selected="true"] .ds-option-meta,
-.ds-option[data-highlighted] .ds-option-meta,
-.ds-option:hover .ds-option-meta {
+.ds-option[data-highlighted] .ds-option-meta {
   color: var(--gray-12);
+}
+@media (hover: hover) and (pointer: fine) {
+  .ds-option:hover .ds-option-meta {
+    color: var(--gray-12);
+  }
 }
 .ds-option-check {
   --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
