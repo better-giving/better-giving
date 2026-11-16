@@ -11,10 +11,13 @@ import { gift, noteGift, refund } from '$lib/server/pages/settled-gifts.testing'
 import { hideFundraiser } from './admin';
 import { emptySupporterTables, pendingPage, STARTED_AT } from './fundraiser.testing';
 import { signInWithLink } from './links';
+import { parseKeysetCursor } from '$lib/server/db/keyset-cursor';
 import {
 	editOwnFundraiser,
 	endOwnFundraiser,
 	listOwnFundraisers,
+	OWN_GIFT_LIST_LIMIT,
+	readMoreOwnGifts,
 	readOwnFundraiser
 } from './pages';
 
@@ -288,5 +291,119 @@ describe('ending one’s own page', () => {
 			.from(supporterPage)
 			.where(eq(supporterPage.id, pageId));
 		expect(await endOwnFundraiser(db, row?.supporterId ?? '', pageId, LATER)).toBe('ended');
+	});
+});
+
+describe('a supporter’s gifts, a batch at a time', () => {
+	/** `count` settled gifts on `formId`, a minute apart, every third sharing its neighbour's time. */
+	async function giftsOn(
+		formId: string,
+		count: number,
+		minuteOf = (i: number) => (i % 3 === 2 ? i - 1 : i),
+		from = LIVE_AT
+	) {
+		for (let i = 0; i < count; i += 1) {
+			const minute = minuteOf(i);
+			await noteGift(db, formId, {
+				amountMinor: 1_000 + i,
+				receivedAt: new Date(from.getTime() + minute * 60_000)
+			});
+		}
+	}
+
+	/** every batch from the manage view's first to the last, as the screen's presses ask for them. */
+	async function everyBatch(page: { supporterId: string; pageId: string }) {
+		const first = await readOwnFundraiser(db, page.supporterId, page.pageId);
+		if (first === null) throw new Error('the page did not read');
+		const batches = [{ gifts: first.giftList, total: first.giftTotal, next: first.giftNext }];
+		let next = first.giftNext;
+		while (next !== null) {
+			const after = parseKeysetCursor(next);
+			if (after === null) throw new Error(`a cursor handed out did not parse: ${next}`);
+			const batch = await readMoreOwnGifts(db, page.supporterId, page.pageId, after);
+			if (batch === null) throw new Error('the page stopped reading as the supporter’s');
+			batches.push(batch);
+			next = batch.next;
+		}
+		return batches;
+	}
+
+	it('reaches every gift down to the oldest, newest first, counting all of them', async () => {
+		const page = await livePage();
+		await giftsOn(page.formId, OWN_GIFT_LIST_LIMIT * 2 + 5);
+
+		const batches = await everyBatch(page);
+		expect(batches.map((batch) => batch.gifts.length)).toEqual([
+			OWN_GIFT_LIST_LIMIT,
+			OWN_GIFT_LIST_LIMIT,
+			5
+		]);
+		expect(batches.map((batch) => batch.total)).toEqual([105, 105, 105]);
+		const amounts = batches.flatMap((batch) => batch.gifts.map((row) => row.amountMinor));
+		expect(new Set(amounts).size).toBe(105);
+		expect(amounts.at(-1)).toBe(1_000);
+		const times = batches.flatMap((batch) => batch.gifts.map((row) => row.receivedAt.getTime()));
+		expect(times).toEqual([...times].sort((a, b) => b - a));
+	});
+
+	it('keeps both gifts of a time the batch edge falls between', async () => {
+		// the two oldest share a minute, so the first batch ends on one and the second opens on the other.
+		const page = await livePage();
+		await giftsOn(page.formId, OWN_GIFT_LIST_LIMIT + 1, (i) => (i === 1 ? 0 : i));
+
+		const batches = await everyBatch(page);
+		expect(batches.map((batch) => batch.gifts.length)).toEqual([OWN_GIFT_LIST_LIMIT, 1]);
+		expect(batches[0]?.gifts.at(-1)?.receivedAt).toEqual(batches[1]?.gifts[0]?.receivedAt);
+		const amounts = batches.flatMap((batch) => batch.gifts.map((row) => row.amountMinor));
+		expect(amounts.toSorted((a, b) => a - b)).toEqual(
+			Array.from({ length: OWN_GIFT_LIST_LIMIT + 1 }, (_, i) => 1_000 + i)
+		);
+	});
+
+	it('hands out no cursor where the first batch is every gift, a full one included', async () => {
+		const page = await livePage();
+		await giftsOn(page.formId, OWN_GIFT_LIST_LIMIT);
+		const read = await readOwnFundraiser(db, page.supporterId, page.pageId);
+		expect(read?.giftList).toHaveLength(OWN_GIFT_LIST_LIMIT);
+		expect(read).toMatchObject({ giftTotal: OWN_GIFT_LIST_LIMIT, giftNext: null });
+	});
+
+	it('neither repeats nor skips a gift when a new one arrives between batches', async () => {
+		const page = await livePage();
+		await giftsOn(page.formId, OWN_GIFT_LIST_LIMIT + 10);
+		const first = await readOwnFundraiser(db, page.supporterId, page.pageId);
+		const after = parseKeysetCursor(first?.giftNext ?? '');
+		if (first === null || after === null) throw new Error('the first batch handed out no cursor');
+
+		await noteGift(db, page.formId, { amountMinor: 99_999, receivedAt: LATER });
+		const second = await readMoreOwnGifts(db, page.supporterId, page.pageId, after);
+
+		expect(second?.next).toBeNull();
+		expect(second?.total).toBe(OWN_GIFT_LIST_LIMIT + 11);
+		const seen = [...first.giftList, ...(second?.gifts ?? [])].map((row) => row.amountMinor);
+		expect(seen.toSorted((a, b) => a - b)).toEqual(
+			Array.from({ length: OWN_GIFT_LIST_LIMIT + 10 }, (_, i) => 1_000 + i)
+		);
+	});
+
+	it('counts what it lists: a gift given back in full is in neither', async () => {
+		const page = await livePage();
+		const txn = await gift(db, page.formId, 4_000);
+		await gift(db, page.formId, 2_000);
+		await refund(db, txn, 4_000);
+		expect(await readOwnFundraiser(db, page.supporterId, page.pageId)).toMatchObject({
+			giftList: [{ amountMinor: 2_000 }],
+			giftTotal: 1,
+			giftNext: null
+		});
+	});
+
+	it('reads no batch of another supporter’s page', async () => {
+		const page = await livePage();
+		const other = await livePage('someone@example.org', 'Somebody else’s run');
+		await giftsOn(page.formId, 3);
+		expect(
+			await readMoreOwnGifts(db, other.supporterId, page.pageId, { at: LATER.getTime(), id: 'z' })
+		).toBeNull();
 	});
 });

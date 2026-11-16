@@ -17,6 +17,7 @@ import {
 	useRef,
 	useState
 } from 'react';
+import { href } from 'react-router';
 import { buttonState } from '$lib/admin/save-button-state';
 import { whichForm } from '$lib/admin/use-admin-form';
 import { formatMinor } from '$lib/donations/money';
@@ -40,6 +41,15 @@ import { SUPPORTER_HIDE_INPUT } from '$lib/supporters/input';
 // saying what happened, then it is the flipped press. a refused Hide is said in the confirm, which
 // stays open; a refused Show again is said under its press. the rows come from the route's re-read,
 // so a landed press is already drawn in them when its outcome arrives.
+//
+// the list comes a batch at a time, newest first: the route's read hands down the first batch,
+// how many pages there are in all and the cursor past it, and Show more pages under the table asks
+// `onShowMore` for the batch after the last one held. a re-read after a press redraws the first
+// batch from it and keeps every row held past it, each page once, so a press never takes away what
+// Show more pages brought; the rows the re-read does not reach are drawn with the way their own
+// last press landed (`withLanding`). a press out is `aria-disabled` and refuses itself rather than
+// `disabled`, so it keeps the keyboard. when the last batch takes the press away, focus goes to the
+// press in the first row it brought rather than to the page.
 //
 // the empty list is the registry's state card (state-card-css.usage.md), titled by what the setting
 // is, since with fundraisers off no list can start.
@@ -96,12 +106,26 @@ export type RowOutcome = { readonly landed: 'hidden' | 'shown' } | { readonly re
 /** one row's press: whether it is out, and the answer to the last one; null before any. */
 export type RowPress = { readonly pending: boolean; readonly outcome: RowOutcome | null };
 
+/** the batch of pages after a cursor, how many there are in all, and the cursor past it. */
+export type SupporterPageBatch = {
+	readonly pages: readonly SupporterPageRow[];
+	readonly total: number;
+	/** null where it ends on the oldest page. */
+	readonly next: string | null;
+};
+
 export type SupporterPagesProps = {
 	/** the organisation's name, as the standfirst says it. */
 	readonly orgName: string;
 	readonly setting: SupporterSetting;
-	/** newest first. */
+	/** newest first: the first batch. */
 	readonly pages: readonly SupporterPageRow[];
+	/** every supporter's page, listed or not. */
+	readonly total: number;
+	/** the cursor past `pages`, null where they are every page. */
+	readonly next: string | null;
+	/** Show more pages: the batch after `after`, or null where it could not be read. */
+	readonly onShowMore: (after: string) => Promise<SupporterPageBatch | null>;
 	/** each row's press by the page it names; a row not in it is at rest. */
 	readonly presses?: Readonly<Record<string, RowPress>>;
 	/** the setting form's body: its id, and `enabled=on` when on. */
@@ -118,6 +142,7 @@ const SWITCH_LABEL = 'Let supporters start fundraisers';
 const SWITCH_HINT =
 	'Adds a Start a fundraiser card to your Donation page and campaigns, and opens /fundraise. Turning it off stops new pages. Pages already live stay live.';
 const NOT_YOURS = 'Only whoever runs this server can change this.';
+const MORE_FAILED = 'Couldn’t load more pages. Try again.';
 
 /** what a landed press says at the press, for the moment before it turns back into one. */
 const LANDED_WORDS = { hidden: 'Hidden from visitors', shown: 'Showing again' } as const;
@@ -126,6 +151,23 @@ type Landed = keyof typeof LANDED_WORDS;
 const AT_REST: RowPress = { pending: false, outcome: null };
 
 const STATUS_WORDS = { pending: 'Pending', live: 'Live', ended: 'Ended' } as const;
+
+/**
+ * a row past the route's re-read as its last landed press left it: hidden, Open goes to the staff
+ * preview as `listedRow` in $lib/server/supporters/admin.ts sends a hidden page's; shown again, it
+ * is the row as it was read, whose Open is the preview where it was read hidden, which draws a
+ * page in any state (../../../routes/admin.supporter-pages.$id.preview.tsx).
+ */
+function withLanding(page: SupporterPageRow, landed: Landed | undefined): SupporterPageRow {
+	if (landed === 'hidden') {
+		return {
+			...page,
+			hidden: true,
+			openHref: href('/admin/supporter-pages/:id/preview', { id: page.id })
+		};
+	}
+	return landed === 'shown' ? { ...page, hidden: false } : page;
+}
 
 /**
  * the columns in the order a row is read. the supporter is the row's header and what the plane
@@ -143,12 +185,56 @@ const COLUMNS = [
 export function SupporterPages({
 	orgName,
 	setting,
-	pages,
+	pages: firstBatch,
+	total,
+	next,
 	presses = {},
 	onSaveSetting,
 	onHide,
-	onShow
+	onShow,
+	onShowMore
 }: SupporterPagesProps) {
+	// every row Show more pages brought, after the first batch as it stood when the first was asked
+	// for, so a row a re-read's first batch no longer reaches stays listed.
+	const [paged, setPaged] = useState<SupporterPageBatch | null>(null);
+	const [asking, setAsking] = useState<'idle' | 'loading' | 'failed'>('idle');
+	// how each row last landed, wherever it stood when it did: a row a later re-read pushes past its
+	// first batch is drawn from `paged`, which the re-read cannot redraw.
+	const [heldLandings, setHeldLandings] = useState<Readonly<Record<string, Landed>>>({});
+	const firstIds = new Set(firstBatch.map((p) => p.id));
+	const pages =
+		paged === null
+			? firstBatch
+			: [
+					...firstBatch,
+					...paged.pages
+						.filter((p) => !firstIds.has(p.id))
+						.map((p) => withLanding(p, heldLandings[p.id]))
+				];
+	// the re-read and the last batch each answer a total, and either may be the newer. neither is a
+	// floor for the rows shown, which keep a row the sweep in $lib/server/supporters/sweep.ts deleted
+	// since it was read.
+	const counted = paged === null ? total : Math.max(total, paged.total, pages.length);
+	const cursor = paged === null ? next : paged.next;
+	// the first row the batch that took Show more pages away brought, its press where focus goes.
+	const [arrived, setArrived] = useState<{ readonly firstId: string } | null>(null);
+	const showMore = async () => {
+		if (asking === 'loading' || cursor === null) return;
+		setAsking('loading');
+		const batch = await onShowMore(cursor);
+		if (batch === null) {
+			setAsking('failed');
+			return;
+		}
+		setPaged((was) => ({
+			pages: [...(was?.pages ?? firstBatch), ...batch.pages],
+			total: batch.total,
+			next: batch.next
+		}));
+		setAsking('idle');
+		const first = batch.pages[0];
+		if (batch.next === null && first !== undefined) setArrived({ firstId: first.id });
+	};
 	const pressOf = (id: string): RowPress => presses[id] ?? AT_REST;
 	const settled = (id: string) => {
 		const state = pressOf(id);
@@ -193,6 +279,12 @@ export function SupporterPages({
 		Object.keys(seenLandings).some((id) => landings[id] !== seenLandings[id])
 	) {
 		setSeenLandings(landings);
+		if (fresh.length > 0) {
+			setHeldLandings((held) => ({
+				...held,
+				...Object.fromEntries(fresh.map((p) => [p.id, landings[p.id] as Landed]))
+			}));
+		}
 		const last = fresh.at(-1);
 		if (last !== undefined) setAnnounced({ landed: landings[last.id] as Landed });
 	}
@@ -207,6 +299,12 @@ export function SupporterPages({
 	const newTab = `${ids}-new-tab`;
 	const pressIdOf = (id: string) => `${ids}-${id}-press`;
 
+	// keyed on the arrival that took Show more pages away: focus was on it and would otherwise fall
+	// to the document.
+	useEffect(() => {
+		if (arrived !== null) document.getElementById(pressIdOf(arrived.firstId))?.focus();
+	}, [arrived]);
+
 	const standfirst = `Fundraisers your supporters started for ${orgName}. Hide one that shouldn’t be public, and show it again if you change your mind. The gifts and the supporter’s own page stay either way.`;
 
 	return (
@@ -217,7 +315,7 @@ export function SupporterPages({
 				<EmptyCard enabled={setting.enabled} mayChange={setting.mayChange} />
 			) : (
 				<DataTable
-					caption={`${pages.length} supporter ${pages.length === 1 ? 'page' : 'pages'}, newest first.`}
+					caption={`${counted} supporter ${counted === 1 ? 'page' : 'pages'}, newest first.`}
 					columns={COLUMNS}
 					rows={pages.map((p) => ({
 						id: p.id,
@@ -254,6 +352,15 @@ export function SupporterPages({
 					}))}
 				/>
 			)}
+			{pages.length === 0 || (cursor === null && paged === null) ? null : (
+				<MorePages
+					showing={pages.length}
+					total={counted}
+					more={cursor !== null}
+					asking={asking}
+					onPress={showMore}
+				/>
+			)}
 			<p className="adm-vh" role="status">
 				{announced === null ? '' : LANDED_WORDS[announced.landed]}
 			</p>
@@ -275,6 +382,52 @@ export function SupporterPages({
 				/>
 			)}
 		</Column>
+	);
+}
+
+/** Show more pages beside how many are shown; once every page is, the count alone. */
+function MorePages({
+	showing,
+	total,
+	more,
+	asking,
+	onPress
+}: {
+	readonly showing: number;
+	readonly total: number;
+	readonly more: boolean;
+	readonly asking: 'idle' | 'loading' | 'failed';
+	readonly onPress: () => void;
+}) {
+	const failureId = useId();
+	const loading = asking === 'loading';
+	const failed = asking === 'failed';
+	return (
+		<div className="adm-actions">
+			{more ? (
+				<Button
+					type="button"
+					size="sm"
+					aria-busy={loading || undefined}
+					aria-disabled={loading || undefined}
+					aria-describedby={failed ? failureId : undefined}
+					onClick={onPress}
+				>
+					Show more pages
+				</Button>
+			) : null}
+			<p className="adm-caption" role="status">
+				{`Showing ${showing} of ${total} ${total === 1 ? 'page' : 'pages'}`}
+			</p>
+			{/* there before it speaks, so a failure is announced as it arrives. */}
+			<span id={failureId} role="alert">
+				{failed ? (
+					<StatusWord register="momentary" blocked mark="circle-alert">
+						{MORE_FAILED}
+					</StatusWord>
+				) : null}
+			</span>
+		</div>
 	);
 }
 

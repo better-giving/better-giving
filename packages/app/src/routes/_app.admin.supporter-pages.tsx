@@ -8,10 +8,12 @@ import {
 	type RowOutcome,
 	type RowPress,
 	SUPPORTER_PAGES_FORMS,
+	type SupporterPageBatch,
 	SupporterPages
 } from '$lib/admin/supporter-pages/supporter-pages';
 import { type AdminActionData, resultFor } from '$lib/admin/use-admin-form';
 import { defineForm } from '$lib/forms/definition';
+import { readNextBatch } from '$lib/next-batch';
 import { SUPPORTER_HIDE_INPUT, SUPPORTER_SETTING_INPUT } from '$lib/supporters/input';
 import { STAFF_USER_ID } from '$lib/server/auth';
 import { invalid, type ParsedForm, parseForm, submittedForm } from '$lib/server/conform';
@@ -21,7 +23,12 @@ import {
 	setSupporterFundraisersEnabled,
 	supporterFundraisersEnabled
 } from '$lib/server/org/queries';
-import { hideFundraiser, listAllFundraisers, showFundraiser } from '$lib/server/supporters/admin';
+import {
+	hideFundraiser,
+	listAllFundraisers,
+	listedRow,
+	showFundraiser
+} from '$lib/server/supporters/admin';
 import { database, staff } from '../context';
 import type { Route } from './+types/_app.admin.supporter-pages';
 
@@ -54,28 +61,15 @@ export async function loader({ context }: Route.LoaderArgs) {
 		const [profile, enabled, pages] = await Promise.all([
 			readOrgProfile(db),
 			supporterFundraisersEnabled(db),
-			listAllFundraisers(db)
+			listAllFundraisers(db, null)
 		]);
 		return {
 			orgName: profile?.legalName ?? APP_NAME,
 			setting: { enabled, mayChange },
-			pages: pages.map((page) => {
-				const address = href('/f/:slug', { slug: page.slug });
-				const unseen = page.hidden || !page.published;
-				return {
-					id: page.id,
-					supporterName: page.supporterName,
-					supporterEmail: page.supporterEmail,
-					title: page.title,
-					address,
-					openHref: unseen ? href('/admin/supporter-pages/:id/preview', { id: page.id }) : address,
-					goalMinor: page.goalMinor,
-					raisedMinor: page.raisedMinor,
-					currency: page.currency,
-					status: page.status,
-					hidden: page.hidden
-				};
-			})
+			pages: pages.pages.map(listedRow),
+			total: pages.total,
+			// Show more asks ./_app.admin.supporter-pages.more.ts for the batch after this.
+			next: pages.next
 		};
 	} catch (e) {
 		console.error('listing supporter pages failed:', e);
@@ -196,6 +190,15 @@ export default function SupporterPagesScreen({ loaderData }: Route.ComponentProp
 					refused: setting.state === 'idle' ? settingRefused : null
 				}}
 				pages={loaderData.pages}
+				total={loaderData.total}
+				next={loaderData.next}
+				onShowMore={(after) =>
+					readNextBatch<SupporterPageBatch & { readonly kind: 'pages' }>(
+						href('/admin/supporter-pages/more'),
+						after,
+						'pages'
+					)
+				}
 				presses={presses}
 				onSaveSetting={(body) => setting.submit(body, { method: 'post' })}
 				onHide={press}
