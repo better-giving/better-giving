@@ -2,7 +2,7 @@ import { act } from 'react';
 import { useActionData } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 import { ACCOUNT, button, mountScreen, ORG, one, submitTwice } from './area.testing';
-import type { OwnGift } from './gifts';
+import type { GiftBatch, OwnGift } from './gifts';
 import { type ManagedPage, ManageFundraiser, type ManageFundraiserProps } from './manage';
 
 // /fundraise/pages/:id: just published, live with gifts, nothing raised, hidden by staff, ended,
@@ -39,7 +39,9 @@ const PAGE: ManagedPage = {
 	publishedAt: '2026-11-01T18:00:00.000Z',
 	address: '/f/keep-the-pantry-trucks-7k2p',
 	url: 'https://give.example.org/f/keep-the-pantry-trucks-7k2p',
-	giftList: GIFTS
+	giftList: GIFTS,
+	giftTotal: 41,
+	giftNext: 'after-gift-8'
 };
 
 const BASE: ManageFundraiserProps = {
@@ -51,7 +53,8 @@ const BASE: ManageFundraiserProps = {
 	backHref: '/fundraise/pages',
 	editHref: '/fundraise/pages/p1/edit',
 	endRefused: false,
-	ending: false
+	ending: false,
+	onShowMoreGifts: async () => null
 };
 
 const manage = (props: Partial<ManageFundraiserProps> = {}, page: Partial<ManagedPage> = {}) =>
@@ -218,20 +221,6 @@ describe('the gifts', () => {
 		expect(one(root, 'tbody th').textContent).toBe('A donor');
 	});
 
-	it('opens on six, and Show more gifts shows the rest of what was read', () => {
-		const { root } = manage();
-		expect(root.querySelectorAll('tbody tr')).toHaveLength(6);
-		expect(one(root, '.sa-gifts [role="status"]').textContent).toBe('Showing 6 of 41 gifts');
-		const more = button(root, 'Show more gifts');
-		act(() => more.click());
-		expect(root.querySelectorAll('tbody tr')).toHaveLength(8);
-		expect(one(root, '.sa-gifts [role="status"]').textContent).toBe(
-			'Showing the newest 8 of 41 gifts'
-		);
-		expect(root.querySelector('.sa-gifts button')).toBeNull();
-		expect(document.activeElement).toBe(root.querySelectorAll('tbody th')[6]);
-	});
-
 	it('stands Show more gifts under the table, out of its pinned column, beside the count', () => {
 		const { root } = manage();
 		const more = button(root, 'Show more gifts');
@@ -241,17 +230,146 @@ describe('the gifts', () => {
 		expect(frame.compareDocumentPosition(more) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 		expect(more.parentElement).toBe(one(root, '.sa-gifts [role="status"]').parentElement);
 	});
+});
 
-	it('says every gift is shown once all of them were read', () => {
-		const { root } = manage({}, { gifts: GIFTS.length });
-		act(() => button(root, 'Show more gifts').click());
-		expect(one(root, '.sa-gifts [role="status"]').textContent).toBe('Showing 8 of 8 gifts');
+describe('show more gifts', () => {
+	const count = (root: HTMLElement) => one(root, '.sa-gifts [role="status"]').textContent;
+	const failure = (root: HTMLElement) => one(root, '.sa-gifts [role="alert"]').textContent;
+	const more = (root: HTMLElement) =>
+		[...root.querySelectorAll<HTMLButtonElement>('.sa-gifts button')].find(
+			(b) => b.textContent === 'Show more gifts'
+		) ?? null;
+	const press = async (root: HTMLElement) => {
+		const found = more(root);
+		if (found === null) throw new Error('no Show more gifts');
+		await act(async () => found.click());
+	};
+	const older = (n: number, from = 1): OwnGift[] =>
+		Array.from({ length: n }, (_, i) =>
+			gift(4, 1_000 + i, { name: `Older donor ${from + i}`, note: '' })
+		);
+
+	it('opens on six, then shows the rest of the first batch before asking for another', async () => {
+		const onShowMoreGifts = vi.fn(async () => null);
+		const { root } = manage({ onShowMoreGifts });
+		expect(root.querySelectorAll('tbody tr')).toHaveLength(6);
+		expect(count(root)).toBe('Showing 6 of 41 gifts');
+		await press(root);
+		expect(root.querySelectorAll('tbody tr')).toHaveLength(8);
+		expect(count(root)).toBe('Showing 8 of 41 gifts');
+		expect(more(root)).not.toBeNull();
+		expect(onShowMoreGifts).not.toHaveBeenCalled();
+	});
+
+	it('loads the next batch once the first runs out, appends it and shows six more of it', async () => {
+		const onShowMoreGifts = vi.fn(async () => ({
+			gifts: older(10),
+			total: 41,
+			next: 'after-gift-18'
+		}));
+		const { root } = manage({ onShowMoreGifts });
+		await press(root);
+		await press(root);
+		expect(onShowMoreGifts).toHaveBeenCalledExactlyOnceWith('after-gift-8');
+		const names = [...root.querySelectorAll('tbody th')].map((th) => th.textContent);
+		expect(names).toHaveLength(14);
+		expect(names.slice(0, 8)).toEqual(GIFTS.map((g) => g.shown?.name ?? 'A donor'));
+		expect(names.slice(8)).toEqual(older(6).map((g) => g.shown?.name));
+		expect(count(root)).toBe('Showing 14 of 41 gifts');
+		// the batch still holds four, so the next press shows them without asking.
+		await press(root);
+		expect(root.querySelectorAll('tbody tr')).toHaveLength(18);
+		expect(onShowMoreGifts).toHaveBeenCalledOnce();
+		await press(root);
+		expect(onShowMoreGifts).toHaveBeenLastCalledWith('after-gift-18');
+	});
+
+	it('counts against the total the latest batch answered, a gift landing between loads with it', async () => {
+		const onShowMoreGifts = vi.fn(async () => ({ gifts: older(10), total: 42, next: 'next' }));
+		const { root } = manage({ onShowMoreGifts });
+		await press(root);
+		await press(root);
+		expect(count(root)).toBe('Showing 14 of 42 gifts');
+	});
+
+	it('takes the press away once every gift is shown, and puts focus on the first gift the last press added', async () => {
+		const onShowMoreGifts = vi.fn(async () => ({ gifts: older(3), total: 11, next: null }));
+		const { root } = manage({ onShowMoreGifts });
+		await press(root);
+		expect(document.activeElement).not.toBe(root.querySelectorAll('tbody th')[8]);
+		await press(root);
+		expect(root.querySelectorAll('tbody tr')).toHaveLength(11);
+		expect(count(root)).toBe('Showing 11 of 11 gifts');
+		expect(more(root)).toBeNull();
+		expect(document.activeElement).toBe(root.querySelectorAll('tbody th')[8]);
+	});
+
+	it('takes the press away within the first batch where it is every gift', async () => {
+		const onShowMoreGifts = vi.fn(async () => null);
+		const { root } = manage({ onShowMoreGifts }, { giftTotal: 8, giftNext: null });
+		await press(root);
+		expect(count(root)).toBe('Showing 8 of 8 gifts');
+		expect(more(root)).toBeNull();
+		expect(document.activeElement).toBe(root.querySelectorAll('tbody th')[6]);
+		expect(onShowMoreGifts).not.toHaveBeenCalled();
+	});
+
+	it('draws no press at all for six gifts or fewer in one batch', () => {
+		const { root } = manage({}, { giftList: GIFTS.slice(0, 5), giftTotal: 5, giftNext: null });
+		expect(count(root)).toBe('Showing 5 of 5 gifts');
+		expect(more(root)).toBeNull();
+	});
+
+	it('keeps the press and the rows when a load fails, says so beside the press, and tries again', async () => {
+		const onShowMoreGifts = vi
+			.fn<(after: string) => Promise<GiftBatch | null>>()
+			.mockResolvedValueOnce(null)
+			.mockResolvedValueOnce({ gifts: older(2), total: 10, next: null });
+		const { root } = manage({ onShowMoreGifts });
+		await press(root);
+		expect(failure(root)).toBe('');
+		await press(root);
+		expect(root.querySelectorAll('tbody tr')).toHaveLength(8);
+		expect(count(root)).toBe('Showing 8 of 41 gifts');
+		expect(failure(root)).toBe('Couldn’t load more gifts. Try again.');
+		const again = more(root);
+		expect(again?.getAttribute('aria-describedby')).toBe(one(root, '.sa-gifts [role="alert"]').id);
+		expect(again?.parentElement).toBe(one(root, '.sa-gifts [role="alert"]').parentElement);
+		await press(root);
+		expect(onShowMoreGifts).toHaveBeenLastCalledWith('after-gift-8');
+		expect(failure(root)).toBe('');
+		expect(root.querySelectorAll('tbody tr')).toHaveLength(10);
+	});
+
+	it('closes the press while a load is out, so a second press asks nothing', async () => {
+		let answer: (batch: GiftBatch) => void = () => {};
+		const onShowMoreGifts = vi.fn(
+			() =>
+				new Promise<GiftBatch | null>((resolve) => {
+					answer = resolve;
+				})
+		);
+		const { root } = manage({ onShowMoreGifts });
+		await press(root);
+		await press(root);
+		const out = more(root);
+		expect(out?.getAttribute('aria-disabled')).toBe('true');
+		expect(out?.getAttribute('aria-busy')).toBe('true');
+		expect(out?.disabled).toBe(false);
+		await press(root);
+		expect(onShowMoreGifts).toHaveBeenCalledOnce();
+		await act(async () => answer({ gifts: older(2), total: 41, next: 'more' }));
+		expect(more(root)?.hasAttribute('aria-disabled')).toBe(false);
+		expect(root.querySelectorAll('tbody tr')).toHaveLength(10);
 	});
 });
 
 describe('nothing raised yet', () => {
 	it('empties the bar and stands the state card where the table would be', () => {
-		const { root } = manage({}, { raisedMinor: 0, gifts: 0, giftList: [] });
+		const { root } = manage(
+			{},
+			{ raisedMinor: 0, gifts: 0, giftList: [], giftTotal: 0, giftNext: null }
+		);
 		expect(one(root, '.ds-progress-track').dataset.state).toBe('empty');
 		expect(one(root, '.sa-raised').textContent).toContain('of $5,000 goal · no gifts yet');
 		expect(root.querySelector('table')).toBeNull();

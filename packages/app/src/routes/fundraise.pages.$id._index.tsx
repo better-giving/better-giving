@@ -2,7 +2,9 @@ import { data, href } from 'react-router';
 import { INTENT, INTENTS } from '$lib/supporter/area/forms';
 import { supporterAreaLinks } from '$lib/supporter/area/links';
 import { ManageFundraiser } from '$lib/supporter/area/manage';
+import type { GiftBatch } from '$lib/supporter/area/gifts';
 import { usePosting } from '$lib/supporter/area/use-posting';
+import { readNextBatch } from '$lib/next-batch';
 import { refuseWriteFromAnotherOrigin } from '$lib/server/auth/gate';
 import { notFound } from '$lib/server/db/load-failure';
 import { SUPPORTER_PUBLISHED_FLASH, takeFlash } from '$lib/server/flash';
@@ -111,6 +113,13 @@ export default function ManageRoute({ loaderData, actionData }: Route.ComponentP
 			{...loaderData}
 			endRefused={actionData?.endRefused === true}
 			ending={ending}
+			onShowMoreGifts={(after) =>
+				readNextBatch<GiftBatch & { readonly kind: 'gifts' }>(
+					href('/fundraise/pages/:id/gifts', { id: loaderData.page.id }),
+					after,
+					'gifts'
+				)
+			}
 		/>
 	);
 }

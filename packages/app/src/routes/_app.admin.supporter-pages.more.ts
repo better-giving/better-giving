@@ -7,7 +7,7 @@ import type { Route } from './+types/_app.admin.supporter-pages.more';
 // Show more on /admin/supporter-pages: the batch of fundraisers after `?after=`, the `next` the
 // screen's loader or the batch before handed out, each row mapped as the screen's own loader maps
 // it (`listedRow` in $lib/server/supporters/admin.ts). a `loader` and no component, asked by the
-// screen's fetcher (./_app.admin.supporter-pages.tsx).
+// screen with a plain `fetch` ($lib/next-batch.ts, wired in ./_app.admin.supporter-pages.tsx).
 //
 // beneath ./_app.tsx, so the session gate is that layout's; staff and members read it alike, as they
 // do the screen. every failure answers rather than throws, for

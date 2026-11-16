@@ -178,7 +178,7 @@
 	resize: vertical;
 }
 
-/* a refusal of the whole post, said above the press, in the refusal's ink. */
+/* a refusal of the whole post or of a read, said by its press, in the refusal's ink. */
 .sa-refused {
 	display: flex;
 	align-items: flex-start;

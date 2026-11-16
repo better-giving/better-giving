@@ -4,7 +4,7 @@ import { NoticeCard } from './cards';
 import { giftCount, longDay, money, type PageState, pageState, statusBadge } from './copy';
 import { CopyLink } from './copy-link';
 import { END_CONSEQUENCE, EndDialog } from './end-dialog';
-import { Gifts, type OwnGift } from './gifts';
+import { type GiftBatch, Gifts, type OwnGift } from './gifts';
 import { Mark } from './glyph';
 import { Raised } from './raised';
 import { type SupporterAccount, SupporterShell, type SupporterOrg } from './shell';
@@ -39,8 +39,12 @@ export type ManagedPage = {
 	readonly address: string;
 	/** the page's whole address, what Copy link and the share links carry. */
 	readonly url: string;
-	/** newest first, at most `OWN_GIFT_LIST_LIMIT`. */
+	/** newest first: the first batch, at most `OWN_GIFT_LIST_LIMIT`. */
 	readonly giftList: readonly OwnGift[];
+	/** every gift the gift list lists, across all its batches. */
+	readonly giftTotal: number;
+	/** the cursor past `giftList`, null where it is every gift. */
+	readonly giftNext: string | null;
 };
 
 export type ManageFundraiserProps = {
@@ -57,6 +61,8 @@ export type ManageFundraiserProps = {
 	readonly endRefused: boolean;
 	/** an `intent=end` post is in flight. */
 	readonly ending: boolean;
+	/** Show more gifts: the batch after `after`, or null where it could not be read. */
+	readonly onShowMoreGifts: (after: string) => Promise<GiftBatch | null>;
 };
 
 export function ManageFundraiser({
@@ -68,7 +74,8 @@ export function ManageFundraiser({
 	backHref,
 	editHref,
 	endRefused,
-	ending
+	ending,
+	onShowMoreGifts
 }: ManageFundraiserProps) {
 	const state: PageState = pageState(page.status, page.hidden);
 	const badge = statusBadge(state, org.name);
@@ -196,7 +203,15 @@ export function ManageFundraiser({
 					<h2 className="sa-h2" id="manage-gifts-heading">
 						Gifts
 					</h2>
-					<Gifts gifts={page.giftList} total={page.gifts} currency={page.currency} />
+					{/* keyed on the page, so a move to another of the supporter's pages starts its gifts over. */}
+					<Gifts
+						key={page.id}
+						gifts={page.giftList}
+						total={page.giftTotal}
+						next={page.giftNext}
+						currency={page.currency}
+						onShowMore={onShowMoreGifts}
+					/>
 				</section>
 
 				{canEnd ? (

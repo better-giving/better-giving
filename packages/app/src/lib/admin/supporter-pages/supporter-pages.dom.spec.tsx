@@ -3,11 +3,17 @@ import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { WHICH_FORM } from '$lib/forms/definition';
-import { type SupporterPageRow, SupporterPages, type SupporterPagesProps } from './supporter-pages';
+import {
+	type SupporterPageBatch,
+	type SupporterPageRow,
+	SupporterPages,
+	type SupporterPagesProps
+} from './supporter-pages';
 
 // Supporter pages, mounted over the route's read and its answers: the setting for the deployer and
 // for a member, a row per status, Hide through its confirm and its note's limit, Show again straight
-// off, the moment a landed press says what happened, and the empty card by what the setting is.
+// off, the moment a landed press says what happened, the empty card by what the setting is, and
+// Show more pages, a batch at a time, across the re-read a press brings.
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -60,9 +66,12 @@ function mount(over: Partial<SupporterPagesProps> = {}) {
 		orgName: 'Harbor Light',
 		setting: { enabled: true, mayChange: true, pending: false, saved: false, refused: null },
 		pages: [MAYA, JO, DANA, SAM],
+		total: 4,
+		next: null,
 		onSaveSetting: () => {},
 		onHide: () => {},
 		onShow: () => {},
+		onShowMore: async () => null,
 		...over
 	};
 	act(() => root.render(<SupporterPages {...props} />));
@@ -97,7 +106,8 @@ const saveButton = (host: HTMLElement) =>
 const dialog = () => document.querySelector('dialog');
 const dialogButton = (label: string) =>
 	[...(dialog()?.querySelectorAll('button') ?? [])].find((b) => b.textContent === label) ?? null;
-const statusLine = (host: HTMLElement) => host.querySelector('p[role="status"]')?.textContent;
+const statusLine = (host: HTMLElement) =>
+	host.querySelector('p.adm-vh[role="status"]')?.textContent;
 const bodyOf = (body: FormData | undefined) => Object.fromEntries(body?.entries() ?? []);
 
 /** types into a controlled textarea the way a browser does, so react's change handler sees it. */
@@ -288,7 +298,7 @@ describe('the list', () => {
 	});
 
 	it('says one page in the singular', () => {
-		const { host } = mount({ pages: [MAYA] });
+		const { host } = mount({ pages: [MAYA], total: 1 });
 		expect(host.querySelector('.adm-tablecaption')?.textContent).toBe(
 			'1 supporter page, newest first.'
 		);
@@ -491,5 +501,178 @@ describe('nothing listed', () => {
 			'Supporter fundraisers are off'
 		);
 		expect(card?.querySelector('.ds-state-card-body')).toBeNull();
+	});
+});
+
+describe('show more pages', () => {
+	const PRIYA = page({
+		id: 'page-priya',
+		supporterName: 'Priya Shah',
+		title: 'Run for rent relief'
+	});
+	const NEW = page({ id: 'page-new', supporterName: 'Lee Park', title: 'Fresh start' });
+	const count = (host: HTMLElement) =>
+		host.querySelector('.adm-caption[role="status"]')?.textContent ?? null;
+	const more = (host: HTMLElement) =>
+		[...host.querySelectorAll<HTMLButtonElement>('button')].find(
+			(b) => b.textContent === 'Show more pages'
+		) ?? null;
+	const names = (host: HTMLElement) =>
+		[...host.querySelectorAll('tbody tr')].map(
+			(tr) => tr.firstElementChild?.firstChild?.textContent
+		);
+	const showMore = async (host: HTMLElement) => {
+		const found = more(host);
+		if (found === null) throw new Error('no Show more pages');
+		await act(async () => found.click());
+	};
+	const paged = (over: Partial<SupporterPagesProps> = {}) =>
+		mount({ pages: [MAYA, JO], total: 5, next: 'after-jo', ...over });
+
+	it('draws neither the press nor the count where one batch is every page', () => {
+		const { host } = mount();
+		expect(more(host)).toBeNull();
+		expect(count(host)).toBeNull();
+	});
+
+	it('stands Show more pages under the table beside how many are shown, the caption counting all', () => {
+		const { host } = paged();
+		const press = more(host);
+		expect(press?.closest('table')).toBeNull();
+		expect(press?.className).toContain('ds-btn-sm');
+		expect(
+			host.querySelector('table')?.compareDocumentPosition(press as Node) ?? 0
+		).toBeGreaterThan(0);
+		expect(count(host)).toBe('Showing 2 of 5 pages');
+		expect(host.querySelector('.adm-tablecaption')?.textContent).toBe(
+			'5 supporter pages, newest first.'
+		);
+	});
+
+	it('loads the next batch after the cursor and appends it, counting against the total it answered', async () => {
+		const onShowMore = vi.fn(async () => ({ pages: [DANA, SAM], total: 6, next: 'after-sam' }));
+		const { host } = paged({ onShowMore });
+		await showMore(host);
+		expect(onShowMore).toHaveBeenCalledExactlyOnceWith('after-jo');
+		expect(names(host)).toEqual(['Maya Reyes', 'Jo Okafor', 'Dana Whitfield', 'Sam Lee']);
+		expect(count(host)).toBe('Showing 4 of 6 pages');
+		expect(host.querySelector('.adm-tablecaption')?.textContent).toBe(
+			'6 supporter pages, newest first.'
+		);
+		await showMore(host);
+		expect(onShowMore).toHaveBeenLastCalledWith('after-sam');
+	});
+
+	it('takes the press away at the last batch and puts focus on the press of the first row it brought', async () => {
+		const onShowMore = vi.fn(async () => ({ pages: [DANA, SAM, PRIYA], total: 5, next: null }));
+		const { host } = paged({ onShowMore });
+		await showMore(host);
+		expect(more(host)).toBeNull();
+		expect(count(host)).toBe('Showing 5 of 5 pages');
+		expect(document.activeElement).toBe(press(host, 'Dana Whitfield'));
+	});
+
+	it('keeps the press and the rows when a load fails, says so beside it, and tries again', async () => {
+		const onShowMore = vi
+			.fn<(after: string) => Promise<SupporterPageBatch | null>>()
+			.mockResolvedValueOnce(null)
+			.mockResolvedValueOnce({ pages: [DANA, SAM, PRIYA], total: 5, next: null });
+		const { host } = paged({ onShowMore });
+		await showMore(host);
+		expect(names(host)).toEqual(['Maya Reyes', 'Jo Okafor']);
+		const alert = more(host)?.parentElement?.querySelector('[role="alert"]');
+		expect(alert?.textContent).toBe('Couldn’t load more pages. Try again.');
+		expect(more(host)?.getAttribute('aria-describedby')).toBe(alert?.id);
+		await showMore(host);
+		expect(onShowMore).toHaveBeenLastCalledWith('after-jo');
+		expect(names(host)).toHaveLength(5);
+		expect(host.querySelector('.adm-actions [role="alert"]:empty')).not.toBeNull();
+	});
+
+	it('closes the press while a load is out, so a second press asks nothing', async () => {
+		let answer: (batch: SupporterPageBatch) => void = () => {};
+		const onShowMore = vi.fn(
+			() =>
+				new Promise<SupporterPageBatch | null>((resolve) => {
+					answer = resolve;
+				})
+		);
+		const { host } = paged({ onShowMore });
+		await showMore(host);
+		expect(more(host)?.getAttribute('aria-disabled')).toBe('true');
+		expect(more(host)?.getAttribute('aria-busy')).toBe('true');
+		await showMore(host);
+		expect(onShowMore).toHaveBeenCalledOnce();
+		await act(async () => answer({ pages: [DANA], total: 5, next: 'after-dana' }));
+		expect(more(host)?.hasAttribute('aria-disabled')).toBe(false);
+	});
+
+	it('keeps the rows and the cursor it brought across the re-read a press brings, each page once', async () => {
+		const onShowMore = vi.fn(async () => ({ pages: [DANA, SAM], total: 5, next: 'after-sam' }));
+		const { host, rerender } = paged({ onShowMore });
+		await showMore(host);
+		// the re-read after a press: Maya hidden, and a page started since pushing Jo past the first batch.
+		rerender({ pages: [NEW, { ...MAYA, hidden: true }], total: 6, next: 'after-maya' });
+		expect(names(host)).toEqual([
+			'Lee Park',
+			'Maya Reyes',
+			'Jo Okafor',
+			'Dana Whitfield',
+			'Sam Lee'
+		]);
+		expect(press(host, 'Maya Reyes')?.textContent).toBe('Show again');
+		expect(count(host)).toBe('Showing 5 of 5 pages');
+		await showMore(host);
+		expect(onShowMore).toHaveBeenLastCalledWith('after-sam');
+	});
+
+	it('takes Show again on a row it brought, and draws the row shown once that lands', async () => {
+		const onShow = vi.fn();
+		const hiddenDana = {
+			...DANA,
+			hidden: true,
+			openHref: '/admin/supporter-pages/page-dana/preview'
+		};
+		const { host, rerender } = paged({
+			onShow,
+			onShowMore: async () => ({ pages: [hiddenDana], total: 3, next: null })
+		});
+		await showMore(host);
+		act(() => press(host, 'Dana Whitfield')?.click());
+		expect(onShow.mock.calls[0]?.[0]).toBe('page-dana');
+		expect(bodyOf(onShow.mock.calls[0]?.[1])).toMatchObject({ page_id: 'page-dana' });
+		rerender({ presses: { 'page-dana': { pending: true, outcome: null } } });
+		// the re-read reaches only the first batch, so Dana's row is redrawn by the landing.
+		rerender({
+			pages: [MAYA, JO],
+			presses: { 'page-dana': { pending: false, outcome: { landed: 'shown' } } }
+		});
+		expect(press(host, 'Dana Whitfield')?.textContent).toBe('Showing again');
+		expect(statusLine(host)).toBe('Showing again');
+		expect(row(host, 'Dana Whitfield')?.textContent).not.toContain('Hidden');
+	});
+
+	it('takes Hide on a row it brought through its confirm, which comes down once that lands', async () => {
+		const onHide = vi.fn();
+		const { host, rerender } = paged({
+			onHide,
+			onShowMore: async () => ({ pages: [DANA], total: 3, next: null })
+		});
+		await showMore(host);
+		act(() => press(host, 'Dana Whitfield')?.click());
+		act(() => dialogButton('Hide page')?.click());
+		expect(onHide.mock.calls[0]?.[0]).toBe('page-dana');
+		rerender({ presses: { 'page-dana': { pending: true, outcome: null } } });
+		rerender({
+			pages: [MAYA, JO],
+			presses: { 'page-dana': { pending: false, outcome: { landed: 'hidden' } } }
+		});
+		expect(dialog()).toBeNull();
+		expect(press(host, 'Dana Whitfield')?.textContent).toBe('Hidden from visitors');
+		expect(row(host, 'Dana Whitfield')?.textContent).toContain('Hidden');
+		expect(row(host, 'Dana Whitfield')?.querySelector('a')?.getAttribute('href')).toBe(
+			'/admin/supporter-pages/page-dana/preview'
+		);
+		expect(document.activeElement).toBe(press(host, 'Dana Whitfield'));
 	});
 });
