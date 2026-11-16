@@ -44,15 +44,14 @@ describe('sendSupporterSignInEmail', () => {
 		expect(message?.html).toContain(LINK);
 	});
 
-	it('sends the first-time arm, naming the page', async () => {
+	it('sends the first-time arm, naming the organisation and no page', async () => {
 		const mail = recording();
-		await sendSupporterSignInEmail(
-			{ email: mail.email },
-			input({ arm: { kind: 'first', pageTitle: 'Keep the pantry trucks running' } })
-		);
+		await sendSupporterSignInEmail({ email: mail.email }, input({ arm: { kind: 'first' } }));
 
 		expect(mail.sent[0]?.subject).toBe('Confirm your email to publish your fundraiser');
-		expect(mail.sent[0]?.text).toContain('Keep the pantry trucks running');
+		expect(mail.sent[0]?.text).toContain(
+			'A fundraiser for Harbor Light was started with this email address.'
+		);
 	});
 
 	it('states the hour a link works for', async () => {

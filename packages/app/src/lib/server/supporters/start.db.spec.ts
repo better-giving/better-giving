@@ -62,7 +62,7 @@ describe('starting a fundraiser', () => {
 			{
 				to: 'maya@example.org',
 				token: expect.any(String),
-				arm: { kind: 'first', pageTitle: 'Run for the shelter' }
+				arm: { kind: 'first' }
 			}
 		]);
 	});
@@ -267,7 +267,7 @@ describe('Send it again after a start', () => {
 			{
 				to: 'maya@example.org',
 				token: expect.any(String),
-				arm: { kind: 'first', pageTitle: 'Run for the shelter' }
+				arm: { kind: 'first' }
 			}
 		]);
 		expect(await open(mailed[0]?.token ?? '')).toMatchObject({
@@ -345,7 +345,7 @@ describe('Send it again after a start', () => {
 		});
 		expect(await resend(other, 'maya@example.org', { byPage })).toMatchObject({
 			answer: 'sent',
-			mailed: [{ arm: { kind: 'first', pageTitle: 'A second run' } }]
+			mailed: [{ arm: { kind: 'first' } }]
 		});
 	});
 });

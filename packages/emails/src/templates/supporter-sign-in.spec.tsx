@@ -13,7 +13,7 @@ function data(overrides: Partial<SupporterSignInData> = {}): SupporterSignInData
 		link: LINK,
 		signInUrl: SIGN_IN,
 		linkLifetimeMs: 60 * 60 * 1000,
-		arm: { kind: 'first', pageTitle: 'Keep the pantry trucks running this winter' },
+		arm: { kind: 'first' },
 		...overrides
 	};
 }
@@ -33,11 +33,11 @@ describe('supporterSignIn.template, first time', () => {
 		expect(message.text).toContain('Confirm your email to publish your fundraiser');
 	});
 
-	it('names the page and the organisation, and says the link publishes it', async () => {
+	it('names the organisation, and says the link publishes the fundraiser', async () => {
 		const message = await rendered();
 		for (const arm of [message.text, message.html]) {
 			expect(arm).toContain(
-				`Open the link below to publish Keep the pantry trucks running this winter, your fundraiser for ${ORG}, and to manage it.`
+				`A fundraiser for ${ORG} was started with this email address. Open the link below to publish it and manage it.`
 			);
 		}
 	});
@@ -61,11 +61,17 @@ describe('supporterSignIn.template, first time', () => {
 		expect(message.html).toContain(`>${LINK}</a>`);
 	});
 
-	// a page title is the supporter's own typing, and it reaches the HTML arm escaped.
-	it('escapes the page title in the HTML arm', async () => {
-		const message = await rendered({ arm: { kind: 'first', pageTitle: 'Soup & <b>bread</b>' } });
-		expect(message.html).toContain('Soup &amp; &lt;b&gt;bread&lt;/b&gt;');
-		expect(message.html).not.toContain('<b>bread</b>');
+	// the page title is the supporter's own typing and anyone can send this mail to any address, so
+	// the first arm takes no field to carry it. the cast is how a caller that still passes one is
+	// modelled: the marker must not reach the subject, the HTML or the text.
+	it('carries nothing a supporter typed, in the subject, the HTML or the text', async () => {
+		const marker = 'ZZ-TYPED-TITLE <b>x</b>';
+		const arm = { kind: 'first', pageTitle: marker } as unknown as SupporterSignInData['arm'];
+		const message = await rendered({ arm });
+		for (const part of [message.subject, message.html, message.text]) {
+			expect(part).not.toContain('ZZ-TYPED-TITLE');
+			expect(part).not.toContain('&lt;b&gt;x');
+		}
 	});
 });
 

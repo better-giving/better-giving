@@ -114,7 +114,7 @@ export async function startFundraiser(
 		deps.sendLink({
 			to: input.email,
 			token: made.token,
-			arm: { kind: 'first', pageTitle: input.title }
+			arm: { kind: 'first' }
 		})
 	);
 	return { ok: true, pageId: made.pageId, slug: made.slug };
