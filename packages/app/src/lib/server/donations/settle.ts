@@ -58,7 +58,7 @@ import { sendGrantReceived, sendReceipt } from './receipt';
 import { sendSettledNotice } from './settled-notice';
 import { sendTributeNotice } from './tribute-notice';
 import { giftMatchInsert } from '../matching/match';
-import { supporterPageOf } from '../supporters/gifts';
+import { supporterPageCountingOf } from '../supporters/gifts';
 
 // what a verified delivery does to this deployment's records: it corrects the payment row
 // and, where money actually moved, puts the gift in the books.
@@ -1394,7 +1394,7 @@ async function recordRepeatDeposit(
 			tributeKind: dedication?.kind ?? null,
 			tributeHonoree: dedication?.honoree ?? null,
 			programId: first.donation.programId,
-			supporterPageId: supporterPageOf(first.donation.formId)
+			supporterPageId: supporterPageCountingOf(first.donation.formId, settlement.occurredAt)
 		}),
 		deps.db.insert(lineItem).values({
 			id: uuidv7(),

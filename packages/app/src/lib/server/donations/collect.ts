@@ -49,7 +49,7 @@ import {
 	recurringGiftStartedWebhookStatements
 } from '../webhooks/events';
 import { giftMatchInsert } from '../matching/match';
-import { supporterPageOf } from '../supporters/gifts';
+import { supporterPageCountingOf } from '../supporters/gifts';
 
 // the books for a gift that repeats: what one collection under a standing commitment writes, and
 // what the commitment's own standing writes when it stops.
@@ -1316,8 +1316,12 @@ function chargeWrites(
 		statements: [
 			db
 				.insert(donation)
-				// the fundraiser the series was begun on, off the form every charge in it is made through.
-				.values({ ...giftRow, supporterPageId: supporterPageOf(formId) }),
+				// the fundraiser the series was begun on, off the form every charge in it is made through,
+				// while that page was neither ended nor hidden when this charge was made (../supporters/gifts.ts).
+				.values({
+					...giftRow,
+					supporterPageId: supporterPageCountingOf(formId, settlement.occurredAt)
+				}),
 			db.insert(lineItem).values(lineRow),
 			db.insert(payment).values(paymentRow),
 			giftMatchInsert(db, donationId),
