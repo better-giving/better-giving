@@ -1,4 +1,4 @@
-import { count, eq } from 'drizzle-orm';
+import { count, eq, isNull } from 'drizzle-orm';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { parseContact } from '../contacts/contact-input';
 import { postableId } from '../db/accounts';
@@ -227,7 +227,8 @@ describe('a gift row on a fundraiser carries its page', () => {
 const OPENED_AT = new Date('2026-11-12T12:00:00.000Z');
 const BEFORE_HIDE = new Date('2026-11-15T12:00:00.000Z');
 const HIDDEN_AT = new Date('2026-11-20T12:00:00.000Z');
-const AFTER_HIDE = new Date('2026-11-25T12:00:00.000Z');
+const ENDED_AT = HIDDEN_AT;
+const LATER_AT = new Date('2026-11-25T12:00:00.000Z');
 const AFTER_SHOWN = new Date('2026-12-03T12:00:00.000Z');
 const LATER_MINOR = 2_500;
 
@@ -268,8 +269,16 @@ const cryptoDeposits: Rail = async (formId) => {
 	};
 };
 
-/** every gift row has its line and its payment, and the organisation's total is `totalMinor`. */
-async function inTheBooks(totalMinor: number) {
+/**
+ * every gift row has its line and its payment, the untagged rows keep `formId`, and the
+ * organisation's total is `totalMinor`.
+ */
+async function inTheBooks(formId: string, totalMinor: number) {
+	const untagged = await db
+		.select({ formId: donation.formId })
+		.from(donation)
+		.where(isNull(donation.supporterPageId));
+	expect(untagged).toEqual([{ formId }]);
 	const [gifts] = await db.select({ n: count() }).from(donation);
 	const [lines] = await db.select({ n: count() }).from(lineItem);
 	const [payments] = await db.select({ n: count() }).from(payment);
@@ -286,7 +295,7 @@ describe.each([
 	it('counts while the page is live and shown', async () => {
 		const { pageId, formId } = await livePage();
 		const { openedMinor, charge } = await rail(formId);
-		await charge(AFTER_HIDE);
+		await charge(LATER_AT);
 		expect(await taggedWith()).toEqual([pageId, pageId]);
 		expect(await fundraiserRaised(db, pageId)).toEqual({
 			raisedMinor: openedMinor + LATER_MINOR,
@@ -298,10 +307,10 @@ describe.each([
 		const { pageId, formId } = await livePage();
 		const { openedMinor, charge } = await rail(formId);
 		expect(await hideFundraiser(db, pageId, null, HIDDEN_AT)).toBe('hidden');
-		await charge(AFTER_HIDE);
+		await charge(LATER_AT);
 		expect(await taggedWith()).toEqual([pageId, null]);
 		expect(await fundraiserRaised(db, pageId)).toEqual({ raisedMinor: openedMinor, gifts: 1 });
-		await inTheBooks(openedMinor + LATER_MINOR);
+		await inTheBooks(formId, openedMinor + LATER_MINOR);
 	});
 
 	it('does not count when made the moment the page was hidden', async () => {
@@ -315,11 +324,43 @@ describe.each([
 	it('does not count once the supporter has ended the page, and stays in the books', async () => {
 		const { pageId, formId, supporterId } = await livePage();
 		const { openedMinor, charge } = await rail(formId);
-		expect(await endOwnFundraiser(db, supporterId, pageId, HIDDEN_AT)).toBe('ended');
-		await charge(AFTER_HIDE);
+		expect(await endOwnFundraiser(db, supporterId, pageId, ENDED_AT)).toBe('ended');
+		await charge(LATER_AT);
 		expect(await taggedWith()).toEqual([pageId, null]);
 		expect(await fundraiserRaised(db, pageId)).toEqual({ raisedMinor: openedMinor, gifts: 1 });
-		await inTheBooks(openedMinor + LATER_MINOR);
+		await inTheBooks(formId, openedMinor + LATER_MINOR);
+	});
+
+	it('does not count when made the moment the page was ended', async () => {
+		const { pageId, formId, supporterId } = await livePage();
+		const { charge } = await rail(formId);
+		await endOwnFundraiser(db, supporterId, pageId, ENDED_AT);
+		await charge(ENDED_AT);
+		expect(await taggedWith()).toEqual([pageId, null]);
+	});
+
+	it('counts when made just before the page was ended', async () => {
+		const { pageId, formId, supporterId } = await livePage();
+		const { openedMinor, charge } = await rail(formId);
+		await endOwnFundraiser(db, supporterId, pageId, ENDED_AT);
+		await charge(new Date(ENDED_AT.getTime() - 1));
+		expect(await taggedWith()).toEqual([pageId, pageId]);
+		expect(await fundraiserRaised(db, pageId)).toEqual({
+			raisedMinor: openedMinor + LATER_MINOR,
+			gifts: 2
+		});
+	});
+
+	it('counts when made before the end and recorded after it', async () => {
+		const { pageId, formId, supporterId } = await livePage();
+		const { openedMinor, charge } = await rail(formId);
+		await endOwnFundraiser(db, supporterId, pageId, ENDED_AT);
+		await charge(BEFORE_HIDE);
+		expect(await taggedWith()).toEqual([pageId, pageId]);
+		expect(await fundraiserRaised(db, pageId)).toEqual({
+			raisedMinor: openedMinor + LATER_MINOR,
+			gifts: 2
+		});
 	});
 
 	it('counts when made before the hide and recorded after it', async () => {
@@ -338,7 +379,7 @@ describe.each([
 		const { pageId, formId } = await livePage();
 		const { openedMinor, charge } = await rail(formId);
 		await hideFundraiser(db, pageId, null, HIDDEN_AT);
-		await charge(AFTER_HIDE);
+		await charge(LATER_AT);
 		expect(await showFundraiser(db, pageId)).toBe('shown');
 		await charge(AFTER_SHOWN);
 		expect(await taggedWith()).toEqual([pageId, null, pageId]);
@@ -346,6 +387,6 @@ describe.each([
 			raisedMinor: openedMinor + LATER_MINOR,
 			gifts: 2
 		});
-		await inTheBooks(openedMinor + 2 * LATER_MINOR);
+		await inTheBooks(formId, openedMinor + 2 * LATER_MINOR);
 	});
 });
