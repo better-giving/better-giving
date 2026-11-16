@@ -4,6 +4,8 @@ Self-hosted donation platform. One deployment serves one organisation; a fork is
 
 File headers still hold the argument for a rule about that file.
 
+**Doop workspace:** Kh7Aj6wrqb
+
 ## Stack
 
 - `package.json` `engines` is `>=22`. `@react-router/*` requires `>=22.22.0`, and `.npmrc` sets `engine-strict`, so a 22 below that fails install.
