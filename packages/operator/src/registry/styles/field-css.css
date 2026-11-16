@@ -323,8 +323,10 @@
   margin-block-start: calc((1lh - var(--ds-spacing) * 3) / 2);
 }
 
-/* the hint under the control, below the message when one shows */
-.ds-field-help {
+/* the hint under the control, below the message when one shows. the block
+   note is the same line for a whole block or card, so it shares the rule */
+.ds-field-help,
+.ds-block-note {
   --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
   --ds-text-xs: calc(0.75 * var(--ds-rem, 1rem));
   margin: calc(var(--ds-spacing) * 1) 0 0;
@@ -335,6 +337,19 @@
 }
 .ds-field-help:empty {
   display: none;
+}
+/* the hint's 4px is the field's spacing; the note's place is the caller's.
+   empty, the note stays in the page with no height and no margin: an error
+   note is a live region, and one taken out of the page announces nothing */
+.ds-block-note {
+  margin: 0;
+}
+.ds-block-note:empty {
+  block-size: 0;
+  overflow: clip;
+}
+.ds-block-note-error {
+  color: var(--destructive-subtle-fg);
 }
 
 /* text for assistive technology only: the "Warning: " before a warning, and
