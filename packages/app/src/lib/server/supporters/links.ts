@@ -23,15 +23,13 @@ import { hashToken, mintToken } from './token';
 export const LINK_LIFETIME_MS = 60 * 60 * 1000;
 
 /**
- * a link to mail: `first` for the confirm link a new page sends, naming the page, and `returning`
+ * a link to mail: `first` for the confirm link a new page sends, and `returning`
  * for a sign-in link. the routes turn `token` into the address the mail carries.
  */
 export type LinkMail = {
 	readonly to: string;
 	readonly token: string;
-	readonly arm:
-		| { readonly kind: 'first'; readonly pageTitle: string }
-		| { readonly kind: 'returning' };
+	readonly arm: { readonly kind: 'first' } | { readonly kind: 'returning' };
 };
 
 /** sends a link; the routes bind it to the mail transport. a throw is logged by the deferred work. */
@@ -170,7 +168,7 @@ async function mailConfirmLink(
 	asked: { readonly email: string; readonly pageId: string }
 ): Promise<void> {
 	const [found] = await deps.db
-		.select({ supporterId: supporter.id, title: supporterPage.title })
+		.select({ supporterId: supporter.id })
 		.from(supporterPage)
 		.innerJoin(supporter, eq(supporter.id, supporterPage.supporterId))
 		.where(
@@ -191,7 +189,7 @@ async function mailConfirmLink(
 	await deps.sendLink({
 		to: asked.email,
 		token: link.token,
-		arm: { kind: 'first', pageTitle: found.title }
+		arm: { kind: 'first' }
 	});
 }
 

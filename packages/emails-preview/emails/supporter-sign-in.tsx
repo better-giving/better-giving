@@ -8,6 +8,6 @@ export default function SupporterSignIn() {
 		link: 'https://give.example.org/fundraise/open?token=Zk3f9QxT7mWb2LpV8aDn5EyH1cRj4uSg',
 		signInUrl: 'https://give.example.org/fundraise/sign-in',
 		linkLifetimeMs: 60 * 60 * 1000,
-		arm: { kind: 'first', pageTitle: 'Keep the pantry trucks running this winter' }
+		arm: { kind: 'first' }
 	}).node;
 }

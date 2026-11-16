@@ -14,10 +14,11 @@ import type { EmailTemplate } from '../template';
 // page's address is text on a line of its own, where to ask again once this link has run out: a
 // client that linkifies it has no full stop beside it to fold into the address.
 
-/** which mail this is: the first, which publishes a page, or a returning supporter's sign-in. */
-export type SupporterSignInArm =
-	| { readonly kind: 'first'; readonly pageTitle: string }
-	| { readonly kind: 'returning' };
+/**
+ * which mail this is: the first, which publishes a page, or a returning supporter's sign-in. the
+ * first carries no field a supporter typed: anyone who can type an address can cause it.
+ */
+export type SupporterSignInArm = { readonly kind: 'first' } | { readonly kind: 'returning' };
 
 export interface SupporterSignInData {
 	/** `org_profile.legal_name`, or the app's own name where nobody has filled the profile in. */
@@ -32,10 +33,7 @@ export interface SupporterSignInData {
 }
 
 export function template(data: SupporterSignInData): EmailTemplate {
-	const words =
-		data.arm.kind === 'first'
-			? firstTime(data.orgName, data.arm.pageTitle)
-			: returning(data.orgName);
+	const words = data.arm.kind === 'first' ? firstTime(data.orgName) : returning(data.orgName);
 
 	return {
 		subject: words.subject,
@@ -71,12 +69,12 @@ interface Words {
 // each sentence is one string rather than jsx with holes in it: react writes a `<!-- -->` between
 // adjacent text nodes, which splits the sentence in the HTML arm.
 
-function firstTime(org: string, pageTitle: string): Words {
+function firstTime(org: string): Words {
 	return {
 		subject: 'Confirm your email to publish your fundraiser',
-		opening: `Open the link below to publish ${pageTitle}, your fundraiser for ${org}, and to manage it.`,
-		// anyone who can type an address can cause this mail, so the recipient's question is whether
-		// something went public in their name. it has not until the link is opened.
+		opening: `A fundraiser for ${org} was started with this email address. Open the link below to publish it and manage it.`,
+		// the recipient's question is whether something went public in their name. it has not until
+		// the link is opened.
 		closing:
 			'If you didn’t start a fundraiser, ignore this message. Nothing is published until the link is opened.'
 	};
