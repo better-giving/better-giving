@@ -239,6 +239,22 @@ export async function repeatingGift(
 	amountMinor: number,
 	charges: number
 ): Promise<void> {
+	const collect = await repeatingSeries(db, formId, amountMinor);
+	for (let charge = 1; charge <= charges; charge += 1) {
+		await collect(new Date(Date.UTC(2026, 7 + charge, 3, 12)));
+	}
+}
+
+/**
+ * a monthly commitment of `amountMinor` authorized through `formId`, and a collector that delivers
+ * and settles its next charge as made at `at` — the first claims the authorized row, each later one
+ * is a gift row of its own.
+ */
+export async function repeatingSeries(
+	db: Db,
+	formId: string,
+	amountMinor: number
+): Promise<(at: Date) => Promise<void>> {
 	sequence += 1;
 	const contactId = crypto.randomUUID();
 	await run(
@@ -268,9 +284,10 @@ export async function repeatingGift(
 	if (!written.ok) throw new Error(`the authorized gift was not written: ${written.detail}`);
 
 	const subscription = `sub_goal_${sequence}`;
-	for (let charge = 1; charge <= charges; charge += 1) {
+	let charge = 0;
+	return async (at) => {
+		charge += 1;
 		const txn = `${subscription}_pi_${charge}`;
-		const at = new Date(Date.UTC(2026, 7 + charge, 3, 12));
 		const provider = {
 			...refusing('stripe', 'unsupported', 'not part of the collection path'),
 			verifyEvent: async () => ({
@@ -293,7 +310,7 @@ export async function repeatingGift(
 					interval: 'monthly' as const,
 					providerTxnId: txn,
 					endedAt: null,
-					nextChargeAt: new Date(Date.UTC(2026, 8 + charge, 3, 12)),
+					nextChargeAt: new Date(at.getTime() + 30 * 86_400_000),
 					metadata: {
 						[DONATION_METADATA_KEY]: authorized,
 						[INTERVAL_METADATA_KEY]: 'monthly',
@@ -324,5 +341,5 @@ export async function repeatingGift(
 		if (!collected.ok || collected.outcome !== 'posted') {
 			throw new Error(`collection ${charge} did not post: ${collected.detail}`);
 		}
-	}
+	};
 }
