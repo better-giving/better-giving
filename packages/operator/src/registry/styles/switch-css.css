@@ -10,7 +10,8 @@
    names with the same values, and the test holds each equal to tailwind's. */
 .ds-switch {
   --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
-  --ds-ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ds-ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ds-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --ds-inset-shadow-track: inset 0 2px 4px 0
     color-mix(in oklch, var(--shadow-ink) 5%, transparent);
   --ds-shadow-handle:
@@ -32,7 +33,7 @@
   box-shadow: var(--ds-inset-shadow-track);
   transition-property: background-color;
   transition-duration: var(--duration-fast);
-  transition-timing-function: var(--ds-ease-in-out);
+  transition-timing-function: var(--ds-ease-out);
 }
 /* the small size: 36x20 with a 16px thumb, for a compact list row */
 .ds-switch.ds-switch-sm {
@@ -49,7 +50,7 @@
   inset-inline-start: calc(var(--ds-spacing) * 0.5);
   inline-size: var(--ds-switch-thumb);
   block-size: var(--ds-switch-thumb);
-  margin-top: calc(var(--ds-switch-thumb) / -2);
+  margin-block-start: calc(var(--ds-switch-thumb) / -2);
   border-radius: calc(infinity * 1px);
   background-color: var(--primary-fg);
   box-shadow: var(--ds-shadow-handle);
@@ -75,7 +76,7 @@
     var(--ds-switch-w)
   );
 }
-@media (hover: hover) {
+@media (hover: hover) and (pointer: fine) {
   .ds-switch:hover:not(:disabled) {
     background-color: var(--gray-10);
   }
@@ -135,8 +136,8 @@
   cursor: pointer;
 }
 .ds-switch-field:has(.ds-switch-sm) {
-  align-items: center;
-  min-block-size: calc(var(--ds-spacing) * 6);
+  align-items: safe center;
+  min-block-size: var(--ds-hit-target, calc(var(--ds-spacing) * 6));
   padding-block: calc(var(--ds-spacing) * 1.5);
 }
 .ds-switch-field:has(:disabled) {
@@ -163,4 +164,15 @@
   font-size: var(--ds-text-xs);
   line-height: var(--ds-text-xs-lh);
   color: var(--gray-11);
+}
+
+/* pressed: a small control gives under the finger, where motion is wanted */
+@media (prefers-reduced-motion: no-preference) {
+  .ds-switch:active:not(:disabled) {
+    scale: 0.95;
+  }
+  .ds-switch {
+    transition-property: background-color, scale;
+    transition-timing-function: var(--ds-ease-out), var(--ds-ease-out);
+  }
 }

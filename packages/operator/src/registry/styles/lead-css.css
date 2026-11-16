@@ -22,7 +22,7 @@
   --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
   display: flex;
   flex: none;
-  align-items: center;
+  align-items: safe center;
   gap: calc(var(--ds-spacing) * 2);
   block-size: 1lh;
 }

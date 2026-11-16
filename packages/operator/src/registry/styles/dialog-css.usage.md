@@ -18,11 +18,11 @@ Import `styles/variables.css` and `styles/dialog-css.css` (and `styles/button-cs
 </dialog>
 ```
 
-- `ds-dialog` is the box: centered by `inset: 0` and `margin: auto` (no translate, and no scale once it has scaled in, so a `position: fixed` panel inside, such as a `menu-css` panel without `popover`, is placed against the viewport and not held or clipped by the box), the `--shadow-floating` elevation and a 1px `--hairline` edge (the sheet draws the edge only from 40rem, where it stops filling the viewport), the card corner, at most 90dvh tall and scrolling inside past that with a thin scrollbar. Geometry, elevation, edge and corner only, as the React box: it paints no background. Under 40rem every size is 90vw wide.
+- `ds-dialog` is the box: centered by `inset: 0 0 calc(100dvh * var(--ds-view-lift, 0.2))` and `margin: auto`, so its middle sits at 40% of the viewport (`--ds-view-lift`, from `variables`; no translate, and no scale once it has scaled in, so a `position: fixed` panel inside, such as a `menu-css` panel without `popover`, is placed against the viewport and not held or clipped by the box), the `--shadow-floating` elevation and a 1px `--hairline` edge (the sheet draws the edge only from 40rem, where it stops filling the viewport), the card corner, at most the height of the space it is centered in (`min(90dvh, calc(100dvh * (1 - var(--ds-view-lift, 0.2))))`, so its top never leaves the viewport) and scrolling inside past that with a thin scrollbar. Geometry, elevation, edge and corner only, as the React box: it paints no background. Under 40rem every size is 90% wide.
 - The size scale, from 40rem: the bare `ds-dialog` is 512px (React's `sm`, the default); `ds-dialog-panel` 448px, for prompts and confirms; `ds-dialog-md` 672px; `ds-dialog-lg` 768px; `ds-dialog-sheet` a 480px box that is the whole viewport under 40rem, with no corner, as React's `sheet`.
 - `ds-dialog-surface` is the content's surface: the `--popover` fill, gray-12 text, the card corner and 24px inside. In a `ds-dialog-sheet` it fills the sheet and scrolls its own height there with the thin scrollbar, so a form taller than the phone keeps its submit in reach; under 40rem, where the sheet is the whole viewport, it has no corner.
 - The scrim is the dialog's `::backdrop`, `--overlay` over the page.
-- The box scales and fades in over `--duration-fast`, the scrim over `--duration-base`, easing out; they leave easing in. A browser that cannot keep a closing dialog in the top layer drops it at once.
+- The box scales and fades in over `--duration-fast`, the scrim over `--duration-base`, easing out; both leave the same way. A browser that cannot keep a closing dialog in the top layer drops it at once.
 
 ## Behavior
 

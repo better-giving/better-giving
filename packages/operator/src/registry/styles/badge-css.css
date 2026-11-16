@@ -15,7 +15,7 @@
   --ds-font-weight-semibold: 600;
   box-sizing: border-box;
   display: inline-flex;
-  align-items: center;
+  align-items: safe center;
   gap: calc(var(--ds-spacing) * 1);
   border-radius: calc(infinity * 1px);
   padding-inline: calc(var(--ds-spacing) * 2.5);
@@ -24,6 +24,7 @@
   line-height: var(--ds-text-xs-lh);
   font-weight: var(--ds-font-weight-semibold);
   white-space: nowrap;
+  font-variant-numeric: tabular-nums;
   background-color: var(--gray-3);
   color: var(--gray-12);
 }
@@ -75,8 +76,8 @@
 .ds-badge-on-photo::before {
   content: "";
   box-sizing: border-box;
-  width: calc(var(--ds-spacing) * 2);
-  height: calc(var(--ds-spacing) * 2);
+  inline-size: calc(var(--ds-spacing) * 2);
+  block-size: calc(var(--ds-spacing) * 2);
   flex-shrink: 0;
   background-color: currentColor;
 }

@@ -10,7 +10,7 @@
 .ds-card {
   --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
   box-sizing: border-box;
-  overflow: hidden;
+  overflow: clip;
   border-radius: var(--radius-card);
   border: 1px solid var(--hairline);
   background-color: var(--card);
@@ -19,7 +19,7 @@
 .ds-card-header {
   --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
   box-sizing: border-box;
-  border-bottom: 1px solid var(--hairline);
+  border-block-end: 1px solid var(--hairline);
   padding-inline: calc(var(--ds-spacing) * 6);
   padding-block: calc(var(--ds-spacing) * 4);
 }
@@ -45,7 +45,7 @@
   --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
   display: flex;
   flex: none;
-  align-items: center;
+  align-items: safe center;
   gap: calc(var(--ds-spacing) * 2);
   block-size: 1lh;
 }
@@ -68,9 +68,9 @@
   --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
   box-sizing: border-box;
   display: flex;
-  align-items: center;
+  align-items: safe center;
   gap: calc(var(--ds-spacing) * 3);
-  border-top: 1px solid var(--hairline);
+  border-block-start: 1px solid var(--hairline);
   background-color: var(--panel);
   padding-inline: calc(var(--ds-spacing) * 6);
   padding-block: calc(var(--ds-spacing) * 4);
@@ -94,12 +94,12 @@
   --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
   --ds-text-base: calc(1 * var(--ds-rem, 1rem));
   --ds-text-base-lh: calc(1.5 / 1);
-  --ds-ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ds-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
+  align-items: safe center;
+  justify-content: safe center;
   gap: calc(var(--ds-spacing) * 2);
   min-block-size: calc(var(--ds-spacing) * 24);
   margin: 0;
@@ -120,7 +120,7 @@
   cursor: pointer;
   transition-property: color, background-color, border-color;
   transition-duration: var(--duration-fast);
-  transition-timing-function: var(--ds-ease-in-out);
+  transition-timing-function: var(--ds-ease-out);
 }
 /* zero specificity, so a class on the icon sizes it wherever its sheet loads */
 :where(.ds-card-create) > :where(svg) {
@@ -128,7 +128,7 @@
   inline-size: calc(var(--ds-spacing) * 5);
   block-size: calc(var(--ds-spacing) * 5);
 }
-@media (hover: hover) {
+@media (hover: hover) and (pointer: fine) {
   .ds-card-create:hover:not([aria-disabled="true"]) {
     background-color: var(--gray-4);
     border-color: var(--input-hover);

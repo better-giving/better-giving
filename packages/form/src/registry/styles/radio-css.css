@@ -4,12 +4,13 @@
    renders the tailwind `radio` beside it and asserts the same computed look in
    light and dark, for the default and example themes.
 
-   the spacing step lives only in tailwind's theme; it is declared here under a
-   ds- name with the same value, and the test holds the two equal. */
+   the spacing step and the easing live only in tailwind's theme; they are
+   declared here under ds- names with the same values, and the test holds each
+   equal to tailwind's. */
 .ds-radio {
   --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
   display: flex;
-  align-items: center;
+  align-items: safe center;
   gap: calc(var(--ds-spacing) * 4);
   cursor: pointer;
 }
@@ -22,6 +23,7 @@
   color: var(--destructive-subtle-fg);
 }
 .ds-radio > input {
+  --ds-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   appearance: none;
   box-sizing: border-box;
   position: relative;
@@ -33,7 +35,7 @@
   border-radius: calc(infinity * 1px);
   outline-color: var(--ring);
 }
-@media (hover: hover) {
+@media (hover: hover) and (pointer: fine) {
   .ds-radio > input:not(:disabled):hover {
     border-color: var(--input-hover);
   }
@@ -77,5 +79,15 @@
   }
   .ds-radio > input:disabled:checked::before {
     background-color: GrayText;
+  }
+}
+
+/* pressed: a small control gives under the finger, where motion is wanted */
+@media (prefers-reduced-motion: no-preference) {
+  .ds-radio > input:active:not(:disabled) {
+    scale: 0.95;
+  }
+  .ds-radio > input {
+    transition: scale var(--duration-fast) var(--ds-ease-out);
   }
 }

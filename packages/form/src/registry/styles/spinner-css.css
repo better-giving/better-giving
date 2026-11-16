@@ -23,7 +23,7 @@
   block-size: calc(var(--ds-spacing) * 5);
   flex-shrink: 0;
   border: 2px solid var(--gray-6);
-  border-top-color: var(--primary);
+  border-block-start-color: var(--primary);
   border-radius: calc(infinity * 1px);
   animation: var(--ds-animate-spinner);
 }
@@ -47,7 +47,7 @@
   .ds-video-frame-spinner {
     forced-color-adjust: none;
     border-color: CanvasText;
-    border-top-color: Highlight;
+    border-block-start-color: Highlight;
   }
 }
 @keyframes ds-spin {

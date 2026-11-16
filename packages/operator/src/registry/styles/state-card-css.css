@@ -14,8 +14,8 @@
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
+  align-items: safe center;
+  justify-content: safe center;
   gap: calc(var(--ds-spacing) * 2);
   inline-size: 100%;
   padding: calc(var(--ds-spacing) * 8) calc(var(--ds-spacing) * 4);
@@ -47,7 +47,7 @@
 
 /* the action or the retry sits a further 8px down */
 .ds-state-card-action {
-  margin-top: calc(var(--ds-spacing) * 2);
+  margin-block-start: calc(var(--ds-spacing) * 2);
 }
 
 /* loading: the spinner and its one line */
@@ -59,8 +59,8 @@
    beside it is aria-hidden */
 .ds-state-card-read {
   position: absolute;
-  width: 1px;
-  height: 1px;
+  inline-size: 1px;
+  block-size: 1px;
   padding: 0;
   margin: -1px;
   overflow: hidden;

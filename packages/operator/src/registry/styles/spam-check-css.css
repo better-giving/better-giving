@@ -28,7 +28,7 @@
   --ds-text-sm-lh: calc(1.25 / 0.875);
   box-sizing: border-box;
   display: flex;
-  align-items: center;
+  align-items: safe center;
   gap: calc(var(--ds-spacing) * 3);
   inline-size: 100%;
   min-block-size: calc(var(--ds-spacing) * 16.25);
@@ -87,7 +87,7 @@
   cursor: pointer;
   appearance: none;
 }
-@media (hover: hover) {
+@media (hover: hover) and (pointer: fine) {
   .ds-spam-check-box:hover {
     border-color: var(--input-hover);
   }

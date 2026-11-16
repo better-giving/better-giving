@@ -80,12 +80,17 @@
    without changing its drawn size: 24px, 44px where the pointer is coarse.
    declared where the roles are, so it re-resolves on a [data-theme] root that
    sets its own --ds-rem (an embed under a host whose root size differs).
+   --ds-view-lift is how far above the middle of the view centred content
+   sits, twice over: the extra space below a block is this share of the view's
+   height, so the block's middle sits half of it up (0.2: at 40% of the view,
+   not 50%). page-state and the dialog read it.
    beside it the two tracking roles, theme.css's --tracking-label and
    --tracking-badge under ds- names: the uppercase label's, and the badge role,
    which no item reads yet */
 :root,
 [data-theme] {
   --ds-hit-target: calc(1.5 * var(--ds-rem, 1rem));
+  --ds-view-lift: 0.2;
   --ds-tracking-label: 0.12em;
   --ds-tracking-badge: 0.08em;
 }
