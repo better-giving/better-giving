@@ -105,10 +105,13 @@ describe('every fundraiser, a batch at a time', () => {
 	 * `count` pages started a minute apart, every third at its neighbour's minute, oldest first, each
 	 * with the confirm token mailed for it.
 	 */
-	async function pagesStarted(count: number): Promise<{ pageId: string; token: string }[]> {
+	async function pagesStarted(
+		count: number,
+		minuteOf = (i: number) => (i % 3 === 2 ? i - 1 : i)
+	): Promise<{ pageId: string; token: string }[]> {
 		const made: { pageId: string; token: string }[] = [];
 		for (let i = 0; i < count; i += 1) {
-			const minute = i % 3 === 2 ? i - 1 : i;
+			const minute = minuteOf(i);
 			const { deps, mailed, settled } = startDeps(db, {
 				now: new Date(STARTED_AT.getTime() + minute * 60_000)
 			});
@@ -164,6 +167,21 @@ describe('every fundraiser, a batch at a time', () => {
 		expect(listed.at(-1)).toBe(oldest);
 		const times = batches.flatMap((batch) => batch.pages.map((page) => page.createdAt.getTime()));
 		expect(times).toEqual([...times].sort((a, b) => b - a));
+	});
+
+	it('keeps both pages of a start time the batch edge falls between', async () => {
+		// the two oldest share a minute, so the first batch ends on one and the second opens on the other.
+		const ids = (await pagesStarted(SUPPORTER_PAGE_LIST_LIMIT + 1, (i) => (i === 1 ? 0 : i))).map(
+			(made) => made.pageId
+		);
+
+		const batches = await everyBatch();
+		expect(batches.map((batch) => batch.pages.length)).toEqual([SUPPORTER_PAGE_LIST_LIMIT, 1]);
+		const [tiedLast] = batches[0]?.pages.slice(-1) ?? [];
+		expect(tiedLast?.createdAt).toEqual(batches[1]?.pages[0]?.createdAt);
+		expect(batches.flatMap((batch) => batch.pages.map((page) => page.id)).toSorted()).toEqual(
+			ids.toSorted()
+		);
 	});
 
 	it('hands out no cursor where the first batch is every page, a full one included', async () => {

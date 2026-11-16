@@ -1,4 +1,4 @@
-import { act } from 'react';
+import { act, useState } from 'react';
 import { useActionData } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 import { ACCOUNT, button, mountScreen, ORG, one, submitTwice } from './area.testing';
@@ -318,6 +318,42 @@ describe('show more gifts', () => {
 		const { root } = manage({}, { giftList: GIFTS.slice(0, 5), giftTotal: 5, giftNext: null });
 		expect(count(root)).toBe('Showing 5 of 5 gifts');
 		expect(more(root)).toBeNull();
+	});
+
+	it('starts a second page of the same supporter over, not on the first page’s loaded gifts', async () => {
+		const other: ManagedPage = {
+			...PAGE,
+			id: 'p2',
+			title: 'The second run',
+			giftList: [gift(3, 9_900, { name: 'Second page donor', note: '' })],
+			giftTotal: 12,
+			giftNext: 'after-p2'
+		};
+		const onShowMoreGifts = vi.fn(async () => ({ gifts: older(10), total: 41, next: 'more' }));
+		function Screens() {
+			const [current, setCurrent] = useState(PAGE);
+			return (
+				<>
+					<button type="button" onClick={() => setCurrent(other)}>
+						Go to the second page
+					</button>
+					<ManageFundraiser {...BASE} onShowMoreGifts={onShowMoreGifts} page={current} />
+				</>
+			);
+		}
+		const { root } = mountScreen(() => <Screens />);
+		await press(root);
+		await press(root);
+		expect(root.querySelectorAll('tbody tr')).toHaveLength(14);
+
+		await act(async () => button(root, 'Go to the second page').click());
+
+		expect([...root.querySelectorAll('tbody th')].map((th) => th.textContent)).toEqual([
+			'Second page donor'
+		]);
+		expect(count(root)).toBe('Showing 1 of 12 gifts');
+		await press(root);
+		expect(onShowMoreGifts).toHaveBeenLastCalledWith('after-p2');
 	});
 
 	it('keeps the press and the rows when a load fails, says so beside the press, and tries again', async () => {

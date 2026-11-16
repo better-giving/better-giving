@@ -198,7 +198,8 @@ export function SupporterPages({
 	// for, so a row a re-read's first batch no longer reaches stays listed.
 	const [paged, setPaged] = useState<SupporterPageBatch | null>(null);
 	const [asking, setAsking] = useState<'idle' | 'loading' | 'failed'>('idle');
-	// how each row past the re-read last landed, which the re-read cannot redraw.
+	// how each row last landed, wherever it stood when it did: a row a later re-read pushes past its
+	// first batch is drawn from `paged`, which the re-read cannot redraw.
 	const [heldLandings, setHeldLandings] = useState<Readonly<Record<string, Landed>>>({});
 	const firstIds = new Set(firstBatch.map((p) => p.id));
 	const pages =
@@ -210,7 +211,10 @@ export function SupporterPages({
 						.filter((p) => !firstIds.has(p.id))
 						.map((p) => withLanding(p, heldLandings[p.id]))
 				];
-	const counted = paged?.total ?? total;
+	// the re-read and the last batch each answer a total, and either may be the newer. neither is a
+	// floor for the rows shown, which keep a row the sweep in $lib/server/supporters/sweep.ts deleted
+	// since it was read.
+	const counted = paged === null ? total : Math.max(total, paged.total, pages.length);
 	const cursor = paged === null ? next : paged.next;
 	// the first row the batch that took Show more pages away brought, its press where focus goes.
 	const [arrived, setArrived] = useState<{ readonly firstId: string } | null>(null);
@@ -275,11 +279,10 @@ export function SupporterPages({
 		Object.keys(seenLandings).some((id) => landings[id] !== seenLandings[id])
 	) {
 		setSeenLandings(landings);
-		const past = fresh.filter((p) => !firstIds.has(p.id));
-		if (past.length > 0) {
+		if (fresh.length > 0) {
 			setHeldLandings((held) => ({
 				...held,
-				...Object.fromEntries(past.map((p) => [p.id, landings[p.id] as Landed]))
+				...Object.fromEntries(fresh.map((p) => [p.id, landings[p.id] as Landed]))
 			}));
 		}
 		const last = fresh.at(-1);

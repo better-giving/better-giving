@@ -296,9 +296,14 @@ describe('ending one’s own page', () => {
 
 describe('a supporter’s gifts, a batch at a time', () => {
 	/** `count` settled gifts on `formId`, a minute apart, every third sharing its neighbour's time. */
-	async function giftsOn(formId: string, count: number, from = LIVE_AT) {
+	async function giftsOn(
+		formId: string,
+		count: number,
+		minuteOf = (i: number) => (i % 3 === 2 ? i - 1 : i),
+		from = LIVE_AT
+	) {
 		for (let i = 0; i < count; i += 1) {
-			const minute = i % 3 === 2 ? i - 1 : i;
+			const minute = minuteOf(i);
 			await noteGift(db, formId, {
 				amountMinor: 1_000 + i,
 				receivedAt: new Date(from.getTime() + minute * 60_000)
@@ -339,6 +344,20 @@ describe('a supporter’s gifts, a batch at a time', () => {
 		expect(amounts.at(-1)).toBe(1_000);
 		const times = batches.flatMap((batch) => batch.gifts.map((row) => row.receivedAt.getTime()));
 		expect(times).toEqual([...times].sort((a, b) => b - a));
+	});
+
+	it('keeps both gifts of a time the batch edge falls between', async () => {
+		// the two oldest share a minute, so the first batch ends on one and the second opens on the other.
+		const page = await livePage();
+		await giftsOn(page.formId, OWN_GIFT_LIST_LIMIT + 1, (i) => (i === 1 ? 0 : i));
+
+		const batches = await everyBatch(page);
+		expect(batches.map((batch) => batch.gifts.length)).toEqual([OWN_GIFT_LIST_LIMIT, 1]);
+		expect(batches[0]?.gifts.at(-1)?.receivedAt).toEqual(batches[1]?.gifts[0]?.receivedAt);
+		const amounts = batches.flatMap((batch) => batch.gifts.map((row) => row.amountMinor));
+		expect(amounts.toSorted((a, b) => a - b)).toEqual(
+			Array.from({ length: OWN_GIFT_LIST_LIMIT + 1 }, (_, i) => 1_000 + i)
+		);
 	});
 
 	it('hands out no cursor where the first batch is every gift, a full one included', async () => {

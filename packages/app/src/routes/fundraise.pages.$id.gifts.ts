@@ -13,7 +13,8 @@ import type { Route } from './+types/fundraise.pages.$id.gifts';
 //
 // every refusal answers rather than throws, for ./_app.admin.donations.messages.older.ts's reason:
 // a fetcher's thrown load is drawn by the screen's error boundary in place of the whole screen. a
-// caller with no session is the exception, sent on to sign in as the screen sends one.
+// caller with no session is the exception: the gate's redirect to sign in, which the screen's
+// reader ($lib/next-batch.ts) answers by reloading the screen, whose own loader then redirects.
 
 const NO_STORE = { 'cache-control': 'no-store' };
 

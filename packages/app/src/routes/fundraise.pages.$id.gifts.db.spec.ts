@@ -44,11 +44,11 @@ beforeEach(async () => {
 });
 
 /** `count` gifts on `formId`, a minute apart from the newest down. */
-async function giftsOn(formId: string, count: number) {
+async function giftsOn(formId: string, count: number, minuteOf = (i: number) => i) {
 	for (let i = 0; i < count; i += 1) {
 		await noteGift(db, formId, {
 			amountMinor: 1_000 + i,
-			receivedAt: new Date(Date.UTC(2026, 10, 12) + i * 60_000)
+			receivedAt: new Date(Date.UTC(2026, 10, 12) + minuteOf(i) * 60_000)
 		});
 	}
 }
@@ -100,6 +100,28 @@ describe('GET /fundraise/pages/:id/gifts', () => {
 		});
 	});
 
+	it('answers the second of two gifts sharing the time the first batch ends on', async () => {
+		const { browser, pageId, formId } = await liveFundraiser(db, mailed);
+		await giftsOn(formId, OWN_GIFT_LIST_LIMIT + 1, (i) => (i === 1 ? 0 : i));
+		const cookie = browser.header();
+
+		const first = await call(manage.loader, request(`/fundraise/pages/${pageId}`, { cookie }), {
+			id: pageId
+		});
+		const answer = await call(
+			more.loader,
+			request(morePath(pageId, (first.data as Manage).page.giftNext ?? ''), { cookie }),
+			{ id: pageId }
+		);
+		const batch = answer.data as Batch;
+		expect(batch.gifts).toHaveLength(1);
+		expect(batch.gifts[0]?.receivedAt).toBe('2026-11-12T00:00:00.000Z');
+		const listed = [...(first.data as Manage).page.giftList, ...batch.gifts];
+		expect(listed.map((row) => row.amountMinor).toSorted((a, b) => a - b)).toEqual(
+			Array.from({ length: OWN_GIFT_LIST_LIMIT + 1 }, (_, i) => 1_000 + i)
+		);
+	});
+
 	it('hands the first batch no cursor where it is every gift', async () => {
 		const { browser, pageId, formId } = await liveFundraiser(db, mailed);
 		await giftsOn(formId, 2);
@@ -149,5 +171,26 @@ describe('GET /fundraise/pages/:id/gifts', () => {
 		const answer = await call(more.loader, request(morePath(pageId, after)), { id: pageId });
 		expect(answer.status).toBe(303);
 		expect(answer.location).toBe('/fundraise/sign-in');
+	});
+
+	it('answers a failing read as a 500 refusal, not a thrown load', async () => {
+		const { browser, pageId } = await liveFundraiser(db, mailed);
+		const after = Buffer.from(`${Date.UTC(2027, 0, 1)}.z`).toString('base64url');
+		// the batch orders by received_at, so a column that is not there fails the read in sqlite itself.
+		await client.execute('alter table donation rename column received_at to received_at_x');
+		const quiet = vi.spyOn(console, 'error').mockImplementation(() => {});
+		try {
+			const answer = await call(
+				more.loader,
+				request(morePath(pageId, after), { cookie: browser.header() }),
+				{ id: pageId }
+			);
+			expect(answer.status).toBe(500);
+			expect(answer.data).toEqual({ kind: 'refused' });
+			expect(answer.headers.get('cache-control')).toBe('no-store');
+		} finally {
+			quiet.mockRestore();
+			await client.execute('alter table donation rename column received_at_x to received_at');
+		}
 	});
 });

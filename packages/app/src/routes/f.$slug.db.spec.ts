@@ -56,7 +56,7 @@ beforeEach(async () => {
 let callers = 0;
 
 /** `/f/{slug}` asked for at `origin`, as a browser or a link preview asks for it. */
-async function visit(slug: string, origin = ORIGIN) {
+async function visit(slug: string, origin = ORIGIN, env: Env = supporterEnv()) {
 	callers += 1;
 	const handler = createStaticHandler([
 		{
@@ -71,7 +71,7 @@ async function visit(slug: string, origin = ORIGIN) {
 		new Request(`${origin}/f/${slug}`, {
 			headers: { [CLIENT_IP_HEADER]: `203.0.113.${callers % 250}` }
 		}),
-		requestContext({ env: supporterEnv(), deferred: createDeferredWork(), client })
+		requestContext({ env, deferred: createDeferredWork(), client })
 	);
 	const loaderData = drawn.loaderData.page;
 	return {
@@ -130,6 +130,22 @@ describe('the share tags of /f/{slug}', () => {
 		const { slug } = await liveFundraiser(db, mailed);
 		expect((await visit(slug)).meta).toEqual([
 			...TEXT_TAGS,
+			{ name: 'twitter:card', content: 'summary' }
+		]);
+	});
+
+	it('names no address and no image where no origin is pinned, and asks for the small card', async () => {
+		const { pageId, slug } = await liveFundraiser(db, mailed);
+		await withPhoto(pageId);
+		await putLogo(db, { contentType: 'image/png', width: 400, height: 400 });
+
+		const { BETTER_AUTH_URL: _pinned, ...unpinned } = supporterEnv();
+		const drawn = await visit(slug, ORIGIN, unpinned);
+		expect(drawn.status).toBe(200);
+		expect(drawn.meta).toEqual([
+			{ title: 'Run for the shelter' },
+			{ property: 'og:title', content: 'Run for the shelter' },
+			{ property: 'og:description', content: 'I am running 10k for the shelter.' },
 			{ name: 'twitter:card', content: 'summary' }
 		]);
 	});

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { SHARE_DESCRIPTION_MAX, shareDescription } from './share';
+import { fundraiserShare, SHARE_DESCRIPTION_MAX, shareDescription } from './share';
 
-// the description a supporter's page is shared with: its story, cut on a word to fit.
+// what a supporter's page is shared with: its story cut on a word to fit, and the addresses on the pinned origin.
 
 describe('a fundraiser’s share description', () => {
 	it('is the story as written where it fits, with no mark added', () => {
@@ -26,5 +26,27 @@ describe('a fundraiser’s share description', () => {
 	it('cuts a single word longer than the limit where it must, keeping whole characters', () => {
 		const cut = shareDescription('🏃'.repeat(SHARE_DESCRIPTION_MAX + 5));
 		expect(cut).toBe(`${'🏃'.repeat(SHARE_DESCRIPTION_MAX - 1)}…`);
+	});
+});
+
+describe('a fundraiser’s share addresses', () => {
+	const PAGE = { slug: 'run-for-the-shelter', title: 'Run', story: 'A story.', photoId: 'photo1' };
+	const LOGO = { imageId: 'logo1', width: 400, height: 400 };
+
+	it('names its own address and its photo on the pinned origin', () => {
+		const env = { BETTER_AUTH_URL: 'https://give.example.org' } as Env;
+		expect(fundraiserShare(env, PAGE, LOGO)).toMatchObject({
+			url: 'https://give.example.org/f/run-for-the-shelter',
+			image: 'https://give.example.org/image/photo1'
+		});
+	});
+
+	it('names neither an address nor an image where no origin is pinned, a photo and a logo held', () => {
+		expect(fundraiserShare({} as Env, PAGE, LOGO)).toEqual({
+			title: 'Run',
+			description: 'A story.',
+			url: null,
+			image: null
+		});
 	});
 });

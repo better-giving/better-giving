@@ -1,4 +1,4 @@
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDb, type Db } from '$lib/server/db/client';
 import { client } from '$lib/server/db/database.testing';
 import { SUPPORTER_PAGE_LIST_LIMIT } from '$lib/server/supporters/admin';
@@ -101,5 +101,20 @@ describe('GET /admin/supporter-pages/more', () => {
 		const answer = await moreAt.get(morePath(after), '');
 		expect(answer.status).toBeGreaterThanOrEqual(300);
 		expect(answer.status).toBeLessThan(400);
+	});
+
+	it('answers a failing read as a 500 refusal, not a thrown load', async () => {
+		const after = Buffer.from(`${Date.UTC(2027, 0, 1)}.z`).toString('base64url');
+		// the read selects hidden_note, so a column that is not there fails it in sqlite itself.
+		await client.execute('alter table supporter_page rename column hidden_note to hidden_note_x');
+		const quiet = vi.spyOn(console, 'error').mockImplementation(() => {});
+		try {
+			const answer = await moreAt.get(morePath(after), staff);
+			expect(answer.status).toBe(500);
+			expect(await answer.json()).toEqual({ kind: 'refused' });
+		} finally {
+			quiet.mockRestore();
+			await client.execute('alter table supporter_page rename column hidden_note_x to hidden_note');
+		}
 	});
 });

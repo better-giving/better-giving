@@ -621,9 +621,56 @@ describe('show more pages', () => {
 			'Sam Lee'
 		]);
 		expect(press(host, 'Maya Reyes')?.textContent).toBe('Show again');
-		expect(count(host)).toBe('Showing 5 of 5 pages');
+		expect(count(host)).toBe('Showing 5 of 6 pages');
 		await showMore(host);
 		expect(onShowMore).toHaveBeenLastCalledWith('after-sam');
+	});
+
+	it('keeps a first-batch row hidden once a later re-read pushes it past the first batch', async () => {
+		const shownJo = { ...JO, hidden: false, openHref: JO.address };
+		const { host, rerender } = paged({
+			pages: [MAYA, shownJo],
+			onShowMore: async () => ({ pages: [DANA, SAM], total: 5, next: 'after-sam' })
+		});
+		await showMore(host);
+		act(() => press(host, 'Jo Okafor')?.click());
+		act(() => dialogButton('Hide page')?.click());
+		rerender({ presses: { 'page-jo': { pending: true, outcome: null } } });
+		vi.useFakeTimers();
+		rerender({
+			pages: [MAYA, JO],
+			presses: { 'page-jo': { pending: false, outcome: { landed: 'hidden' } } }
+		});
+		act(() => vi.advanceTimersByTime(CONFIRMATION_MS));
+		// saving the setting re-reads the list, and a page started since pushes Jo out.
+		rerender({ pages: [NEW, MAYA], total: 6, next: 'after-maya', presses: {} });
+		expect(names(host)).toEqual([
+			'Lee Park',
+			'Maya Reyes',
+			'Jo Okafor',
+			'Dana Whitfield',
+			'Sam Lee'
+		]);
+		expect(row(host, 'Jo Okafor')?.textContent).toContain('Hidden');
+		expect(press(host, 'Jo Okafor')?.textContent).toBe('Show again');
+		expect(row(host, 'Jo Okafor')?.querySelector('a')?.getAttribute('href')).toBe(
+			'/admin/supporter-pages/page-jo/preview'
+		);
+	});
+
+	it('never counts fewer pages than it shows once a re-read answers a higher total', async () => {
+		const { host, rerender } = paged({
+			total: 4,
+			onShowMore: async () => ({ pages: [DANA, SAM], total: 4, next: null })
+		});
+		await showMore(host);
+		expect(count(host)).toBe('Showing 4 of 4 pages');
+		rerender({ pages: [NEW, MAYA], total: 5, next: 'after-maya' });
+		expect(names(host)).toHaveLength(5);
+		expect(count(host)).toBe('Showing 5 of 5 pages');
+		expect(host.querySelector('.adm-tablecaption')?.textContent).toBe(
+			'5 supporter pages, newest first.'
+		);
 	});
 
 	it('takes Show again on a row it brought, and draws the row shown once that lands', async () => {
