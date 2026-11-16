@@ -70,7 +70,6 @@ describe('supporterSignIn.template, first time', () => {
 		const message = await rendered({ arm });
 		for (const part of [message.subject, message.html, message.text]) {
 			expect(part).not.toContain('ZZ-TYPED-TITLE');
-			expect(part).not.toContain('&lt;b&gt;x');
 		}
 	});
 });

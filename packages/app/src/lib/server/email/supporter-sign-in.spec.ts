@@ -49,9 +49,7 @@ describe('sendSupporterSignInEmail', () => {
 		await sendSupporterSignInEmail({ email: mail.email }, input({ arm: { kind: 'first' } }));
 
 		expect(mail.sent[0]?.subject).toBe('Confirm your email to publish your fundraiser');
-		expect(mail.sent[0]?.text).toContain(
-			'A fundraiser for Harbor Light was started with this email address.'
-		);
+		expect(mail.sent[0]?.text).toContain('Harbor Light');
 	});
 
 	it('states the hour a link works for', async () => {

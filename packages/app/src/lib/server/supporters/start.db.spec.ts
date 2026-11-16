@@ -8,6 +8,7 @@ import { readForms } from '$lib/server/forms/queries';
 import { writeOrgRow } from '$lib/server/org/org-row.testing';
 import { setSupporterFundraisersEnabled } from '$lib/server/org/queries';
 import { insertPage } from '$lib/server/pages/page-row.testing';
+import type { EmailMessage } from '$lib/server/email/provider';
 import { createRateLimiter } from '$lib/server/runtime/rate-limiter';
 import {
 	emptySupporterTables,
@@ -17,11 +18,24 @@ import {
 	startDeps,
 	startInput
 } from './fundraiser.testing';
+import { linkMailer } from './area';
 import { resendConfirmLink, signInWithLink } from './links';
 import { startFundraiser } from './start';
 
 // Start a fundraiser, against the real tables: the supporter, the pending page and the settings row
 // it owns, the confirm link, and every refusal ahead of them.
+
+// the mail port's boundary: `linkMailer` builds its provider from the deployment's env, so the one
+// test that mails through it takes the messages here instead of a socket.
+const delivered: EmailMessage[] = [];
+vi.mock('$lib/server/email/factory', () => ({
+	createEmailProvider: () => ({
+		async send(message: EmailMessage) {
+			delivered.push(message);
+			return { ok: true };
+		}
+	})
+}));
 
 let db: Db;
 beforeAll(() => {
@@ -226,6 +240,27 @@ describe('the setting', () => {
 	});
 });
 
+describe('the mail a start sends through the real mailer', () => {
+	// the title is the supporter's own typing, and anyone can start a fundraiser at any address.
+	it('carries no part of the title in the subject, the HTML or the text', async () => {
+		delivered.length = 0;
+		const { deps, settled } = startDeps(db, {
+			sendLink: linkMailer(db, { BETTER_AUTH_URL: 'https://give.example' } as Env)
+		});
+		const started = await startFundraiser(deps, startInput({ title: 'ZZ-TYPED-TITLE run' }));
+		expect(started.ok).toBe(true);
+		await settled();
+
+		expect(delivered).toHaveLength(1);
+		const [message] = delivered;
+		expect(message?.to).toBe('maya@example.org');
+		expect(message?.text).toContain('https://give.example/fundraise/open?token=');
+		for (const part of [message?.subject, message?.html, message?.text]) {
+			expect(part).not.toContain('ZZ-TYPED-TITLE');
+		}
+	});
+});
+
 describe('Send it again after a start', () => {
 	const LATER = new Date(STARTED_AT.getTime() + 5 * 60_000);
 
@@ -343,9 +378,10 @@ describe('Send it again after a start', () => {
 		expect((await resend(first, 'maya@example.org', { byPage })).answer).toEqual({
 			retryAfterSeconds: 3600
 		});
-		expect(await resend(other, 'maya@example.org', { byPage })).toMatchObject({
-			answer: 'sent',
-			mailed: [{ arm: { kind: 'first' } }]
-		});
+		const { answer, mailed } = await resend(other, 'maya@example.org', { byPage });
+		expect(answer).toBe('sent');
+		expect(mailed).toEqual([
+			{ to: 'maya@example.org', token: expect.any(String), arm: { kind: 'first' } }
+		]);
 	});
 });
