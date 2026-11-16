@@ -1,5 +1,7 @@
-import { desc, eq, sql } from 'drizzle-orm';
+import { desc, eq, inArray, sql } from 'drizzle-orm';
+import { href } from 'react-router';
 import type { Db } from '../db/client';
+import { type KeysetCursor, keysetCursorText } from '../db/keyset-cursor';
 import { supporter, supporterPage, type SupporterPageStatus } from '../db/schema';
 import { type Raised, raisedByPage } from './pages';
 
@@ -25,9 +27,29 @@ export type FundraiserListing = Raised & {
 	readonly createdAt: Date;
 };
 
-/** every fundraiser, newest first. */
-export async function listAllFundraisers(db: Db): Promise<FundraiserListing[]> {
-	const [rows, raised] = await Promise.all([
+/**
+ * how many fundraisers staff's list holds at a time. the batch's ids are bound into the read of what
+ * each has raised, one parameter per id, which keeps that read far under SQLite's
+ * `SQLITE_MAX_VARIABLE_NUMBER` (https://www.sqlite.org/limits.html).
+ */
+export const SUPPORTER_PAGE_LIST_LIMIT = 50;
+
+/** one batch of staff's list, how many fundraisers there are in all, and the cursor past it. */
+export type FundraiserBatch = {
+	readonly pages: readonly FundraiserListing[];
+	readonly total: number;
+	readonly next: string | null;
+};
+
+/**
+ * the batch of fundraisers after `after`, or from the newest, newest first by when each was started
+ * and then by id; `supporter_page_created_idx` is the order.
+ */
+export async function listAllFundraisers(
+	db: Db,
+	after: KeysetCursor | null
+): Promise<FundraiserBatch> {
+	const [rows, [counted]] = await Promise.all([
 		db
 			.select({
 				id: supporterPage.id,
@@ -45,15 +67,60 @@ export async function listAllFundraisers(db: Db): Promise<FundraiserListing[]> {
 			})
 			.from(supporterPage)
 			.innerJoin(supporter, eq(supporter.id, supporterPage.supporterId))
-			.orderBy(desc(supporterPage.createdAt), desc(supporterPage.id)),
-		raisedByPage(db, sql`1`)
+			.where(
+				after === null
+					? undefined
+					: sql`(${supporterPage.createdAt}, ${supporterPage.id}) < (${after.at}, ${after.id})`
+			)
+			.orderBy(desc(supporterPage.createdAt), desc(supporterPage.id))
+			.limit(SUPPORTER_PAGE_LIST_LIMIT + 1),
+		db.select({ total: sql<number>`count(*)` }).from(supporterPage)
 	]);
-	return rows.map(({ hiddenAt, publishedAt, ...row }) => ({
-		...row,
-		...raised(row.id),
-		hidden: hiddenAt !== null,
-		published: publishedAt !== null
-	}));
+	const batch = rows.slice(0, SUPPORTER_PAGE_LIST_LIMIT);
+	const raised = await raisedByPage(
+		db,
+		inArray(
+			supporterPage.id,
+			batch.map((row) => row.id)
+		)
+	);
+	const last = batch.at(-1);
+	return {
+		pages: batch.map(({ hiddenAt, publishedAt, ...row }) => ({
+			...row,
+			...raised(row.id),
+			hidden: hiddenAt !== null,
+			published: publishedAt !== null
+		})),
+		total: counted?.total ?? 0,
+		next:
+			rows.length > SUPPORTER_PAGE_LIST_LIMIT && last !== undefined
+				? keysetCursorText({ at: last.createdAt.getTime(), id: last.id })
+				: null
+	};
+}
+
+/**
+ * a fundraiser as staff's list is handed it, by the screen's loader and by Show more alike. Open goes
+ * to the public address, or to the staff preview for a page the public cannot see: hidden, or never
+ * published by its confirm link.
+ */
+export function listedRow(page: FundraiserListing) {
+	const address = href('/f/:slug', { slug: page.slug });
+	const unseen = page.hidden || !page.published;
+	return {
+		id: page.id,
+		supporterName: page.supporterName,
+		supporterEmail: page.supporterEmail,
+		title: page.title,
+		address,
+		openHref: unseen ? href('/admin/supporter-pages/:id/preview', { id: page.id }) : address,
+		goalMinor: page.goalMinor,
+		raisedMinor: page.raisedMinor,
+		currency: page.currency,
+		status: page.status,
+		hidden: page.hidden
+	};
 }
 
 /**

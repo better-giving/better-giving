@@ -1,6 +1,7 @@
 import { and, desc, eq, exists, inArray, isNull, ne, type SQL, sql } from 'drizzle-orm';
 import type { SupporterEdit } from '../../supporters/input';
 import type { Db } from '../db/client';
+import { type KeysetCursor, keysetCursorText } from '../db/keyset-cursor';
 import { sqliteResultCode } from '../db/rejection';
 import { donation, supporter, supporterPage, type SupporterPageStatus } from '../db/schema';
 import { freeLetGoStatements, unheldBeyond } from '../images/free';
@@ -81,7 +82,7 @@ export async function listOwnFundraisers(
 	}));
 }
 
-/** how many gifts the manage view lists, newest first; `gifts` counts every one. */
+/** how many gifts the manage view lists at a time, newest first. */
 export const OWN_GIFT_LIST_LIMIT = 50;
 
 /** one gift on a supporter's page, as its supporter sees it. */
@@ -93,6 +94,15 @@ export type OwnFundraiserGift = {
 	readonly shown: { readonly name: string; readonly note: string } | null;
 };
 
+/** a gift as the manage screen is handed it, by its first batch and by every one after. */
+export function servedGift(gift: OwnFundraiserGift) {
+	return {
+		amountMinor: gift.amountMinor,
+		receivedAt: gift.receivedAt.toISOString(),
+		shown: gift.shown
+	};
+}
+
 /** one of a supporter's pages, whole, as its manage view and edit form read it. */
 export type OwnFundraiser = OwnFundraiserListing & {
 	readonly story: string;
@@ -102,7 +112,19 @@ export type OwnFundraiser = OwnFundraiserListing & {
 	readonly publishedAt: Date | null;
 	/** the note staff left when they hid it, passed on as written; null with none or while shown. */
 	readonly hiddenNote: string | null;
+	/** the newest `OWN_GIFT_LIST_LIMIT` gifts. */
 	readonly giftList: readonly OwnFundraiserGift[];
+	/** every gift the list lists, across all its batches. */
+	readonly giftTotal: number;
+	/** the cursor to the batch after `giftList`, null where it is every gift. */
+	readonly giftNext: string | null;
+};
+
+/** one batch of a supporter's gifts, how many the list holds in all, and the cursor past it. */
+export type OwnGiftBatch = {
+	readonly gifts: readonly OwnFundraiserGift[];
+	readonly total: number;
+	readonly next: string | null;
 };
 
 /** `pageId` where `supporterId` owns it, and never otherwise. */
@@ -135,39 +157,94 @@ export async function readOwnFundraiser(
 		.innerJoin(supporter, eq(supporter.id, supporterPage.supporterId))
 		.where(owned(supporterId, pageId));
 	if (!row) return null;
-	const [raised, giftList] = await Promise.all([
+	const [raised, gifts] = await Promise.all([
 		fundraiserRaised(db, pageId),
-		readOwnGifts(db, pageId)
+		readOwnGifts(db, pageId, null)
 	]);
 	const { hiddenAt, ...page } = row;
-	return { ...page, hidden: hiddenAt !== null, ...raised, giftList };
+	return {
+		...page,
+		hidden: hiddenAt !== null,
+		...raised,
+		giftList: gifts.gifts,
+		giftTotal: gifts.total,
+		giftNext: gifts.next
+	};
+}
+
+/** the batch of gifts after `after` on the supporter's page `pageId`; null where it is not theirs. */
+export async function readMoreOwnGifts(
+	db: Db,
+	supporterId: string,
+	pageId: string,
+	after: KeysetCursor
+): Promise<OwnGiftBatch | null> {
+	const [[owner], batch] = await Promise.all([
+		db.select({ id: supporterPage.id }).from(supporterPage).where(owned(supporterId, pageId)),
+		readOwnGifts(db, pageId, after)
+	]);
+	return owner === undefined ? null : batch;
 }
 
 /**
- * the join to the page is what makes drizzle name every column with its table in the select list,
- * which the subqueries in `giftNetRaised` and `noteShown` need: unqualified, `amount_minor` is
- * ambiguous between `donation` and the `ledger_entry` they read.
+ * the gifts the manage view lists: those still standing above nothing in the books. the join to the
+ * page is what makes drizzle name every column with its table in the select list, which the
+ * subqueries in `giftNetRaised` and `noteShown` need: unqualified, `amount_minor` is ambiguous
+ * between `donation` and the `ledger_entry` they read.
  */
-async function readOwnGifts(db: Db, pageId: string): Promise<OwnFundraiserGift[]> {
-	const net = giftNetRaised();
-	const rows = await db
-		.select({
-			amountMinor: net,
-			receivedAt: donation.receivedAt,
-			shown: sql<number>`${noteShown(db)}`,
-			name: donation.noteShownName,
-			note: donation.note
-		})
-		.from(donation)
-		.innerJoin(supporterPage, eq(supporterPage.id, donation.supporterPageId))
-		.where(and(eq(supporterPage.id, pageId), sql`${net} > 0`))
-		.orderBy(desc(donation.receivedAt), desc(donation.id))
-		.limit(OWN_GIFT_LIST_LIMIT);
-	return rows.map((row) => ({
-		amountMinor: row.amountMinor,
-		receivedAt: row.receivedAt,
-		shown: row.shown ? { name: row.name ?? 'Anonymous', note: row.note ?? '' } : null
-	}));
+function listedGifts(pageId: string): SQL | undefined {
+	return and(eq(supporterPage.id, pageId), sql`${giftNetRaised()} > 0`);
+}
+
+/**
+ * one batch of the gifts on `pageId`, newest first, after `after` or from the newest. the total is
+ * a count over the same rows rather than `fundraiserRaised`'s `gifts`, which matches a gift's
+ * entries on the page's currency where `giftNetRaised` matches them on the gift's own.
+ */
+async function readOwnGifts(
+	db: Db,
+	pageId: string,
+	after: KeysetCursor | null
+): Promise<OwnGiftBatch> {
+	const resume =
+		after === null
+			? undefined
+			: sql`(${donation.receivedAt}, ${donation.id}) < (${after.at}, ${after.id})`;
+	const [rows, [counted]] = await Promise.all([
+		db
+			.select({
+				id: donation.id,
+				amountMinor: giftNetRaised(),
+				receivedAt: donation.receivedAt,
+				shown: sql<number>`${noteShown(db)}`,
+				name: donation.noteShownName,
+				note: donation.note
+			})
+			.from(donation)
+			.innerJoin(supporterPage, eq(supporterPage.id, donation.supporterPageId))
+			.where(and(listedGifts(pageId), resume))
+			.orderBy(desc(donation.receivedAt), desc(donation.id))
+			.limit(OWN_GIFT_LIST_LIMIT + 1),
+		db
+			.select({ total: sql<number>`count(*)` })
+			.from(donation)
+			.innerJoin(supporterPage, eq(supporterPage.id, donation.supporterPageId))
+			.where(listedGifts(pageId))
+	]);
+	const batch = rows.slice(0, OWN_GIFT_LIST_LIMIT);
+	const last = batch.at(-1);
+	return {
+		gifts: batch.map((row) => ({
+			amountMinor: row.amountMinor,
+			receivedAt: row.receivedAt,
+			shown: row.shown ? { name: row.name ?? 'Anonymous', note: row.note ?? '' } : null
+		})),
+		total: counted?.total ?? 0,
+		next:
+			rows.length > OWN_GIFT_LIST_LIMIT && last !== undefined
+				? keysetCursorText({ at: last.receivedAt.getTime(), id: last.id })
+				: null
+	};
 }
 
 /**

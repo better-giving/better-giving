@@ -20,6 +20,7 @@ import {
 } from '$lib/server/org/queries';
 import { loadFundraiserFrame, refusedPage } from '$lib/server/pages/view';
 import { supporterShareUrl } from '$lib/server/supporters/area';
+import { type FundraiserShare, fundraiserShare } from '$lib/server/supporters/share';
 import { readPublicFundraiser } from '$lib/server/supporters/view';
 import { database, overDonorPageLimit, platform } from '../context';
 import type { DonorPolicyHandle } from '../document-policy';
@@ -35,7 +36,8 @@ import type { Route } from './+types/f.$slug';
 // its card; ended answers 200 with the ended screen and its final total, since the address still
 // holds; hidden, pending and an address nobody holds are the same 404 an unknown campaign address
 // gets, with the same body. a live page whose served config refuses is that 404 too, as a refused
-// campaign is. every answer is `no-store`, for ./donate.tsx's reason.
+// campaign is. every answer is `no-store`, for ./donate.tsx's reason. live alone carries share tags
+// in its head ($lib/server/supporters/share.ts); ended keeps its title and nothing more.
 
 export const middleware: Route.MiddlewareFunction[] = [meterDonorPage];
 
@@ -79,6 +81,17 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 						message: fundraiser.title,
 						url: supporterShareUrl(env, request, href('/f/:slug', { slug: params.slug }))
 					},
+					// the head's share tags, on the live answer alone, so no other answer carries a photo.
+					share: fundraiserShare(
+						env,
+						{
+							slug: params.slug,
+							title: fundraiser.title,
+							story: fundraiser.story,
+							photoId: fundraiser.photoId
+						},
+						frame.org.logo ?? null
+					),
 					fundraiserEntry,
 					// a donor's return from authorizing their gift, read as ./donate.tsx reads it.
 					resuming: url.searchParams.get(RESUME_FORM_PARAM) === formId,
@@ -108,12 +121,23 @@ export const handle: DonorPolicyHandle = { documentPolicy: 'donor' };
 export function meta({ loaderData }: Route.MetaArgs): Route.MetaDescriptors {
 	switch (loaderData.kind) {
 		case 'live':
-			return [{ title: loaderData.fundraiser.title }];
+			return [{ title: loaderData.fundraiser.title }, ...shareTags(loaderData.share)];
 		case 'ended':
 			return [{ title: copy.campaignEnded(loaderData.fundraiser.title) }];
 		case 'refused':
 			return [{ title: 'Donate' }];
 	}
+}
+
+/** a live page's share tags: the large card only where there is an image to fill it. */
+function shareTags(share: FundraiserShare): Route.MetaDescriptors {
+	return [
+		{ property: 'og:title', content: share.title },
+		{ property: 'og:description', content: share.description },
+		...(share.url === null ? [] : [{ property: 'og:url', content: share.url }]),
+		...(share.image === null ? [] : [{ property: 'og:image', content: share.image }]),
+		{ name: 'twitter:card', content: share.image === null ? 'summary' : 'summary_large_image' }
+	];
 }
 
 export function links(): Route.LinkDescriptors {

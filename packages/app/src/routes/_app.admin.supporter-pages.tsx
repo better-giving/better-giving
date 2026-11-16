@@ -1,5 +1,5 @@
 import { useCallback, useLayoutEffect, useMemo, useState } from 'react';
-import { href, useFetcher, useSubmit } from 'react-router';
+import { useFetcher, useSubmit } from 'react-router';
 import { z } from 'zod';
 import type { CrumbHandle } from '$lib/admin/crumbs';
 import { APP_NAME, screenTitle } from '$lib/admin/screen-title';
@@ -21,7 +21,12 @@ import {
 	setSupporterFundraisersEnabled,
 	supporterFundraisersEnabled
 } from '$lib/server/org/queries';
-import { hideFundraiser, listAllFundraisers, showFundraiser } from '$lib/server/supporters/admin';
+import {
+	hideFundraiser,
+	listAllFundraisers,
+	listedRow,
+	showFundraiser
+} from '$lib/server/supporters/admin';
 import { database, staff } from '../context';
 import type { Route } from './+types/_app.admin.supporter-pages';
 
@@ -54,28 +59,15 @@ export async function loader({ context }: Route.LoaderArgs) {
 		const [profile, enabled, pages] = await Promise.all([
 			readOrgProfile(db),
 			supporterFundraisersEnabled(db),
-			listAllFundraisers(db)
+			listAllFundraisers(db, null)
 		]);
 		return {
 			orgName: profile?.legalName ?? APP_NAME,
 			setting: { enabled, mayChange },
-			pages: pages.map((page) => {
-				const address = href('/f/:slug', { slug: page.slug });
-				const unseen = page.hidden || !page.published;
-				return {
-					id: page.id,
-					supporterName: page.supporterName,
-					supporterEmail: page.supporterEmail,
-					title: page.title,
-					address,
-					openHref: unseen ? href('/admin/supporter-pages/:id/preview', { id: page.id }) : address,
-					goalMinor: page.goalMinor,
-					raisedMinor: page.raisedMinor,
-					currency: page.currency,
-					status: page.status,
-					hidden: page.hidden
-				};
-			})
+			pages: pages.pages.map(listedRow),
+			total: pages.total,
+			// Show more asks ./_app.admin.supporter-pages.more.ts for the batch after this.
+			next: pages.next
 		};
 	} catch (e) {
 		console.error('listing supporter pages failed:', e);
