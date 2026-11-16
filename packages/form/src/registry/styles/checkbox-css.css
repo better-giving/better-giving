@@ -6,12 +6,13 @@
    `check-field` beside these and asserts the same computed look in light and
    dark, for the default and example themes.
 
-   the spacing step and the type ladder live only in tailwind's theme; they are
-   declared here under ds- names with the same values, and the test holds each
-   equal to tailwind's. */
+   the spacing step, the type ladder and the easing live only in tailwind's
+   theme; they are declared here under ds- names with the same values, and the
+   test holds each equal to tailwind's. */
 .ds-checkbox,
 .ds-check-field > input {
   --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
+  --ds-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   appearance: none;
   box-sizing: border-box;
   position: relative;
@@ -24,7 +25,7 @@
   background-color: var(--surface);
   outline-color: var(--ring);
 }
-@media (hover: hover) {
+@media (hover: hover) and (pointer: fine) {
   .ds-checkbox:not(:disabled):hover,
   .ds-check-field > input:not(:disabled):hover {
     border-color: var(--input-hover);
@@ -42,9 +43,9 @@
   position: absolute;
   top: 50%;
   left: 50%;
-  margin-top: calc(var(--ds-spacing) * -0.5);
-  width: calc(var(--ds-spacing) * 1.5);
-  height: calc(var(--ds-spacing) * 2.5);
+  margin-block-start: calc(var(--ds-spacing) * -0.5);
+  inline-size: calc(var(--ds-spacing) * 1.5);
+  block-size: calc(var(--ds-spacing) * 2.5);
   translate: -50% -50%;
   rotate: 45deg;
   border: 0 solid var(--border);
@@ -66,9 +67,9 @@
 .ds-checkbox:indeterminate::before,
 .ds-check-field > input:indeterminate::before {
   display: block;
-  margin-top: 0;
-  width: calc(var(--ds-spacing) * 2);
-  height: 0;
+  margin-block-start: 0;
+  inline-size: calc(var(--ds-spacing) * 2);
+  block-size: 0;
   border-right-width: 0;
   rotate: 0deg;
 }
@@ -94,7 +95,7 @@
   outline-width: 2px;
   outline-color: var(--ring);
 }
-@media (hover: hover) {
+@media (hover: hover) and (pointer: fine) {
   .ds-checkbox:checked:not(:disabled):hover,
   .ds-check-field > input:checked:not(:disabled):hover,
   .ds-checkbox:indeterminate:not(:disabled):hover,
@@ -113,7 +114,7 @@
   grid-template-columns: auto 1fr;
   justify-items: start;
   column-gap: calc(var(--ds-spacing) * 3);
-  align-items: center;
+  align-items: safe center;
 }
 .ds-check-field > label[data-required="true"]::after {
   margin-inline-start: calc(var(--ds-spacing) * 1);
@@ -130,4 +131,16 @@
   font-size: var(--ds-text-xs);
   line-height: var(--ds-text-xs-lh);
   color: var(--destructive-subtle-fg);
+}
+
+/* pressed: a small control gives under the finger, where motion is wanted */
+@media (prefers-reduced-motion: no-preference) {
+  .ds-checkbox:active:not(:disabled),
+  .ds-check-field > input:active:not(:disabled) {
+    scale: 0.95;
+  }
+  .ds-checkbox,
+  .ds-check-field > input {
+    transition: scale var(--duration-fast) var(--ds-ease-out);
+  }
 }

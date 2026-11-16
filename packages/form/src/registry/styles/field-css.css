@@ -13,7 +13,7 @@
 .ds-field {
   --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
   box-sizing: border-box;
-  min-width: 0;
+  min-inline-size: 0;
 }
 
 /* the label sits 4px above the control, or flush when a hint follows */
@@ -27,10 +27,10 @@
   font-weight: var(--ds-font-weight-medium);
 }
 .ds-field > .ds-label {
-  margin-bottom: calc(var(--ds-spacing) * 1);
+  margin-block-end: calc(var(--ds-spacing) * 1);
 }
 .ds-field > .ds-label:has(+ .ds-field-hint) {
-  margin-bottom: 0;
+  margin-block-end: 0;
 }
 /* data-required="true" draws a star, "false" draws (optional). the empty
    alt text after the slash keeps both out of the label's accessible name. */
@@ -64,7 +64,7 @@
      to it stay level with the input at any --ds-rem */
   --ds-field-size: calc(var(--ds-spacing) * 12 + 2px);
   box-sizing: border-box;
-  width: 100%;
+  inline-size: 100%;
   margin: 0;
   border-radius: var(--radius);
   font-family: inherit;
@@ -89,13 +89,15 @@
 /* :user-invalid stays out of this :not(), which is not forgiving: an engine
    without it would drop the hover. the :user-invalid rule below has the same
    specificity and comes later, so it still keeps its edge under the pointer */
-.ds-field-input:hover:not(
-  :disabled,
-  [readonly],
-  [aria-disabled="true"],
-  [aria-invalid="true"]
-) {
-  border-color: var(--input-hover);
+@media (hover: hover) and (pointer: fine) {
+  .ds-field-input:hover:not(
+    :disabled,
+    [readonly],
+    [aria-disabled="true"],
+    [aria-invalid="true"]
+  ) {
+    border-color: var(--input-hover);
+  }
 }
 .ds-field-input::placeholder {
   color: var(--gray-11);
@@ -148,7 +150,7 @@
   --ds-text-sm: calc(0.875 * var(--ds-rem, 1rem));
   --ds-text-sm-lh: calc(1.25 / 0.875);
   box-sizing: border-box;
-  width: 100%;
+  inline-size: 100%;
   border-radius: var(--radius);
   font-size: var(--ds-text-sm);
   line-height: var(--ds-text-sm-lh);
@@ -162,7 +164,7 @@
   --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
   box-sizing: border-box;
   display: block;
-  width: 100%;
+  inline-size: 100%;
   margin: 0;
   border: 0;
   background-color: transparent;
@@ -178,15 +180,17 @@
 }
 /* as on the input: :user-invalid is left to the later rule of equal
    specificity, not listed in the unforgiving :has() */
-.ds-field-input-container:hover:not(
-  :has(
-    input:disabled,
-    input[readonly],
-    input[aria-disabled="true"],
-    input[aria-invalid="true"]
-  )
-) {
-  border-color: var(--input-hover);
+@media (hover: hover) and (pointer: fine) {
+  .ds-field-input-container:hover:not(
+    :has(
+      input:disabled,
+      input[readonly],
+      input[aria-disabled="true"],
+      input[aria-invalid="true"]
+    )
+  ) {
+    border-color: var(--input-hover);
+  }
 }
 /* the input's ring, drawn on the container that holds its edge */
 .ds-field-input-container:has(input:focus-visible) {
@@ -218,7 +222,7 @@
   --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
   --ds-field-size: calc(var(--ds-spacing) * 12 + 2px);
   display: flex;
-  align-items: center;
+  align-items: safe center;
   min-block-size: var(--ds-field-size);
 }
 .ds-field-input-container:has(> .ds-field-affix) > input {
@@ -337,8 +341,8 @@
    the status a button in ds-field-action reports */
 .ds-sr-only {
   position: absolute;
-  width: 1px;
-  height: 1px;
+  inline-size: 1px;
+  block-size: 1px;
   padding: 0;
   margin: -1px;
   overflow: hidden;
@@ -401,10 +405,21 @@
   --ds-text-xs-lh: calc(1 / 0.75);
   position: absolute;
   margin: 0;
-  bottom: calc(var(--ds-spacing) * -5);
+  inset-block-end: calc(var(--ds-spacing) * -5);
   inset-inline-start: 0;
   font-size: var(--ds-text-xs);
   line-height: var(--ds-text-xs-lh);
   text-align: start;
   color: var(--destructive-subtle-fg);
+}
+
+/* a text field under 16px makes iOS zoom the page on focus: on a touch pointer
+   the field is 16px, its line held at 1.25rem so its height stays
+   --ds-field-size */
+@media (pointer: coarse) {
+  .ds-field-input,
+  .ds-field-input-container {
+    font-size: max(16px, var(--ds-rem, 1rem));
+    line-height: calc(1.25 * var(--ds-rem, 1rem));
+  }
 }

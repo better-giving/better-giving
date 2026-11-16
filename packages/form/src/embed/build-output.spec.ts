@@ -65,9 +65,11 @@ describe('the shipped bytes', () => {
 describe('the shipped bytes carry no face', () => {
 	/**
 	 * the gzip size the runtime stays under, in bytes: its own code, with room to grow. the runtime
-	 * measured about 118 KB gzipped when the card took the registry's sheets (BG-2101, PR #31).
+	 * measured about 118 KB gzipped when the card took the registry's sheets (BG-2101, PR #31), and
+	 * about 125 KB once it took the registry's 2.5.0 sheets, which state their press, touch and
+	 * pointer cases.
 	 */
-	const RUNTIME_GZIP_CEILING = 125_000;
+	const RUNTIME_GZIP_CEILING = 130_000;
 
 	for (const mode of ['runtime', 'loader'] as const) {
 		it(`carries no face and emits no file beside the ${mode}`, async () => {

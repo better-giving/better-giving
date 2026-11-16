@@ -14,8 +14,9 @@ import { ruleOf, rulesIn, sheet } from './sheet-rule.testing';
 // the `::backdrop`, and the answer the reader gave is lost.
 //
 // the box is the registry's `ds-dialog` (../registry/styles/dialog-css.css), which places it fixed
-// against all four insets and centres it by its margins on the class itself rather than on
-// `:modal`, so the open element and the shown modal are one box. what is held here is that the
+// against the top and both sides and a bottom inset that lifts its middle to 40% of the visible
+// area, and centres it by its margins on the class itself rather than on `:modal`, so the open
+// element and the shown modal are one box. what is held here is that the
 // registry still places it that way, and that the in-page presentation in ./adm.css restates
 // nothing the box is placed or sized by.
 
@@ -45,12 +46,11 @@ const BOX = [
 ];
 
 describe('the question the server drew stands where the lifted one will', () => {
-	it('is fixed against all four insets and centred by its margins, open or shown modally', () => {
-		expect([box.get('position'), box.get('inset'), box.get('margin')]).toEqual([
-			'fixed',
-			'0',
-			'auto'
-		]);
+	it('is fixed against its insets and centred by its margins, open or shown modally', () => {
+		// the bottom inset is the registry's `--ds-view-lift` share of the height, which is what
+		// lifts the middle from 50% to 40%.
+		expect([box.get('position'), box.get('margin')]).toEqual(['fixed', 'auto']);
+		expect(box.get('inset')).toMatch(/^0 0 calc\(100dvh \* var\(--ds-view-lift, [\d.]+\)\)$/);
 		// the placement is the class's own: a rule keyed on `:modal` or `[open]` would place one
 		// presentation and not the other.
 		const placing = rulesIn(registry).filter(

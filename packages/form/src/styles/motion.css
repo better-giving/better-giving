@@ -142,6 +142,17 @@
 }
 
 /*
+ * the checkbox gives under the press, as the registry's `.ds-checkbox` does
+ * (../registry/styles/checkbox-css.css), which brings its own `scale` transition at
+ * `--duration-fast`. restated at its class for the reason the action's is above, so the press
+ * moves on `--_move-press` and the `reduce` collapse in ./tokens.css reaches it. "restates the
+ * motion of every registry control that brings its own" in ../element.dom.spec.ts holds it.
+ */
+[part~='checkbox'].ds-checkbox {
+	transition: scale var(--_move-press);
+}
+
+/*
  * the chosen cadence travelling to the option a donor picked, which is the second of the two things
  * on this card whose answer to a press is where it now stands rather than that it was pressed.
  *

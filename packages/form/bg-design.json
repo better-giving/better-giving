@@ -1,56 +1,56 @@
 {
   "schemaVersion": 1,
   "dir": "packages/form/src/registry",
-  "registryVersion": "2.4.0",
+  "registryVersion": "2.5.0",
   "items": {
     "badge-css": {
-      "version": "1.2.0",
+      "version": "1.2.1",
       "files": {
-        "styles/badge-css.css": "c94e66790a2a5c0be2b2200ee807e3c880b7c84d5ae2be88f91602b3ffbec075",
+        "styles/badge-css.css": "340ce27334250454e7a413f4a35d8a7f8238cb4bbfebe33236effdbd478b35e4",
         "styles/badge-css.usage.md": "b2481ee71ee6084bf276d89843d7bc64bc5027fae8d492507419768687382060"
       }
     },
     "button-css": {
-      "version": "1.2.1",
+      "version": "1.2.2",
       "files": {
-        "styles/button-css.css": "5b2b1d26472df80d57ce3d27b6043f763ffedc8db82d4dca9707befbd52b707d",
-        "styles/button-css.usage.md": "775cfc6322f8b80ed5adf9df124c2fef61ec67c3ec4c13a1a1c31acddad6afad"
+        "styles/button-css.css": "628fedfd32bcd1e4395be22317ed2ae34acc0f75c4bba7d4fddb1c04e351c55b",
+        "styles/button-css.usage.md": "cb62c507bf1c11b4bc25610364539224da6de4612ae4c562c6fc6c515ea452b5"
       }
     },
     "checkbox-css": {
-      "version": "1.2.0",
+      "version": "1.2.1",
       "files": {
-        "styles/checkbox-css.css": "1ffd3ce61a27e67523739a37bb5a83c4c3995decf1942bad30df5d48df18ceac",
+        "styles/checkbox-css.css": "bee8e2b19baa589fb9b42aebb1d3bfc12cf43a1c30b43fcc3499fe595e84dd52",
         "styles/checkbox-css.usage.md": "034d2e293fb6efe1944d1e48b08eb70812594eb85d77297fa6b8b790064270f5"
       }
     },
     "field-css": {
-      "version": "1.3.0",
+      "version": "1.4.0",
       "files": {
-        "styles/field-css.css": "04ba9f676d87b4f77d20110a4406b3085e201b2203eab163660c4200a651b8d5",
+        "styles/field-css.css": "eea5cd0a4af4ed3d0d9aa802d8bccfdbc3fce4745daaf4f46f2e522e602481e5",
         "styles/field-css.usage.md": "0206f8468701bf01c666e0e79ac17de296a8035d28516b41d5c8024ca74f06b8"
       }
     },
     "radio-css": {
-      "version": "1.2.0",
+      "version": "1.2.1",
       "files": {
-        "styles/radio-css.css": "24f1e76537a392889a8eb1e1352108847fef4997d33ae9bbdaca7176d2d7bf7f",
+        "styles/radio-css.css": "f5e33b41a5a3089d59d6124faa156de4dd3f3eac3b0656155d4b849e1f4b5d2a",
         "styles/radio-css.usage.md": "19745a47a5648028b09d894b2e145503a39fa0c164b3f6c37b098029db12348c"
       }
     },
     "spinner-css": {
-      "version": "1.0.0",
+      "version": "1.0.1",
       "files": {
-        "styles/spinner-css.css": "6b218ecc740c517f46918d7d1cc48c19991f00544e6d2ba53cc31d879fa066a7",
+        "styles/spinner-css.css": "8f3629f4ba32f527f8617f64b0f337b24dd954105c51571e9e7221a823ae8a85",
         "styles/spinner-css.usage.md": "7930ca9748309847dfce826640fecd4383b5fd7b7d3503d5cd45d384172405af"
       }
     },
     "variables": {
-      "version": "1.3.0",
+      "version": "1.4.0",
       "files": {
         "styles/colors.css": "092f1bd986929b2416f92cee21c3fef87323d95e129eff82bb81ebf8d9d63f7b",
         "styles/themes/default.css": "a823dc572937a1a4112eb0943ec085a1a8c83a2fd420eee60278763e1e6f17a6",
-        "styles/variables.css": "ec349e1f176883e1619f305059a962ce3c92274242e2978656144ad074876f7d",
+        "styles/variables.css": "35ec1071284c030ee39beb9ca1b0ace9c545dfb160df450c12c6d1064bb54b0c",
         "styles/variables.usage.md": "11105c837eb7d1b93bbaf23b0447f5adf309bafbd03cf78cad6b2f1df8b4d03d"
       }
     }
