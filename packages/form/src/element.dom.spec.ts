@@ -5886,6 +5886,7 @@ describe('the stylesheets', () => {
 		// registry breaks a `:not(...)` list across lines.
 		const brought = handed
 			.map(({ part, name }) => ({
+				part,
 				restated: `[part~='${part}'].${name}`,
 				registry: propertiesAt(registryControls, (selector) =>
 					new RegExp(`\\.${name}(?![\\w-])[^\\s>+~]*$`).test(selector.replace(/\([^()]*\)/g, '()'))
@@ -5898,6 +5899,22 @@ describe('the stylesheets', () => {
 			brought.flatMap(({ restated, registry }) => {
 				const ours = propertiesAt(moving, (selector) => selector === restated);
 				return [...registry]
+					.filter((property) => !ours.has(property))
+					.map((property) => `${restated}: ${property}`);
+			})
+		).toEqual([]);
+		// the restatement outranks the part's own rule, so it wins the whole `transition` and has to
+		// carry what that rule fades as well: the part bare, or in a `:where()` list with nothing after it.
+		expect(
+			brought.flatMap(({ part, restated }) => {
+				const ours = propertiesAt(moving, (selector) => selector === restated);
+				const bare = `[part~='${part}']`;
+				const plain = propertiesAt(
+					moving,
+					(selector) =>
+						selector === bare || (/^:where\([^()]*\)$/.test(selector) && selector.includes(bare))
+				);
+				return [...plain]
 					.filter((property) => !ours.has(property))
 					.map((property) => `${restated}: ${property}`);
 			})

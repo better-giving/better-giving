@@ -65,9 +65,9 @@ describe('the shipped bytes', () => {
 describe('the shipped bytes carry no face', () => {
 	/**
 	 * the gzip size the runtime stays under, in bytes: its own code, with room to grow. the runtime
-	 * measured about 118 KB gzipped when the card took the registry's sheets (BG-2101, PR #31), and
-	 * about 125 KB once it took the registry's 2.5.0 sheets, which state their press, touch and
-	 * pointer cases.
+	 * measures about 125 KB gzipped inside vitest, of which the registry's 2.5.0 sheets are about
+	 * 140 B, and `pnpm build` ships about 124 KB. a face inlined as a data URL adds tens of KB, so
+	 * the ceiling still trips on one.
 	 */
 	const RUNTIME_GZIP_CEILING = 130_000;
 

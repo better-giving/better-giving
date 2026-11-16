@@ -4371,8 +4371,9 @@
 	   the server's markup and pressable before the script arrives, and a press that goes down on
 	   "Yes, delete" and comes up after `showModal()` has to come up on the same control — a card
 	   that stood anywhere else before the lift ends that press on the ground instead, and the answer
-	   is lost. `.ds-dialog` places the box fixed against all four insets and centres it by its
-	   margins whether or not it is a shown modal, so the open element and the lifted one are the
+	   is lost. `.ds-dialog` places the box fixed against the top and both sides, with a bottom
+	   inset that lifts its middle to 40% of the window, and centres it by its margins whether or not
+	   it is a shown modal, so the open element and the lifted one are the
 	   one box, and nothing here places it.
 
 	   the ground is the card's own shadow spread past every edge of the window, because an open

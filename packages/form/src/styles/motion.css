@@ -143,13 +143,19 @@
 
 /*
  * the checkbox gives under the press, as the registry's `.ds-checkbox` does
- * (../registry/styles/checkbox-css.css), which brings its own `scale` transition at
- * `--duration-fast`. restated at its class for the reason the action's is above, so the press
- * moves on `--_move-press` and the `reduce` collapse in ./tokens.css reaches it. "restates the
- * motion of every registry control that brings its own" in ../element.dom.spec.ts holds it.
+ * (../registry/styles/checkbox-css.css). the part's own transition below names no `scale`, so the
+ * registry's would run, on `--duration-fast`, which a shadow tree cannot read (the action's block
+ * above says why) and the `reduce` collapse in ./tokens.css never reaches. restated at the class so
+ * the press moves on `--_move-press`. this outranks the plain `[part~='checkbox']` rule below and
+ * wins the whole `transition`, so it names that rule's edge and fill too, or a tick snaps. the
+ * switch's `.fee-decision [part~='checkbox']` comes after it and still wins. "restates the motion of
+ * every registry control that brings its own" in ../element.dom.spec.ts holds both.
  */
 [part~='checkbox'].ds-checkbox {
-	transition: scale var(--_move-press);
+	transition:
+		scale var(--_move-press),
+		border-color var(--_move-state),
+		background-color var(--_move-state);
 }
 
 /*

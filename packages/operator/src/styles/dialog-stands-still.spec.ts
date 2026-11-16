@@ -35,6 +35,11 @@ const inPage = ruleOf(css, '.adm-dialog--inline:not(:modal)');
 const BOX = [
 	'position',
 	'inset',
+	'inset-block',
+	'inset-block-end',
+	'top',
+	'bottom',
+	'--ds-view-lift',
 	'inline-size',
 	'max-inline-size',
 	'max-block-size',
@@ -45,19 +50,36 @@ const BOX = [
 	'margin'
 ];
 
+/** the top-level values of a shorthand, a parenthesised group held as one. */
+function values(shorthand: string): string[] {
+	return shorthand.match(/(?:[^\s(]+|\([^()]*(?:\([^()]*\)[^()]*)*\))+/g) ?? [];
+}
+
+/** the fallbacks `--ds-view-lift` is read with in a value; empty when the value does not read it. */
+function liftsIn(value: string | undefined): string[] {
+	return [...(value ?? '').matchAll(/var\(--ds-view-lift,\s*([^)]+)\)/g)].map(([, fallback]) =>
+		(fallback ?? '').trim()
+	);
+}
+
 describe('the question the server drew stands where the lifted one will', () => {
 	it('is fixed against its insets and centred by its margins, open or shown modally', () => {
-		// the bottom inset is the registry's `--ds-view-lift` share of the height, which is what
-		// lifts the middle from 50% to 40%.
 		expect([box.get('position'), box.get('margin')]).toEqual(['fixed', 'auto']);
-		expect(box.get('inset')).toMatch(/^0 0 calc\(100dvh \* var\(--ds-view-lift, [\d.]+\)\)$/);
-		// the placement is the class's own: a rule keyed on `:modal` or `[open]` would place one
-		// presentation and not the other.
+		// top and both sides at 0, and a bottom inset that reads the registry's `--ds-view-lift`,
+		// which is what lifts the middle from 50% to 40%. the height cap reads the same lift with
+		// the same fallback, so a box at the cap still starts inside the viewport.
+		const [top, sides, bottom, ...rest] = values(box.get('inset') ?? '');
+		expect([top, sides, rest]).toEqual(['0', '0', []]);
+		const lift = liftsIn(bottom);
+		expect(lift).toHaveLength(1);
+		expect(liftsIn(box.get('max-block-size'))).toEqual(lift);
+		// the placement and size are the class's own: a rule keyed on `:modal` or `[open]` would
+		// place or size one presentation and not the other.
 		const placing = rulesIn(registry).filter(
 			({ selector, stated }) =>
 				/\.ds-dialog\b(?!-)/.test(selector) &&
 				/:modal|\[open\]/.test(selector) &&
-				(stated.has('position') || stated.has('inset') || stated.has('margin'))
+				BOX.some((property) => stated.has(property))
 		);
 		expect(placing.map(({ selector }) => selector)).toEqual([]);
 	});
