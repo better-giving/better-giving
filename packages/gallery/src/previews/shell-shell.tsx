@@ -11,9 +11,10 @@ import { Shell, type ShellProps } from '@better-giving/operator/components/shell
  * Settings is shut, Gifts is the page, and the page header's trail names the gift while the top
  * bar shows only the organisation's name. both run with a navigation
  * in flight, which draws the route-progress line across the top bar. the rail is the toggle in each
- * bar, and a press keeps the choice in this browser, so it holds across both and a reload; on the
- * rail, Settings opens its flyout on hover or keyboard focus and every other row its tooltip. below
- * 48rem the sidebar leaves and the menu button opens the same rows in the drawer.
+ * bar, and a press keeps the choice in this browser, which each specimen reads only as it mounts:
+ * the other specimen takes it up on a reload. on the rail, Settings opens its flyout on hover or
+ * keyboard focus and every other row its tooltip. below 48rem the sidebar leaves and the menu
+ * button opens the same rows in the drawer.
  *
  * neither specimen has a logo, so the head names the organisation in words and the rail's head is
  * empty: the gallery has no organisation's image to draw.

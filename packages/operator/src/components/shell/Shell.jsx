@@ -257,6 +257,14 @@ export function Shell({
 				onClick={(event) => {
 					if (event.target === event.currentTarget) closeDrawer();
 				}}
+				onClickCapture={(event) => {
+					// any link in it, a row or the account menu's, closes it as it is followed
+					// (app-shell-css's note). heard in capture because ark's menu clicks a link row
+					// for Enter with a click that does not bubble; a click that opens a new tab
+					// leaves the page, and the drawer, where they are.
+					if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+					if (/** @type {HTMLElement} */ (event.target).closest('a[href]')) closeDrawer();
+				}}
 			>
 				<div className="ds-shell-head">
 					{mark}
@@ -270,7 +278,7 @@ export function Shell({
 						<Mark name="x" />
 					</button>
 				</div>
-				<Nav groups={groups} current={current} link={link} onChoose={closeDrawer} />
+				<Nav groups={groups} current={current} link={link} />
 				{account}
 			</dialog>
 		</div>
@@ -285,11 +293,10 @@ export function Shell({
  * @property {boolean | undefined} [rail] the sidebar's copy, drawn as the rail. the sidebar's
  *   copy alone carries the rail's parts (a parent's flyout, the tooltip); the drawer's never
  *   becomes a rail.
- * @property {(() => void) | undefined} [onChoose] a link pressed: the drawer closes on it.
  */
 
 /** @param {NavProps} props */
-function Nav({ groups, current, link, rail, onChoose }) {
+function Nav({ groups, current, link, rail }) {
 	const sidebar = rail !== undefined;
 	const tip = useRef(/** @type {HTMLDivElement | null} */ (null));
 	const [pointed, setPointed] = useState(
@@ -351,7 +358,6 @@ function Nav({ groups, current, link, rail, onChoose }) {
 						current={current}
 						link={link}
 						sidebar={sidebar}
-						onChoose={onChoose}
 					/>
 				))}
 			</nav>
@@ -372,10 +378,9 @@ function Nav({ groups, current, link, rail, onChoose }) {
  *   current: ShellCurrent | undefined;
  *   link: ComponentType<ShellLinkProps> | undefined;
  *   sidebar: boolean;
- *   onChoose: (() => void) | undefined;
  * }} props
  */
-function Group({ group, current, link, sidebar, onChoose }) {
+function Group({ group, current, link, sidebar }) {
 	const headingId = useId();
 	const rows = group.destinations.map((destination) =>
 		destination.children && destination.children.length > 0 ? (
@@ -386,7 +391,6 @@ function Group({ group, current, link, sidebar, onChoose }) {
 				current={current}
 				link={link}
 				sidebar={sidebar}
-				onChoose={onChoose}
 			/>
 		) : (
 			<li key={destination.label}>
@@ -403,7 +407,6 @@ function Group({ group, current, link, sidebar, onChoose }) {
 								: 'true'
 							: undefined
 					}
-					onClick={onChoose}
 				/>
 			</li>
 		)
@@ -429,15 +432,14 @@ function Group({ group, current, link, sidebar, onChoose }) {
  * @property {NavMark | undefined} mark
  * @property {string} label
  * @property {'page' | 'true' | undefined} [current]
- * @property {(() => void) | undefined} [onClick]
  */
 
 /* a row: its glyph first, then the label in a `ds-lead-row`, as nav-list-css's contract has it. */
 /** @param {NavLinkProps} props */
-function NavLink({ link, className, href, mark, label, current, onClick }) {
+function NavLink({ link, className, href, mark, label, current }) {
 	const Link = link ?? 'a';
 	return (
-		<Link className={className} href={href} aria-current={current} onClick={onClick}>
+		<Link className={className} href={href} aria-current={current}>
 			<Glyph mark={mark} />
 			<span className="ds-nav-label ds-lead-row">
 				<span>{label}</span>
@@ -460,7 +462,6 @@ function Glyph({ mark }) {
  * @property {ShellCurrent | undefined} current
  * @property {ComponentType<ShellLinkProps> | undefined} link
  * @property {boolean} sidebar
- * @property {(() => void) | undefined} onChoose
  */
 
 /* a parent over its children (nav-list-css's `ds-nav-parent` over a `ds-nav-sub`), expanded from
@@ -468,7 +469,7 @@ function Glyph({ mark }) {
    sidebar the `<li>` also holds the two parts the rail draws in its place, app-shell-css's
    `ds-shell-rail-parent` and `ds-shell-flyout`, and the behaviour that note's script gives them. */
 /** @param {ParentRowProps} props */
-function ParentRow({ destination, items, current, link, sidebar, onChoose }) {
+function ParentRow({ destination, items, current, link, sidebar }) {
 	const Link = link ?? 'a';
 	const subId = useId();
 	const flyoutId = useId();
@@ -485,7 +486,6 @@ function ParentRow({ destination, items, current, link, sidebar, onChoose }) {
 				mark={item.mark}
 				label={item.label}
 				current={childCurrent(item)}
-				onClick={onChoose}
 			/>
 		</li>
 	));
@@ -577,7 +577,6 @@ function ParentRow({ destination, items, current, link, sidebar, onChoose }) {
 				href={first}
 				aria-expanded={open}
 				aria-controls={subId}
-				onClick={onChoose}
 			>
 				<Glyph mark={destination.mark} />
 				<span className="ds-nav-label ds-lead-row">

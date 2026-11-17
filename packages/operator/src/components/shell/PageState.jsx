@@ -16,11 +16,14 @@ import { useEffect, useRef, useState } from 'react';
  * - `loading`: a spinner and its line, as a polite status.
  *
  * `focusTitle` moves focus to the title as the state is drawn, which is how a screen reader finds a
- * state a navigation landed on; the caller says when that is.
+ * state a navigation landed on; the caller says when that is. it is the arrival's key (a router
+ * location's `key`), and focus moves again whenever the key or the variant changes, so a second
+ * failed navigation is found though the component stays mounted and its title reads the same;
+ * `true` moves it on the first draw and on a change of variant alone.
  *
  * @typedef {(
- *   | { variant: 'empty' | 'not-found'; title: ReactNode; body?: ReactNode; action?: ReactNode; focusTitle?: boolean | undefined }
- *   | { variant: 'error'; title: ReactNode; body?: ReactNode; focusTitle?: boolean | undefined }
+ *   | { variant: 'empty' | 'not-found'; title: ReactNode; body?: ReactNode; action?: ReactNode; focusTitle?: string | boolean | undefined }
+ *   | { variant: 'error'; title: ReactNode; body?: ReactNode; focusTitle?: string | boolean | undefined }
  *   | { variant: 'loading'; label: string }
  * )} PageStateProps
  */
@@ -38,7 +41,7 @@ function Stated(props) {
 	const heading = useRef(/** @type {HTMLHeadingElement | null} */ (null));
 	useEffect(() => {
 		if (focusTitle) heading.current?.focus();
-	}, [focusTitle]);
+	}, [focusTitle, variant]);
 
 	const Title = variant === 'empty' ? 'h2' : 'h1';
 	const words = (

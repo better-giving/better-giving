@@ -283,6 +283,54 @@ describe('the phone’s drawer', () => {
 		expect(document.activeElement).toBe(menu(root));
 	});
 
+	describe('with its account menu open', () => {
+		async function press(key: string): Promise<void> {
+			await act(async () => {
+				document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+			});
+		}
+		async function accountOpened() {
+			const root = opened();
+			act(() => button(drawer(root), '.ds-shell-account-btn').focus());
+			await press('ArrowDown');
+			return root;
+		}
+
+		it('closes when a link row is chosen from the keyboard', async () => {
+			const root = await accountOpened();
+			expect(drawer(root).querySelector('[data-highlighted]')?.textContent).toBe(
+				'Edit donation page'
+			);
+
+			await press('Enter');
+
+			expect(drawer(root).open).toBe(false);
+		});
+
+		it('closes when a link row is pressed', async () => {
+			const root = await accountOpened();
+			const open = [...drawer(root).querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+				(item) => item.textContent === 'Open donation page'
+			);
+
+			await act(async () => open?.click());
+
+			expect(drawer(root).open).toBe(false);
+		});
+	});
+
+	it('stays open for a link opened in a new tab', () => {
+		const root = opened();
+
+		act(() => {
+			row(drawer(root), 'Campaigns')?.dispatchEvent(
+				new MouseEvent('click', { bubbles: true, cancelable: true, ctrlKey: true })
+			);
+		});
+
+		expect(drawer(root).open).toBe(true);
+	});
+
 	it('closes from its close button and from a press on the scrim', () => {
 		const root = opened();
 		act(() => button(drawer(root), '[aria-label="Close menu"]').click());

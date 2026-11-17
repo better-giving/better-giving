@@ -3,7 +3,7 @@ import { RouteProgress } from '@better-giving/operator/components/shell/RoutePro
 
 /*
  * the route-load line on top-bar-css, in a bar of its own: Start runs a navigation (5%, then toward
- * 95%), Land finishes it (100%, faded and gone 300ms later).
+ * 95%), Land finishes it (100%, faded and gone `--duration-slow` later).
  */
 export default function ShellRouteProgressPreview() {
 	const [busy, setBusy] = useState(false);

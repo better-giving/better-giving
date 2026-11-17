@@ -1,6 +1,6 @@
 import { act } from 'react';
-import { describe, expect, it } from 'vitest';
-import { render } from '../render.testing';
+import { describe, expect, it, onTestFinished } from 'vitest';
+import { mount, render } from '../render.testing';
 import { PageState } from './PageState.jsx';
 
 // what a page shows in place of its content, on page-state-css: the empty state under a page's
@@ -68,6 +68,40 @@ describe('a page state', () => {
 		const title = root.querySelector('.ds-page-state-title');
 		expect(title?.getAttribute('tabindex')).toBe('-1');
 		expect(document.activeElement).toBe(title);
+	});
+
+	it('takes focus again for each arrival its caller keys, even one that reads the same', () => {
+		const state = mount(PageState, {
+			variant: 'not-found',
+			title: 'No such page',
+			focusTitle: 'first-arrival'
+		});
+		const elsewhere = document.createElement('button');
+		document.body.append(elsewhere);
+		onTestFinished(() => elsewhere.remove());
+		act(() => elsewhere.focus());
+
+		state.again({ variant: 'not-found', title: 'No such page', focusTitle: 'first-arrival' });
+		expect(document.activeElement).toBe(elsewhere);
+
+		state.again({ variant: 'not-found', title: 'No such page', focusTitle: 'second-arrival' });
+		expect(document.activeElement).toBe(state.root.querySelector('.ds-page-state-title'));
+	});
+
+	it('takes focus again when the state changes in place under one arrival', () => {
+		const state = mount(PageState, {
+			variant: 'not-found',
+			title: 'No such page',
+			focusTitle: true
+		});
+		const elsewhere = document.createElement('button');
+		document.body.append(elsewhere);
+		onTestFinished(() => elsewhere.remove());
+		act(() => elsewhere.focus());
+
+		state.again({ variant: 'error', title: 'This deployment could not answer', focusTitle: true });
+
+		expect(document.activeElement).toBe(state.root.querySelector('.ds-page-state-title'));
 	});
 
 	it('loading: a polite status whose line is written once it is on the page', async () => {
