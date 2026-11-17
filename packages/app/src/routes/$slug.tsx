@@ -47,9 +47,9 @@ import type { Route } from './+types/$slug';
 //
 // an `ended` campaign — ended by End, or live and past its published end date, which reads the same
 // ($lib/page/ended.ts) — still holds its address, so the address answers 200 with the ended screen:
-// the organisation's name and logo atop it, the campaign's name, that it has ended, and the way on
-// to /donate, then the site footer's legal details — in the organisation's brand colour, with none
-// of its content and no donation box,
+// the organisation's name and logo atop it, the campaign's name, that it has ended, the way on to
+// /donate, and the site footer's legal details at the foot, in the organisation's brand colour,
+// with none of its content and no donation box,
 // since its owned settings row is out of service (`endCampaign` in $lib/server/pages/queries.ts,
 // and read so past the end date by `readPublishedConfig`).
 // `no-store`, because publishing it again puts it back live at the same address.

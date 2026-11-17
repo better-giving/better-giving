@@ -1079,7 +1079,7 @@ describe('the profile head’s box and logo', () => {
 		});
 	});
 
-	it('draws a logo at least twice as wide as it is tall whole at its own shape, as the masthead does', () => {
+	it('draws a logo at least twice as wide as it is tall whole at its own shape, as the site nav does', () => {
 		expect(declared(page, '.page-profile-logo')).toMatchObject({
 			'object-fit': 'contain',
 			'max-inline-size': '100%'
@@ -1215,9 +1215,9 @@ describe('the squint tiers on the page', () => {
 	});
 });
 
-describe('the masthead’s lead over a cover', () => {
+describe('the page head’s lead over a cover', () => {
 	// happy-dom does no layout, so the margins are read off the sheet. on a phone the card's and the
-	// feature's covers stand `--page-gap-lead` under the masthead, so no rule on the cover takes its
+	// feature's covers stand `--page-gap-lead` under the site nav, so no rule on the cover takes its
 	// block-start margin negative; wide, the card's cover sits flush at the top of its panel.
 	const COVERS = [
 		".page[data-layout='card'] [data-area='cover']",

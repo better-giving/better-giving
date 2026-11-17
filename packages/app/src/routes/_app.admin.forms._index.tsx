@@ -521,7 +521,7 @@ export default function DonationForms({ loaderData, actionData }: Route.Componen
 							    arriving at a button's and being pushed back out of it.
 
 							    level 2, because a record on this list stands directly under the page's
-							    `<h1>`, its heading's, and nothing sits between them. how
+							    `<h1>` the screen's heading draws, and nothing sits between them. how
 							    loud the words are is `.adm-record__title`'s to say. */}
 								<h2 className="adm-record__title">
 									<Link to={href('/admin/forms/:id', { id: form.id })}>{form.name}</Link>

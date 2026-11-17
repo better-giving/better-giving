@@ -5117,7 +5117,8 @@
 	   text pair nothing and is the only thing that holds a picture on the line.
 
 	   both can wrap, and wrapped the two ends are two rows starting at the same edge.
-	   packages/operator/src/components/shell/PanelRoute.jsx writes the head's class and what stands inside it is the caller's. */
+	   packages/operator/src/components/shell/PanelRoute.jsx writes the head's class and what stands
+	   inside it is the caller's. */
 	.adm-panelroute:has(> .adm-head) {
 		grid-template-rows: auto 1fr;
 	}
@@ -5348,9 +5349,9 @@
 
 	@media (min-width: 64rem) {
 		/* the one arrangement on a page that waits for this width rather than the middle one: two
-		   cards abreast are worth having only once the page has the width of a desk. both tracks may shrink past
-		   their content, so a long row inside either card wraps instead of pushing the pair wider
-		   than the page. */
+		   cards abreast are worth having only once the page has the width of a desk. both tracks may
+		   shrink past their content, so a long row inside either card wraps instead of pushing the
+		   pair wider than the page. */
 		.adm-cardpair {
 			grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
 		}

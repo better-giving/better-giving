@@ -317,7 +317,7 @@ const titleId = (pageId: string) => `campaign-title-${pageId}`;
 /**
  * focus after a press lands, which unmounted the control that held it: the row's title where it
  * now stands; the Ended group's summary where the row went into it shut, since nothing inside a
- * shut `<details>` takes focus; and the screen's own `h1`, its heading's, where the row is gone.
+ * shut `<details>` takes focus; and the screen's own `h1`, where the row is gone.
  */
 function focusLanded({ pageId }: Landed): void {
 	const title = pageId === null ? null : document.getElementById(titleId(pageId));

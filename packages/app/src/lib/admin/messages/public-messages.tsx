@@ -83,7 +83,7 @@ export type PublicMessagesProps = {
 	readonly older?: OlderMessages;
 	/**
 	 * the pages above this one, as the route's handle states them ($lib/admin/crumbs.tsx). required:
-	 * `PageHeading` draws the standfirst only under a trail.
+	 * `PageHeading` draws the description only under a trail.
 	 */
 	readonly crumbs: readonly Crumb[];
 };

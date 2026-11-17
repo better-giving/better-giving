@@ -92,7 +92,7 @@ afterEach(() => {
 
 describe('public messages, listed', () => {
 	it('is a nested page, so a mount that states no trail is a type error', () => {
-		// @ts-expect-error `crumbs` is required: PageHeading draws the standfirst under a trail alone.
+		// @ts-expect-error `crumbs` is required: PageHeading draws the description under a trail alone.
 		const untrailed: PublicMessagesProps = { messages: [], total: 0, onHide() {}, onShow() {} };
 		expect(untrailed.crumbs).toBeUndefined();
 	});

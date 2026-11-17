@@ -3,8 +3,9 @@ import zapierImage from '@better-giving/operator/brand/zapier.png';
 /**
  * every destination the staff surface has, in the order an operator works: the state of giving in
  * one look, then the campaigns, the fundraisers supporters start beside them, and the forms that
- * take the money, the donors it came from, the gifts themselves, the ones that repeat, who may sign in, the organisation's settings and its payments,
- * the systems outside that read it, and the books all of it lands in. the dashboard is first
+ * take the money, the donors it came from, the gifts themselves, the ones that repeat, who may
+ * sign in, the organisation's settings and its payments, the systems outside that read it, and the
+ * books all of it lands in. the dashboard is first
  * because it is the surface's own address and what an operator opens on, and each record after it
  * is a step further from the page or form that produced it.
  *
@@ -30,14 +31,14 @@ import zapierImage from '@better-giving/operator/brand/zapier.png';
  * sign in, what the organisation is and what it takes gifts through, none of them a record of a
  * gift; the integrations, the ways a system outside the deployment reaches it; and the books, which
  * everything above writes into. a rule is the whole of the separation between the other four. the
- * integrations carry the one heading, because their
- * entries are named after a mechanism rather than a record — API — and that word in a run of
- * records says nothing about what it holds. the groups are the shape `Shell` takes as `groups`,
+ * integrations carry the one heading, because their entries are named after a mechanism rather
+ * than a record — API — and that word in a run of records says nothing about what it holds. the
+ * groups are the shape `Shell` takes as `groups`,
  * and `DESTINATIONS` is the same entries flat, which is what a match against an address walks.
  *
  * `deployer: true` marks a group, or one destination in a group, drawn for the deployer's session
- * alone: every page behind it answers a member with not-found, and a cell leading there would be a
- * way to a refusal. `destinationGroupsFor` picks the groups and cells for a session, and
+ * alone: every page behind it answers a member with not-found, and a row leading there would be a
+ * way to a refusal. `destinationGroupsFor` picks the groups and rows for a session, and
  * ../../routes/_app.tsx hands it the same predicate the pages behind them read.
  *
  * `mark` is the glyph the column draws beside a label — a name from

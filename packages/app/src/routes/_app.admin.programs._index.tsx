@@ -156,7 +156,7 @@ export default function Programs({ loaderData }: Route.ComponentProps) {
 								<Mark name="folder-heart" />
 							</span>
 							{/* level 2, because a record on this list stands directly under the page's
-							    `<h1>`, its heading's, and nothing sits between them. how
+							    `<h1>` the screen's heading draws, and nothing sits between them. how
 							    loud the words are is `.adm-record__title`'s to say. */}
 							<h2 className="adm-record__title">
 								<Link to={href('/admin/programs/:id', { id: program.id })}>{program.name}</Link>

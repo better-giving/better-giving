@@ -4,8 +4,8 @@ import { describe, expect, it, onTestFinished } from 'vitest';
 import { MAIN_ID, SiteNav, type SiteNavProps } from './site-nav';
 
 // the site nav, mounted: the skip link first, the organisation as the home link, the one Donate
-// link marked current on /donate alone, and the folded menu's disclosure. where the registry's sheet
-// shows the bar's links and where the menu button is for a person looking at it at 375 and 1440.
+// link marked current on /donate alone, and the folded menu's disclosure. whether the bar's links or
+// the menu button show at a width is the registry's sheet's, which happy-dom does not lay out.
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 

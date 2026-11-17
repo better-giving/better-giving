@@ -9,9 +9,10 @@ import { putNewOrgProfileBanner, removeOrgProfileBanner } from '$lib/server/org/
 import { database, staff } from '../context';
 import type { Route } from './+types/_app.admin.settings_.banner';
 
-// the donation page's banner, put on by `POST` and taken off by `DELETE`, which the Organisation details
-// screen (./_app.admin.settings_.organisation.tsx) asks by fetcher — the logo's address (./_app.admin.settings_.logo.ts)
-// over `org_profile.banner_image_id`, and the same in every way but one: a photo that is no banner
+// the donation page's banner, put on by `POST` and taken off by `DELETE`, which the Organisation
+// details screen (./_app.admin.settings_.organisation.tsx) asks by fetcher — the logo's address
+// (./_app.admin.settings_.logo.ts) over
+// `org_profile.banner_image_id`, and the same in every way but one: a photo that is no banner
 // by `bannerRefusal` ($lib/org/banner.ts) is refused with a 400 before anything is stored, since the
 // intake's bounds (`readPostedPhoto` in $lib/server/images/intake.ts) are any photo's.
 //

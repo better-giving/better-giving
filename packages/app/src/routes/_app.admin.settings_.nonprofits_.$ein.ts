@@ -6,8 +6,8 @@ import { platform, staff } from '../context';
 import type { Route } from './+types/_app.admin.settings_.nonprofits_.$ein';
 
 // one organisation from the IRS files, mapped onto Settings' details boxes: what the Organisation
-// details screen (./_app.admin.settings_.organisation.tsx) asks by fetcher once a match is picked off a name search
-// (./_app.admin.settings_.nonprofits.ts). a `loader` with no component, out of the search's nesting
+// details screen (./_app.admin.settings_.organisation.tsx) asks by fetcher once a match is
+// picked off a name search (./_app.admin.settings_.nonprofits.ts). a `loader` with no component, out of the search's nesting
 // by the `nonprofits_` in its name. the service is $lib/server/org/nonprofits.ts's; the answer's
 // shape is $lib/org/nonprofit-answers.ts's.
 //

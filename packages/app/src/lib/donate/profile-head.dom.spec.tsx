@@ -354,7 +354,7 @@ describe('the logo', () => {
 		['a wordmark', 1200, 300, true],
 		['a little under twice as wide', 799, 400, false]
 	])(
-		'draws a logo %s whole at its own shape where the masthead counts it wide',
+		'draws a logo %s whole at its own shape where the site nav counts it wide',
 		(_, width, height, wide) => {
 			const logo = draw({ ...FULL, logo: { src: '/image/logo-1', width, height } }).querySelector(
 				'.page-profile-logo'

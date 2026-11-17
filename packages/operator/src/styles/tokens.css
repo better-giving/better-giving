@@ -661,8 +661,8 @@
 		/* a listed video's poster, 16:9: 96px wide from the middle breakpoint and 72px under it. */
 		--admin-measure-poster: 6rem;
 		--admin-measure-poster-narrow: 4.5rem;
-		/* the column a mail is read in (`MEASURE` in packages/emails/src/tokens.ts). it is authored apart from the panel above
-		   rather than pointed at it, so neither may drag the other. */
+		/* the column a mail is read in (`MEASURE` in packages/emails/src/tokens.ts). it is authored
+		   apart from the panel above rather than pointed at it, so neither may drag the other. */
 		--admin-measure-dialog: 34rem;
 
 		/* ---- spacing -------------------------------------------------------------------
