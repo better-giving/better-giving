@@ -84,25 +84,37 @@ describe('who the rail is drawn for', () => {
 	});
 });
 
-describe('the bar at a phone width', () => {
-	it('carries the dashboard, the campaigns, the donors and the gifts, and leaves the rest to More', () => {
-		expect(DESTINATIONS.filter((d) => 'bar' in d && d.bar).map((d) => d.label)).toEqual([
-			'Dashboard',
-			'Campaigns',
-			'Donors',
-			'Gifts'
+describe('the Settings cell', () => {
+	it('holds the organisation details, the notifications and the mail, in that order, each at its own address', () => {
+		const settings = DESTINATIONS.find((d) => d.href === '/admin/settings');
+
+		expect(settings && 'children' in settings ? settings.children : undefined).toEqual([
+			{
+				href: '/admin/settings/organisation',
+				label: 'Organisation details',
+				mark: 'building-2'
+			},
+			{ href: '/admin/settings/notifications', label: 'Notifications', mark: 'bell' },
+			{ href: '/admin/settings/mail', label: 'Mail', mark: 'mail' }
 		]);
+	});
+
+	it('is the deployer’s, children and all', () => {
+		const labels = destinationGroupsFor(false).flatMap((group) =>
+			group.destinations.map((d) => d.label)
+		);
+
+		expect(labels).not.toContain('Settings');
 	});
 });
 
 describe('the Supporter pages cell', () => {
-	it('stands after Campaigns, marked with the user-plus glyph, on the More sheet and for members too', () => {
+	it('stands after Campaigns, marked with the user-plus glyph, for members too', () => {
 		const supporter = DESTINATIONS.find((d) => d.href === '/admin/supporter-pages');
 
 		expect(supporter).toEqual({
 			href: '/admin/supporter-pages',
 			label: 'Supporter pages',
-			short: 'Supporter',
 			mark: 'user-plus'
 		});
 		expect(currentDestination('/admin/supporter-pages')).toEqual({
@@ -167,6 +179,26 @@ describe('the destination a page belongs to', () => {
 			kind: 'section'
 		});
 		expect(currentDestination('/admin/elsewhere')).toBeUndefined();
+	});
+
+	it('names the Settings section the page is, beside Settings itself', () => {
+		expect(currentDestination('/admin/settings/notifications')).toEqual({
+			label: 'Settings',
+			kind: 'section',
+			child: '/admin/settings/notifications'
+		});
+		expect(currentDestination('/admin/settings/organisation')).toEqual({
+			label: 'Settings',
+			kind: 'section',
+			child: '/admin/settings/organisation'
+		});
+	});
+
+	it('names no section for an address under Settings that is none of them', () => {
+		expect(currentDestination('/admin/settings/logo')).toEqual({
+			label: 'Settings',
+			kind: 'section'
+		});
 	});
 
 	it('is nothing for a path under no section', () => {
