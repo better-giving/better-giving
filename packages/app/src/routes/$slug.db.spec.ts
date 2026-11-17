@@ -319,6 +319,11 @@ function masthead(html: string): string {
 	return /<header class="ds-site-nav"[\s\S]*?<\/header>/.exec(html)?.[0] ?? '';
 }
 
+/** the compact site footer the page closes on. */
+function siteFooter(html: string): string {
+	return /<footer class="ds-site-footer-compact"[\s\S]*?<\/footer>/.exec(html)?.[0] ?? '';
+}
+
 describe('the organisation’s logo atop a published campaign', () => {
 	it('stands atop the page by its id, at its stored size, once one is set', async () => {
 		await campaign();
@@ -464,6 +469,14 @@ describe('an ended campaign at its address', () => {
 		expect(mast).toContain(`src="/image/${id}"`);
 		expect(mast).toContain('width="200"');
 		expect(mast).toContain('Hope Foundation');
+	});
+
+	it('closes on the site footer stating the organisation’s legal details, as a live campaign does', async () => {
+		await endedCampaign();
+		await saveProfile(db);
+
+		const foot = siteFooter(markup((await visit()).data));
+		expect(foot).toContain('Hope Foundation · EIN 12-3456789 · 12 Kigali Road, Kigali, Rwanda');
 	});
 
 	it('says in the tab that it has ended', async () => {

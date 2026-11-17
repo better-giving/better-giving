@@ -131,8 +131,8 @@ export function EndedCampaignPage({
 	/** the organisation's logo, in the site nav; null or absent where it has none. */
 	readonly logo?: PageLogo | null | undefined;
 	readonly look: PageLook;
-	/** what the site footer states; absent, no footer is drawn. */
-	readonly footer?: SiteFooterInfo | undefined;
+	/** what the site footer states. */
+	readonly footer: SiteFooterInfo;
 	/** what the page states under the thanks and over the way on: an ended fundraiser's total. */
 	readonly children?: ReactNode;
 }) {
@@ -141,7 +141,7 @@ export function EndedCampaignPage({
 			brandColour={look.brandColour}
 			layout="plain"
 			header={<SiteNav name={orgName} logo={logo ?? null} current={false} />}
-			footer={footer === undefined ? undefined : <SiteFooter info={footer} />}
+			footer={<SiteFooter info={footer} />}
 		>
 			<main className="stage ended" id={MAIN_ID} tabIndex={-1}>
 				<h1>{copy.campaignEnded(name)}</h1>

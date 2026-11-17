@@ -3,6 +3,7 @@ import { data } from 'react-router';
 import type { OrgInfo, PageMoney } from '../../donate/sections/types';
 import type { PageWithCardProps } from '../../donate/page-with-card';
 import type { DonorMessages } from '../../donate/messages';
+import type { SiteFooterInfo } from '../../donate/site-footer';
 import { type DonateProfile, donateProfile } from '../../donate/profile';
 import { type PageLook, titleHeading } from '../../donate/page-view';
 import type { Page } from '../../page/catalog';
@@ -384,6 +385,19 @@ function chooserPhotos(
  */
 function orgInfo(config: FormConfig, profile: OrgProfile | null): OrgInfo {
 	return { legalName: config.orgLegalName, ein: config.ein, ...donorContact(profile) };
+}
+
+/**
+ * the site footer of an ended page, which serves no config: the legal name and EIN off the profile,
+ * the columns the served config copies them from (`readPublishedConfig` in
+ * ../forms/published-config.ts), so it states what the page stated while live.
+ */
+export function endedFooter(profile: OrgProfile | null): SiteFooterInfo {
+	return {
+		legalName: profile?.legalName ?? null,
+		ein: profile?.taxId ?? null,
+		...donorContact(profile)
+	};
 }
 
 /** the ways to reach the organisation a donor page's footer states, off its profile alone. */

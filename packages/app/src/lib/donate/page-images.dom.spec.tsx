@@ -126,6 +126,7 @@ describe('the logo in the site nav', () => {
 					orgName={ORG}
 					logo={logo}
 					look={{ brandColour: '#1d6b4f' }}
+					footer={{ legalName: ORG, ein: null, addressLines: [], email: null, socialLinks: [] }}
 				/>
 			);
 

@@ -384,6 +384,7 @@ describe('an ended fundraiser', () => {
 				org={{ name: 'Harbor Light', taxId: '84-1234567', logo: null }}
 				look={{ brandColour: '#1d6b4f' }}
 				money={{ locale: 'en-US', currency: 'USD' }}
+				contact={{ addressLines: ['2 Pier Road', 'Halifax, NS'], email: null, socialLinks: [] }}
 			/>
 		);
 	}
@@ -407,6 +408,13 @@ describe('an ended fundraiser', () => {
 		expect(on?.getAttribute('href')).toBe('/donate');
 		expect(root.querySelector('.page-box, [data-donate-root] [data-donate-root], form')).toBeNull();
 		expect(bar(root)).toBeNull();
+	});
+
+	it('closes on the site footer stating the organisation’s legal details, as the live page does', () => {
+		const footer = ended().querySelector('footer.ds-site-footer-compact');
+		expect(footer?.textContent).toContain(
+			'Harbor Light · EIN 84-1234567 · 2 Pier Road, Halifax, NS'
+		);
 	});
 });
 

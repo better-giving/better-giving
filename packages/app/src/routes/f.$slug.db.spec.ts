@@ -6,6 +6,7 @@ import { client } from '$lib/server/db/database.testing';
 import { supporterPage } from '$lib/server/db/schema';
 import { createImage } from '$lib/server/images/image.testing';
 import { putLogo } from '$lib/server/org/logo.testing';
+import { saveProfile } from '$lib/server/org/profile.testing';
 import { CLIENT_IP_HEADER } from '$lib/server/runtime/client-ip';
 import { createDeferredWork } from '$lib/server/runtime/deferred';
 import { hideFundraiser } from '$lib/server/supporters/admin';
@@ -193,5 +194,24 @@ describe('the share tags of /f/{slug}', () => {
 		const drawn = await visit(slug);
 		expect(drawn.status).toBe(200);
 		expect(drawn.meta).toEqual([{ title: expect.stringContaining('Run for the shelter') }]);
+	});
+});
+
+describe('an ended /f/{slug}', () => {
+	it('hands the page the organisation’s address for its site footer', async () => {
+		const { pageId, slug } = await liveFundraiser(db, mailed);
+		const [row] = await db
+			.select({ supporterId: supporterPage.supporterId })
+			.from(supporterPage)
+			.where(eq(supporterPage.id, pageId));
+		await endOwnFundraiser(db, row?.supporterId ?? '', pageId, new Date());
+		await saveProfile(db);
+
+		const { body } = await visit(slug);
+		expect(JSON.parse(body)).toMatchObject({
+			kind: 'ended',
+			org: { name: 'Hope Foundation', taxId: '12-3456789' },
+			contact: { addressLines: ['12 Kigali Road', 'Kigali', 'Rwanda'] }
+		});
 	});
 });

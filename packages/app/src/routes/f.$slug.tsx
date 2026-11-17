@@ -18,7 +18,7 @@ import {
 	readOrgProfileLogo,
 	supporterFundraisersEnabled
 } from '$lib/server/org/queries';
-import { loadFundraiserFrame, refusedPage } from '$lib/server/pages/view';
+import { donorContact, loadFundraiserFrame, refusedPage } from '$lib/server/pages/view';
 import { supporterShareUrl } from '$lib/server/supporters/area';
 import { type FundraiserShare, fundraiserShare } from '$lib/server/supporters/share';
 import { readPublicFundraiser } from '$lib/server/supporters/view';
@@ -59,7 +59,8 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 					fundraiser: { title, name, raisedMinor, goalMinor, gifts },
 					org: { name: profile?.legalName ?? null, taxId: profile?.taxId ?? null, logo },
 					look: { brandColour: profile?.brandColour ?? null },
-					money: { locale: SERVED_LOCALE, currency }
+					money: { locale: SERVED_LOCALE, currency },
+					contact: donorContact(profile)
 				},
 				{ headers: NO_STORE }
 			);

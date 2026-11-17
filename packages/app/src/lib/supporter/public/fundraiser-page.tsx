@@ -322,7 +322,13 @@ export function FundraiserPageWithCard({
 }
 
 /** an ended fundraiser: an ended campaign's screen, its total under the thanks, and no box. */
-export function FundraiserEndedPage({ fundraiser, org, look, money }: FundraiserEndedPageProps) {
+export function FundraiserEndedPage({
+	fundraiser,
+	org,
+	look,
+	money,
+	contact
+}: FundraiserEndedPageProps) {
 	const raised = formatOffer(fundraiser.raisedMinor, money.locale, money.currency);
 	const total = copy.endedTotal(
 		fundraiser.name,
@@ -336,6 +342,7 @@ export function FundraiserEndedPage({ fundraiser, org, look, money }: Fundraiser
 			orgName={org.name}
 			logo={org.logo ?? null}
 			look={look}
+			footer={{ ...contact, legalName: org.name, ein: org.taxId }}
 		>
 			<p className="fundraiser-ended-total">
 				{total.before}

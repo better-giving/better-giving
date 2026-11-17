@@ -4,8 +4,8 @@ import { describe, expect, it, onTestFinished } from 'vitest';
 import { EndedCampaignPage } from './plain-page';
 import type { SiteFooterInfo } from './site-footer';
 
-// an ended campaign's screen, mounted: the site nav over it and, where the caller hands the
-// organisation's details, the compact site footer under it, as every other donor page draws them.
+// an ended campaign's screen, mounted: the site nav over it and the compact site footer under it,
+// as every other donor page draws them.
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -29,13 +29,13 @@ const FOOTER: SiteFooterInfo = {
 	socialLinks: []
 };
 
-const ended = (footer?: SiteFooterInfo) =>
+const ended = (footer: SiteFooterInfo) =>
 	mount(
 		<EndedCampaignPage
 			name="Winter coat drive"
 			orgName="Northside Neighbors"
 			look={{ brandColour: null }}
-			{...(footer === undefined ? {} : { footer })}
+			footer={footer}
 		/>
 	);
 
@@ -51,7 +51,8 @@ describe('an ended campaign’s screen', () => {
 		expect(main?.compareDocumentPosition(footer as Node)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
 	});
 
-	it('draws no footer where the caller hands no details', () => {
-		expect(ended().querySelector('footer')).toBeNull();
+	it('draws no footer where the organisation has set no details', () => {
+		const none = { legalName: null, ein: null, addressLines: [], email: null, socialLinks: [] };
+		expect(ended(none).querySelector('footer')).toBeNull();
 	});
 });
