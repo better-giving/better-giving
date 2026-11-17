@@ -143,6 +143,18 @@ describe('the folded menu', () => {
 		expect(panel?.hidden).toBe(true);
 	});
 
+	it('repeats the bar’s actions under its row, and closes on a press on one', () => {
+		const root = nav({ actions: <button type="button">Sign out</button> });
+		const { button, panel } = parts(root);
+		expect(root.querySelector('.ds-site-nav-end > .ds-site-nav-actions')?.textContent).toBe(
+			'Sign out'
+		);
+		act(() => button?.click());
+		const action = panel?.querySelector<HTMLButtonElement>('.ds-site-nav-menu-actions button');
+		act(() => action?.click());
+		expect(panel?.hidden).toBe(true);
+	});
+
 	it('closes on a press on its row', () => {
 		const { button, panel } = parts(nav());
 		act(() => button?.click());

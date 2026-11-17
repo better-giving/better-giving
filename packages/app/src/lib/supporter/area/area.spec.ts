@@ -137,13 +137,8 @@ function stated(selector: string, at: 'phone' | 'wide' = 'phone'): Record<string
 
 // happy-dom lays nothing out, so where a box stands is read off the rule that places it.
 describe('the placements the frames draw', () => {
-	it('gives the signed-in address and Sign out a row of their own on a phone, sharing it from 48rem', () => {
-		expect(stated('.page-mast-in:has(> .sa-account)')['flex-wrap']).toBe('wrap');
-		expect(stated('.page-mast-in:has(> .sa-account) > .page-mast-name')['white-space']).toBe(
-			'normal'
-		);
-		expect(stated('.sa-account')['flex-basis']).toBe('100%');
-		expect(stated('.sa-account', 'wide')['flex-basis']).toBe('auto');
+	it('stands the signed-in address and Sign out on one row, the address breaking before Sign out', () => {
+		expect(stated('.sa-account')).toMatchObject({ display: 'flex', 'min-inline-size': '0' });
 		expect(stated('.sa-account-email')['overflow-wrap']).toBe('break-word');
 		expect(stated('.sa-account > .ds-btn')).toMatchObject({
 			flex: 'none',

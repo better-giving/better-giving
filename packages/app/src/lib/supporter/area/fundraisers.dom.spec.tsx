@@ -56,12 +56,13 @@ const list = (props: Partial<YourFundraisersProps> = {}) =>
 const cards = (root: HTMLElement) => [...root.querySelectorAll<HTMLElement>('.sa-cards > li')];
 
 describe('your fundraisers', () => {
-	it('carries the signed-in address and Sign out in the bar', () => {
+	it('carries the signed-in address and Sign out in the site nav, at the bar’s end and in its menu', () => {
 		const { root } = list();
-		const bar = one(root, '.page-mast');
-		const out = one<HTMLFormElement>(bar, 'form');
-		// the bar's own row on a phone: the organisation first, then the address and Sign out.
-		expect(out.previousElementSibling?.className).toBe('page-mast-name');
+		const nav = one(root, '.ds-site-nav');
+		expect(one(nav, '.ds-site-nav-brand').textContent).toContain('Harbor Light');
+		expect(nav.querySelectorAll('.ds-site-nav-actions > form')).toHaveLength(1);
+		expect(nav.querySelectorAll('.ds-site-nav-menu-actions > form')).toHaveLength(1);
+		const out = one<HTMLFormElement>(nav, '.ds-site-nav-actions > form');
 		expect(one(out, '.sa-account-email').textContent).toBe('maya@example.org');
 		expect(out.getAttribute('action')).toBe('/fundraise/sign-out');
 		expect(one(out, 'input[name="intent"]').getAttribute('value')).toBe('sign-out');

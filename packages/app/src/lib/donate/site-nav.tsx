@@ -2,6 +2,7 @@ import {
 	type FocusEvent,
 	type KeyboardEvent,
 	type ReactNode,
+	type RefObject,
 	useEffect,
 	useId,
 	useRef,
@@ -34,8 +35,11 @@ export type SiteNavProps = {
 	readonly logo: PageLogo | null;
 	/** whether this page is /donate, which marks the Donate link as the current page. */
 	readonly current: boolean;
-	/** what the bar ends on, after the links and before the menu button: a signed-in supporter's account. */
-	readonly end?: ReactNode;
+	/**
+	 * the bar's actions, a signed-in supporter's account on their own screens: drawn at the bar's end
+	 * from 40rem, and under the menu's row below it, where the registry folds them.
+	 */
+	readonly actions?: ReactNode;
 };
 
 /** a logo at least twice as wide as it is tall, by the stored image's width and height. */
@@ -71,7 +75,7 @@ function Brand({ name, logo }: { readonly name: string; readonly logo: PageLogo 
 	);
 }
 
-export function SiteNav({ name, logo, current, end }: SiteNavProps) {
+export function SiteNav({ name, logo, current, actions }: SiteNavProps) {
 	const menuId = useId();
 	const [open, setOpen] = useState(false);
 	const button = useRef<HTMLButtonElement>(null);
@@ -108,6 +112,15 @@ export function SiteNav({ name, logo, current, end }: SiteNavProps) {
 		setOpen(false);
 	};
 	const currentPage = current ? ('page' as const) : undefined;
+	const toggle = (
+		<MenuToggle
+			open={open}
+			menuId={menuId}
+			onToggle={() => setOpen((was) => !was)}
+			onKeyDown={closeOnEscape}
+			buttonRef={button}
+		/>
+	);
 
 	return (
 		<>
@@ -126,43 +139,14 @@ export function SiteNav({ name, logo, current, end }: SiteNavProps) {
 							</li>
 						</ul>
 					</nav>
-					{end === undefined ? null : <div className="ds-site-nav-end">{end}</div>}
-					<button
-						ref={button}
-						type="button"
-						className="ds-btn ds-btn-ghost ds-btn-field ds-btn-icon ds-site-nav-toggle"
-						aria-label="Menu"
-						aria-expanded={open}
-						aria-controls={menuId}
-						onClick={() => setOpen((was) => !was)}
-						onKeyDown={closeOnEscape}
-					>
-						<svg
-							width="20"
-							height="20"
-							viewBox="0 0 24 24"
-							fill="none"
-							stroke="currentColor"
-							strokeWidth="2"
-							strokeLinecap="round"
-							strokeLinejoin="round"
-							aria-hidden="true"
-						>
-							{/* lucide's `menu` closed and its `x` open, as the usage note gives them. */}
-							{open ? (
-								<>
-									<path d="M18 6 6 18" />
-									<path d="m6 6 12 12" />
-								</>
-							) : (
-								<>
-									<path d="M4 5h16" />
-									<path d="M4 12h16" />
-									<path d="M4 19h16" />
-								</>
-							)}
-						</svg>
-					</button>
+					{actions === undefined ? (
+						toggle
+					) : (
+						<div className="ds-site-nav-end">
+							<div className="ds-site-nav-actions">{actions}</div>
+							{toggle}
+						</div>
+					)}
 				</div>
 				<nav
 					ref={panel}
@@ -185,8 +169,68 @@ export function SiteNav({ name, logo, current, end }: SiteNavProps) {
 							</a>
 						</li>
 					</ul>
+					{actions === undefined ? null : (
+						// biome-ignore lint/a11y/noStaticElementInteractions: a press on an action inside closes the panel, as a row's does (site-nav-css.usage.md).
+						// biome-ignore lint/a11y/useKeyWithClickEvents: the click is the action's own, keyboard included; this only hears it bubble.
+						<div className="ds-site-nav-menu-actions" onClick={() => setOpen(false)}>
+							{actions}
+						</div>
+					)}
 				</nav>
 			</header>
 		</>
+	);
+}
+
+function MenuToggle({
+	open,
+	menuId,
+	onToggle,
+	onKeyDown,
+	buttonRef
+}: {
+	readonly open: boolean;
+	readonly menuId: string;
+	readonly onToggle: () => void;
+	readonly onKeyDown: (event: KeyboardEvent) => void;
+	readonly buttonRef: RefObject<HTMLButtonElement | null>;
+}) {
+	return (
+		<button
+			ref={buttonRef}
+			type="button"
+			className="ds-btn ds-btn-ghost ds-btn-field ds-btn-icon ds-site-nav-toggle"
+			aria-label="Menu"
+			aria-expanded={open}
+			aria-controls={menuId}
+			onClick={onToggle}
+			onKeyDown={onKeyDown}
+		>
+			<svg
+				width="20"
+				height="20"
+				viewBox="0 0 24 24"
+				fill="none"
+				stroke="currentColor"
+				strokeWidth="2"
+				strokeLinecap="round"
+				strokeLinejoin="round"
+				aria-hidden="true"
+			>
+				{/* lucide's `menu` closed and its `x` open, as the usage note gives them. */}
+				{open ? (
+					<>
+						<path d="M18 6 6 18" />
+						<path d="m6 6 12 12" />
+					</>
+				) : (
+					<>
+						<path d="M4 5h16" />
+						<path d="M4 12h16" />
+						<path d="M4 19h16" />
+					</>
+				)}
+			</svg>
+		</button>
 	);
 }
