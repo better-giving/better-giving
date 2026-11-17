@@ -2,8 +2,8 @@ import { MIN_ADMIN_PASSWORD_LENGTH } from '@better-giving/operator/admin-passwor
 import { Button } from '@better-giving/operator/components/controls/Button';
 import { Field } from '@better-giving/operator/components/forms/Field';
 import { StatedValue } from '@better-giving/operator/components/forms/StatedValue';
-import { PanelRoute } from '@better-giving/operator/components/shell/AppShell';
 import { Stack } from '@better-giving/operator/components/shell/Layout';
+import { PanelRoute } from '@better-giving/operator/components/shell/PanelRoute';
 import { Banner } from '@better-giving/operator/components/status/Banner';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
 import { getFormProps } from '@conform-to/react';

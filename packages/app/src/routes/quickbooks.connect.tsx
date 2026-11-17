@@ -1,5 +1,5 @@
 import { Button } from '@better-giving/operator/components/controls/Button';
-import { PanelRoute } from '@better-giving/operator/components/shell/AppShell';
+import { PanelRoute } from '@better-giving/operator/components/shell/PanelRoute';
 import { data, redirect } from 'react-router';
 import { operatorLinks } from '$lib/admin/operator-links';
 import { APP_NAME } from '$lib/admin/screen-title';

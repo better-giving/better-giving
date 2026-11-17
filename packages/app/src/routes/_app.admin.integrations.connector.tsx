@@ -1,6 +1,6 @@
 import { Button } from '@better-giving/operator/components/controls/Button';
-import { PanelRoute } from '@better-giving/operator/components/shell/AppShell';
 import { Stack } from '@better-giving/operator/components/shell/Layout';
+import { PanelRoute } from '@better-giving/operator/components/shell/PanelRoute';
 import { Banner } from '@better-giving/operator/components/status/Banner';
 import { Form } from 'react-router';
 import { operatorLinks } from '$lib/admin/operator-links';
