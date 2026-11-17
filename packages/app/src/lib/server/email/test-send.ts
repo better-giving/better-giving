@@ -13,7 +13,7 @@ import type { EmailMessage, SendResult } from './provider';
 //
 // **the destination arrives with the press.** it is the caller's and is used verbatim, so a mail
 // host can be checked against an inbox somebody is watching. what an address may be is settled
-// once, at the action that takes the press (../../../routes/_app.admin.settings.tsx), and what
+// once, at the action that takes the press (../../../routes/_app.admin.settings_.mail.tsx), and what
 // reaches here has already been through it.
 //
 // **nothing is persisted.** no row, no send log — the message is built here and dies with the
@@ -61,7 +61,7 @@ export async function sendTestEmail(inputs: {
  *
  * a refusal from the mail host is a 500 rather than a 4xx: no box on any screen fixes it. the one
  * thing a caller can get wrong is the destination, and that is refused before a send is attempted
- * (`TEST_EMAIL_FORM` in ../../../routes/_app.admin.settings.tsx) rather than reported as an outcome
+ * (`TEST_EMAIL_FORM` in ../../../routes/_app.admin.settings_.mail.tsx) rather than reported as an outcome
  * here.
  */
 export function testSendStatus(outcome: TestSendOutcome): 200 | RejectionStatus {

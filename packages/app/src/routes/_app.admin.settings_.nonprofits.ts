@@ -6,8 +6,9 @@ import { platform, staff } from '../context';
 import type { Route } from './+types/_app.admin.settings_.nonprofits';
 
 // what Settings' "Find your charity" box asks with `?q=`: a name search of the IRS files, or, where
-// the box holds an EIN, the one lookup by it. a `loader` with no component, which the Settings
-// screen (./_app.admin.settings.tsx) asks by fetcher, out of that screen's layout nesting by the
+// the box holds an EIN, the one lookup by it. a `loader` with no component, which the Organisation
+// details screen (./_app.admin.settings_.organisation.tsx) asks by fetcher, out of
+// ./_app.admin.settings.tsx's nesting by the
 // `settings_` in its name. the service, its limits and its answers are
 // $lib/server/org/nonprofits.ts's; what each answer looks like is $lib/org/nonprofit-answers.ts's.
 //

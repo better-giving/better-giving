@@ -16,7 +16,7 @@ import { createSmtpProvider, type MailTransport } from './smtp';
 // it is deliberately not seeded onto the request context. what belongs there is what every surface
 // may need and nothing that costs a read (src/request-context.ts); a provider is built only by
 // the call sites that send — the scheduled runs in src/cron-runs.ts, `/forgot`, each processor's
-// webhook route, the test send on Settings (src/routes/_app.admin.settings.tsx), `/api/v1`'s
+// webhook route, the test send on Settings (src/routes/_app.admin.settings_.mail.tsx), `/api/v1`'s
 // donations endpoint and the dashboard routes that record a gift or invite a member. putting it
 // on every request would construct something for thousands of page views that never send
 // anything.

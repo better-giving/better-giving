@@ -45,7 +45,7 @@ import zapierImage from '@better-giving/operator/brand/zapier.png';
  * company's product, that company's image as packages/operator publishes it, `{ src }`.
  *
  * `children` are the pages a destination is split into, drawn under it as its sections: Settings'
- * three, one per form (../../routes/_app.admin.settings.organisation.tsx and the two beside it).
+ * three, one per form (../../routes/_app.admin.settings_.organisation.tsx and the two beside it).
  * they share their parent's `deployer` mark, since a section is drawn only where its parent is.
  */
 export const DESTINATION_GROUPS = [

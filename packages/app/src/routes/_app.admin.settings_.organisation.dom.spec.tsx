@@ -6,14 +6,13 @@ import type { CropRect, Cropped } from '$lib/admin/settings/crop-image';
 import { BANNER_REFUSED } from '$lib/admin/settings/banner-crop';
 import type { CropSquare } from '$lib/admin/settings/logo-crop';
 import type { NonprofitLookupAnswer, NonprofitSearchAnswer } from '$lib/org/nonprofit-answers';
-import Settings from './_app.admin.settings';
+import Settings from './_app.admin.settings_.organisation';
 import { shouldRevalidate as searchShouldRevalidate } from './_app.admin.settings_.nonprofits';
 import { shouldRevalidate as lookupShouldRevalidate } from './_app.admin.settings_.nonprofits_.$ein';
 import { settled } from '$lib/admin/settings/settled.testing';
 
-// what the Settings screen says about the two things a deployment can be missing without any box
-// on it being wrong — the mail values, which are set in `.env`, and the notification address — and
-// what its logo, its banner, its brand colour and its link rows do as they are used.
+// what the Organisation details screen says, and what its logo, its banner, its brand colour, its
+// link rows and its charity finder do as they are used.
 //
 // mounted rather than rendered to a string, inside a stub because the screen's forms and its
 // fetchers do not render without a router. what is asserted is the words a reader meets, scoped to
@@ -86,12 +85,6 @@ const DETAILS = {
 };
 
 type Drawn = {
-	readonly notificationEmail: string | null;
-	readonly mail: {
-		readonly from: string;
-		readonly host: string;
-		readonly delivers: boolean;
-	} | null;
 	readonly details?: Partial<typeof DETAILS> | undefined;
 	readonly logo?: { readonly id: string; readonly src: string } | null | undefined;
 	readonly banner?: { readonly id: string; readonly src: string } | null | undefined;
@@ -156,7 +149,7 @@ function screen(
 	const Stub = createRoutesStub([
 		{
 			id: STUB_ROUTE,
-			path: '/admin/settings',
+			path: '/admin/settings/organisation',
 			loader: () => read,
 			action: async ({ request }) => {
 				asked.saves.push(await request.formData());
@@ -199,7 +192,7 @@ function screen(
 	return {
 		root: mount(
 			createElement(Stub, {
-				initialEntries: ['/admin/settings'],
+				initialEntries: ['/admin/settings/organisation'],
 				hydrationData: { loaderData: { [STUB_ROUTE]: drawn } }
 			})
 		),
@@ -230,121 +223,6 @@ async function cardDrawn(): Promise<void> {
 	}
 }
 
-const SET = {
-	from: 'giving@riverbanktrust.org',
-	host: 'smtp.riverbanktrust.org',
-	delivers: true
-};
-
-describe('the mail card', () => {
-	it('says receipts are not going out, and what the server runner does about it, with no mail set', () => {
-		const mail = card(
-			screen({ notificationEmail: 'ops@riverbanktrust.org', mail: null }).root,
-			'Mail'
-		);
-
-		expect(mail.querySelector('[role="status"]')?.textContent).toContain(
-			'Receipts aren’t being sent'
-		);
-		expect(mail.textContent).toContain('For whoever runs the server');
-		expect(mail.textContent).toContain('docker compose up -d --force-recreate app');
-		expect(mail.querySelector('input[name="to"]')).toBeNull();
-	});
-
-	it('says receipts are not going out when the mail values are still the placeholders from .env.example', () => {
-		const mail = card(
-			screen({
-				notificationEmail: 'ops@riverbanktrust.org',
-				mail: {
-					from: 'donations@example.org',
-					host: 'smtp.example.org',
-					delivers: false
-				}
-			}).root,
-			'Mail'
-		);
-		const banner = mail.querySelector<HTMLElement>('.adm-banner');
-
-		expect(banner?.querySelector('.adm-banner__word')?.textContent).toBe(
-			'Receipts aren’t being sent'
-		);
-		expect(banner?.textContent).toContain('placeholders from .env.example');
-		expect(banner?.textContent).toContain(
-			'Nothing is delivered until they are replaced and the app is recreated.'
-		);
-		expect(banner?.querySelector('.adm-banner__text')?.textContent).toContain(
-			'Ask whoever set up this site to replace them. The steps below are for them.'
-		);
-		expect(banner?.querySelector('pre')?.textContent).toBe(
-			'docker compose up -d --force-recreate app'
-		);
-		expect(banner?.nextElementSibling?.textContent).toContain('donations@example.org');
-		expect(banner?.nextElementSibling?.textContent).toContain('smtp.example.org');
-		expect(mail.textContent).not.toContain('go out from this address');
-	});
-
-	it('holds the steps for whoever runs the server inside the banner, under the staff sentence', () => {
-		const mail = card(screen({ notificationEmail: null, mail: null }).root, 'Mail');
-		const banner = mail.querySelector<HTMLElement>('.adm-banner');
-		const body = banner?.querySelector<HTMLElement>('.adm-banner__body');
-
-		expect(mail.querySelectorAll('.adm-banner')).toHaveLength(1);
-		expect(body?.previousElementSibling?.textContent).toContain(
-			'Ask whoever set up this site to add it.'
-		);
-		expect(body?.querySelector('h3')?.textContent).toBe('For whoever runs the server');
-		expect(body?.textContent).toContain('Add the mail values to .env (DEPLOY.md, Mail)');
-		expect(body?.querySelector('pre')?.textContent).toBe(
-			'docker compose up -d --force-recreate app'
-		);
-		// nothing of the steps is left standing under the banner.
-		expect(banner?.nextElementSibling).toBeNull();
-	});
-
-	it('states the sender and the host, and offers the test send, with mail set', () => {
-		const mail = card(
-			screen({ notificationEmail: 'ops@riverbanktrust.org', mail: SET }).root,
-			'Mail'
-		);
-
-		expect(mail.textContent).toContain('giving@riverbanktrust.org');
-		expect(mail.textContent).toContain('smtp.riverbanktrust.org');
-		expect(mail.textContent).not.toContain('Receipts aren’t being sent');
-		const to = mail.querySelector<HTMLInputElement>('input[name="to"]');
-		expect(to?.defaultValue).toBe('ops@riverbanktrust.org');
-		expect(mail.querySelector('button[type="submit"]')?.textContent).toBe('Send test email');
-	});
-});
-
-describe('the notifications card', () => {
-	it('says nothing reaches the organisation while no address is saved', () => {
-		const notifications = card(
-			screen({ notificationEmail: null, mail: SET }).root,
-			'Notifications'
-		);
-
-		expect(notifications.querySelector('[role="status"]')?.textContent).toContain(
-			'Nothing reaches you yet'
-		);
-		expect(notifications.textContent).toContain(
-			'Where this site reaches you about the gifts it takes and anything that goes wrong.'
-		);
-	});
-
-	it('says nothing of the kind once one is saved, and holds it in the box', () => {
-		const notifications = card(
-			screen({ notificationEmail: 'ops@riverbanktrust.org', mail: SET }).root,
-			'Notifications'
-		);
-
-		expect(notifications.textContent).not.toContain('Nothing reaches you yet');
-		expect(
-			notifications.querySelector<HTMLInputElement>('input[name="notification_email"]')
-				?.defaultValue
-		).toBe('ops@riverbanktrust.org');
-	});
-});
-
 /**
  * `input`, typed into as a reader would: the value, then the event the form listens for. the value
  * goes in through the prototype's setter, as the browser's own does, since react's tracker sits on
@@ -357,16 +235,23 @@ function type(input: HTMLInputElement, value: string) {
 	});
 }
 
-describe('the organisation details card', () => {
-	it('says every receipt carries these, and no form goes live until the EIN and registered name are in', () => {
-		const details = card(
-			screen({ notificationEmail: null, mail: SET }).root,
-			'Organisation details'
-		);
+describe('the organisation details page', () => {
+	it('says under its title that every receipt carries these, and no form goes live until the EIN and registered name are in', () => {
+		const { root } = screen({});
 
-		expect(details.querySelector('h2 + p.adm-hint')?.textContent).toBe(
+		expect(root.querySelector('h1')?.textContent).toBe('Organisation details');
+		expect(root.querySelector('.ds-page-desc')?.textContent).toBe(
 			'Every receipt carries these. Filled from the IRS list; check the name’s capitals. No form goes live until the EIN and registered name are in.'
 		);
+	});
+
+	it('saves from the card’s foot, through the form it names, with nothing to save at first', () => {
+		const details = card(screen({}).root, 'Organisation details');
+		const save = details.querySelector<HTMLButtonElement>('.ds-card-footer button[type="submit"]');
+
+		expect(save?.textContent).toBe('Save details');
+		expect(save?.getAttribute('form')).toBe(details.querySelector('form')?.id);
+		expect(save?.getAttribute('aria-disabled')).toBe('true');
 	});
 });
 
@@ -379,8 +264,6 @@ describe('the brand colour', () => {
 
 	it('draws the stored colour in the well beside its box', () => {
 		const { root } = screen({
-			notificationEmail: null,
-			mail: SET,
 			details: { brand_colour: '#1F6FEB' }
 		});
 
@@ -390,7 +273,7 @@ describe('the brand colour', () => {
 	});
 
 	it('says no colour is set while the box holds none', () => {
-		const { root } = screen({ notificationEmail: null, mail: SET });
+		const { root } = screen({});
 		const said = well(root)?.getAttribute('aria-describedby');
 
 		expect(well(root)?.hasAttribute('data-empty')).toBe(true);
@@ -399,7 +282,7 @@ describe('the brand colour', () => {
 	});
 
 	it('shows a hex typed in the box in the well', () => {
-		const { root } = screen({ notificationEmail: null, mail: SET });
+		const { root } = screen({});
 		const typed = box(root);
 		if (typed === null) throw new Error('no brand colour box');
 
@@ -413,8 +296,6 @@ describe('the brand colour', () => {
 
 	it('writes a colour picked in the well into the box, as typing it would', () => {
 		const { root } = screen({
-			notificationEmail: null,
-			mail: SET,
 			details: { brand_colour: '#1f6feb' }
 		});
 		const picker = well(root);
@@ -430,8 +311,6 @@ describe('the brand colour', () => {
 describe('the social link rows', () => {
 	it('mark each row with the network its address is on, and follow what is typed', () => {
 		const { root } = screen({
-			notificationEmail: null,
-			mail: SET,
 			details: { social_links: ['https://www.instagram.com/riverbanktrust'] }
 		});
 		const row = card(root, 'Organisation details').querySelector<HTMLInputElement>(
@@ -496,12 +375,10 @@ describe('the logo', () => {
 	}
 
 	it('says Add logo with none stored, and Replace logo and Remove the logo with one', () => {
-		const empty = screen({ notificationEmail: null, mail: SET }).root;
+		const empty = screen({}).root;
 		expect(buttonNamed(logo(empty), 'Add logo')).toBeDefined();
 
 		const stored = screen({
-			notificationEmail: null,
-			mail: SET,
 			logo: { id: 'img_1', src: '/image/img_1' }
 		}).root;
 		expect(buttonNamed(logo(stored), 'Replace logo')).toBeDefined();
@@ -510,7 +387,7 @@ describe('the logo', () => {
 	});
 
 	it('opens the crop card on a picked file, and sends nothing yet', async () => {
-		const { root, sent } = screen({ notificationEmail: null, mail: SET });
+		const { root, sent } = screen({});
 
 		await pick(root, PICKED);
 
@@ -520,7 +397,7 @@ describe('the logo', () => {
 	});
 
 	it('posts the largest centred square, cropped, as the logo’s file at Save', async () => {
-		const { root, sent } = screen({ notificationEmail: null, mail: SET });
+		const { root, sent } = screen({});
 		await pick(root, PICKED);
 		await measure();
 		const save = cropCard() && buttonNamed(cropCard() as HTMLElement, 'Save logo');
@@ -538,7 +415,7 @@ describe('the logo', () => {
 	});
 
 	it('closes the crop card at Cancel, and posts nothing', async () => {
-		const { root, sent } = screen({ notificationEmail: null, mail: SET });
+		const { root, sent } = screen({});
 		await pick(root, PICKED);
 		await measure();
 
@@ -552,7 +429,7 @@ describe('the logo', () => {
 
 	it('says the logo is being removed until the removal is answered', async () => {
 		const { root, sent } = screen(
-			{ notificationEmail: null, mail: SET, logo: { id: 'img_1', src: '/image/img_1' } },
+			{ logo: { id: 'img_1', src: '/image/img_1' } },
 			() => new Promise(() => {})
 		);
 		const remove = logo(root).querySelector<HTMLButtonElement>(
@@ -611,7 +488,7 @@ describe('the banner', () => {
 	}
 
 	it('stands after the logo and before Save details, saying what a banner is', () => {
-		const root = screen({ notificationEmail: null, mail: SET }).root;
+		const root = screen({}).root;
 		const legends = [...card(root, 'Organisation details').querySelectorAll('legend')].map(
 			(legend) => legend.textContent
 		);
@@ -626,14 +503,14 @@ describe('the banner', () => {
 	});
 
 	it('draws the empty band and Add banner with none stored', () => {
-		const field = banner(screen({ notificationEmail: null, mail: SET }).root);
+		const field = banner(screen({}).root);
 		expect(field.querySelector('.adm-placed__empty')).not.toBeNull();
 		expect(buttonNamed(field, 'Add banner')).toBeDefined();
 		expect(field.querySelector('button[aria-label="Remove the banner"]')).toBeNull();
 	});
 
 	it('draws the stored banner, Replace banner and Remove the banner with one', () => {
-		const field = banner(screen({ notificationEmail: null, mail: SET, banner: STORED }).root);
+		const field = banner(screen({ banner: STORED }).root);
 		expect(field.querySelector('img.adm-placed__art--banner')?.getAttribute('src')).toBe(
 			'/image/img_2'
 		);
@@ -642,7 +519,7 @@ describe('the banner', () => {
 	});
 
 	it('opens the crop card on a picked file, and sends nothing yet', async () => {
-		const { root, sent } = screen({ notificationEmail: null, mail: SET });
+		const { root, sent } = screen({});
 
 		await pick(root, PICKED);
 
@@ -654,7 +531,7 @@ describe('the banner', () => {
 	});
 
 	it('posts the widest centred 4:1 band, cropped, as the banner’s file at Save banner', async () => {
-		const { root, sent } = screen({ notificationEmail: null, mail: SET });
+		const { root, sent } = screen({});
 		await pick(root, PICKED);
 		await measure({ width: 2400, height: 1600 });
 		expect(cropCard()?.textContent).toContain(
@@ -680,7 +557,7 @@ describe('the banner', () => {
 	});
 
 	it('closes the crop card at Cancel, and posts nothing', async () => {
-		const { root, sent } = screen({ notificationEmail: null, mail: SET });
+		const { root, sent } = screen({});
 		await pick(root, PICKED);
 		await measure({ width: 2400, height: 1600 });
 
@@ -703,7 +580,7 @@ describe('the banner', () => {
 			'That image is only 250 pixels tall. A banner needs at least 300. Choose a taller one.'
 		]
 	])('refuses a photo %s in an alert, with Save banner closed', async (_, natural, said) => {
-		const { root, sent } = screen({ notificationEmail: null, mail: SET });
+		const { root, sent } = screen({});
 		await pick(root, PICKED);
 		await measure(natural);
 
@@ -718,10 +595,7 @@ describe('the banner', () => {
 	});
 
 	it('says the banner is being removed until the removal is answered', async () => {
-		const { root, sent } = screen(
-			{ notificationEmail: null, mail: SET, banner: STORED },
-			() => new Promise(() => {})
-		);
+		const { root, sent } = screen({ banner: STORED }, () => new Promise(() => {}));
 		const remove = banner(root).querySelector<HTMLButtonElement>(
 			'button[aria-label="Remove the banner"]'
 		);
@@ -736,7 +610,7 @@ describe('the banner', () => {
 
 	it('says the crop step’s refusal under the press, and posts nothing', async () => {
 		cropBanner.mockResolvedValueOnce({ ok: false, refused: BANNER_REFUSED.unreadable });
-		const { root, sent } = screen({ notificationEmail: null, mail: SET });
+		const { root, sent } = screen({});
 		await pick(root, PICKED);
 		await measure({ width: 2400, height: 1600 });
 
@@ -752,7 +626,7 @@ describe('the banner', () => {
 	});
 
 	it('says the address’s refusal under the press', async () => {
-		const { root } = screen({ notificationEmail: null, mail: SET }, async () => ({
+		const { root } = screen({}, async () => ({
 			error: 'Save the organisation details first, then add the banner.'
 		}));
 		await pick(root, PICKED);
@@ -864,7 +738,7 @@ describe('find your charity', () => {
 	}
 
 	it('is open on a profile with no details, above the boxes', () => {
-		const { root } = screen({ notificationEmail: null, mail: SET, details: EMPTY });
+		const { root } = screen({ details: EMPTY });
 
 		const search = details(root).querySelector('search');
 		expect(search?.querySelector('label')?.textContent).toBe('Find your charity');
@@ -876,7 +750,7 @@ describe('find your charity', () => {
 	});
 
 	it('hides once details are saved, and opens at Pick a different organisation', async () => {
-		const { root } = screen({ notificationEmail: null, mail: SET });
+		const { root } = screen({});
 
 		expect(details(root).querySelector('search')).toBeNull();
 		const reopen = buttonNamed(details(root), 'Pick a different organisation');
@@ -890,13 +764,9 @@ describe('find your charity', () => {
 	});
 
 	it('makes one lookup for an EIN press, and nothing else', async () => {
-		const { root, asked } = screen(
-			{ notificationEmail: null, mail: SET, details: EMPTY },
-			undefined,
-			{
-				lookup: async () => FOUND
-			}
-		);
+		const { root, asked } = screen({ details: EMPTY }, undefined, {
+			lookup: async () => FOUND
+		});
 
 		await press(root, '951234567');
 
@@ -907,13 +777,9 @@ describe('find your charity', () => {
 	});
 
 	it('makes one search for a name press, and lists what it found', async () => {
-		const { root, asked } = screen(
-			{ notificationEmail: null, mail: SET, details: EMPTY },
-			undefined,
-			{
-				search: async () => MATCHES
-			}
-		);
+		const { root, asked } = screen({ details: EMPTY }, undefined, {
+			search: async () => MATCHES
+		});
 
 		await press(root, 'riverside food');
 
@@ -928,7 +794,7 @@ describe('find your charity', () => {
 	});
 
 	it('asks nothing while typing, and holds a second press while the first is out', async () => {
-		const { root, asked } = screen({ notificationEmail: null, mail: SET, details: EMPTY });
+		const { root, asked } = screen({ details: EMPTY });
 		const box = finderBox(root) as HTMLInputElement;
 
 		act(() => box.focus());
@@ -948,11 +814,10 @@ describe('find your charity', () => {
 
 	it('looks a picked match up once and fills the boxes, saving nothing', async () => {
 		const lookedUp: NonprofitLookupAnswer = { ...FOUND, deductible: false };
-		const { root, asked } = screen(
-			{ notificationEmail: null, mail: SET, details: { ...EMPTY, address_line2: 'Suite 4' } },
-			undefined,
-			{ search: async () => MATCHES, lookup: async () => lookedUp }
-		);
+		const { root, asked } = screen({ details: { ...EMPTY, address_line2: 'Suite 4' } }, undefined, {
+			search: async () => MATCHES,
+			lookup: async () => lookedUp
+		});
 		await press(root, 'riverside food');
 		await vi.waitFor(() => expect(said(root)).toBe('4 matches.'));
 
@@ -985,11 +850,7 @@ describe('find your charity', () => {
 	});
 
 	it('fills the boxes a picked match carries at once, while its address is still being looked up', async () => {
-		const { root, asked } = screen(
-			{ notificationEmail: null, mail: SET, details: EMPTY },
-			undefined,
-			{ search: async () => MATCHES }
-		);
+		const { root, asked } = screen({ details: EMPTY }, undefined, { search: async () => MATCHES });
 		await press(root, 'riverside food');
 		await vi.waitFor(() => expect(said(root)).toBe('4 matches.'));
 
@@ -1017,15 +878,11 @@ describe('find your charity', () => {
 
 	it('keeps what a pick filled when its address lookup is turned away, and fetches it once the wait is over', async () => {
 		let lookups = 0;
-		const { root, asked } = screen(
-			{ notificationEmail: null, mail: SET, details: EMPTY },
-			undefined,
-			{
-				search: async () => MATCHES,
-				lookup: async () =>
-					lookups++ === 0 ? { kind: 'lookup', outcome: 'rate_limited', retryAfter: 1 } : FOUND
-			}
-		);
+		const { root, asked } = screen({ details: EMPTY }, undefined, {
+			search: async () => MATCHES,
+			lookup: async () =>
+				lookups++ === 0 ? { kind: 'lookup', outcome: 'rate_limited', retryAfter: 1 } : FOUND
+		});
 		await press(root, 'riverside food');
 		await vi.waitFor(() => expect(said(root)).toBe('4 matches.'));
 
@@ -1077,13 +934,9 @@ describe('find your charity', () => {
 	});
 
 	it('asks the service nothing more when the filled details are saved', async () => {
-		const { root, asked } = screen(
-			{ notificationEmail: null, mail: SET, details: EMPTY },
-			undefined,
-			{
-				lookup: async () => FOUND
-			}
-		);
+		const { root, asked } = screen({ details: EMPTY }, undefined, {
+			lookup: async () => FOUND
+		});
 		await press(root, '95-1234567');
 		await vi.waitFor(() =>
 			expect(boxValue(root, 'legal_name')).toBe('Riverside Community Food Bank')
@@ -1099,7 +952,7 @@ describe('find your charity', () => {
 
 	it('stays open, with the note of what filled the boxes, when a photo goes on or comes off', async () => {
 		const { root, sent, reread } = screen(
-			{ notificationEmail: null, mail: SET, banner: { id: 'img_2', src: '/image/img_2' } },
+			{ banner: { id: 'img_2', src: '/image/img_2' } },
 			async () => ({ banner: null }),
 			{ lookup: async () => FOUND }
 		);
@@ -1124,7 +977,7 @@ describe('find your charity', () => {
 	});
 
 	it('puts itself away, and the note with it, when the filled details are saved', async () => {
-		const { root, reread } = screen({ notificationEmail: null, mail: SET }, undefined, {
+		const { root, reread } = screen({}, undefined, {
 			lookup: async () => FOUND
 		});
 		await act(async () => buttonNamed(details(root), 'Pick a different organisation')?.click());
@@ -1140,7 +993,7 @@ describe('find your charity', () => {
 	});
 
 	it('says each match’s standing, a revocation over its deductibility', async () => {
-		const { root } = screen({ notificationEmail: null, mail: SET, details: EMPTY }, undefined, {
+		const { root } = screen({ details: EMPTY }, undefined, {
 			search: async () => MATCHES
 		});
 
@@ -1161,7 +1014,7 @@ describe('find your charity', () => {
 	});
 
 	it('says the standing of the organisation the boxes were filled from', async () => {
-		const { root } = screen({ notificationEmail: null, mail: SET, details: EMPTY }, undefined, {
+		const { root } = screen({ details: EMPTY }, undefined, {
 			lookup: async () => ({ ...FOUND, revoked: true, revocationDate: '2023-05-15' })
 		});
 
@@ -1174,7 +1027,7 @@ describe('find your charity', () => {
 	});
 
 	it('refuses a query under two characters on screen, and sends nothing', async () => {
-		const { root, asked } = screen({ notificationEmail: null, mail: SET, details: EMPTY });
+		const { root, asked } = screen({ details: EMPTY });
 
 		await press(root, ' r ');
 
@@ -1221,7 +1074,7 @@ describe('find your charity', () => {
 			'Too many lookups for now. Try again in 60 minutes.'
 		]
 	] as const)('says what %s comes to, and fills nothing', async (_, typed, answer, words) => {
-		const { root } = screen({ notificationEmail: null, mail: SET, details: EMPTY }, undefined, {
+		const { root } = screen({ details: EMPTY }, undefined, {
 			search: async () => answer as NonprofitSearchAnswer,
 			lookup: async () => answer as NonprofitLookupAnswer
 		});
@@ -1235,7 +1088,7 @@ describe('find your charity', () => {
 	});
 
 	it('says it is looking up while a lookup is out', async () => {
-		const { root } = screen({ notificationEmail: null, mail: SET, details: EMPTY });
+		const { root } = screen({ details: EMPTY });
 
 		await press(root, '95-1234567');
 

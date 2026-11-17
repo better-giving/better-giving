@@ -66,7 +66,7 @@ const SENTENCES: Record<FormReadinessJob, (deployer: boolean) => ReactNode> = {
 		deployer ? (
 			<>
 				Receipts need the organisation’s EIN and registered name. Add them in{' '}
-				<Link to={href('/admin/settings')}>Settings</Link>.
+				<Link to={href('/admin/settings/organisation')}>Settings</Link>.
 			</>
 		) : (
 			'Receipts need the organisation’s EIN and registered name, which only the person who ' +

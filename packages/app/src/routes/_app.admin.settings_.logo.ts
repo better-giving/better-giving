@@ -8,9 +8,9 @@ import { imageSrc } from '$lib/page/image-src';
 import { database, staff } from '../context';
 import type { Route } from './+types/_app.admin.settings_.logo';
 
-// the organisation's logo, put on by `POST` and taken off by `DELETE`, which the Settings screen
-// (./_app.admin.settings.tsx) asks by fetcher. an `action` with no component, out of that screen's
-// layout nesting by the `settings_` in its name, and an address of its own because the photo is
+// the organisation's logo, put on by `POST` and taken off by `DELETE`, which the Organisation details
+// screen (./_app.admin.settings_.organisation.tsx) asks by fetcher. an `action` with no component,
+// out of ./_app.admin.settings.tsx's nesting by the `settings_` in its name, and an address of its own because the photo is
 // the whole body: `readPostedPhoto` ($lib/server/images/intake.ts) reads it off the request with
 // its size bound, which a body already read by `formData()` would have spent.
 //

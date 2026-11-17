@@ -246,7 +246,7 @@ it('says under the heading why the form cannot go live, and at the status box wh
 
 	const band = root.querySelector('[role="alert"]');
 	expect(band?.querySelector('.adm-banner__word')?.textContent).toBe('This form can’t go live yet');
-	expect(band?.querySelector('a')?.getAttribute('href')).toBe('/admin/settings');
+	expect(band?.querySelector('a')?.getAttribute('href')).toBe('/admin/settings/organisation');
 
 	// read through the box's own description, so the hint is the one a reader meets on the box.
 	const status = document.getElementById(statusBoxId(root));

@@ -494,7 +494,7 @@ export function MissingAddressNotice({ canOpenSettings }: { readonly canOpenSett
 			}
 			actions={
 				canOpenSettings ? (
-					<Button as={Link} to={href('/admin/settings')}>
+					<Button as={Link} to={href('/admin/settings/organisation')}>
 						Open Settings
 					</Button>
 				) : undefined

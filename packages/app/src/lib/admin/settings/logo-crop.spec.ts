@@ -17,7 +17,7 @@ import {
 } from './logo-crop';
 
 // the arithmetic between the square dragged on the screen and the square a save crops to. the
-// dialog that draws it is ../../../routes/_app.admin.settings.dom.spec.tsx's, and what the crop
+// dialog that draws it is ../../../routes/_app.admin.settings_.organisation.dom.spec.tsx's, and what the crop
 // does with the square is ./logo-square.spec.ts's.
 
 describe('the square a crop opens on', () => {

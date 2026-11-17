@@ -424,7 +424,7 @@ describe('the missing mailing address', () => {
 
 		expect(shown?.textContent).toContain('Matching details are missing a mailing address');
 		expect(open?.textContent).toBe('Open Settings');
-		expect(open?.getAttribute('href')).toBe('/admin/settings');
+		expect(open?.getAttribute('href')).toBe('/admin/settings/organisation');
 		expect(shown?.textContent).not.toContain('Ask whoever runs this server');
 	});
 
