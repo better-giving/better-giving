@@ -1,5 +1,5 @@
 import { Button } from '@better-giving/operator/components/controls/Button';
-import { isRouteErrorResponse, Link, useMatches, useRouteError } from 'react-router';
+import { isRouteErrorResponse, Link, useLocation, useMatches, useRouteError } from 'react-router';
 import { APP_NAME } from '$lib/admin/screen-title';
 import { ErrorState, errorTitle } from '$lib/error-state';
 // the operator stylesheet is linked from inside this tree, and only here: ./root.tsx's header and
@@ -53,6 +53,7 @@ export function UnframedError() {
 	// hand-built body with a 400 ($lib/server/conform.ts), and its sentence is drawn as page copy
 	// on every page this boundary replaces, a donor page included.
 	const message = isRouteErrorResponse(error) && typeof error.data === 'string' ? error.data : '';
+	const arrival = useLocation().key;
 
 	// the 404 alone has a way out, the dashboard, which every staff session may open. `Link` and
 	// never a bare anchor: /admin is one document and a way out that reloads it throws away the
@@ -67,6 +68,7 @@ export function UnframedError() {
 			<ErrorState
 				status={status}
 				message={message}
+				arrival={arrival}
 				donor={onDonorPage}
 				way={
 					onDonorPage ? undefined : (

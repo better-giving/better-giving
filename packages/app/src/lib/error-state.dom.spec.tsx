@@ -17,9 +17,9 @@ function mount(status: number) {
 	document.body.appendChild(pressed);
 	pressed.focus();
 	const root = createRoot(host);
-	const draw = (code: number, message: string) =>
-		act(() => root.render(<ErrorState status={code} message={message} />));
-	draw(status, '');
+	const draw = (code: number, message: string, arrival: string) =>
+		act(() => root.render(<ErrorState status={code} message={message} arrival={arrival} />));
+	draw(status, '', 'first');
 	onTestFinished(() => {
 		act(() => root.unmount());
 		host.remove();
@@ -40,13 +40,36 @@ describe('ErrorState', () => {
 		expect(active?.textContent).toBe(title);
 	});
 
-	it('focuses the refusal’s title again when a second refusal replaces the first', () => {
-		const { host, draw } = mount(403);
+	/** focus moved off the drawn state, as a press on the page does before the next navigation. */
+	function pressElsewhere() {
 		const other = document.createElement('button');
 		document.body.appendChild(other);
 		onTestFinished(() => other.remove());
 		other.focus();
-		draw(409, 'That gift was already refunded.');
+	}
+
+	it('focuses the refusal’s title again when a second refusal replaces the first', () => {
+		const { host, draw } = mount(403);
+		pressElsewhere();
+		draw(409, 'That gift was already refunded.', 'second');
 		expect(document.activeElement).toBe(host.querySelector('h1'));
+	});
+
+	it.each([404, 403, 500])(
+		'focuses the %s’s title again when another arrival lands on the same failure',
+		(status) => {
+			const { host, draw } = mount(status);
+			pressElsewhere();
+			draw(status, '', 'second');
+			expect(document.activeElement).toBe(host.querySelector('h1'));
+		}
+	);
+
+	it('leaves focus where it is when the same arrival draws again', () => {
+		const { draw } = mount(404);
+		pressElsewhere();
+		const pressed = document.activeElement;
+		draw(404, '', 'first');
+		expect(document.activeElement).toBe(pressed);
 	});
 });

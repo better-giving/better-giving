@@ -133,6 +133,39 @@ it('draws a missing address with the way to the dashboard', async () => {
 	expect([way?.textContent, way?.getAttribute('href')]).toEqual(['Go to dashboard', '/admin']);
 });
 
+it('focuses the title again when a second missing address replaces the first', async () => {
+	const missing = () => {
+		throw data(null, { status: 404 });
+	};
+	const Stub = createRoutesStub([
+		{
+			id: 'root',
+			Component: Outlet,
+			ErrorBoundary: ErrorBoundary as never,
+			children: [
+				{ id: 'routes/_app.admin._index', path: '/admin', Component: Outlet, loader: missing },
+				{ id: DASHBOARD.id, path: DASHBOARD.path, Component: Outlet, loader: missing }
+			]
+		}
+	]);
+	const root = document.createElement('div');
+	document.body.appendChild(root);
+	const mounted = createRoot(root);
+	await act(async () => mounted.render(<Stub initialEntries={[DASHBOARD.at]} />));
+	onTestFinished(() => {
+		act(() => mounted.unmount());
+		root.remove();
+	});
+	const way = root.querySelector('a');
+	way?.focus();
+	expect(document.activeElement).toBe(way);
+
+	await act(async () => way?.click());
+
+	expect(code(root)).toBe('404');
+	expect(document.activeElement).toBe(root.querySelector('h1'));
+});
+
 it('draws a thrown error that is no response as the deployment failing', async () => {
 	const root = await boundaryOver(new Error('the database is not answering'));
 

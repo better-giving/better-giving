@@ -172,6 +172,7 @@ export default function ProtectedLayout({ loaderData }: Route.ComponentProps) {
 export function ErrorBoundary() {
 	const error = useRouteError();
 	const data = useRouteLoaderData<LayoutData>('routes/_app');
+	const arrival = useLocation().key;
 	if (data === undefined) return <UnframedError />;
 
 	const status = isRouteErrorResponse(error) ? error.status : 500;
@@ -182,6 +183,7 @@ export function ErrorBoundary() {
 			<ErrorState
 				status={status}
 				message={message}
+				arrival={arrival}
 				way={
 					<Button as={Link} to={HOME.href} variant="primary">
 						Go to dashboard
