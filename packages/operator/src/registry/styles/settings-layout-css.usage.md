@@ -32,7 +32,7 @@ Import `styles/variables.css`, `styles/button-css.css` (Discard and Save) and `s
 
 - Delete the `<nav class="ds-nav-list ds-nav-list-section ds-settings-nav">` from your copy's markup, and unwrap the cards from `ds-settings-main`: they go straight into `ds-settings`. `ds-settings-nav`, `ds-settings-main` and `--ds-settings-nav-w` are no longer in the stylesheet. Markup that keeps them still draws: the nav is `nav-list-css`'s section variant (its rows from 48rem, a sideways-scrolling row of tabs under it) above the cards, no longer in a column and no longer pinned, and the cards in a kept `ds-settings-main` stack with no gap between them, as the 24px gap is `ds-settings`'s and falls between its own children.
 - Give the section links to the sidebar: `nav-list-css` 1.1.0's `ds-nav-parent` link over a `ds-nav-sub` of `ds-nav-sublink` rows, with `app-shell-css` 2.0's rail link and flyout (see those notes).
-- Name the section in the page header: its title, with crumbs back to Settings.
+- Name the section in the page header: a hidden `<h1 class="ds-sr-only">` with its title and nothing else (no crumbs, no visible title or description): a section has a sidebar entry, so the sidebar and the tab title say where the reader is (`page-header-css` 2.0.0).
 
 ## The save states
 

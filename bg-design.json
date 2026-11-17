@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "dir": "packages/operator/src/registry",
-  "registryVersion": "3.0.0",
+  "registryVersion": "4.0.1",
   "items": {
     "app-shell-css": {
       "version": "2.0.0",
@@ -95,10 +95,10 @@
       }
     },
     "page-header-css": {
-      "version": "1.0.1",
+      "version": "2.0.1",
       "files": {
-        "styles/page-header-css.css": "cf306229ee10b98af98a5ba7f4a703a21bbde5f0b20469d0ffe7d62db4f008a5",
-        "styles/page-header-css.usage.md": "b0269d01344b42a79abf3606f1a575b112fcf1beb6d295c86ed21a1752f3249d"
+        "styles/page-header-css.css": "5381081a5ff64dbefecaf219f29e33f0fccd0e862fc28ef528c4c3887c273604",
+        "styles/page-header-css.usage.md": "9055ed782bff3a5a21b8d8703c9581839ef6d2ba5c098ed0f2ea7267d0541be3"
       }
     },
     "page-state-css": {
@@ -123,10 +123,10 @@
       }
     },
     "settings-layout-css": {
-      "version": "2.0.0",
+      "version": "2.0.1",
       "files": {
         "styles/settings-layout-css.css": "20a77f8aa9452aeee42c543cf038c1475a17d8e71910fc84e3b088fdffcd9318",
-        "styles/settings-layout-css.usage.md": "bcd7957193386fc42ede4484c1a647b8f4b443110814982b5c39c0bb089768e3"
+        "styles/settings-layout-css.usage.md": "a225161d777fe8f0344fa02a73615b980e7138440beff6917cdcea7bf4baef81"
       }
     },
     "site-footer-css": {
@@ -186,10 +186,10 @@
       }
     },
     "top-bar-css": {
-      "version": "1.0.1",
+      "version": "1.1.1",
       "files": {
-        "styles/top-bar-css.css": "24b51a0267e9ac2e49792d158aeb025cc3faa8a665a997b738d38cc1463241e8",
-        "styles/top-bar-css.usage.md": "06f4ca61969d0118cc8c79968168ba2d665743a5724c25ebfe89b0b537580d83"
+        "styles/top-bar-css.css": "c1c35bb388cfc232aadcb84bdea0ffaebaff351564a3b293721d1751515a0d71",
+        "styles/top-bar-css.usage.md": "a27e1ba3e26a95e9087137e5f93951bb5e2a5d8421a5f31778fcda06705c248c"
       }
     },
     "variables": {

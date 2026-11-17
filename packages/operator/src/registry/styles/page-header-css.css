@@ -1,44 +1,47 @@
-/* the registry's page header as plain css, no tailwind: the crumbs (top-bar-
-   css's ds-crumbs), the title row with a status on its first line, the line
-   under it, the actions and the page's tab row. reads only the variables the
-   `variables` item declares; the title row is lead-css's ds-lead-row with the
-   status in a ds-lead-1lh box. page-header-css.test.tsx renders the React
-   `PageHeader` beside it and asserts the same computed look in light and
-   dark, for the default and example themes, wide and at 375.
+/* the registry's page header as plain css, no tailwind. a page with a sidebar
+   entry shows no title: its h1 stays in the page as ds-sr-only (field-css),
+   and the header is one end-aligned row of actions with the tab row 16px
+   under it (the header's 12px gap and the tab row's 4px padding), or only
+   the h1 when it has neither. a nested page leads with the
+   trail of parents into its title (top-bar-css's ds-crumbs ds-crumbs-heading,
+   whose last item is the title row, so the current crumb is the h1, 14px and
+   semibold), the status after it, the status line under it, and the actions
+   at the end of the row, centered on that trail block. the title row is lead-css's ds-lead-row with the
+   status in a ds-lead-1lh box. reads only the variables the `variables` item
+   declares. page-header-css.test.tsx renders the React `PageHeader` beside
+   it and asserts the same computed look in light and dark, for the default
+   and example themes, wide and at 375.
 
    the tab row is drawn here because the registry has no plain-css tabs: it is
    the React `Tabs` item's look, held equal by the same test.
 
-   the spacing step, the type sizes, the weights, the tracking, the easing and
-   the 40rem breakpoint (tailwind's sm, written out because a query cannot
-   read a variable) live only in tailwind's theme; they are declared here
-   under ds- names with the same values, and the test holds them equal. */
+   the spacing step, the type size and the weight and the 40rem
+   breakpoint (tailwind's sm, written out because a query cannot read a
+   variable) live only in tailwind's theme; they are declared here under ds-
+   names with the same values, and the test holds them equal. */
 .ds-page-header {
   --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
   --ds-text-sm: calc(0.875 * var(--ds-rem, 1rem));
   --ds-text-sm-lh: calc(1.25 / 0.875);
-  --ds-text-base: calc(1 * var(--ds-rem, 1rem));
-  --ds-text-base-lh: calc(1.5 / 1);
-  --ds-text-2xl: calc(1.5 * var(--ds-rem, 1rem));
-  --ds-text-2xl-lh: calc(2 / 1.5);
-  --ds-text-3xl: calc(1.875 * var(--ds-rem, 1rem));
-  --ds-text-3xl-lh: calc(2.25 / 1.875);
   --ds-font-weight-semibold: 600;
-  --ds-font-weight-bold: 700;
-  --ds-tracking-tight: -0.025em;
   display: grid;
   gap: calc(var(--ds-spacing) * 3);
   min-inline-size: 0;
 }
 
-/* the title and its line on the start, the actions on the end; the actions
-   wrap under the title when the row runs out of room */
+/* the trail and its status line (the trail block) on the start, the actions
+   on the end, centered on that block; the actions wrap under the trail when the row runs out of
+   room. a row with no text column (a page with a sidebar entry) puts its
+   actions at the end */
 .ds-page-header-row {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-start;
+  align-items: safe center;
   justify-content: space-between;
   gap: calc(var(--ds-spacing) * 3) calc(var(--ds-spacing) * 6);
+}
+.ds-page-header-row:not(:has(.ds-page-header-text)) {
+  justify-content: flex-end;
 }
 .ds-page-header-text {
   display: grid;
@@ -46,33 +49,23 @@
   gap: var(--ds-spacing);
   min-inline-size: 0;
 }
-/* with ds-lead-row: the size is the row's, so the status's box is one of the
-   title's lines */
-.ds-page-title-row {
-  font-size: var(--ds-text-3xl);
-  line-height: var(--ds-text-3xl-lh);
-}
 .ds-page-title {
   margin: 0;
   min-inline-size: 0;
-  font-family: var(--font-display);
-  font-size: inherit;
-  line-height: inherit;
-  font-weight: var(--ds-font-weight-bold);
-  letter-spacing: var(--ds-tracking-tight);
+  font: inherit;
+  letter-spacing: 0;
   overflow-wrap: anywhere;
-  text-wrap: balance;
+  text-wrap: wrap;
 }
-/* the status stays right beside a short title */
+/* the status stays right beside a short name */
 .ds-page-title-row > .ds-page-title {
   flex: 0 1 auto;
 }
 .ds-page-desc {
   margin: 0;
-  max-inline-size: calc(var(--ds-spacing) * 176);
   color: var(--gray-11);
-  font-size: var(--ds-text-base);
-  line-height: var(--ds-text-base-lh);
+  font-size: var(--ds-text-sm);
+  line-height: var(--ds-text-sm-lh);
 }
 .ds-page-actions {
   display: flex;
@@ -146,18 +139,10 @@
   opacity: 0.6;
 }
 
-/* under 40rem: a 24px title and a 14px line; the secondary buttons leave
+/* under 40rem: the secondary buttons leave
    (the page lists them first in its More menu), the primary fills the row
    beside More, and the tabs scroll under a 28px fade at the end */
 @media (width < 40rem) {
-  .ds-page-title-row {
-    font-size: var(--ds-text-2xl);
-    line-height: var(--ds-text-2xl-lh);
-  }
-  .ds-page-desc {
-    font-size: var(--ds-text-sm);
-    line-height: var(--ds-text-sm-lh);
-  }
   .ds-page-actions {
     inline-size: 100%;
   }

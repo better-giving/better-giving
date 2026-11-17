@@ -125,9 +125,11 @@
   font-size: var(--ds-text-sm);
   line-height: var(--ds-text-sm-lh);
 }
+/* a label that can wrap keeps its chevron on its first line: the row starts
+   at the top and the glyph is centered on the first line by its margin */
 .ds-crumbs li {
   display: flex;
-  align-items: safe center;
+  align-items: flex-start;
   gap: var(--ds-spacing);
   min-inline-size: 0;
 }
@@ -143,9 +145,7 @@
   border-radius: var(--radius);
   text-decoration: none;
   /* tailwind's transition-colors, less its gradient stops */
-  transition-property:
-    color, background-color, border-color, outline-color, text-decoration-color,
-    fill, stroke;
+  transition-property: color, scale;
   transition-duration: var(--duration-fast);
   transition-timing-function: var(--ds-ease-out);
 }
@@ -154,28 +154,81 @@
     color: var(--gray-12);
   }
 }
+/* pressed */
+.ds-crumbs a:active {
+  color: var(--gray-12);
+  scale: 0.97;
+}
 .ds-crumbs a:focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 2px;
 }
-.ds-crumbs svg {
+/* the chevron only (an svg directly in its li), not an icon in the heading's
+   status box: 14px, gray-11, kept its size, and dropped to the middle of the
+   first line by its margin */
+.ds-crumbs li > svg {
   flex-shrink: 0;
   inline-size: calc(var(--ds-spacing) * 3.5);
   block-size: calc(var(--ds-spacing) * 3.5);
+  margin-block-start: calc(0.5lh - var(--ds-spacing) * 1.75);
   color: var(--gray-11);
 }
 /* the chevrons and the back arrow point the reading way */
-.ds-crumbs svg:dir(rtl),
+.ds-crumbs li > svg:dir(rtl),
 .ds-topbar-narrow > .ds-btn svg:dir(rtl) {
   scale: -1 1;
 }
-.ds-crumbs [aria-current="page"] {
+.ds-crumbs:not(.ds-crumbs-heading) [aria-current="page"] {
   min-inline-size: 0;
   overflow: clip;
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--gray-12);
   font-weight: var(--ds-font-weight-semibold);
+}
+
+/* a trail that ends in the page's heading (ds-crumbs-heading on the nav): the
+   last item is the page's own h1, at the trail's 14px, semibold, in the body
+   face. the row wraps instead of clipping, aligned on first baselines, 8px
+   between link, chevron and name, 4px between lines; nothing folds and
+   nothing is cut. the heading's item has an 8rem basis, so a long name wraps
+   hanging under its own first word beside the parent, and drops under the
+   parents only when less than that is left on their line. a parent keeps its
+   width on the first line and wraps inside its link only when it is wider
+   than the line. nothing clips, so the ring needs no padding */
+.ds-crumbs-heading ol {
+  flex-wrap: wrap;
+  align-items: first baseline;
+  gap: var(--ds-spacing) calc(var(--ds-spacing) * 2);
+  margin: 0;
+  padding: 0;
+  overflow: visible;
+}
+.ds-crumbs-heading li {
+  gap: calc(var(--ds-spacing) * 2);
+}
+.ds-crumbs-heading li:not(:last-child) {
+  max-inline-size: 100%;
+}
+.ds-crumbs-heading li:last-child {
+  display: block;
+  flex: 1 1 calc(var(--ds-spacing) * 32);
+  font-family: var(--font-body);
+  font-weight: var(--ds-font-weight-semibold);
+  color: var(--gray-12);
+  overflow-wrap: anywhere;
+}
+.ds-crumbs-heading a,
+.ds-crumbs-heading li > span:not([aria-current]) {
+  min-inline-size: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.ds-crumbs-heading h1 {
+  margin: 0;
+  font: inherit;
+  letter-spacing: 0;
+  text-wrap: wrap;
 }
 
 /* the route-load line: 2px of --primary across the top of the nearest
