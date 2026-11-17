@@ -31,7 +31,7 @@ const previews = import.meta.glob<{ default: () => ReactNode }>('./previews/*.ts
 function App() {
 	const entries = Object.entries(previews).sort(([a], [b]) => a.localeCompare(b));
 	return (
-		// no `main` here: the `AppShell` and `PanelRoute` previews each draw their own.
+		// no `main` here: the `Shell` and `PanelRoute` previews each draw their own.
 		<div className="adm-main">
 			<h1>component gallery</h1>
 			{entries.map(([path, mod]) => {

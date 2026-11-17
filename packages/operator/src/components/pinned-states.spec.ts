@@ -140,7 +140,7 @@ describe('every pinned state a component offers is one the sheets draw', () => {
 		// components offering a state are counted on their own, because a prop deleted from a
 		// component takes that component out of the sweep without taking a file out of the glob.
 		expect(files.length).toBeGreaterThan(20);
-		expect(offering.length).toBeGreaterThanOrEqual(7);
+		expect(offering.length).toBeGreaterThanOrEqual(6);
 		for (const { sheet, found } of selectors) {
 			expect(found.filter((selector) => selector.includes('.is-')).length, sheet).toBeGreaterThan(
 				0

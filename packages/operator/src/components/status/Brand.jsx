@@ -38,7 +38,7 @@
    nothing at all.
 
    zapier.png in the same folder is not one of these and this part never draws it. it is the
-   dashboard's rail cell for the Zapier page, which ../shell/DestinationCell.jsx draws as an image
+   dashboard's sidebar row for the Zapier page, which ../shell/Shell.jsx draws as an image
    from a url (`{ src }`), so the file is imported rather than reached from a sheet: package.json's
    exports publish it as `./brand/zapier.png`, the one entry on that map naming a binary. the
    trademark sentence above holds for it as well — it names Zapier's own app. */

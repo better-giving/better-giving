@@ -74,7 +74,7 @@ const Control = /** @type {(props: Record<string, unknown>) => ReactNode} */ (
  * second one put there stops wrapping with the rest at the 375px floor —
  * `.adm-dialog__actions` in packages/operator/src/styles/adm.css is the row being described.
  *
- * **the element takes the focus itself, and it is ./top-layer.js that puts it there.**
+ * **the element takes the focus itself, and it is ../../behaviour/Dialog.tsx that puts it there.**
  * `showModal()` focuses the first focusable thing inside the card, and the first focusable thing
  * inside this one is always a control in the actions row it draws — on a dialog with a `danger` it
  * is the control that does the damage. so the reader would land on the answer before the question,
