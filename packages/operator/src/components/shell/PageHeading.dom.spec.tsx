@@ -8,8 +8,10 @@ import { ruleOf, rulesIn } from '../../styles/sheet-rule.testing';
 import { render } from '../render.testing';
 import { PageHeading, type PageHeadingProps } from './PageHeading.jsx';
 
-// a page's header on page-header-css: the title with its status on the first line, the crumbs, and
-// More, which is drawn only where it has rows — under 40rem, for a page with secondary actions.
+// a page's header in page-header-css's two shapes: a page with a sidebar entry has a hidden h1 and
+// at most a row of actions; a nested page's h1 is the last item of its trail, with the status on
+// its first line. More is drawn only where it has rows — under 40rem, for a page with secondary
+// actions.
 
 /** a window `width < 40rem` answers for, or not. */
 function windowNarrow(narrow: boolean) {
@@ -35,33 +37,50 @@ const primary = (
 	</a>
 );
 const more = (root: HTMLElement) => root.querySelector('button[aria-label="More actions"]');
+const giftCrumbs = [
+	{ href: '/admin/donations', label: 'Gifts' },
+	{ href: '/admin/donations/1', label: 'Maya Reyes' }
+];
 
-describe('the page header’s title', () => {
-	it('is the h1, with the status in a first-line box right after it', () => {
+describe('a page with a sidebar entry', () => {
+	it('is its hidden h1 alone without actions, whatever status or line it is handed', () => {
 		windowNarrow(false);
 		const root = render(PageHeading, {
-			title: 'Maya Reyes, $250.00',
-			status: <span className="ds-badge ds-badge-success">Completed</span>,
-			description: '2026-11-14 · Card'
+			title: 'Dashboard',
+			status: <span className="ds-badge ds-badge-success">Live</span>,
+			description: 'Giving this month, and the year behind it.'
 		});
 
-		const titleRow = root.querySelector('.ds-page-title-row.ds-lead-row');
-		expect(titleRow?.firstElementChild?.tagName).toBe('H1');
-		expect(titleRow?.firstElementChild?.className).toBe('ds-page-title');
-		expect(titleRow?.firstElementChild?.textContent).toBe('Maya Reyes, $250.00');
-		const box = titleRow?.lastElementChild;
-		expect(box?.className).toBe('ds-lead-1lh');
-		expect(box?.textContent).toBe('Completed');
-		expect(root.querySelector('.ds-page-desc')?.textContent).toBe('2026-11-14 · Card');
+		expect([...root.children].map((child) => child.outerHTML)).toEqual([
+			'<h1 class="ds-sr-only" tabindex="-1">Dashboard</h1>'
+		]);
 	});
 
-	it('stands alone in its row without a status, and draws no actions block without actions', () => {
+	it('draws one row holding only the actions under the hidden h1', () => {
 		windowNarrow(false);
-		const root = render(PageHeading, { title: 'Dashboard' });
+		const root = render(PageHeading, { title: 'Gifts', primary, secondary });
 
-		expect(root.querySelector('.ds-page-title-row')?.children.length).toBe(1);
-		expect(root.querySelector('.ds-page-actions')).toBeNull();
-		expect(root.querySelector('.ds-page-desc')).toBeNull();
+		const header = root.querySelector('header.ds-page-header');
+		expect([...(header?.children ?? [])].map((child) => child.className)).toEqual([
+			'ds-sr-only',
+			'ds-page-header-row'
+		]);
+		expect(header?.firstElementChild?.tagName).toBe('H1');
+		expect(header?.firstElementChild?.textContent).toBe('Gifts');
+		const row = root.querySelector('.ds-page-header-row');
+		expect([...(row?.children ?? [])].map((child) => child.className)).toEqual(['ds-page-actions']);
+		expect(root.querySelector('nav, [aria-current], .ds-page-title, .ds-page-desc')).toBeNull();
+	});
+
+	it('is what a single crumb draws, which names no page above', () => {
+		windowNarrow(false);
+		const root = render(PageHeading, {
+			title: 'Notifications',
+			crumbs: [{ href: '/admin/settings/notifications', label: 'Notifications' }]
+		});
+
+		expect(root.querySelector('nav')).toBeNull();
+		expect(root.querySelector('h1')?.className).toBe('ds-sr-only');
 	});
 
 	it('takes focus from script and is no Tab stop', () => {
@@ -75,6 +94,95 @@ describe('the page header’s title', () => {
 	});
 });
 
+describe('a nested page', () => {
+	it('is the trail’s last item: the h1 is the current crumb, with the status right after it', () => {
+		windowNarrow(false);
+		const root = render(PageHeading, {
+			title: 'Maya Reyes, $250.00',
+			status: <span className="ds-badge ds-badge-success">Completed</span>,
+			description: '2026-11-14 · Card',
+			crumbs: giftCrumbs
+		});
+
+		const text = root.querySelector('.ds-page-header-row > .ds-page-header-text');
+		expect([...(text?.children ?? [])].map((child) => child.className)).toEqual([
+			'ds-crumbs ds-crumbs-heading',
+			'ds-page-desc'
+		]);
+		const trail = text?.querySelector('nav');
+		expect(trail?.getAttribute('aria-label')).toBe('Breadcrumb');
+		const items = [...(trail?.querySelectorAll('ol > li') ?? [])];
+		expect(items.length).toBe(2);
+
+		const titleRow = items[1]?.firstElementChild;
+		expect(titleRow?.className).toBe('ds-page-title-row ds-lead-row');
+		const title = titleRow?.firstElementChild;
+		expect(title?.tagName).toBe('H1');
+		expect(title?.className).toBe('ds-page-title');
+		expect(title?.getAttribute('aria-current')).toBe('page');
+		expect(title?.textContent).toBe('Maya Reyes, $250.00');
+		expect(titleRow?.lastElementChild?.className).toBe('ds-lead-1lh');
+		expect(titleRow?.lastElementChild?.textContent).toBe('Completed');
+		expect(root.querySelector('.ds-page-desc')?.textContent).toBe('2026-11-14 · Card');
+		expect(root.querySelectorAll('h1, [aria-current]').length).toBe(1);
+	});
+
+	it('links each page above, its chevron an svg directly in the li, and never lists this page', () => {
+		windowNarrow(false);
+		const root = render(PageHeading, {
+			title: 'Maya Reyes, $250.00',
+			crumbs: [
+				{ href: '/admin', label: 'Dashboard' },
+				{ href: '/admin/donations', label: 'Gifts' },
+				{ href: '/admin/donations/1', label: 'Maya Reyes' }
+			]
+		});
+
+		const parents = [...root.querySelectorAll('nav.ds-crumbs-heading li:not(:last-child)')];
+		expect(
+			parents.map((item) => [...item.children].map((child) => child.tagName.toLowerCase()))
+		).toEqual([
+			['a', 'svg'],
+			['a', 'svg']
+		]);
+		expect(parents.map((item) => item.querySelector('a')?.getAttribute('href'))).toEqual([
+			'/admin',
+			'/admin/donations'
+		]);
+		expect(root.querySelector('a[href="/admin/donations/1"]')).toBeNull();
+	});
+
+	it('takes focus from script and is no Tab stop', () => {
+		windowNarrow(false);
+		const root = render(PageHeading, { title: 'Maya Reyes, $250.00', crumbs: giftCrumbs });
+
+		const title = root.querySelector('h1');
+		expect(title?.getAttribute('tabindex')).toBe('-1');
+		act(() => title?.focus());
+		expect(document.activeElement).toBe(title);
+	});
+
+	it('keeps its actions beside the trail block, and draws none without them', () => {
+		windowNarrow(false);
+		const withActions = render(PageHeading, {
+			title: 'Maya Reyes, $250.00',
+			crumbs: giftCrumbs,
+			primary,
+			secondary
+		});
+		const row = withActions.querySelector('.ds-page-header-row');
+		expect([...(row?.children ?? [])].map((child) => child.className)).toEqual([
+			'ds-page-header-text',
+			'ds-page-actions'
+		]);
+
+		const bare = render(PageHeading, { title: 'Maya Reyes, $250.00', crumbs: giftCrumbs });
+		expect(bare.querySelector('.ds-page-actions')).toBeNull();
+		expect(bare.querySelector('.ds-page-desc')).toBeNull();
+		expect(bare.querySelector('.ds-page-title-row')?.children.length).toBe(1);
+	});
+});
+
 /** a copied registry sheet with its comments blanked. */
 const registrySheet = (name: string) =>
 	stripComments(
@@ -85,10 +193,11 @@ const registrySheet = (name: string) =>
 	);
 
 // the pool lays nothing out (../../../vitest.config.ts), so where the badge lands is the markup
-// above and the rules lead-css and page-header-css write for it.
-describe('a title long enough to wrap, with a status', () => {
+// above and the rules lead-css, top-bar-css and page-header-css write for it.
+describe('a nested page’s title long enough to wrap, with a status', () => {
 	const lead = registrySheet('lead-css.css');
 	const header = registrySheet('page-header-css.css');
+	const topBar = registrySheet('top-bar-css.css');
 	const longTitle =
 		'Margaret Okonkwo-Fitzgerald, $1,250.00 monthly toward the Riverside Shelter winter appeal';
 
@@ -96,10 +205,14 @@ describe('a title long enough to wrap, with a status', () => {
 		windowNarrow(true);
 		const root = render(PageHeading, {
 			title: longTitle,
-			status: <span className="ds-badge ds-badge-warning">Pending</span>
+			status: <span className="ds-badge ds-badge-warning">Pending</span>,
+			crumbs: [
+				{ href: '/admin/donations', label: 'Gifts' },
+				{ href: '/admin/donations/2', label: 'Margaret Okonkwo-Fitzgerald' }
+			]
 		});
 
-		const row = root.querySelector('.ds-page-title-row');
+		const row = root.querySelector('nav.ds-crumbs-heading li:last-child > .ds-page-title-row');
 		expect(row?.classList.contains('ds-lead-row')).toBe(true);
 		expect([...(row?.children ?? [])].map((child) => child.className)).toEqual([
 			'ds-page-title',
@@ -128,30 +241,15 @@ describe('a title long enough to wrap, with a status', () => {
 		expect(title.get('min-inline-size')).toBe('0');
 		expect(title.get('overflow-wrap')).toBe('anywhere');
 
+		// the trail item holding the row is a block that wraps anywhere, so nothing in it is cut.
+		const item = ruleOf(topBar, '.ds-crumbs-heading li:last-child');
+		expect(item.get('display')).toBe('block');
+		expect(item.get('overflow-wrap')).toBe('anywhere');
+
 		// the badge's box never shrinks and is one of the title's lines tall, at the row's start.
 		const box = ruleOf(lead, '.ds-lead-1lh');
 		expect(box.get('flex')).toBe('none');
 		expect(box.get('block-size')).toBe('1lh');
-	});
-});
-
-describe('the page header’s crumbs', () => {
-	it('link the pages above and end on this one as words', () => {
-		windowNarrow(false);
-		const root = render(PageHeading, {
-			title: 'Maya Reyes, $250.00',
-			crumbs: [
-				{ href: '/admin/donations', label: 'Gifts' },
-				{ href: '/admin/donations/1', label: 'Maya Reyes' }
-			]
-		});
-
-		const trail = root.querySelector('nav.ds-crumbs');
-		expect(trail?.getAttribute('aria-label')).toBe('Breadcrumb');
-		expect(trail?.querySelector('a')?.getAttribute('href')).toBe('/admin/donations');
-		const here = trail?.querySelector('[aria-current="page"]');
-		expect(here?.tagName).toBe('SPAN');
-		expect(here?.textContent).toBe('Maya Reyes');
 	});
 });
 

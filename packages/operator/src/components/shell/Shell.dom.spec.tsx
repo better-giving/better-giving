@@ -409,6 +409,14 @@ describe('the shell around the page', () => {
 		expect(open?.getAttribute('href')).toBe('/donate');
 	});
 
+	it('draws no trail of its own in the top bar, which the page header owns', () => {
+		// page-header-css's usage note: when the page header shows the trail, the top bar shows only
+		// its title, or a nested page has two Breadcrumb navs and two back controls on a phone.
+		const root = render(Shell, props());
+
+		expect(root.querySelector('.ds-topbar .ds-crumbs, .ds-topbar .ds-topbar-narrow')).toBeNull();
+	});
+
 	it('draws the route-progress line only while it is told about a navigation', () => {
 		const shell = mount(Shell, props());
 		expect(shell.root.querySelector('.ds-route-progress')).toBeNull();
