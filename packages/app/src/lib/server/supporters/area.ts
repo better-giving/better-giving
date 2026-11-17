@@ -8,6 +8,7 @@ import { createEmailProvider } from '../email/factory';
 import { sendSupporterSignInEmail } from '../email/supporter-sign-in';
 import { redirectWithFlash, SUPPORTER_SIGN_IN_FLASH } from '../flash';
 import { readOrgProfile, readOrgProfileLogo } from '../org/queries';
+import { donorContact } from '../pages/view';
 import type { SendLink } from './links';
 import { type OwnFundraiser, readOwnFundraiser } from './pages';
 import { requireSupporter, type SignedInSupporter } from './session';
@@ -22,13 +23,21 @@ const APP_NAME = 'Better Giving';
 /** where a supporter signs in, and where every guarded supporter route sends a caller with none. */
 export const SIGN_IN_PATH = href('/fundraise/sign-in');
 
-/** the organisation as a supporter screen's top bar draws it. */
+/**
+ * the organisation as a supporter screen's top bar and site footer draw it. the footer names no
+ * one before a profile is stored, never `APP_NAME`: its line is who a gift is made to.
+ */
 export async function readSupporterOrg(db: Db): Promise<SupporterOrg> {
 	const [profile, logo] = await Promise.all([readOrgProfile(db), readOrgProfileLogo(db)]);
 	return {
 		name: profile?.legalName ?? APP_NAME,
 		logo,
-		brandColour: profile?.brandColour ?? null
+		brandColour: profile?.brandColour ?? null,
+		footer: {
+			legalName: profile?.legalName ?? null,
+			ein: profile?.taxId ?? null,
+			...donorContact(profile)
+		}
 	};
 }
 

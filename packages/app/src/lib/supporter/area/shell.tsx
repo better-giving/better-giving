@@ -2,13 +2,15 @@ import type { ReactNode } from 'react';
 import { Form } from 'react-router';
 import { PageRoot } from '$lib/donate/page-root';
 import type { PageLogo } from '$lib/donate/page-view';
+import { SiteFooter, type SiteFooterInfo } from '$lib/donate/site-footer';
 import { MAIN_ID, SiteNav } from '$lib/donate/site-nav';
 import { INTENT, INTENTS } from './forms';
 import { Mark } from './glyph';
 
 // every supporter screen's frame: the donor page's root in the organisation's brand colour, the
-// site nav as /donate draws it ($lib/donate/site-nav.tsx), and the screen under it at the page's
-// width. signed in, the nav's actions are the address the supporter signed in with and Sign out:
+// site nav as /donate draws it ($lib/donate/site-nav.tsx), the screen under it at the page's
+// width, and the compact site footer ($lib/donate/site-footer.tsx) closing it, as on every donor
+// page. signed in, the nav's actions are the address the supporter signed in with and Sign out:
 // at the bar's end from 40rem, and under the menu's row below it, where the registry folds actions.
 
 /** the organisation as every supporter screen names it. */
@@ -17,6 +19,8 @@ export type SupporterOrg = {
 	readonly logo: PageLogo | null;
 	/** lowercase `#rrggbb`, or null for the registry's default accent. */
 	readonly brandColour: string | null;
+	/** what the site footer states: the legal details and the ways to reach the organisation. */
+	readonly footer: SiteFooterInfo;
 };
 
 /** the signed-in supporter, for the nav's actions. */
@@ -46,6 +50,7 @@ export function SupporterShell({ org, account, children }: SupporterShellProps) 
 					{...(account === undefined ? {} : { actions: <Account account={account} /> })}
 				/>
 			}
+			footer={<SiteFooter info={org.footer} />}
 		>
 			<main className="page-in sa-main" id={MAIN_ID} tabIndex={-1}>
 				{children}
