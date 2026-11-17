@@ -4,7 +4,7 @@ import { SaveButton } from '@better-giving/operator/components/controls/SaveButt
 import { DataTable } from '@better-giving/operator/components/data/DataTable';
 import { Field } from '@better-giving/operator/components/forms/Field';
 import { Column, Section } from '@better-giving/operator/components/shell/Layout';
-import { PageHeader } from '@better-giving/operator/components/shell/PageHeader';
+import { PageHeading } from '@better-giving/operator/components/shell/PageHeading';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
 import { CONFIRMATION_MS } from '@better-giving/operator/save-state';
 import { useSaveState } from '@better-giving/operator/save-state.react';
@@ -309,7 +309,7 @@ export function SupporterPages({
 
 	return (
 		<Column wide>
-			<PageHeader title={SCREEN_TITLE} standfirst={standfirst} />
+			<PageHeading title={SCREEN_TITLE} description={standfirst} />
 			<SettingCard setting={setting} onSave={onSaveSetting} />
 			{pages.length === 0 ? (
 				<EmptyCard enabled={setting.enabled} mayChange={setting.mayChange} />

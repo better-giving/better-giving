@@ -1,8 +1,8 @@
 import { Button } from '@better-giving/operator/components/controls/Button';
-import { Stack } from '@better-giving/operator/components/shell/Layout';
-import { PanelRoute } from '@better-giving/operator/components/shell/PanelRoute';
+import { Column, Stack } from '@better-giving/operator/components/shell/Layout';
 import { Banner } from '@better-giving/operator/components/status/Banner';
 import { Form } from 'react-router';
+import { ScreenHeading } from '$lib/admin/crumbs';
 import { operatorLinks } from '$lib/admin/operator-links';
 import { LocalTime } from '$lib/admin/viewer-time.react';
 import { STAFF_USER_ID } from '$lib/server/auth';
@@ -50,8 +50,8 @@ export async function action({ context, request }: Route.ActionArgs) {
 
 export default function ConnectorConnections({ loaderData, actionData }: Route.ComponentProps) {
 	return (
-		<PanelRoute>
-			<h1>Claude &amp; ChatGPT</h1>
+		<Column>
+			<ScreenHeading title="Claude & ChatGPT" />
 			{actionData?.disconnected ? (
 				<Banner tone="done" word="Disconnected">
 					That connection can no longer reach this deployment.
@@ -83,6 +83,6 @@ export default function ConnectorConnections({ loaderData, actionData }: Route.C
 					))}
 				</Stack>
 			)}
-		</PanelRoute>
+		</Column>
 	);
 }

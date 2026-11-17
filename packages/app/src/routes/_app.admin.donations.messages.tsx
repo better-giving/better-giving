@@ -1,7 +1,7 @@
 import { useCallback, useLayoutEffect, useMemo, useState } from 'react';
 import { href, useFetcher, useSubmit } from 'react-router';
 import { z } from 'zod';
-import type { CrumbHandle } from '$lib/admin/crumbs';
+import { type CrumbHandle, useCrumbs } from '$lib/admin/crumbs';
 import {
 	type OlderMessages,
 	type OlderStatus,
@@ -151,6 +151,7 @@ export default function PublicMessagesScreen({ loaderData }: Route.ComponentProp
 				onHide={press(HIDE_FORM_ID)}
 				onShow={press(SHOW_FORM_ID)}
 				older={older.wiring}
+				crumbs={useCrumbs()}
 			/>
 		</>
 	);

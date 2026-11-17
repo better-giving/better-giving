@@ -1,20 +1,9 @@
-import { Button } from '@better-giving/operator/components/controls/Button';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
-import { href, Link } from 'react-router';
 import type { NoteStanding } from '$lib/donate/messages';
 
-// what the gifts list at /admin/donations says about donor messages: the way to the screen that
-// hides and shows them, and where each note stands on the donate page. the list stays a read —
-// moderation is that other screen's (./public-messages.tsx).
-
-/** the press beside Export that leads to Public messages, in Export's quiet rank. */
-export function PublicMessagesLink() {
-	return (
-		<Button as={Link} to={href('/admin/donations/messages')} variant="quiet">
-			Public messages
-		</Button>
-	);
-}
+// what the gifts list at /admin/donations says about donor messages: where each note stands on the
+// donate page. the list stays a read — moderation is Public messages' (./public-messages.tsx), which
+// the list's heading leads to.
 
 /**
  * a gift's note in the gifts list's Message cell, with the word under it saying where it stands on

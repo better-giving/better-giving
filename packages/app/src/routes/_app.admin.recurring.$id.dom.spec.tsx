@@ -310,7 +310,7 @@ it('reads a refusal on the page where there is no card left to read it in', () =
 
 /** the status word on the heading's row, which is the one the lifecycle tone is drawn on. */
 function statusWord(root: HTMLElement): Element | null {
-	return root.querySelector('.adm-pageheader .ds-badge');
+	return root.querySelector('.ds-page-title-row .ds-badge');
 }
 
 it.each([

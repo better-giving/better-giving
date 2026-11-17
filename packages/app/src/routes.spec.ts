@@ -1254,9 +1254,9 @@ describe('the server tree and the browser bundle', () => {
 	/** the page header's slot names, read off the component so a rename to one of them lands here. */
 	function pageHeaderSlots(): string[] {
 		const file = createRequire(import.meta.url).resolve(
-			'@better-giving/operator/components/shell/PageHeader'
+			'@better-giving/operator/components/shell/PageHeading'
 		);
-		const destructured = /export function PageHeader\(\{([^}]*)\}\)/.exec(
+		const destructured = /export function PageHeading\(\{([^}]*)\}\)/.exec(
 			readFileSync(file, 'utf8')
 		);
 		const props = destructured?.[1];
@@ -1280,10 +1280,10 @@ describe('the server tree and the browser bundle', () => {
 			'routes/_app.donors.tsx',
 			tree({
 				'routes/_app.donors.tsx': [
-					"import { PageHeader } from '@better-giving/operator/components/shell/PageHeader';",
+					"import { PageHeading } from '@better-giving/operator/components/shell/PageHeading';",
 					"import { saveDonor } from '$lib/server/donors/commands';",
 					'export async function action() { return saveDonor(); }',
-					`export default function Donors() { return <PageHeader ${slots
+					`export default function Donors() { return <PageHeading ${slots
 						.map((slot) => `${slot}={null}`)
 						.join(' ')} />; }`
 				].join('\n'),

@@ -16,6 +16,7 @@ import {
 	useNavigation
 } from 'react-router';
 import { z } from 'zod';
+import { ScreenHeading } from '$lib/admin/crumbs';
 import { screenTitle } from '$lib/admin/screen-title';
 import { type AdminActionData, resultFor, whichForm } from '$lib/admin/use-admin-form';
 import type { ZapierPressReport, ZapierReport } from '$lib/zapier/report';
@@ -60,7 +61,7 @@ import type { Route } from './+types/_app.admin.integrations.zapier';
 // whichever it is, so a page reached over plain http never hands Zapier an address it would send
 // the key over in the clear.
 
-/** the screen's name in the document title. ./_app.tsx names the page in a hidden `h1`. */
+/** the screen's name, in its heading and in the document title. */
 const SCREEN_TITLE = 'Zapier';
 
 /** the address this screen answers on, and the one every press posts to. */
@@ -235,6 +236,7 @@ export default function Zapier({ loaderData, actionData }: Route.ComponentProps)
 
 	return (
 		<Column>
+			<ScreenHeading title={SCREEN_TITLE} />
 			<FeedStrips deliveries={report.deliveries} late={late} />
 			<Groups>
 				<Grouped>

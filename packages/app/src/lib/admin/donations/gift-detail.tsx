@@ -2,15 +2,15 @@ import { Modal } from '@better-giving/operator/behaviour/Dialog';
 import { Button } from '@better-giving/operator/components/controls/Button';
 import { Field } from '@better-giving/operator/components/forms/Field';
 import { Column } from '@better-giving/operator/components/shell/Layout';
-import { PageHeader } from '@better-giving/operator/components/shell/PageHeader';
 import { Banner } from '@better-giving/operator/components/status/Banner';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
 import { getFormProps } from '@conform-to/react';
 import { type ReactNode, type RefObject, useEffect, useMemo, useRef } from 'react';
 import { Form, href, Link, useNavigate, useNavigation, useSearchParams } from 'react-router';
+import { ScreenHeading } from '$lib/admin/crumbs';
 import type { Received } from '$lib/admin/received-order';
-import { MATCH_STATUS_TONES } from '$lib/admin/status-tones';
+import { DONATION_STATUS_TONES, MATCH_STATUS_TONES } from '$lib/admin/status-tones';
 import { boxProps, useAdminForm, whichForm } from '$lib/admin/use-admin-form';
 import { LocalTime } from '$lib/admin/viewer-time.react';
 import { formatMinor } from '$lib/donations/money';
@@ -27,8 +27,8 @@ import { usePressOnce } from '$lib/supporter/area/use-press-once';
 //
 // the void is confirmed in a dialog held on the address (`?confirm=void`), the way every
 // destructive confirm on /admin is, so a refused void comes back with the dialog still up and its
-// reason still typed. the trail above the header is the route's `handle`
-// ($lib/admin/crumbs.tsx), and this draws none of it.
+// reason still typed. the trail above the header is the route's `handle`, drawn by `ScreenHeading`
+// ($lib/admin/crumbs.tsx).
 
 /** what a stamp on the match is called in its history. */
 export type MatchEventKind =
@@ -152,13 +152,17 @@ export function GiftDetail({
 	return (
 		// one column, and the column is what spaces it: no block below carries a margin of its own.
 		<Column>
-			<PageHeader
+			<ScreenHeading
 				title={`${gift.donorName}, ${amount}`}
-				standfirst={
+				status={
+					<StatusWord tone={DONATION_STATUS_TONES[gift.status]}>
+						{DONATION_STATUS_LABELS[gift.status]}
+					</StatusWord>
+				}
+				description={
 					<>
 						{received}
-						{gift.paidWith === null ? null : ` · ${gift.paidWith}`} ·{' '}
-						{DONATION_STATUS_LABELS[gift.status]}
+						{gift.paidWith === null ? null : ` · ${gift.paidWith}`}
 					</>
 				}
 			/>

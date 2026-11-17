@@ -1,5 +1,6 @@
 import { Column } from '@better-giving/operator/components/shell/Layout';
 import { Banner } from '@better-giving/operator/components/status/Banner';
+import { ScreenHeading } from '$lib/admin/crumbs';
 import {
 	DonationPageGeneralCard,
 	DonationPageGivingCard,
@@ -141,11 +142,7 @@ export default function DonationPageEditPage({ loaderData }: Route.ComponentProp
 	const { host, version, banner, takingGifts } = loaderData;
 	return (
 		<Column>
-			<header className="adm-pageheader">
-				<div className="adm-pageheader__row">
-					<h1>{SCREEN_TITLE}</h1>
-				</div>
-			</header>
+			<ScreenHeading title={SCREEN_TITLE} />
 			<PublishBanner
 				state={banner.state}
 				version={version}

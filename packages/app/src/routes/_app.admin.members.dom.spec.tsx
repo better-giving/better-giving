@@ -76,8 +76,8 @@ function press(root: HTMLElement): HTMLButtonElement {
 	return found as HTMLButtonElement;
 }
 
-it('draws no heading of its own: the frame names the page in a hidden one', () => {
-	expect(screen({ sentTo: null }).querySelector('h1')).toBe(null);
+it('names the page Members in its heading', () => {
+	expect(screen({ sentTo: null }).querySelector('h1')?.textContent).toBe('Members');
 });
 
 it('reports the invitation at the press that sent it, with nothing left to press', () => {

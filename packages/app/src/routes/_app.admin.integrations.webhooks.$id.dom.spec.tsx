@@ -357,7 +357,7 @@ it('stands the status line on its own line under the header, so an answer landin
 	// alone.
 	const root = await flow(SCREEN, { paused: true });
 	const said = root.querySelector('p[role="status"]');
-	const header = root.querySelector('header.adm-pageheader');
+	const header = root.querySelector('header.ds-page-header');
 
 	expect(header?.contains(press(root, 'Resume'))).toBe(true);
 	expect(header?.contains(press(root, 'Send a test'))).toBe(true);

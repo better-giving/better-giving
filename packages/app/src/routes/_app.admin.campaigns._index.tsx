@@ -20,6 +20,7 @@ import {
 	useAdminForm,
 	whichForm
 } from '$lib/admin/use-admin-form';
+import { ScreenHeading } from '$lib/admin/crumbs';
 import { screenTitle } from '$lib/admin/screen-title';
 import { formatMinorBrief } from '$lib/donations/money';
 import { FORM_CURRENCY } from '$lib/forms/amounts';
@@ -316,13 +317,15 @@ const titleId = (pageId: string) => `campaign-title-${pageId}`;
 /**
  * focus after a press lands, which unmounted the control that held it: the row's title where it
  * now stands; the Ended group's summary where the row went into it shut, since nothing inside a
- * shut `<details>` takes focus; and the screen's own `h1`, drawn by ./_app.tsx, where the row is
- * gone.
+ * shut `<details>` takes focus; and the screen's own `h1`, its heading's, where the row is gone.
+ * `PageHeading` draws that `h1` with no `tabindex`, and a heading without one takes no focus.
  */
 function focusLanded({ pageId }: Landed): void {
 	const title = pageId === null ? null : document.getElementById(titleId(pageId));
 	const shut = title?.closest('details:not([open])')?.querySelector('summary');
-	(shut ?? title ?? document.querySelector<HTMLElement>('h1'))?.focus();
+	const heading = document.querySelector<HTMLElement>('h1');
+	if (heading !== null && !heading.hasAttribute('tabindex')) heading.tabIndex = -1;
+	(shut ?? title ?? heading)?.focus();
 }
 
 /* a campaign as the create card's hidden sample draws it, so the card stands a record's height.
@@ -412,6 +415,7 @@ export default function Campaigns({ loaderData, actionData }: Route.ComponentPro
 
 	return (
 		<Column>
+			<ScreenHeading title={SCREEN_TITLE} />
 			<p role="status" className="adm-vh">
 				{said}
 			</p>

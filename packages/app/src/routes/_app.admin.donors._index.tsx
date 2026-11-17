@@ -5,6 +5,7 @@ import { StatedValue } from '@better-giving/operator/components/forms/StatedValu
 import { Column } from '@better-giving/operator/components/shell/Layout';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
 import { href, Link } from 'react-router';
+import { ScreenHeading } from '$lib/admin/crumbs';
 import { screenTitle } from '$lib/admin/screen-title';
 import { LocalTime } from '$lib/admin/viewer-time.react';
 import { CONSENT_LABELS, consentState } from '$lib/contacts/consent';
@@ -125,7 +126,7 @@ const MONTH_LABEL = new Intl.DateTimeFormat('en-US', {
 	timeZone: 'UTC'
 });
 
-/** the screen's name in the document title. ./_app.tsx names the page in a hidden `h1`. */
+/** the screen's name, in its heading and in the document title. */
 const SCREEN_TITLE = 'Donors';
 
 export function meta({ matches }: Route.MetaArgs): Route.MetaDescriptors {
@@ -321,6 +322,7 @@ export default function Donors({ loaderData }: Route.ComponentProps) {
 		// own, so one that is not rendered leaves no space behind it. the wide measure, because a
 		// table plane is what it exists for.
 		<Column wide>
+			<ScreenHeading title={SCREEN_TITLE} />
 			{/* the summary, composed here rather than mounted: `.adm-summary` is a modifier on the
 			    record card and the card's own part draws a head, which three blocks standing side
 			    by side have none of — packages/operator/src/styles/adm.css argues it at the rule.
@@ -347,8 +349,8 @@ export default function Donors({ loaderData }: Route.ComponentProps) {
 			    rank against the quiet one's absence of a border, which is the whole of it. no new
 			    class: the rank is what says which view is open.
 
-			    `aria-current="true"` and never `"page"`. the rail's Donors cell already claims the
-			    page on this screen (packages/operator/src/components/shell/AppShell.jsx), and a
+			    `aria-current="true"` and never `"page"`. the rail's Donors row already claims the
+			    page on this screen (packages/operator/src/components/shell/Shell.jsx), and a
 			    second element claiming it is two answers to "where am I" in one document. this is
 			    the other kind of current — the current one of these.
 

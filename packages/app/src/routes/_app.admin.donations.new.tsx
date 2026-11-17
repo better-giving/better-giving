@@ -7,14 +7,13 @@ import { Field } from '@better-giving/operator/components/forms/Field';
 import { PairedFieldset } from '@better-giving/operator/components/forms/PairedFieldset';
 import { SelectWithNote } from '@better-giving/operator/components/forms/SelectWithNote';
 import { Column, Stack } from '@better-giving/operator/components/shell/Layout';
-import { PageHeader } from '@better-giving/operator/components/shell/PageHeader';
 import { Banner } from '@better-giving/operator/components/status/Banner';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
 import { getFormProps } from '@conform-to/react';
 import { type FormEvent, useEffect, useRef, useState } from 'react';
 import { data, Form, href, Link, useFetcher, useNavigation } from 'react-router';
 import { uuidv7 } from 'uuidv7';
-import type { CrumbHandle } from '$lib/admin/crumbs';
+import { type CrumbHandle, ScreenHeading } from '$lib/admin/crumbs';
 import { screenTitle } from '$lib/admin/screen-title';
 import { boxProps, useAdminForm } from '$lib/admin/use-admin-form';
 import { CONTACT_FIELD_LABELS, MAX_DONOR_SEARCH } from '$lib/contacts/input-schema';
@@ -670,7 +669,7 @@ export default function AddDonation({ loaderData, actionData }: Route.ComponentP
 
 	return (
 		<Column>
-			<PageHeader title={SCREEN_TITLE} />
+			<ScreenHeading title={SCREEN_TITLE} />
 
 			{/* no `action` attribute, so this posts to the current url. `preventScrollReset`
 			    because every answer lands on this same screen, at the button that was pressed. */}

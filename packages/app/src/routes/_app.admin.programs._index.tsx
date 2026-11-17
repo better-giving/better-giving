@@ -6,6 +6,7 @@ import { StatusWord } from '@better-giving/operator/components/status/StatusWord
 import { PROGRAM_STATUS_TONES } from '$lib/admin/status-tones';
 import { useEffect, useRef } from 'react';
 import { data, href, Link } from 'react-router';
+import { ScreenHeading } from '$lib/admin/crumbs';
 import { screenTitle } from '$lib/admin/screen-title';
 import { PROGRAM_STATUS_LABELS } from '$lib/programs/statuses';
 import { loadFailed } from '$lib/server/db/load-failure';
@@ -27,7 +28,7 @@ import type { Route } from './+types/_app.admin.programs._index';
 // `$lib/server/programs/queries.ts`; the only job here is a projection. neither the
 // database's type (`Db` in $lib/server/db/client.ts) nor the `program` table object is named anywhere in this route, and neither may be.
 
-/** the screen's name in the document title. ./_app.tsx names the page in a hidden `h1`. */
+/** the screen's name, in its heading and in the document title. */
 const SCREEN_TITLE = 'Programs';
 
 export function meta({ matches }: Route.MetaArgs): Route.MetaDescriptors {
@@ -121,6 +122,7 @@ export default function Programs({ loaderData }: Route.ComponentProps) {
 		// one column and the column is what spaces it: every block below carries no margin of its
 		// own, so one that is not rendered leaves no space behind it.
 		<Column>
+			<ScreenHeading title={SCREEN_TITLE} />
 			{/* the outcome of the create next door, which redirected here with the new cause's id. it
 			    is the only outcome this page reports and the only one it can: this page writes
 			    nothing, so every other thing that happens to a cause is reported on the screen that
@@ -154,7 +156,7 @@ export default function Programs({ loaderData }: Route.ComponentProps) {
 								<Mark name="folder-heart" />
 							</span>
 							{/* level 2, because a record on this list stands directly under the page's
-							    `<h1>`, which the frame draws hidden, and nothing sits between them. how
+							    `<h1>`, its heading's, and nothing sits between them. how
 							    loud the words are is `.adm-record__title`'s to say. */}
 							<h2 className="adm-record__title">
 								<Link to={href('/admin/programs/:id', { id: program.id })}>{program.name}</Link>

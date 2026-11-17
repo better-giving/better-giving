@@ -24,7 +24,7 @@ import { replaceRefusal } from '$lib/admin/page-edit/replace-photo';
 import { postPhoto, type UploadAnswer } from '$lib/admin/page-edit/photo-upload';
 import { ProgramFields } from '$lib/admin/programs/fields';
 import { ProgramPhotoControl } from '$lib/admin/programs/photo-control';
-import type { CrumbHandle } from '$lib/admin/crumbs';
+import { type CrumbHandle, ScreenHeading } from '$lib/admin/crumbs';
 import { buttonState } from '$lib/admin/save-button-state';
 import { savedSection } from '$lib/admin/saved-section';
 import { screenTitle } from '$lib/admin/screen-title';
@@ -413,20 +413,16 @@ export default function Program({ loaderData, actionData }: Route.ComponentProps
 			    to be: the card is a modal, so a banner up here is behind an inert page. */}
 			{asking ? null : notArchived}
 
-			{/* the header is written out of the classes packages/operator/src/styles/adm.css already
-			    draws rather than mounted from the library's `PageHeader`: that component's trailing
-			    slot is documented as the page's own action.
-
-			    an archived cause's word is the hueless one: the `note` tone is for a status that has
+			{/* an archived cause's word is the hueless one: the `note` tone is for a status that has
 			    run its course, and $lib/admin/status-tones.ts is where the four are mapped. */}
-			<header className="adm-pageheader">
-				<div className="adm-pageheader__row">
-					<h1>{name}</h1>
+			<ScreenHeading
+				title={name}
+				status={
 					<StatusWord tone={PROGRAM_STATUS_TONES[status]}>
 						{PROGRAM_STATUS_LABELS[status]}
 					</StatusWord>
-				</div>
-			</header>
+				}
+			/>
 
 			{editor === null ? (
 				<StoredRecord description={description} />

@@ -258,15 +258,15 @@ it('says under the heading why the form cannot go live, and at the status box wh
 
 it('says a live form is not taking gifts while a blocker stands', () => {
 	const { root } = screen({ blocked: true, status: 'live' });
-	const word = root.querySelector('.adm-pageheader .ds-badge');
+	const word = root.querySelector('.ds-page-title-row .ds-badge');
 
 	expect(word?.textContent).toBe('Not taking gifts');
 	expect(word?.classList.contains('ds-badge-warning')).toBe(true);
-	expect(root.querySelector('.adm-pageheader .ds-badge-primary')).toBeNull();
+	expect(root.querySelector('.ds-page-title-row .ds-badge-primary')).toBeNull();
 });
 
 it('keeps Live on a live form while nothing blocks', () => {
-	const word = screen({ status: 'live' }).root.querySelector('.adm-pageheader .ds-badge');
+	const word = screen({ status: 'live' }).root.querySelector('.ds-page-title-row .ds-badge');
 
 	expect(word?.textContent).toBe('Live');
 	expect(word?.classList.contains('ds-badge-primary')).toBe(true);

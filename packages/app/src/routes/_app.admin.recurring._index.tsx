@@ -4,6 +4,7 @@ import { Column } from '@better-giving/operator/components/shell/Layout';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
 import { RECURRING_STATUS_TONES } from '$lib/admin/status-tones';
 import { href, Link } from 'react-router';
+import { ScreenHeading } from '$lib/admin/crumbs';
 import { screenTitle } from '$lib/admin/screen-title';
 import { LocalTime } from '$lib/admin/viewer-time.react';
 import { formatMinor } from '$lib/donations/money';
@@ -52,7 +53,7 @@ const COLUMNS = [
 	{ key: 'next', label: 'Next charge', kind: 'date', width: '14%' }
 ] as const;
 
-/** the screen's name in the document title. ./_app.tsx names the page in a hidden `h1`. */
+/** the screen's name, in its heading and in the document title. */
 const SCREEN_TITLE = 'Recurring gifts';
 
 export function meta({ matches }: Route.MetaArgs): Route.MetaDescriptors {
@@ -125,6 +126,7 @@ export default function RecurringGifts({ loaderData }: Route.ComponentProps) {
 		// own, so one that is not rendered leaves no space behind it. the wide measure, because a
 		// table plane is what it exists for.
 		<Column wide>
+			<ScreenHeading title={SCREEN_TITLE} />
 			{/* the table sits in the column directly, and nothing wraps it: `.adm-plane` is a scroll
 			    box, which is the one kind of grid item whose automatic minimum size is zero, so as
 			    the column's own child it shrinks and scrolls at every width. a plain element between

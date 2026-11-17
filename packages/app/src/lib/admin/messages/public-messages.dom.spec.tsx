@@ -86,9 +86,9 @@ describe('public messages, listed', () => {
 		);
 	});
 
-	it('counts the messages under the header and its standfirst', () => {
+	it('counts the messages under the heading and the line under its title', () => {
 		const { host } = mount();
-		expect(host.querySelector('.adm-standfirst')?.textContent).toContain(
+		expect(host.querySelector('.ds-page-desc')?.textContent).toContain(
 			'Notes donors chose to show on your donation page.'
 		);
 		expect(host.querySelector('.adm-tablecaption')?.textContent).toBe('2 messages, newest first.');

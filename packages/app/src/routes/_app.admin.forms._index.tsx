@@ -22,6 +22,7 @@ import { useEffect, useRef } from 'react';
 import { data, Form, href, Link, useFormAction, useNavigate, useNavigation } from 'react-router';
 import { z } from 'zod';
 import { buttonState } from '$lib/admin/save-button-state';
+import { ScreenHeading } from '$lib/admin/crumbs';
 import { screenTitle } from '$lib/admin/screen-title';
 import {
 	type AdminActionData,
@@ -78,7 +79,7 @@ import type { Route } from './+types/_app.admin.forms._index';
 // type (`Db` in $lib/server/db/client.ts) nor the `form` table object is named anywhere in this
 // route, and neither may be.
 
-/** the screen's name in the document title. ./_app.tsx names the page in a hidden `h1`. */
+/** the screen's name, in its heading and in the document title. */
 const SCREEN_TITLE = 'Donation forms';
 
 /** the address this screen answers on, which is also where its own question is asked and dropped. */
@@ -460,6 +461,7 @@ export default function DonationForms({ loaderData, actionData }: Route.Componen
 		// one column and the column is what spaces it: every block below carries no margin of its
 		// own, so one that is not rendered leaves no space behind it.
 		<Column>
+			<ScreenHeading title={SCREEN_TITLE} />
 			{/* the outcome of the create next door, which redirected here with the new form's id. it
 			    is the only outcome about a form this page reports and the only one it can: this page
 			    writes no form, so every other thing that happens to one is reported on the screen
@@ -519,7 +521,7 @@ export default function DonationForms({ loaderData, actionData }: Route.Componen
 							    arriving at a button's and being pushed back out of it.
 
 							    level 2, because a record on this list stands directly under the page's
-							    `<h1>`, which the frame draws hidden, and nothing sits between them. how
+							    `<h1>`, its heading's, and nothing sits between them. how
 							    loud the words are is `.adm-record__title`'s to say. */}
 								<h2 className="adm-record__title">
 									<Link to={href('/admin/forms/:id', { id: form.id })}>{form.name}</Link>

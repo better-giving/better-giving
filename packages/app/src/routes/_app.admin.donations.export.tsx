@@ -1,14 +1,13 @@
 import { Button } from '@better-giving/operator/components/controls/Button';
 import { DateRangeField } from '@better-giving/operator/components/forms/DateRangeField';
 import { Column, Stack } from '@better-giving/operator/components/shell/Layout';
-import { PageHeader } from '@better-giving/operator/components/shell/PageHeader';
 import { Brand, type BrandName } from '@better-giving/operator/components/status/Brand';
 import { getFormProps } from '@conform-to/react';
 import { type FormEvent, useEffect, useRef, useState } from 'react';
 import { Form, href } from 'react-router';
 import { uuidv7 } from 'uuidv7';
 import { z } from 'zod';
-import type { CrumbHandle } from '$lib/admin/crumbs';
+import { type CrumbHandle, ScreenHeading } from '$lib/admin/crumbs';
 import { screenTitle } from '$lib/admin/screen-title';
 import { boxProps, useAdminForm } from '$lib/admin/use-admin-form';
 import { defineForm } from '$lib/forms/definition';
@@ -443,12 +442,11 @@ export default function ExportEntries({ loaderData }: Route.ComponentProps) {
 	return (
 		// the narrow measure: every control here is a box or a press, and none of them is a table.
 		<Column>
-			{/* the screen's own `h1`: the frame draws the trail in its top strip for a screen stating
-			    one and no heading beside it (./_app.tsx), so a screen that draws none has no heading
-			    at all. the trail ends in this same word, which is what keeps this to the one word —
-			    the standfirst is the only sentence on the screen, and it is there because the thing
-			    it says is the one thing a range, a row of packages and a file leave no trace of. */}
-			<PageHeader title={SCREEN_TITLE} standfirst={REPEATS} />
+			{/* the screen's own `h1`, under its trail. the trail ends in this same word, which is what
+			    keeps this to the one word — the description is the only sentence on the screen, and it
+			    is there because the thing it says is the one thing a range, a row of packages and a
+			    file leave no trace of. */}
+			<ScreenHeading title={SCREEN_TITLE} description={REPEATS} />
 			{/* a `get` at the file's own address, and `reloadDocument` because the answer is a file
 			    rather than a screen: react router would try to route to it
 			    (react-router/docs/how-to/resource-routes.md), where the browser takes it as the

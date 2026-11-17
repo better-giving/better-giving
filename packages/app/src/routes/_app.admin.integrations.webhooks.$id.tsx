@@ -5,7 +5,6 @@ import { DataTable } from '@better-giving/operator/components/data/DataTable';
 import { SaveButton } from '@better-giving/operator/components/controls/SaveButton';
 import { Field } from '@better-giving/operator/components/forms/Field';
 import { Column, Section } from '@better-giving/operator/components/shell/Layout';
-import { PageHeader } from '@better-giving/operator/components/shell/PageHeader';
 import type { Tone } from '@better-giving/operator/components/closed-sets';
 import { Banner } from '@better-giving/operator/components/status/Banner';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
@@ -22,7 +21,7 @@ import {
 	useNavigation
 } from 'react-router';
 import { z } from 'zod';
-import type { CrumbHandle } from '$lib/admin/crumbs';
+import { type CrumbHandle, ScreenHeading } from '$lib/admin/crumbs';
 import { useAfterPaint } from '$lib/admin/after-paint';
 import { useAnswerRevision } from '$lib/admin/answer-revision';
 import { buttonState } from '$lib/admin/save-button-state';
@@ -334,9 +333,11 @@ export default function Destination({ loaderData, actionData }: Route.ComponentP
 
 	return (
 		<Column wide>
-			<PageHeader
+			{/* both presses in the primary slot: Send a test is a form post held while it is out,
+			    which a secondary row of `PageHeading` (a link or a callback) cannot carry. */}
+			<ScreenHeading
 				title={title}
-				pageAction={
+				primary={
 					<div className="adm-actions">
 						{paused ? (
 							// a link dressed as a button, because it writes nothing: it asks.
