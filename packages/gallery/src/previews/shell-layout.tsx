@@ -33,7 +33,7 @@ import {
  * two boxes a step apart read as two blocks depends on how wide each box is, and every screen that
  * draws this run is a gate bounded at `--admin-measure-panel` — packages/app/src/routes/login.tsx
  * among them, each through `PanelRoute` in packages/operator/src/components/shell/PanelRoute.jsx.
- * `.adm-main` caps nothing, so left on the page the boxes run the window less its gutter, the
+ * the gallery's `ds-shell-main` caps nothing, so left on the page the boxes run the window less its gutter, the
  * steps between them read against a width no screen in this system is ever read at, and the
  * specimen answers a question nobody asked. the box is the panel alone and not the route around
  * it: `.adm-panelroute` is a screen tall, and a page of specimens cannot spend a viewport on each.

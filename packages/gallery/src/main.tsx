@@ -16,12 +16,13 @@ import './app.css';
  * one is a delete.
  *
  * the page wears two classes and writes no css: this package defines none of its own (./app.css
- * says so), so both come out of packages/operator/src/styles/adm.css and are what every operator
- * screen already stands in. `.adm-main` is the page's gutter, and it is load-bearing rather than
- * decoration — with no gutter a full-width specimen sits flush against the viewport edge, which is
- * a width no screen puts it at and a state the specimen is then wrong about. `.adm-section` on each
- * preview is the rule between one component's specimens and the next's, without which a page of
- * dozens runs together and a reader cannot tell whose state they are looking at.
+ * says so), so both are what every operator screen already stands in. `ds-shell-main` is the
+ * page's gutter, the registry shell's own (packages/operator/src/registry/styles/app-shell-css.css),
+ * and it is load-bearing rather than decoration — with no gutter a full-width specimen sits flush
+ * against the viewport edge, which is a width no screen puts it at and a state the specimen is then
+ * wrong about. `.adm-section` (packages/operator/src/styles/adm.css) on each preview is the rule
+ * between one component's specimens and the next's, without which a page of dozens runs together
+ * and a reader cannot tell whose state they are looking at.
  */
 
 const previews = import.meta.glob<{ default: () => ReactNode }>('./previews/*.tsx', {
@@ -32,7 +33,7 @@ function App() {
 	const entries = Object.entries(previews).sort(([a], [b]) => a.localeCompare(b));
 	return (
 		// no `main` here: the `Shell` and `PanelRoute` previews each draw their own.
-		<div className="adm-main">
+		<div className="ds-shell-main">
 			<h1>component gallery</h1>
 			{entries.map(([path, mod]) => {
 				const label = path.replace('./previews/', '').replace(/\.tsx$/, '');

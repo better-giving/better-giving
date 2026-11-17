@@ -292,7 +292,7 @@ export function DateField({
 				value={value}
 				min={earliest}
 				/* fixed, because the modal the calendar may be portalled into clips what it positions
-				   (`.adm-sheet { overflow: hidden }` in ../../styles/adm.css), and a fixed panel is
+				   (`.ds-dialog`'s `overflow-y: auto` in ../../registry/styles/dialog-css.css), and a fixed panel is
 				   placed against the viewport instead, which clips nothing. */
 				positioning={{ placement: 'bottom-start', strategy: 'fixed' }}
 				onValueChange={took}

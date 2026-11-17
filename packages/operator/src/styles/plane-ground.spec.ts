@@ -10,8 +10,7 @@ import { ruleOf, rulesIn, sheet } from './sheet-rule.testing';
 //
 // a plane is also a card on the page's wash, and what makes it one is radix's subtle border, step 6,
 // round a step-1 face, and no shadow (./tokens.css at `surfaces and ink`). a plane nested in another
-// is drawn the same way. the fill's painters that are not a plane on the page — chrome, and what
-// floats over the flow — are named below with what they draw instead.
+// is drawn the same way.
 //
 // what counts as a plane is derived rather than listed: every rule that paints the plane's fill. the
 // few that paint it and are not a ground a field stands on are named below with why, so a new rule
@@ -26,10 +25,6 @@ const NOT_A_GROUND = new Map([
 	['.adm-menulist, .adm-selectlist', "a menu's and a select's list, which hold rows and no field"],
 	['.adm-cal', 'the calendar a date field opens, which holds day presses and no field'],
 	['.adm-table [data-pin]', "a pinned cell, inside a table's plane, which states the ground"],
-	[
-		'.adm-rail__cells .adm-dest > .adm-mark',
-		"a destination's mark tile in the rail, which holds a glyph"
-	],
 	[
 		".adm-cropper__handle:is( [data-position='nw'], [data-position='ne'], [data-position='sw'], [data-position='se'] )",
 		"a crop handle's grip, which holds nothing"
@@ -47,14 +42,6 @@ const token = (name: string): string | undefined =>
 		.match(new RegExp(`${name}:\\s*([^;]+);`))?.[1]
 		?.trim()
 		.replace(/\s+/g, ' ');
-
-/** rules painting the fill that stand a field on it and are not a card on the page, and why. */
-const NOT_A_CARD = new Map([
-	['.adm-identity', 'the top band, step 1 with the rule under it and no edge round it'],
-	['.adm-rail', "the phone's bar, which floats and wears the overlay's edge"],
-	['.adm-moresheet', "the bar's More sheet, which floats as the bar does"],
-	['.adm-sheet', 'a sheet, which floats over the flow with the overlay’s edge']
-]);
 
 describe('every plane states the ground a floated date label knocks out in', () => {
 	it('is read by the floated label, with the page as its fallback', () => {
@@ -80,9 +67,7 @@ describe('every plane states the ground a floated date label knocks out in', () 
 });
 
 describe('every plane is a step-1 card with a step-6 edge on the page', () => {
-	const planes = painting.filter(
-		({ selector }) => !NOT_A_GROUND.has(selector) && !NOT_A_CARD.has(selector)
-	);
+	const planes = painting.filter(({ selector }) => !NOT_A_GROUND.has(selector));
 
 	it('finds the planes it is meant to be guarding', () => {
 		// a floor rather than the count today: the card, the panel, the plane, the record, the group
@@ -126,15 +111,6 @@ describe('every plane is a step-1 card with a step-6 edge on the page', () => {
 		expect(ruleOf(css, '.adm-dialog__surface').get('--_ground')).toBe(PLANE_FILL);
 		expect(token('--admin-surface')).toBe('var(--admin-neutral-1)');
 	});
-
-	it('names only rules that still paint the fill', () => {
-		for (const selector of NOT_A_CARD.keys()) {
-			expect(
-				painting.some((one) => one.selector === selector),
-				selector
-			).toBe(true);
-		}
-	});
 });
 
 describe('what floats over the flow is flat, with the step-6 edge', () => {
@@ -152,24 +128,6 @@ describe('what floats over the flow is flat, with the step-6 edge', () => {
 			expect(rule?.has('box-shadow')).toBe(false);
 		}
 	);
-
-	it('draws the phone bar, the More sheet and a sheet with the overlay edge on the side they stand on', () => {
-		for (const selector of ['.adm-rail', '.adm-moresheet', '.adm-sheet']) {
-			const rule = ruleOf(css, selector);
-			expect(rule.get('border-block-start'), selector).toBe(
-				'var(--admin-border-width) solid var(--admin-overlay-border)'
-			);
-			expect(rule.has('box-shadow'), selector).toBe(false);
-		}
-	});
-
-	it('edges a destination’s mark tile in the rail with the subtle border', () => {
-		const tile = rulesIn(css).find(
-			({ selector }) => selector === '.adm-rail__cells .adm-dest > .adm-mark'
-		)?.stated;
-		expect(tile?.get('border')).toBe(PLANE_EDGE);
-		expect(tile?.has('box-shadow')).toBe(false);
-	});
 });
 
 describe('no shadow is depth', () => {
@@ -218,16 +176,14 @@ describe('no shadow is depth', () => {
 });
 
 describe('a rule drawn inside a plane is the page’s own', () => {
-	// the rules standing between rows or divisions inside a plane, the dialog or a sheet. each draws
+	// the rules standing between rows or divisions inside a plane or the dialog. each draws
 	// `--admin-rule`, step 6, inside a card or out, and nothing re-colours it where it stands.
 	const INSIDE = [
 		'.adm-section + .adm-section',
 		'.adm-setting',
 		'.adm-triggers > li + li',
 		'.adm-literals > li + li',
-		'.adm-disclosure[open]',
-		'.adm-sheet__head',
-		'.adm-sheet__foot'
+		'.adm-disclosure[open]'
 	];
 
 	it.each(INSIDE)('%s draws the page’s rule', (selector) => {
