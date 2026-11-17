@@ -11,7 +11,8 @@ import { Mark } from '../status/Mark.jsx';
  * @typedef {{ href: string; label: string }} PageCrumb
  *
  * @typedef {object} PageHeadingProps
- * @property {ReactNode} title the page's `h1`.
+ * @property {ReactNode} title the page's `h1`. it takes focus from script and is no Tab stop
+ *   (`tabIndex={-1}`), so a screen whose press unmounted the focused control can land focus here.
  * @property {ReactNode} [status] a badge about the page as a whole, kept on the title's first line
  *   however the title wraps (lead-css's `ds-lead-1lh`).
  * @property {ReactNode} [description] the line under the title.
@@ -51,7 +52,9 @@ export function PageHeading({ title, status, description, crumbs, primary, secon
 			<div className="ds-page-header-row">
 				<div className="ds-page-header-text">
 					<div className="ds-page-title-row ds-lead-row">
-						<h1 className="ds-page-title">{title}</h1>
+						<h1 className="ds-page-title" tabIndex={-1}>
+							{title}
+						</h1>
 						{status === undefined ? null : <span className="ds-lead-1lh">{status}</span>}
 					</div>
 					{description === undefined ? null : <p className="ds-page-desc">{description}</p>}

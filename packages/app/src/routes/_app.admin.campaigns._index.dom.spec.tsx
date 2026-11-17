@@ -139,14 +139,9 @@ function mount(tree: ReactNode) {
 async function screen(at = SCREEN): Promise<HTMLElement> {
 	const Stub = createRoutesStub([
 		{
-			// the protected layout's own name for the screen, which a press whose row is gone lands on.
-			Component: () =>
-				createElement(
-					'main',
-					null,
-					createElement('h1', { className: 'adm-vh', tabIndex: -1 }, 'Campaigns'),
-					createElement(Outlet)
-				),
+			// the protected layout's page; the screen's own heading is the `h1` a press whose row is gone
+			// lands on.
+			Component: () => createElement('main', null, createElement(Outlet)),
 			children: [
 				{
 					path: SCREEN,

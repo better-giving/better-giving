@@ -318,13 +318,11 @@ const titleId = (pageId: string) => `campaign-title-${pageId}`;
  * focus after a press lands, which unmounted the control that held it: the row's title where it
  * now stands; the Ended group's summary where the row went into it shut, since nothing inside a
  * shut `<details>` takes focus; and the screen's own `h1`, its heading's, where the row is gone.
- * `PageHeading` draws that `h1` with no `tabindex`, and a heading without one takes no focus.
  */
 function focusLanded({ pageId }: Landed): void {
 	const title = pageId === null ? null : document.getElementById(titleId(pageId));
 	const shut = title?.closest('details:not([open])')?.querySelector('summary');
 	const heading = document.querySelector<HTMLElement>('h1');
-	if (heading !== null && !heading.hasAttribute('tabindex')) heading.tabIndex = -1;
 	(shut ?? title ?? heading)?.focus();
 }
 
