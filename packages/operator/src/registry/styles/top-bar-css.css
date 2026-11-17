@@ -1,0 +1,211 @@
+/* the registry's top bar as plain css, no tailwind: the app's header with
+   where you are (crumbs or a title), the page's actions and the account, the
+   crumb trail on its own (.ds-crumbs, which the page header uses too) and the
+   route-load line (.ds-route-progress). reads only the variables the
+   `variables` item declares. top-bar-css.test.tsx renders the React `TopBar`
+   beside it and asserts the same computed look in light and dark, for the
+   default and example themes, wide and at 375.
+
+   the spacing step, the type sizes, the weights, the tracking, the easing and
+   the top z-index live only in tailwind's theme; they are declared here under
+   ds- names with the same values, and the test holds them equal. a media query
+   cannot read a variable, so its width is written out: 48rem is tailwind's
+   md. */
+.ds-topbar,
+.ds-crumbs,
+.ds-route-progress {
+  --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
+  --ds-text-sm: calc(0.875 * var(--ds-rem, 1rem));
+  --ds-text-sm-lh: calc(1.25 / 0.875);
+  --ds-text-base: calc(1 * var(--ds-rem, 1rem));
+  --ds-text-base-lh: calc(1.5 / 1);
+  --ds-text-lg: calc(1.125 * var(--ds-rem, 1rem));
+  --ds-text-lg-lh: calc(1.75 / 1.125);
+  --ds-font-weight-semibold: 600;
+  --ds-font-weight-bold: 700;
+  --ds-tracking-tight: -0.025em;
+  --ds-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+/* 4rem on the page fill with a hairline under it, 40px in */
+.ds-topbar {
+  position: relative;
+  box-sizing: border-box;
+  display: flex;
+  align-items: safe center;
+  gap: calc(var(--ds-spacing) * 3);
+  block-size: calc(var(--ds-spacing) * 16);
+  min-inline-size: 0;
+  padding-inline: calc(var(--ds-spacing) * 10);
+  border-block-end: 1px solid var(--hairline);
+  background-color: var(--background);
+  color: var(--gray-12);
+}
+/* where you are: the brand, the crumbs or a title */
+.ds-topbar-lead {
+  display: flex;
+  flex: 1 1 0%;
+  align-items: safe center;
+  gap: calc(var(--ds-spacing) * 2);
+  min-inline-size: 0;
+}
+.ds-topbar-title,
+.ds-topbar-name {
+  margin: 0;
+  min-inline-size: 0;
+  overflow: clip;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-display);
+  font-weight: var(--ds-font-weight-bold);
+}
+.ds-topbar-title {
+  font-size: var(--ds-text-lg);
+  line-height: var(--ds-text-lg-lh);
+  letter-spacing: var(--ds-tracking-tight);
+}
+.ds-topbar-name {
+  font-size: var(--ds-text-base);
+  line-height: var(--ds-text-base-lh);
+}
+/* the crumbs folded: the back button and the page's name, under 48rem */
+.ds-topbar-narrow {
+  display: none;
+  align-items: safe center;
+  gap: calc(var(--ds-spacing) * 2);
+  min-inline-size: 0;
+}
+.ds-topbar-actions,
+.ds-topbar-secondary {
+  display: flex;
+  flex-shrink: 0;
+  align-items: safe center;
+  gap: calc(var(--ds-spacing) * 2);
+}
+/* the account's room while the session is unknown: the avatar's 32px */
+.ds-topbar-account {
+  flex-shrink: 0;
+  inline-size: calc(var(--ds-spacing) * 8);
+  block-size: calc(var(--ds-spacing) * 8);
+}
+
+@media (width < 48rem) {
+  .ds-topbar {
+    gap: calc(var(--ds-spacing) * 2);
+    padding-inline: calc(var(--ds-spacing) * 3);
+  }
+  .ds-topbar .ds-btn:not(.ds-btn-icon) {
+    padding-inline: calc(var(--ds-spacing) * 4);
+  }
+  .ds-topbar-lead > .ds-crumbs,
+  .ds-topbar-secondary {
+    display: none;
+  }
+  .ds-topbar-narrow {
+    display: flex;
+  }
+}
+
+/* the trail: links in gray-11 between 14px chevrons, the current page last,
+   gray-12 semibold, cut with an ellipsis when the row runs out of room */
+.ds-crumbs {
+  min-inline-size: 0;
+}
+.ds-crumbs ol {
+  display: flex;
+  align-items: safe center;
+  gap: var(--ds-spacing);
+  min-inline-size: 0;
+  /* the ellipsis needs the clip; the padding gives the links' ring, 2px out,
+     room inside it, and the margin takes the padding back */
+  margin: calc(var(--ds-spacing) * -1);
+  padding: var(--ds-spacing);
+  overflow: clip;
+  list-style: none;
+  font-size: var(--ds-text-sm);
+  line-height: var(--ds-text-sm-lh);
+}
+.ds-crumbs li {
+  display: flex;
+  align-items: safe center;
+  gap: var(--ds-spacing);
+  min-inline-size: 0;
+}
+.ds-crumbs li:not(:last-child) {
+  flex-shrink: 0;
+}
+.ds-crumbs a,
+.ds-crumbs li > span:not([aria-current]) {
+  color: var(--gray-11);
+  white-space: nowrap;
+}
+.ds-crumbs a {
+  border-radius: var(--radius);
+  text-decoration: none;
+  /* tailwind's transition-colors, less its gradient stops */
+  transition-property:
+    color, background-color, border-color, outline-color, text-decoration-color,
+    fill, stroke;
+  transition-duration: var(--duration-fast);
+  transition-timing-function: var(--ds-ease-out);
+}
+@media (hover: hover) and (pointer: fine) {
+  .ds-crumbs a:hover {
+    color: var(--gray-12);
+  }
+}
+.ds-crumbs a:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+.ds-crumbs svg {
+  flex-shrink: 0;
+  inline-size: calc(var(--ds-spacing) * 3.5);
+  block-size: calc(var(--ds-spacing) * 3.5);
+  color: var(--gray-11);
+}
+/* the chevrons and the back arrow point the reading way */
+.ds-crumbs svg:dir(rtl),
+.ds-topbar-narrow > .ds-btn svg:dir(rtl) {
+  scale: -1 1;
+}
+.ds-crumbs [aria-current="page"] {
+  min-inline-size: 0;
+  overflow: clip;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--gray-12);
+  font-weight: var(--ds-font-weight-semibold);
+}
+
+/* the route-load line: 2px of --primary across the top of the nearest
+   positioned ancestor, above everything. --ds-route-progress is how far it
+   has run (set it on the element, 0% to 100%); at 100 it fades */
+.ds-route-progress {
+  --ds-route-progress: 0%;
+  --ds-z-index-top: 100;
+  position: absolute;
+  inset-inline: 0;
+  inset-block-start: 0;
+  z-index: var(--ds-z-index-top);
+  block-size: calc(var(--ds-spacing) * 0.5);
+  pointer-events: none;
+  transition-property: opacity;
+  transition-duration: var(--duration-slow);
+  transition-timing-function: linear;
+}
+.ds-route-progress[aria-valuenow="100"] {
+  opacity: 0;
+}
+.ds-route-progress-bar {
+  block-size: 100%;
+  background-color: var(--primary);
+  transform-origin: left;
+  scale: var(--ds-route-progress) 1;
+  transition-property: scale;
+  transition-duration: var(--duration-slow);
+  transition-timing-function: linear;
+}
+.ds-route-progress-bar:dir(rtl) {
+  transform-origin: right;
+}

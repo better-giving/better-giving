@@ -1,0 +1,42 @@
+/* the registry's settings layout as plain css, no tailwind: a settings
+   section's stack of cards, and the row a card's footer holds Discard and
+   Save in. the sections are the sidebar's (nav-list-css's parent row and its
+   children), so the layout holds no nav, and nothing in it pins. reads only
+   the variables the `variables` item declares; the cards are card-css's, the
+   buttons button-css's. settings-layout-css.test.tsx renders the React
+   `SettingsLayout` and `SaveActions` beside it and asserts the same computed
+   look in light and dark, for the default and example themes, wide and at
+   375.
+
+   the spacing step and the 48rem breakpoint (tailwind's md, written out
+   because a query cannot read a variable) live only in tailwind's theme; the
+   step is declared here under a ds- name with the same value, and the test
+   holds them equal. */
+.ds-settings,
+.ds-settings-save {
+  --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
+}
+
+/* the section's cards, one column 24px apart */
+.ds-settings {
+  display: grid;
+  min-inline-size: 0;
+  gap: calc(var(--ds-spacing) * 6);
+}
+
+/* Discard and Save at the end of a card's footer; under 48rem they share
+   the row in equal halves */
+.ds-settings-save {
+  display: flex;
+  align-items: safe center;
+  gap: calc(var(--ds-spacing) * 3);
+  margin-inline-start: auto;
+}
+@media (width < 48rem) {
+  .ds-settings-save {
+    inline-size: 100%;
+  }
+  .ds-settings-save > * {
+    flex: 1 1 0%;
+  }
+}

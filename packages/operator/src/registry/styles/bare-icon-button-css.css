@@ -1,0 +1,136 @@
+/* the registry's bare icon button as plain css, no tailwind: the glyph alone,
+   no container or padding, 20px or 16px with -sm. reads only the variables the
+   `variables` item declares. bare-icon-button-css.test.tsx renders the React
+   `BareIconButton` beside it and asserts the same computed look in light and
+   dark, for the default and example themes.
+
+   the easing lives only in tailwind's theme; it is declared here under a ds-
+   name with the same value, and the test holds them equal. the busy glyph's
+   loop is tailwind's animate-spin on ds-spin, held to the React glyph's by the
+   same test. */
+.ds-icon-bare {
+  --ds-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ds-icon: calc(1.25 * var(--ds-rem, 1rem));
+  position: relative;
+  display: inline-grid;
+  place-items: safe center;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  inline-size: var(--ds-icon);
+  block-size: var(--ds-icon);
+  margin: 0;
+  padding: 0;
+  border: 0 solid;
+  border-radius: var(--radius);
+  background-color: transparent;
+  color: var(--gray-11);
+  font: inherit;
+  cursor: pointer;
+  appearance: none;
+  transition-property:
+    color, background-color, border-color, outline-color, text-decoration-color,
+    fill, stroke;
+  transition-duration: var(--duration-fast);
+  transition-timing-function: var(--ds-ease-out);
+}
+.ds-icon-bare-sm {
+  --ds-icon: calc(1 * var(--ds-rem, 1rem));
+}
+.ds-icon-bare > svg {
+  inline-size: 100%;
+  block-size: 100%;
+}
+
+/* the hit area: --ds-hit-target (from `variables`; 24px, 44px on a coarse
+   pointer) square, centred on the glyph, which keeps its drawn size */
+.ds-icon-bare::after {
+  content: "";
+  position: absolute;
+  inset: calc((100% - var(--ds-hit-target)) / 2);
+}
+
+/* hover and press: gray-12, the press 1px down. off, busy and done take
+   neither; held open and a pressed toggle keep their accent ink */
+@media (hover: hover) and (pointer: fine) {
+  .ds-icon-bare:hover:not(
+    :disabled,
+    [aria-disabled="true"],
+    [aria-busy="true"],
+    [data-done="true"],
+    [aria-expanded="true"],
+    [aria-pressed="true"]
+  ) {
+    color: var(--gray-12);
+  }
+}
+.ds-icon-bare:active:not(
+  :disabled,
+  [aria-disabled="true"],
+  [aria-busy="true"],
+  [data-done="true"],
+  [aria-expanded="true"],
+  [aria-pressed="true"]
+) {
+  color: var(--gray-12);
+}
+.ds-icon-bare:active:not(
+  :disabled,
+  [aria-disabled="true"],
+  [aria-busy="true"],
+  [data-done="true"]
+) {
+  translate: 0 1px;
+}
+
+/* held open: the menu or popover it controls is open */
+.ds-icon-bare[aria-expanded="true"] {
+  color: var(--accent-11);
+}
+/* forced colors drop that ink: a Highlight ring 2px out marks it held */
+@media (forced-colors: active) {
+  .ds-icon-bare[aria-expanded="true"] {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
+}
+/* a toggle that is on fills its glyph */
+.ds-icon-bare[aria-pressed="true"] {
+  color: var(--accent-11);
+}
+.ds-icon-bare[aria-pressed="true"] > svg {
+  fill: currentColor;
+}
+
+.ds-icon-bare:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+.ds-icon-bare:is(:disabled, [aria-disabled="true"]) {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+/* in flight: the glyph is a turning loader-circle and the pointer is ignored */
+.ds-icon-bare[aria-busy="true"] {
+  pointer-events: none;
+}
+/* done: a check in the success ink, for 2000ms */
+.ds-icon-bare[data-done="true"] {
+  pointer-events: none;
+  color: var(--success-subtle-fg);
+}
+
+.ds-icon-bare-spin {
+  --ds-icon-bare-loop: ds-spin 1s linear infinite;
+  animation: var(--ds-icon-bare-loop);
+}
+/* a loop stills rather than shortens: at a collapsed duration it would jitter */
+@media (prefers-reduced-motion: reduce) {
+  .ds-icon-bare-spin {
+    animation: none;
+  }
+}
+@keyframes ds-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

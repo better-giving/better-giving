@@ -454,6 +454,11 @@ button.ds-btn[aria-disabled="true"] {
   --ds-btn-icon: calc(var(--ds-spacing) * 4);
   gap: calc(var(--ds-spacing) * 2);
 }
+/* fills its container's inline size; the label stays centred by the flex
+   centring above. not with ds-btn-icon, whose square is its tier's width */
+.ds-btn-full {
+  inline-size: 100%;
+}
 /* square, icon-only; after the tiers so it wins their padding-inline */
 .ds-btn-icon {
   padding-inline: 0;

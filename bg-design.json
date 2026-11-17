@@ -1,8 +1,15 @@
 {
   "schemaVersion": 1,
   "dir": "packages/operator/src/registry",
-  "registryVersion": "2.5.0",
+  "registryVersion": "3.0.0",
   "items": {
+    "app-shell-css": {
+      "version": "2.0.0",
+      "files": {
+        "styles/app-shell-css.css": "dddff6b74f205745345f0da2f18612a291b1eac16f11df51009497d131a69be9",
+        "styles/app-shell-css.usage.md": "058d32e21b1adfcb0e4f4a94f99871e0154cec5b0f702af9c850b07ff118a8fe"
+      }
+    },
     "avatar-css": {
       "version": "1.0.1",
       "files": {
@@ -17,11 +24,18 @@
         "styles/badge-css.usage.md": "b2481ee71ee6084bf276d89843d7bc64bc5027fae8d492507419768687382060"
       }
     },
-    "button-css": {
-      "version": "1.2.2",
+    "bare-icon-button-css": {
+      "version": "1.0.1",
       "files": {
-        "styles/button-css.css": "628fedfd32bcd1e4395be22317ed2ae34acc0f75c4bba7d4fddb1c04e351c55b",
-        "styles/button-css.usage.md": "cb62c507bf1c11b4bc25610364539224da6de4612ae4c562c6fc6c515ea452b5"
+        "styles/bare-icon-button-css.css": "95c2fc976d21e3409638d55088d23acf9549e7032f1e23bc35f614259faa8019",
+        "styles/bare-icon-button-css.usage.md": "76d4bddcb05bb690a9ea0e249f30555ccdf27743db0f68cce1efb41989d2aa99"
+      }
+    },
+    "button-css": {
+      "version": "1.3.0",
+      "files": {
+        "styles/button-css.css": "694f8374867d16d880712b1cd836c688c122fe53240d813251f5c5747d8f688a",
+        "styles/button-css.usage.md": "6915e968b3f4d7eed94ed0511a4f3628e4fc513e92c5bf3425b2377e6e6be54b"
       }
     },
     "card-css": {
@@ -39,10 +53,10 @@
       }
     },
     "field-css": {
-      "version": "1.4.0",
+      "version": "1.5.0",
       "files": {
-        "styles/field-css.css": "eea5cd0a4af4ed3d0d9aa802d8bccfdbc3fce4745daaf4f46f2e522e602481e5",
-        "styles/field-css.usage.md": "0206f8468701bf01c666e0e79ac17de296a8035d28516b41d5c8024ca74f06b8"
+        "styles/field-css.css": "ccb5d115dc50a628004ad87391d2ff49d45b55edc72ca04ab2e870a779d43a7c",
+        "styles/field-css.usage.md": "e39eab6d54ac65b63e576c94f77d982b211253bd1158b5065b2534b1bdf06b64"
       }
     },
     "file-dropzone-css": {
@@ -59,11 +73,39 @@
         "styles/lead-css.usage.md": "9a3d23137b4b3c1b9d71fc6efbcab88f216638c141768fc1b4fb812436c0c10d"
       }
     },
+    "menu-css": {
+      "version": "1.0.1",
+      "files": {
+        "styles/menu-css.css": "1ccaeadfb1adb83ef48e7e822d0130699eb3ce1f9e26eaea215ca85f355e2f8f",
+        "styles/menu-css.usage.md": "e6e9cd8d02a170bd8cf06950f310104f1f6ca6fc58f3fa4dbab582d54da5f647"
+      }
+    },
+    "nav-list-css": {
+      "version": "1.1.0",
+      "files": {
+        "styles/nav-list-css.css": "284ee8e26251e9e97c42458fdd164ffc281bf01e8845a57f1b6bd75446aa6537",
+        "styles/nav-list-css.usage.md": "cc89efb4a750f17191ca143fa66ab1845502f46a2e1656f8677f28e24008541c"
+      }
+    },
     "notice-card-css": {
       "version": "1.1.1",
       "files": {
         "styles/notice-card-css.css": "1ca6a691c1487f1bda5c7fd85c395c11817d2c0446b8b3f40f3b4a600b0d6a95",
         "styles/notice-card-css.usage.md": "9e292cebd3344ad7c000fa5582b79a1851bec60ab4b19d2a5af37f3288264fd7"
+      }
+    },
+    "page-header-css": {
+      "version": "1.0.1",
+      "files": {
+        "styles/page-header-css.css": "cf306229ee10b98af98a5ba7f4a703a21bbde5f0b20469d0ffe7d62db4f008a5",
+        "styles/page-header-css.usage.md": "b0269d01344b42a79abf3606f1a575b112fcf1beb6d295c86ed21a1752f3249d"
+      }
+    },
+    "page-state-css": {
+      "version": "1.1.0",
+      "files": {
+        "styles/page-state-css.css": "2841e628b59c06b531e4d83d3327a94d5bcfdd29e6a3c13ce5d025b258f403cf",
+        "styles/page-state-css.usage.md": "22177f1a96c88a704692d1de3131af1c087e6b175989320190f27b3ca44cf4e2"
       }
     },
     "progress-css": {
@@ -78,6 +120,27 @@
       "files": {
         "styles/select-css.css": "69d01ccae954586421970d1be8ffe22eba411c0c72a0b496ad9d7d2caafcfc85",
         "styles/select-css.usage.md": "9f0f9f6421cf3085cdf1d6bc20051f65f5c8cc1838db4571971b11cf1c0f6a1a"
+      }
+    },
+    "settings-layout-css": {
+      "version": "2.0.0",
+      "files": {
+        "styles/settings-layout-css.css": "20a77f8aa9452aeee42c543cf038c1475a17d8e71910fc84e3b088fdffcd9318",
+        "styles/settings-layout-css.usage.md": "bcd7957193386fc42ede4484c1a647b8f4b443110814982b5c39c0bb089768e3"
+      }
+    },
+    "site-footer-css": {
+      "version": "1.0.1",
+      "files": {
+        "styles/site-footer-css.css": "69cc7d21d4e9e167003078ba2cf9519f439084b80f130d6444a49d10d4460263",
+        "styles/site-footer-css.usage.md": "e2c36df9cbd3779daa54c07ebc8555a8be244b14bbf3cea6d293d8c50dd0f681"
+      }
+    },
+    "site-nav-css": {
+      "version": "1.2.2",
+      "files": {
+        "styles/site-nav-css.css": "0cfba98652c93bc4cb64298c3f6f28203f8e38608aed0b60a939109e9a894bb8",
+        "styles/site-nav-css.usage.md": "800b6236ad4ed86d43e2b4676cdbc94adc78524d01b4e864cd869ccb877367bb"
       }
     },
     "spam-check-css": {
@@ -120,6 +183,13 @@
       "files": {
         "styles/text-button-css.css": "f5f8db18f4eeac123a3c81d927538df158acc1160c177bf74c4efb8a11c7c8f6",
         "styles/text-button-css.usage.md": "8d59a8c7e9a37eb74dae3b1c4528a794293f81b163cb166c006c8126ce5e011d"
+      }
+    },
+    "top-bar-css": {
+      "version": "1.0.1",
+      "files": {
+        "styles/top-bar-css.css": "24b51a0267e9ac2e49792d158aeb025cc3faa8a665a997b738d38cc1463241e8",
+        "styles/top-bar-css.usage.md": "06f4ca61969d0118cc8c79968168ba2d665743a5724c25ebfe89b0b537580d83"
       }
     },
     "variables": {

@@ -1,0 +1,210 @@
+/* the registry's menu as plain css, no tailwind: the floating panel of
+   actions a row's "more" or an account button opens, its rows, a group label,
+   a header that is not a row, and a separator. reads only the variables the
+   `variables` item declares; a row's glyph sits in lead-css's ds-lead-1lh.
+   menu-css.test.tsx renders the React `Menu` beside it and asserts the same
+   computed look in light and dark, for the default and example themes.
+
+   the behaviour is the page's: this file draws the panel wherever the page
+   puts it and whichever row the page marks. the spacing step, the type sizes,
+   the weights, the easing and the floating layer's z-index live only in
+   tailwind's theme; they are declared here under ds- names with the same
+   values, and the test holds them equal. the label tracking is variables'
+   --ds-tracking-label. */
+.ds-menu {
+  --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
+  --ds-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ds-text-xs: calc(0.75 * var(--ds-rem, 1rem));
+  --ds-text-xs-lh: calc(1 / 0.75);
+  --ds-text-sm: calc(0.875 * var(--ds-rem, 1rem));
+  --ds-text-sm-lh: calc(1.25 / 0.875);
+  --ds-font-weight-medium: 500;
+  --ds-font-weight-semibold: 600;
+  --ds-font-weight-bold: 700;
+  --ds-z-index-floating: 60;
+  box-sizing: border-box;
+  display: grid;
+  gap: calc(var(--ds-spacing) * 0.5);
+  inline-size: max-content;
+  min-inline-size: calc(var(--ds-spacing) * 48);
+  max-inline-size: min(
+    calc(var(--ds-spacing) * 80),
+    calc(100vw - calc(var(--ds-spacing) * 4))
+  );
+  /* a popover's own inset: 0 would keep right set beside the page's left,
+     and under dir="rtl" left is the one dropped */
+  inset: auto;
+  margin: 0;
+  padding: calc(var(--ds-spacing) * 2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-card);
+  background-color: var(--popover);
+  color: var(--gray-12);
+  box-shadow: var(--shadow-floating);
+  z-index: var(--ds-z-index-floating);
+  outline: none;
+  animation: ds-popup-in var(--duration-fast) var(--ds-ease-out);
+}
+/* the class's display would otherwise beat the browser's own hiding */
+.ds-menu:is([hidden], [popover]:not(:popover-open)) {
+  display: none;
+}
+
+/* a row: the glyph in a one-line box, then the label, which wraps */
+.ds-menu-item {
+  box-sizing: border-box;
+  display: flex;
+  align-items: flex-start;
+  gap: calc(var(--ds-spacing) * 2);
+  inline-size: 100%;
+  min-block-size: calc(var(--ds-spacing) * 9);
+  margin: 0;
+  padding: calc(var(--ds-spacing) * 2);
+  /* at 0px the colour is the page's edge, as under tailwind's base */
+  border: 0 solid var(--border);
+  border-radius: var(--radius);
+  background-color: transparent;
+  color: var(--gray-12);
+  font-family: inherit;
+  font-size: var(--ds-text-sm);
+  line-height: var(--ds-text-sm-lh);
+  font-weight: var(--ds-font-weight-medium);
+  text-align: start;
+  text-decoration: none;
+  cursor: pointer;
+}
+.ds-menu-item svg {
+  flex-shrink: 0;
+  inline-size: calc(var(--ds-spacing) * 4);
+  block-size: calc(var(--ds-spacing) * 4);
+  color: var(--gray-11);
+}
+.ds-menu-item > :last-child {
+  flex: 1 1 0%;
+  min-inline-size: 0;
+}
+@media (pointer: coarse) {
+  .ds-menu-item {
+    min-block-size: calc(var(--ds-spacing) * 11);
+  }
+}
+
+/* highlighted: the row the arrow keys are on (data-highlighted on the row
+   while focus stays on the panel, or the focused row itself) and the row
+   under the pointer */
+.ds-menu-item:is([data-highlighted], :focus):not([aria-disabled="true"]) {
+  background-color: var(--gray-4);
+}
+@media (hover: hover) and (pointer: fine) {
+  .ds-menu-item:hover:not([aria-disabled="true"]) {
+    background-color: var(--gray-4);
+  }
+}
+/* pressed: a step darker than the highlight, on touch too */
+.ds-menu-item:active:not([aria-disabled="true"], .ds-menu-item-destructive) {
+  background-color: var(--gray-5);
+}
+/* the keyboard's highlight adds the ring, 2px inside the row */
+.ds-menu-item:focus {
+  outline: none;
+}
+.ds-menu-item:focus-visible,
+.ds-menu:focus-visible .ds-menu-item[data-highlighted] {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+/* forced colors drop the highlight's fill: the select item's CanvasText ring,
+   on the pointer's highlight too */
+@media (forced-colors: active) {
+  .ds-menu-item:is([data-highlighted], :focus):not([aria-disabled="true"]) {
+    outline: 2px solid CanvasText;
+    outline-offset: -2px;
+  }
+}
+@media (forced-colors: active) and (hover: hover) and (pointer: fine) {
+  .ds-menu-item:hover:not([aria-disabled="true"]) {
+    outline: 2px solid CanvasText;
+    outline-offset: -2px;
+  }
+}
+
+.ds-menu-item-destructive,
+.ds-menu-item-destructive svg {
+  color: var(--destructive-subtle-fg);
+}
+.ds-menu-item-destructive:is([data-highlighted], :focus):not(
+  [aria-disabled="true"]
+) {
+  background-color: var(--destructive-subtle);
+}
+@media (hover: hover) and (pointer: fine) {
+  .ds-menu-item-destructive:hover:not([aria-disabled="true"]) {
+    background-color: var(--destructive-subtle);
+  }
+}
+
+/* skipped by the arrows; it stays in the menu so its place is kept */
+.ds-menu-item[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* the label over a group of rows */
+.ds-menu-label {
+  margin: 0;
+  padding: calc(var(--ds-spacing) * 2) calc(var(--ds-spacing) * 2)
+    var(--ds-spacing);
+  color: var(--gray-11);
+  font-size: var(--ds-text-xs);
+  line-height: var(--ds-text-xs-lh);
+  font-weight: var(--ds-font-weight-bold);
+  letter-spacing: var(--ds-tracking-label);
+  text-transform: uppercase;
+}
+.ds-menu-group {
+  display: grid;
+  gap: calc(var(--ds-spacing) * 0.5);
+}
+
+/* text at the top that is not a row: who is signed in */
+.ds-menu-header {
+  display: grid;
+  padding: calc(var(--ds-spacing) * 2);
+}
+.ds-menu-header-title,
+.ds-menu-header-meta {
+  min-inline-size: 0;
+  /* hidden, not clip: engines before chrome 150 and safari 27 draw no
+     ellipsis on clipped text */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ds-menu-header-title {
+  font-size: var(--ds-text-sm);
+  line-height: var(--ds-text-sm-lh);
+  font-weight: var(--ds-font-weight-semibold);
+}
+.ds-menu-header-meta {
+  color: var(--gray-11);
+  font-size: var(--ds-text-xs);
+  line-height: var(--ds-text-xs-lh);
+}
+
+.ds-menu-separator {
+  block-size: 1px;
+  margin: var(--ds-spacing) 0;
+  border: 0;
+  background-color: var(--hairline);
+}
+
+@keyframes ds-popup-in {
+  from {
+    opacity: 0;
+    scale: 0.95;
+  }
+  to {
+    opacity: 1;
+    scale: 1;
+  }
+}

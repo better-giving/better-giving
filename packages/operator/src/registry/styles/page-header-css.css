@@ -1,0 +1,190 @@
+/* the registry's page header as plain css, no tailwind: the crumbs (top-bar-
+   css's ds-crumbs), the title row with a status on its first line, the line
+   under it, the actions and the page's tab row. reads only the variables the
+   `variables` item declares; the title row is lead-css's ds-lead-row with the
+   status in a ds-lead-1lh box. page-header-css.test.tsx renders the React
+   `PageHeader` beside it and asserts the same computed look in light and
+   dark, for the default and example themes, wide and at 375.
+
+   the tab row is drawn here because the registry has no plain-css tabs: it is
+   the React `Tabs` item's look, held equal by the same test.
+
+   the spacing step, the type sizes, the weights, the tracking, the easing and
+   the 40rem breakpoint (tailwind's sm, written out because a query cannot
+   read a variable) live only in tailwind's theme; they are declared here
+   under ds- names with the same values, and the test holds them equal. */
+.ds-page-header {
+  --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
+  --ds-text-sm: calc(0.875 * var(--ds-rem, 1rem));
+  --ds-text-sm-lh: calc(1.25 / 0.875);
+  --ds-text-base: calc(1 * var(--ds-rem, 1rem));
+  --ds-text-base-lh: calc(1.5 / 1);
+  --ds-text-2xl: calc(1.5 * var(--ds-rem, 1rem));
+  --ds-text-2xl-lh: calc(2 / 1.5);
+  --ds-text-3xl: calc(1.875 * var(--ds-rem, 1rem));
+  --ds-text-3xl-lh: calc(2.25 / 1.875);
+  --ds-font-weight-semibold: 600;
+  --ds-font-weight-bold: 700;
+  --ds-tracking-tight: -0.025em;
+  display: grid;
+  gap: calc(var(--ds-spacing) * 3);
+  min-inline-size: 0;
+}
+
+/* the title and its line on the start, the actions on the end; the actions
+   wrap under the title when the row runs out of room */
+.ds-page-header-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: calc(var(--ds-spacing) * 3) calc(var(--ds-spacing) * 6);
+}
+.ds-page-header-text {
+  display: grid;
+  flex: 1 1 calc(var(--ds-spacing) * 80);
+  gap: var(--ds-spacing);
+  min-inline-size: 0;
+}
+/* with ds-lead-row: the size is the row's, so the status's box is one of the
+   title's lines */
+.ds-page-title-row {
+  font-size: var(--ds-text-3xl);
+  line-height: var(--ds-text-3xl-lh);
+}
+.ds-page-title {
+  margin: 0;
+  min-inline-size: 0;
+  font-family: var(--font-display);
+  font-size: inherit;
+  line-height: inherit;
+  font-weight: var(--ds-font-weight-bold);
+  letter-spacing: var(--ds-tracking-tight);
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+}
+/* the status stays right beside a short title */
+.ds-page-title-row > .ds-page-title {
+  flex: 0 1 auto;
+}
+.ds-page-desc {
+  margin: 0;
+  max-inline-size: calc(var(--ds-spacing) * 176);
+  color: var(--gray-11);
+  font-size: var(--ds-text-base);
+  line-height: var(--ds-text-base-lh);
+}
+.ds-page-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: safe center;
+  gap: calc(var(--ds-spacing) * 2);
+}
+/* the primary's wrapper, which fills the row under 40rem */
+.ds-ph-primary {
+  display: flex;
+}
+
+/* the tab row, scrolling sideways when it runs out of room */
+/* the scroller clips; its padding holds the tabs' ring, 2px out, and the
+   margins take the padding back, all but the 4px above the row */
+.ds-page-tabs {
+  margin: 0 calc(var(--ds-spacing) * -1) calc(var(--ds-spacing) * -1);
+  padding: var(--ds-spacing);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.ds-page-tablist {
+  display: flex;
+  gap: var(--ds-spacing);
+  border-block-end: 1px solid var(--hairline);
+}
+.ds-page-tab {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: safe center;
+  min-block-size: calc(var(--ds-spacing) * 9);
+  margin: 0 0 -1px;
+  padding: calc(var(--ds-spacing) * 2) calc(var(--ds-spacing) * 4);
+  border: 0 solid var(--border);
+  border-block-end: 2px solid transparent;
+  border-start-start-radius: var(--radius);
+  border-start-end-radius: var(--radius);
+  background-color: transparent;
+  color: var(--gray-11);
+  font-family: inherit;
+  font-size: var(--ds-text-sm);
+  line-height: var(--ds-text-sm-lh);
+  font-weight: var(--ds-font-weight-semibold);
+  text-decoration: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  .ds-page-tab:hover {
+    color: var(--gray-12);
+  }
+}
+.ds-page-tab[aria-selected="true"] {
+  border-block-end-color: var(--primary);
+  color: var(--accent-11);
+}
+.ds-page-tab:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+/* forced colors paint the transparent edge in a system color, which would
+   underline every tab: the others take Canvas, the selected one Highlight */
+@media (forced-colors: active) {
+  .ds-page-tab {
+    border-block-end-color: Canvas;
+  }
+  .ds-page-tab[aria-selected="true"] {
+    border-block-end-color: Highlight;
+  }
+}
+.ds-page-tab:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* under 40rem: a 24px title and a 14px line; the secondary buttons leave
+   (the page lists them first in its More menu), the primary fills the row
+   beside More, and the tabs scroll under a 28px fade at the end */
+@media (width < 40rem) {
+  .ds-page-title-row {
+    font-size: var(--ds-text-2xl);
+    line-height: var(--ds-text-2xl-lh);
+  }
+  .ds-page-desc {
+    font-size: var(--ds-text-sm);
+    line-height: var(--ds-text-sm-lh);
+  }
+  .ds-page-actions {
+    inline-size: 100%;
+  }
+  /* also a .ds-btn, whose display: flex it must outrank whichever
+     stylesheet loads last, hence the scope */
+  .ds-page-actions .ds-ph-secondary {
+    display: none;
+  }
+  .ds-ph-primary {
+    flex: 1 1 0%;
+  }
+  .ds-ph-primary > * {
+    inline-size: 100%;
+  }
+  .ds-page-tabs {
+    mask-image: linear-gradient(
+      to right,
+      black calc(100% - calc(var(--ds-spacing) * 7)),
+      transparent
+    );
+  }
+  /* the end is the left under rtl */
+  .ds-page-tabs:dir(rtl) {
+    mask-image: linear-gradient(
+      to left,
+      black calc(100% - calc(var(--ds-spacing) * 7)),
+      transparent
+    );
+  }
+}

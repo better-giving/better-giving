@@ -1,0 +1,487 @@
+/* the registry's app shell as plain css, no tailwind: the grid of the
+   sidebar, the top bar over the page and <main>; the sidebar's head, links
+   and account; the icon-only rail under data-collapsed; and under 48rem the
+   drawer, a native <dialog> opened with showModal(), behind the bar's menu
+   button. reads only the variables the `variables` item declares; the links
+   are nav-list-css's, the bar top-bar-css's, the skip link site-nav-css's
+   chip. app-shell-css.test.tsx renders the React `AppShell` beside it and
+   asserts the same computed look in light and dark, for the default and
+   example themes, wide, as a rail and at 375.
+
+   the spacing step, the type sizes, the weight, the line-height, the z rungs,
+   the easings and the 48rem breakpoint (tailwind's md, written out because a
+   query cannot read a variable) live only in tailwind's theme; they are
+   declared here under ds- names with the same values, and the test holds
+   them equal. --ds-sidebar-w, --ds-sidebar-w-collapsed and --ds-bar-h are the
+   shell's own sizes. */
+.ds-shell,
+.ds-shell-drawer,
+.ds-shell-tip,
+.ds-shell-flyout {
+  --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
+  --ds-text-xs: calc(0.75 * var(--ds-rem, 1rem));
+  --ds-text-sm: calc(0.875 * var(--ds-rem, 1rem));
+  --ds-text-sm-lh: calc(1.25 / 0.875);
+  --ds-font-weight-semibold: 600;
+  --ds-leading-tight: 1.25;
+  --ds-bar-h: calc(var(--ds-spacing) * 16);
+  --ds-sidebar-w: calc(var(--ds-spacing) * 64);
+  --ds-sidebar-w-collapsed: calc(var(--ds-spacing) * 14);
+}
+
+.ds-shell {
+  --ds-z-index-sticky: 30;
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: var(--ds-sidebar-w) minmax(0, 1fr);
+  grid-template-rows: var(--ds-bar-h) 1fr;
+  min-block-size: 100dvh;
+  background-color: var(--background);
+  color: var(--gray-12);
+}
+.ds-shell[data-collapsed] {
+  --ds-sidebar-w: var(--ds-sidebar-w-collapsed);
+}
+@media (width < 48rem) {
+  .ds-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* the top bar pins over the page */
+.ds-shell > .ds-topbar {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: var(--ds-z-index-sticky);
+}
+/* the bar's menu button opens the drawer, under 48rem only. it is also a
+   .ds-btn, whose display: flex it must outrank whichever stylesheet loads
+   last, hence the scope */
+@media (width >= 48rem) {
+  .ds-shell .ds-shell-menu {
+    display: none;
+  }
+}
+
+/* the sidebar's toggle (a bare-icon-button-css ds-icon-bare) is the bar's
+   first control from 48rem, 12px before the title (the lead's 8px gap and
+   4px of its own); under 48rem the menu button takes its place. scoped, so
+   ds-icon-bare's display loses whichever sheet loads last */
+.ds-shell .ds-shell-toggle {
+  margin-inline-end: var(--ds-spacing);
+}
+@media (width < 48rem) {
+  .ds-shell .ds-shell-toggle {
+    display: none;
+  }
+}
+/* a layout control, not a held-open popup: it keeps the bell's inks while the
+   sidebar is open, outranking bare-icon-button-css's accent and Highlight
+   ring for aria-expanded here alone */
+.ds-shell .ds-shell-toggle[aria-expanded="true"] {
+  color: var(--gray-11);
+}
+@media (hover: hover) and (pointer: fine) {
+  .ds-shell .ds-shell-toggle:hover {
+    color: var(--gray-12);
+  }
+}
+.ds-shell .ds-shell-toggle:active {
+  color: var(--gray-12);
+}
+@media (forced-colors: active) {
+  .ds-shell .ds-shell-toggle[aria-expanded="true"]:not(:focus-visible) {
+    outline: none;
+  }
+}
+
+/* the sidebar: the full height beside the bar and the page, on --card with
+   a hairline end edge; under 48rem it is the drawer instead */
+.ds-shell-sidebar {
+  position: sticky;
+  inset-block-start: 0;
+  grid-row: span 2 / span 2;
+  display: flex;
+  flex-direction: column;
+  min-inline-size: 0;
+  block-size: 100dvh;
+  border: 0 solid var(--hairline);
+  border-inline-end-width: 1px;
+  background-color: var(--card);
+  /* on the bar's rung: being sticky, the sidebar is a stacking context of its
+     own, and a parent's flyout inside it would otherwise paint under the
+     page's positioned content */
+  z-index: var(--ds-z-index-sticky);
+}
+@media (width < 48rem) {
+  .ds-shell-sidebar {
+    display: none;
+  }
+}
+
+/* the head: the product mark and the collapse toggle, the bar's height. the
+   rail swaps .ds-shell-mark for .ds-shell-mark-rail, the symbol alone */
+.ds-shell-head {
+  display: flex;
+  flex-shrink: 0;
+  align-items: safe center;
+  justify-content: space-between;
+  gap: calc(var(--ds-spacing) * 2);
+  block-size: var(--ds-bar-h);
+  padding-inline: calc(var(--ds-spacing) * 4);
+}
+.ds-shell-mark,
+.ds-shell-mark-rail {
+  min-inline-size: 0;
+  overflow: clip;
+  border-radius: var(--radius);
+}
+.ds-shell-mark-rail {
+  display: none;
+}
+
+/* the links: a nav-list-css ds-nav-list that scrolls its own height */
+.ds-shell-nav {
+  flex: 1 1 0%;
+  min-block-size: 0;
+  overflow-y: auto;
+  padding: calc(var(--ds-spacing) * 2) calc(var(--ds-spacing) * 3)
+    calc(var(--ds-spacing) * 4);
+  scrollbar-width: thin;
+  scrollbar-color: var(--ring) var(--gray-6);
+}
+
+/* the account at the foot: a button opening the account menu upward */
+.ds-shell-account {
+  flex-shrink: 0;
+  padding: calc(var(--ds-spacing) * 3);
+  padding-block-end: calc(
+    var(--ds-spacing) *
+    3 +
+    env(safe-area-inset-bottom, 0px)
+  );
+  border-block-start: 1px solid var(--hairline);
+}
+.ds-shell-account-btn {
+  box-sizing: border-box;
+  display: flex;
+  align-items: safe center;
+  gap: calc(var(--ds-spacing) * 3);
+  inline-size: 100%;
+  margin: 0;
+  padding: calc(var(--ds-spacing) * 2);
+  border: 0;
+  border-radius: var(--radius);
+  background-color: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+  transition-property:
+    color, background-color, border-color, outline-color, text-decoration-color,
+    fill, stroke;
+  transition-duration: var(--duration-fast);
+  transition-timing-function: var(--ds-ease-out);
+}
+@media (hover: hover) and (pointer: fine) {
+  .ds-shell-account-btn:hover {
+    background-color: var(--gray-4);
+  }
+}
+.ds-shell-account-btn[aria-expanded="true"] {
+  background-color: var(--gray-5);
+}
+/* forced colors drop that fill: a Highlight ring 2px inside marks it held */
+@media (forced-colors: active) {
+  .ds-shell-account-btn[aria-expanded="true"] {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+}
+.ds-shell-account-btn:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+.ds-shell-account-btn > svg {
+  flex-shrink: 0;
+  inline-size: calc(var(--ds-spacing) * 4);
+  block-size: calc(var(--ds-spacing) * 4);
+  color: var(--gray-11);
+}
+.ds-shell-account-text {
+  display: grid;
+  flex: 1 1 0%;
+  min-inline-size: 0;
+}
+.ds-shell-account-name,
+.ds-shell-account-org {
+  min-inline-size: 0;
+  /* hidden, not clip: engines before chrome 150 and safari 27 draw no
+     ellipsis on clipped text */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: var(--ds-leading-tight);
+}
+.ds-shell-account-name {
+  font-size: var(--ds-text-sm);
+  font-weight: var(--ds-font-weight-semibold);
+}
+.ds-shell-account-org {
+  color: var(--gray-11);
+  font-size: var(--ds-text-xs);
+}
+
+/* the rail: labels, group titles, counts and the account's text leave sight
+   but stay in the accessible names; rows centre their glyph; groups part on
+   a hairline; the account shows its avatar. nav-list-css draws the dot. the
+   drawer sits in .ds-shell too, so every rule is the sidebar's alone, and
+   none reaches into a parent's flyout, whose rows keep their labels */
+.ds-shell[data-collapsed]
+  .ds-shell-sidebar
+  :is(.ds-nav-label, .ds-nav-title):not(.ds-shell-flyout *),
+.ds-shell[data-collapsed] .ds-shell-sidebar .ds-shell-account-text {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border-width: 0;
+}
+/* the rail's head: the bar's height, the symbol's 28px by 36px box centred
+   in it, 14px above and below, so its middle is level with the bar's title
+   and it shares the glyphs' centre line */
+.ds-shell[data-collapsed] .ds-shell-sidebar .ds-shell-head {
+  justify-content: safe center;
+  padding: 0;
+}
+.ds-shell[data-collapsed] .ds-shell-sidebar .ds-shell-mark {
+  display: none;
+}
+.ds-shell[data-collapsed] .ds-shell-sidebar .ds-shell-mark-rail {
+  display: grid;
+  place-items: safe center;
+  inline-size: calc(var(--ds-spacing) * 7);
+  block-size: calc(var(--ds-spacing) * 9);
+}
+/* 14px in from each side: 27px rows, every glyph on the rail's centre line */
+.ds-shell[data-collapsed] .ds-shell-sidebar .ds-shell-nav {
+  padding-inline: calc(var(--ds-spacing) * 3.5);
+}
+.ds-shell[data-collapsed]
+  .ds-shell-sidebar
+  .ds-nav-link:not(.ds-shell-flyout *) {
+  justify-content: safe center;
+  padding-inline: 0;
+}
+.ds-shell[data-collapsed] .ds-shell-sidebar .ds-shell-nav > * + * {
+  padding-block-start: calc(var(--ds-spacing) * 3);
+  border-block-start: 1px solid var(--hairline);
+}
+/* the 32px avatar is wider than the 12px insets leave: the rail drops them,
+   so it centres on the glyphs' line */
+.ds-shell[data-collapsed] .ds-shell-sidebar .ds-shell-account {
+  padding-inline: 0;
+}
+.ds-shell[data-collapsed] .ds-shell-sidebar .ds-shell-account-btn {
+  justify-content: safe center;
+  padding: var(--ds-spacing);
+}
+.ds-shell[data-collapsed] .ds-shell-sidebar .ds-shell-account-btn > svg {
+  display: none;
+}
+/* nav-list-css shows the dot under any data-collapsed ancestor; the drawer
+   keeps its labels and counts, so it draws none (0,3,0 beats that 0,2,0) */
+.ds-shell[data-collapsed] .ds-shell-drawer .ds-nav-dot {
+  display: none;
+}
+
+/* the rail's tip: a hovered or focused row's name, in the floating shell. the
+   page places it 8px past the rail's edge, centred on the row */
+.ds-shell-tip {
+  --ds-z-index-floating: 60;
+  position: fixed;
+  z-index: var(--ds-z-index-floating);
+  box-sizing: border-box;
+  padding: calc(var(--ds-spacing) * 4);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-card);
+  background-color: var(--popover);
+  box-shadow: var(--shadow-floating);
+  color: var(--gray-12);
+  font-size: var(--ds-text-sm);
+  line-height: var(--ds-text-sm-lh);
+  white-space: nowrap;
+}
+
+/* the floating shell 8px in, at least 12rem. its start edge carries a strip
+   back over the gap to the row, so the pointer crosses from the row to the
+   flyout without leaving the row's <li> */
+.ds-shell-flyout {
+  --ds-z-index-floating: 60;
+  position: fixed;
+  z-index: var(--ds-z-index-floating);
+  box-sizing: border-box;
+  min-inline-size: calc(var(--ds-spacing) * 48);
+  padding: calc(var(--ds-spacing) * 2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-card);
+  background-color: var(--popover);
+  box-shadow: var(--shadow-floating);
+  color: var(--gray-12);
+}
+.ds-shell-flyout::before {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: calc(var(--ds-spacing) * -6.5);
+  inline-size: calc(var(--ds-spacing) * 6.5);
+}
+/* its rows show their labels and counts, so a count's dot, which nav-list-css
+   shows under any data-collapsed ancestor, stays hidden, as on the open
+   sidebar's rows */
+.ds-shell[data-collapsed] .ds-shell-flyout .ds-nav-dot {
+  display: none;
+}
+/* its rows 2px apart, as a nav-list group's */
+.ds-shell-flyout ul {
+  display: grid;
+  gap: calc(var(--ds-spacing) * 0.5);
+}
+/* the title: the rows' 8px by 12px, so its text starts on their glyphs' edge */
+.ds-shell-flyout-title {
+  margin: 0;
+  padding: calc(var(--ds-spacing) * 2) calc(var(--ds-spacing) * 3);
+  font-size: var(--ds-text-sm);
+  line-height: var(--ds-text-sm-lh);
+  font-weight: var(--ds-font-weight-semibold);
+}
+
+/* a parent row (nav-list-css's .ds-nav-parent over its .ds-nav-sub) is a
+   disclosure in the open sidebar and the drawer. in the rail it gives way to
+   .ds-shell-rail-parent, a link to its first child (aria-current="true"
+   while one of them is the page), and .ds-shell-flyout, a nav of all of
+   them, both in the parent's <li>: hidden everywhere but the rail (scoped,
+   so a .ds-nav-link's display loses whichever sheet loads last) */
+.ds-shell :is(.ds-shell-rail-parent, .ds-shell-flyout) {
+  display: none;
+}
+.ds-shell[data-collapsed] .ds-shell-sidebar :is(.ds-nav-parent, .ds-nav-sub) {
+  display: none;
+}
+.ds-shell[data-collapsed] .ds-shell-sidebar .ds-shell-rail-parent {
+  display: flex;
+}
+/* the flyout shows while its row is hovered (a fine pointer) or holds
+   keyboard focus, on the rail link or in the flyout: focus a tap or a click
+   leaves anywhere in the row (not :focus-visible) holds nothing, as the press
+   only follows its link. the rule is the row's focus-within less any focus
+   that is not :focus-visible, not :has(:focus-visible), which stops
+   matching for a moment as Tab moves on from the rail link and hides the
+   flyout's links before they can take the focus. once the page marks the row
+   data-dismissed (Escape), it stays hidden until the page lifts the mark.
+   its links come next in the tab order. the page places it, 8px past the
+   rail's edge, its title on the row */
+@media (hover: hover) and (pointer: fine) {
+  .ds-shell[data-collapsed]
+    .ds-shell-sidebar
+    li:hover:not([data-dismissed])
+    > .ds-shell-flyout {
+    display: block;
+  }
+}
+.ds-shell[data-collapsed]
+  .ds-shell-sidebar
+  li:focus-within:not([data-dismissed], :has(:focus:not(:focus-visible)))
+  > .ds-shell-flyout {
+  display: block;
+}
+/* the page: 24px by 20px, 32px by 40px from 48rem, its blocks 20px apart */
+.ds-shell-main {
+  /* page-state fills what main gives it instead of the viewport less the bar */
+  --ds-page-min: 0px;
+  --ds-view-h: calc(100dvh - var(--ds-bar-h));
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--ds-spacing) * 5);
+  min-inline-size: 0;
+  padding: calc(var(--ds-spacing) * 6) calc(var(--ds-spacing) * 5);
+  outline: none;
+}
+@media (width >= 48rem) {
+  .ds-shell-main {
+    padding: calc(var(--ds-spacing) * 8) calc(var(--ds-spacing) * 10);
+  }
+}
+
+/* the drawer: a native <dialog> holding the sidebar's head, links and
+   account, 18rem or 85% at the inline start, the full height, on --card with
+   a hairline end edge and the floating shadow, over the --overlay scrim. it
+   slides in from its own edge at --duration-base and back; the browser's own
+   display: none keeps it off the page while closed. */
+.ds-shell-drawer {
+  --ds-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ds-drawer-from: -100%;
+  box-sizing: border-box;
+  position: fixed;
+  inset: 0;
+  inset-inline-end: auto;
+  margin: 0;
+  padding: 0;
+  inline-size: min(calc(var(--ds-spacing) * 72), 85%);
+  max-inline-size: none;
+  block-size: 100dvh;
+  max-block-size: none;
+  overflow: visible;
+  border: 0 solid var(--hairline);
+  border-inline-end-width: 1px;
+  background-color: var(--card);
+  color: var(--gray-12);
+  box-shadow: var(--shadow-floating);
+  outline: none;
+  translate: var(--ds-drawer-from) 0;
+  transition-property: translate, overlay, display;
+  transition-duration: var(--duration-base);
+  transition-timing-function: var(--ds-ease-out);
+  transition-behavior: allow-discrete;
+}
+.ds-shell-drawer:dir(rtl) {
+  --ds-drawer-from: 100%;
+}
+.ds-shell-drawer[open] {
+  display: flex;
+  flex-direction: column;
+  /* none, not 0 0: any translate makes the box the containing block of a
+     position: fixed panel inside it, which then moves with the box */
+  translate: none;
+  transition-timing-function: var(--ds-ease-out);
+}
+@starting-style {
+  .ds-shell-drawer[open] {
+    translate: var(--ds-drawer-from) 0;
+  }
+}
+.ds-shell-drawer::backdrop {
+  background-color: var(--overlay);
+  opacity: 0;
+  transition-property: opacity, overlay, display;
+  transition-duration: var(--duration-base);
+  transition-timing-function: var(--ds-ease-out);
+  transition-behavior: allow-discrete;
+}
+.ds-shell-drawer[open]::backdrop {
+  opacity: 1;
+  transition-timing-function: var(--ds-ease-out);
+}
+@starting-style {
+  .ds-shell-drawer[open]::backdrop {
+    opacity: 0;
+  }
+}
+:root:has(.ds-shell-drawer:modal) {
+  overflow: clip;
+}
