@@ -17,7 +17,7 @@ import { getFormProps } from '@conform-to/react';
 import { useEffect, useEffectEvent, useId, useState } from 'react';
 import { data, Form, useFetcher } from 'react-router';
 import { z } from 'zod';
-import { type CrumbHandle, ScreenHeading } from '$lib/admin/crumbs';
+import { ScreenHeading } from '$lib/admin/crumbs';
 import { savedSection } from '$lib/admin/saved-section';
 import { screenTitle } from '$lib/admin/screen-title';
 import { BannerPicker } from '$lib/admin/settings/banner-picker';
@@ -30,7 +30,6 @@ import {
 	FormRefusal,
 	marked,
 	STALE_SAVE,
-	settingsCrumbs,
 	useSettingsSave,
 	useSubmitting,
 	WRITE_FAILED
@@ -191,10 +190,6 @@ const DETAILS_FORM = defineForm({
 	})
 });
 
-export const handle = {
-	crumbs: ({ pathname }) => settingsCrumbs(pathname, SCREEN_TITLE)
-} satisfies CrumbHandle;
-
 export function meta({ matches }: Route.MetaArgs): Route.MetaDescriptors {
 	return [{ title: screenTitle(SCREEN_TITLE, matches) }];
 }
@@ -282,10 +277,7 @@ function listed(errors: Readonly<Record<string, string>>): Record<string, string
 export default function OrganisationDetails({ loaderData, actionData }: Route.ComponentProps) {
 	return (
 		<>
-			<ScreenHeading
-				title={SCREEN_TITLE}
-				description="Every receipt carries these. Filled from the IRS list; check the name’s capitals. No form goes live until the EIN and registered name are in."
-			/>
+			<ScreenHeading title={SCREEN_TITLE} />
 			<SettingsLayout>
 				<DetailsCard data={loaderData} actionData={actionData} />
 			</SettingsLayout>
@@ -355,6 +347,10 @@ function DetailsCard({
 			<Form method="post" className="ds-card-body" {...getFormProps(form)}>
 				<input {...whichForm(DETAILS_FORM.id)} />
 				<input {...recordVersion(version)} />
+				<p className="adm-hint">
+					Every receipt carries these. Filled from the IRS list; check the name’s capitals. No form
+					goes live until the EIN and registered name are in.
+				</p>
 				{finder.open ? <OrgFinder {...finder.props} onPick={pick} /> : null}
 				<div className="adm-pair adm-pair--side">
 					<Field

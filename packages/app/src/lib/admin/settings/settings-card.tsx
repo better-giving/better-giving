@@ -8,16 +8,8 @@ import { WHICH_FORM } from '$lib/forms/definition';
 import { buttonState } from '../save-button-state';
 import { type Box, boxProps } from '../use-admin-form';
 
-// what the three Settings sections share: their crumb, the sentences a refused save is told, and
-// the parts of a card's form (../../../routes/_app.admin.settings_.organisation.tsx and the two
-// beside it).
-
-/** the trail above each section: Settings, which lands on the first, then the section. */
-export const settingsCrumbs = (pathname: string, label: string) =>
-	[
-		{ href: '/admin/settings', label: 'Settings' },
-		{ href: pathname, label }
-	] as const;
+// what the three Settings sections share: the sentences a refused save is told, and the parts of a
+// card's form (../../../routes/_app.admin.settings_.organisation.tsx and the two beside it).
 
 /** what a save from a page drawn before another save of the profile is told. */
 export const STALE_SAVE =

@@ -8,7 +8,7 @@ import { useSaveState } from '@better-giving/operator/save-state.react';
 import { getFormProps } from '@conform-to/react';
 import { data, Form, redirect, useNavigation } from 'react-router';
 import { z } from 'zod';
-import { ScreenHeading } from '$lib/admin/crumbs';
+import { type CrumbHandle, ScreenHeading } from '$lib/admin/crumbs';
 import { buttonState } from '$lib/admin/save-button-state';
 import { savedSection } from '$lib/admin/saved-section';
 import { LOGS_SAY_WHY } from '$lib/deployment-logs';
@@ -68,6 +68,13 @@ const SCREEN = '/admin/members/password';
 
 /** where a session with nothing to change here is sent. */
 const MEMBERS = '/admin/members';
+
+export const handle = {
+	crumbs: () => [
+		{ href: MEMBERS, label: 'Members' },
+		{ href: SCREEN, label: SCREEN_TITLE }
+	]
+} satisfies CrumbHandle;
 
 /** what an empty box and a box the request did not carry are both told. */
 const MISSING = 'required';

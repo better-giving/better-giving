@@ -1,6 +1,7 @@
 import { CONFIRMATION_MS } from '@better-giving/operator/save-state';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
+import { MemoryRouter } from 'react-router';
 import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { type ModeratedMessage, PublicMessages, type PublicMessagesProps } from './public-messages';
 
@@ -25,6 +26,12 @@ const DEV: ModeratedMessage = {
 	hidden: true
 };
 
+/** the trail ../../../routes/_app.admin.donations.messages.tsx states: Gifts, then this screen. */
+const TRAIL = [
+	{ href: '/admin/donations', label: 'Gifts' },
+	{ href: '/admin/donations/messages', label: 'Public messages' }
+];
+
 function mount(over: Partial<PublicMessagesProps> = {}) {
 	const host = document.createElement('div');
 	document.body.appendChild(host);
@@ -36,9 +43,16 @@ function mount(over: Partial<PublicMessagesProps> = {}) {
 		outcome: null,
 		onHide: () => {},
 		onShow: () => {},
+		crumbs: TRAIL,
 		...over
 	};
-	act(() => root.render(<PublicMessages {...props} />));
+	// a router, because the trail's section crumb is the dashboard's router link.
+	const draw = () => (
+		<MemoryRouter initialEntries={['/admin/donations/messages']}>
+			<PublicMessages {...props} />
+		</MemoryRouter>
+	);
+	act(() => root.render(draw()));
 	onTestFinished(() => {
 		act(() => root.unmount());
 		host.remove();
@@ -47,7 +61,7 @@ function mount(over: Partial<PublicMessagesProps> = {}) {
 		host,
 		rerender: (next: Partial<PublicMessagesProps>) => {
 			Object.assign(props, next);
-			act(() => root.render(<PublicMessages {...props} />));
+			act(() => root.render(draw()));
 		}
 	};
 }
@@ -79,7 +93,10 @@ afterEach(() => {
 describe('public messages, listed', () => {
 	it('says one sentence and draws no table with none', () => {
 		const { host } = mount({ messages: [], total: 0 });
-		expect(host.querySelector('h1')?.textContent).toBe('Public messages');
+		expect(
+			host.querySelector('nav[aria-label="Breadcrumb"] li:last-child h1[aria-current="page"]')
+				?.textContent
+		).toBe('Public messages');
 		expect(host.querySelector('table')).toBeNull();
 		expect(host.querySelector('.adm-empty')?.textContent).toBe(
 			'No donor has chosen to show a note yet. A note appears here when a donor ticks Show my note on the gift form.'

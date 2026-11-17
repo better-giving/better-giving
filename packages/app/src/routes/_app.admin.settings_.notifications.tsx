@@ -9,14 +9,13 @@ import { useSaveState } from '@better-giving/operator/save-state.react';
 import { getFormProps } from '@conform-to/react';
 import { data, Form } from 'react-router';
 import { z } from 'zod';
-import { type CrumbHandle, ScreenHeading } from '$lib/admin/crumbs';
+import { ScreenHeading } from '$lib/admin/crumbs';
 import { savedSection } from '$lib/admin/saved-section';
 import { screenTitle } from '$lib/admin/screen-title';
 import {
 	FormRefusal,
 	marked,
 	STALE_SAVE,
-	settingsCrumbs,
 	useSettingsSave,
 	useSubmitting,
 	WRITE_FAILED
@@ -71,10 +70,6 @@ const NOTIFICATIONS_FORM = defineForm({
 		}
 	})
 });
-
-export const handle = {
-	crumbs: ({ pathname }) => settingsCrumbs(pathname, SCREEN_TITLE)
-} satisfies CrumbHandle;
 
 export function meta({ matches }: Route.MetaArgs): Route.MetaDescriptors {
 	return [{ title: screenTitle(SCREEN_TITLE, matches) }];

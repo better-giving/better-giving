@@ -4,7 +4,7 @@ import { createRoutesStub, redirect, useLoaderData } from 'react-router';
 import { expect, it, onTestFinished } from 'vitest';
 import { WHICH_FORM } from '$lib/forms/definition';
 import { type FormReadinessLine, liveOffered } from '$lib/forms/readiness';
-import DonationForm from './_app.admin.forms.$id';
+import DonationForm, { handle } from './_app.admin.forms.$id';
 
 // a donation form's record, pressed through the redirect every write on it answers with.
 //
@@ -115,6 +115,8 @@ function screen({
 		{
 			id: 'record',
 			path: '/admin/forms/:id',
+			// the route's own trail, which makes the heading the nested shape the status is drawn in.
+			handle,
 			loader: () => new Promise<never>(() => {}),
 			Component: () =>
 				createElement(DonationForm as never, {
@@ -270,6 +272,19 @@ it('keeps Live on a live form while nothing blocks', () => {
 
 	expect(word?.textContent).toBe('Live');
 	expect(word?.classList.contains('ds-badge-primary')).toBe(true);
+});
+
+it('draws the status on the title’s first line, the h1 being the trail’s current crumb', () => {
+	const { root } = screen({ status: 'live' });
+	const h1 = root.querySelector(
+		'nav[aria-label="Breadcrumb"] li:last-child h1[aria-current="page"]'
+	);
+
+	// lead-css's row: the badge in a box one line tall beside the h1, so a title that wraps keeps
+	// it level with its first line rather than its middle.
+	const row = h1?.parentElement;
+	expect(row?.classList.contains('ds-lead-row')).toBe(true);
+	expect(row?.querySelector(':scope > .ds-lead-1lh .ds-badge')?.textContent).toBe('Live');
 });
 
 it('opens a live form under a blocker with Live chosen and its group holding nothing to save', () => {

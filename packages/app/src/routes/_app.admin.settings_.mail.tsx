@@ -10,9 +10,9 @@ import { MarkedText } from '@better-giving/operator/marked-text.react';
 import { getFormProps } from '@conform-to/react';
 import { useFetcher } from 'react-router';
 import { z } from 'zod';
-import { type CrumbHandle, ScreenHeading } from '$lib/admin/crumbs';
+import { ScreenHeading } from '$lib/admin/crumbs';
 import { screenTitle } from '$lib/admin/screen-title';
-import { marked, settingsCrumbs } from '$lib/admin/settings/settings-card';
+import { marked } from '$lib/admin/settings/settings-card';
 import { formPress } from '$lib/admin/unreached';
 import { useAdminForm, whichForm } from '$lib/admin/use-admin-form';
 import { defineForm, type FormRejection } from '$lib/forms/definition';
@@ -64,10 +64,6 @@ const TEST_EMAIL_FORM = defineForm({
 			.regex(EMAIL, { error: NOT_AN_ADDRESS })
 	})
 });
-
-export const handle = {
-	crumbs: ({ pathname }) => settingsCrumbs(pathname, SCREEN_TITLE)
-} satisfies CrumbHandle;
 
 export function meta({ matches }: Route.MetaArgs): Route.MetaDescriptors {
 	return [{ title: screenTitle(SCREEN_TITLE, matches) }];

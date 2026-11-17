@@ -179,7 +179,6 @@ export default function Donations({ loaderData }: Route.ComponentProps) {
 		<Column wide>
 			<ScreenHeading
 				title={SCREEN_TITLE}
-				description="Every gift as it arrived, newest first."
 				primary={
 					<Button as={Link} to={href('/admin/donations/new')} variant="primary" mark="plus">
 						Add donation

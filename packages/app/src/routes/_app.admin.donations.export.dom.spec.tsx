@@ -10,7 +10,7 @@ import {
 	readJournalProblem,
 	REFUSAL_ON_SCREEN
 } from '$lib/ledger/journal-range';
-import ExportEntries from './_app.admin.donations.export';
+import ExportEntries, { handle } from './_app.admin.donations.export';
 
 // the Export screen, drawn.
 //
@@ -121,6 +121,8 @@ function screen(options: { search?: string } = {}): { root: HTMLElement; visited
 				{
 					id: STUB_ROUTE,
 					index: true,
+					// the route's own trail: the nested heading, which draws the line under it.
+					handle,
 					loader: ({ request }: { request: Request }) => {
 						const asked = new URL(request.url).search;
 						visited.push(asked);

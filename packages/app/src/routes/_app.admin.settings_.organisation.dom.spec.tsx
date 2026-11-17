@@ -236,11 +236,19 @@ function type(input: HTMLInputElement, value: string) {
 }
 
 describe('the organisation details page', () => {
-	it('says under its title that every receipt carries these, and no form goes live until the EIN and registered name are in', () => {
+	it('names itself in a hidden h1 and draws no title over the card', () => {
 		const { root } = screen({});
 
-		expect(root.querySelector('h1')?.textContent).toBe('Organisation details');
-		expect(root.querySelector('.ds-page-desc')?.textContent).toBe(
+		expect([...root.querySelectorAll('h1')].map((h1) => [h1.textContent, h1.className])).toEqual([
+			['Organisation details', 'ds-sr-only']
+		]);
+		expect(root.querySelector('.ds-page-title, .ds-page-desc')).toBeNull();
+	});
+
+	it('says first in the card that every receipt carries these, and no form goes live until the EIN and registered name are in', () => {
+		const body = card(screen({}).root, 'Organisation details').querySelector('.ds-card-body');
+
+		expect(body?.querySelector('p')?.textContent).toBe(
 			'Every receipt carries these. Filled from the IRS list; check the name’s capitals. No form goes live until the EIN and registered name are in.'
 		);
 	});
