@@ -6,6 +6,8 @@ import formMotion from '@better-giving/form/styles/motion.css?url';
 import formParts from '@better-giving/form/styles/parts.css?url';
 import formTokens from '@better-giving/form/styles/tokens.css?url';
 import registryLead from '@better-giving/operator/registry/styles/lead-css.css?url';
+import registrySiteFooter from '@better-giving/operator/registry/styles/site-footer-css.css?url';
+import registrySiteNav from '@better-giving/operator/registry/styles/site-nav-css.css?url';
 import registrySpinner from '@better-giving/operator/registry/styles/spinner-css.css?url';
 import hostedFaces from '@better-giving/operator/styles/fonts.css?url';
 import { part } from '@better-giving/form/parts';
@@ -15,7 +17,8 @@ import { DonateCard } from './card';
 import * as copy from './copy';
 import pageChrome from './page.css?url';
 import { PageRoot } from './page-root';
-import { Masthead, type PageLogo, type PageLook } from './page-view';
+import type { PageLogo, PageLook } from './page-view';
+import { MAIN_ID, SiteNav } from './site-nav';
 
 // what every donor page route shares beyond the renderer: its stylesheets, and the plain page drawn
 // where the stored page cannot be — the donation box alone, the notice where there is no box, and
@@ -61,6 +64,13 @@ export function donorPageLinks(registry: readonly string[] = []) {
 	}));
 }
 
+/**
+ * the registry's site nav and compact site footer, for `donorPageLinks` on a page that draws them
+ * (./site-nav.tsx, ./site-footer.tsx). both read the registry's button sheet, which every donor
+ * page links already, for the nav's menu button.
+ */
+export const SITE_CHROME_SHEETS: readonly string[] = [registrySiteNav, registrySiteFooter];
+
 /** the registry's default accent, for a page with no brand colour to read. */
 export const FORM_LOOK: PageLook = { brandColour: null };
 
@@ -101,11 +111,11 @@ export function PlainDonationPage({
 }
 
 /**
- * an ended campaign's address, and an ended supporter fundraiser's: the organisation's name over
- * the page as /donate draws it, then the campaign's name, that it has ended, what the caller states
- * under that, and the way on to /donate — at the page's reading measure,
- * in the campaign's own published look (`donorLook` in $lib/server/pages/view.ts), with no
- * donation box. a deployment with no organisation name yet draws no masthead, logo or not.
+ * an ended campaign's address, and an ended supporter fundraiser's: the site nav as /donate draws
+ * it, then the campaign's name, that it has ended, what the caller states under that, and the way
+ * on to /donate — at the page's reading measure, in the campaign's own published look (`donorLook`
+ * in $lib/server/pages/view.ts), with no donation box. a deployment with no organisation name yet
+ * draws no home link in the nav, logo or not.
  */
 export function EndedCampaignPage({
 	name,
@@ -116,16 +126,19 @@ export function EndedCampaignPage({
 }: {
 	readonly name: string;
 	readonly orgName: string | null;
-	/** the organisation's logo, in the masthead; null or absent where it has none. */
+	/** the organisation's logo, in the site nav; null or absent where it has none. */
 	readonly logo?: PageLogo | null | undefined;
 	readonly look: PageLook;
 	/** what the page states under the thanks and over the way on: an ended fundraiser's total. */
 	readonly children?: ReactNode;
 }) {
 	return (
-		<PageRoot brandColour={look.brandColour} layout="plain">
-			{orgName === null ? null : <Masthead name={orgName} logo={logo ?? null} />}
-			<main className="stage ended">
+		<PageRoot
+			brandColour={look.brandColour}
+			layout="plain"
+			header={<SiteNav name={orgName} logo={logo ?? null} current={false} />}
+		>
+			<main className="stage ended" id={MAIN_ID} tabIndex={-1}>
 				<h1>{copy.campaignEnded(name)}</h1>
 				<p>{copy.CAMPAIGN_ENDED_THANKS}</p>
 				{children}
