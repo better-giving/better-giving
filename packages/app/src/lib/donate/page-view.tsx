@@ -493,7 +493,6 @@ function DonationLayout(props: PageViewProps) {
 	);
 }
 
-
 /**
  * one initial for each of the name's first two words, a leading "The" passed over where a word
  * follows it: "The Hope Fund" is `HF`, "Kiva" is `K`. a word's initial is the grapheme its first

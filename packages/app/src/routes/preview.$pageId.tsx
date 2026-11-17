@@ -1,7 +1,13 @@
 import { data } from 'react-router';
 import { DonateNotice } from '$lib/donate/notice';
 import { PageWithCard, type PageWithCardProps } from '$lib/donate/page-with-card';
-import { donorPageLinks, FORM_LOOK, PlainDonationPage, PlainPage } from '$lib/donate/plain-page';
+import {
+	donorPageLinks,
+	FORM_LOOK,
+	PlainDonationPage,
+	PlainPage,
+	SITE_CHROME_SHEETS
+} from '$lib/donate/plain-page';
 import { useShowMoreMessages } from '$lib/donate/show-more';
 import { staffGate } from '$lib/server/auth/gate';
 import { readPage } from '$lib/server/pages/queries';
@@ -73,7 +79,7 @@ export function headers(): Headers {
 export const handle: DonorPolicyHandle = { documentPolicy: 'donor' };
 
 export function links(): Route.LinkDescriptors {
-	return donorPageLinks();
+	return donorPageLinks(SITE_CHROME_SHEETS);
 }
 
 export default function PagePreview({ loaderData }: Route.ComponentProps) {

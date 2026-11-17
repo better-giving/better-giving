@@ -360,7 +360,6 @@ describe('every colour lands on the radix step for its job', () => {
 				'.page > .page-ground | --page-plane': 'slate-1',
 				'.page > .page-ground | --page-band': 'slate-1',
 				'.page > .page-ground | --page-track': 'slate-3',
-				'.page-mast | background': 'slate-1',
 				".page[data-layout='card'] .page-layout::before | background": 'slate-1',
 				[`${WIDE} » .page[data-layout='card'] .page-layout | background`]: 'slate-1',
 				".page[data-layout='letter'] [data-area='cover'] | background": 'slate-1',
@@ -401,12 +400,10 @@ describe('every colour lands on the radix step for its job', () => {
 			allowed: ['slate-6', 'slate-7', 'slate-8', 'brand-6', 'brand-7', 'brand-8', 'red-6'],
 			at: {
 				'.page > .page-ground | --page-plane-edge': 'slate-6',
-				'.page-mast | border-block-end': 'slate-6',
 				".page [part~='card'] | border-color": 'slate-6',
 				".page[data-layout='card'] .page-layout::before | border": 'slate-6',
 				[`${WIDE} » .page[data-layout='card'] .page-layout | border`]: 'slate-6',
 				".page[data-layout='letter'] [data-area='cover'] | border": 'slate-6',
-				'.page-foot | border-block-start': 'slate-6',
 				".page-tiers[data-shape='cards'] .page-tier | border": 'slate-6',
 				".page-tiers[data-shape='list'] .page-tier | border-block-start": 'slate-6',
 				'.page-faq[data-folded] .page-faq-item | border-block-start': 'slate-6',
@@ -448,7 +445,6 @@ describe('every colour lands on the radix step for its job', () => {
 		'9: a solid fill, the generator’s step 9': {
 			allowed: ['brand-9'],
 			at: {
-				'.page-mast-badge | background': 'brand-9',
 				[`${FEATURE} .page-cover-area:empty | background`]: 'brand-9',
 				".page-cover[data-source='logo'] | background": 'brand-9',
 				'.page-goal-fill | background': 'brand-9',
@@ -459,7 +455,6 @@ describe('every colour lands on the radix step for its job', () => {
 		[ON_FILL]: {
 			allowed: ['on-brand-9'],
 			at: {
-				'.page-mast-badge | color': 'on-brand-9',
 				'.page-profile-badge | color': 'on-brand-9',
 				".ended [part~='action'] | color": 'on-brand-9',
 				[`${WIDE} » ${OVER_FILL} | --page-quiet`]: 'on-brand-9',
@@ -478,8 +473,6 @@ describe('every colour lands on the radix step for its job', () => {
 				'.notice | color': 'slate-11',
 				'.ended p | color': 'slate-11',
 				'.page-ground a | color': 'brand-11',
-				'.page-mast-share:hover | color': 'brand-12',
-				'.page-mast-name | color': 'slate-12',
 				'.page-label | color': 'slate-11',
 				'.page-lede | color': 'slate-11',
 				".page-tiers[data-shape='cards'] .page-tier | color": 'slate-11',
@@ -492,8 +485,6 @@ describe('every colour lands on the radix step for its job', () => {
 				'.page-about-beneath | color': 'slate-11',
 				'.page-goal-of | color': 'slate-11',
 				'.page-goal-meta | color': 'slate-11',
-				'.page-org | color': 'slate-11',
-				'.page-org-name | color': 'slate-11',
 				'.page-share-heading | color': 'slate-11',
 				'.page-share-button | color': 'slate-12',
 				'.page-ground a.page-share-button | color': 'slate-12',
@@ -612,7 +603,7 @@ describe('every colour lands on the radix step for its job', () => {
 	});
 });
 
-describe('the share row and the footer', () => {
+describe('the share row', () => {
 	// each share press is a step-1 circle on the wash inside a step-6 edge, at the touch floor.
 	it('draws a share press as a flat circle at the touch floor, a plane edged in step 6', () => {
 		expect(substitute(formBase, 'var(--_row-min)')).toBe('44px');
@@ -634,19 +625,27 @@ describe('the share row and the footer', () => {
 			'font-weight': 'var(--_w-medium)'
 		});
 	});
+});
 
-	// the footer is one line on the wash, under a separator: the name in `--_n11`, the rest in the
-	// quiet ink at the small step.
-	it('draws the footer on the wash under one separator, its line in the quiet ink', () => {
-		expect(declared(page, '.page-foot')).toMatchObject({
-			'border-block-start': 'var(--_border) solid var(--_n6)'
+describe('the site nav and the site footer', () => {
+	const CHROME = '.page > :is(.ds-site-nav-skip, .ds-site-nav, .ds-site-footer-compact)';
+
+	// they stand beside the ground (./page-root.tsx) and are the registry's to draw: this sheet
+	// gives them the page's face and nothing else.
+	it('sets their face from the registry role, and nothing more', () => {
+		expect(declared(page, CHROME)).toEqual({ 'font-family': 'var(--font-body)' });
+		const others = page.filter(({ at }) => /\.ds-site-(?:nav|footer)/.test(at.at(-1) ?? ''));
+		expect(others.map(({ at }) => at.at(-1))).toEqual([
+			CHROME,
+			'.ds-site-nav-brand:has(> .page-site-logo)'
+		]);
+	});
+
+	it('sizes the logo in the nav’s own spacing steps, two of them off the name', () => {
+		expect(declared(page, '.page-site-logo')['block-size']).toBe('calc(var(--ds-spacing) * 8)');
+		expect(declared(page, '.ds-site-nav-brand:has(> .page-site-logo)')).toEqual({
+			gap: 'calc(var(--ds-spacing) * 2)'
 		});
-		expect(declared(page, '.page-foot').background).toBeUndefined();
-		expect(declared(page, '.page-org')).toMatchObject({
-			color: 'var(--page-quiet)',
-			'font-size': 'var(--_t-sm)'
-		});
-		expect(declared(page, '.page-org-name').color).toBe('var(--_n11)');
 	});
 });
 
@@ -876,7 +875,6 @@ describe('no card inside a card', () => {
 				[".page[data-layout='letter'] [data-area='cover']", EDGE],
 				[".page-tiers[data-shape='cards'] .page-tier", EDGE],
 				['.page-share-button', EDGE],
-				['.page-mast', EDGE],
 				['.page-profile-logo', EDGE],
 				[".page[data-layout='letter'] .page-profile-banner", EDGE],
 				["@container page (min-width: 48rem) » [data-shape='cards'] .page-messages-row", EDGE],
@@ -969,14 +967,8 @@ describe('the ground and the wash', () => {
 		expect(ground.background).toBe('var(--page-wash), var(--page-ground)');
 	});
 
-	it('rules the masthead’s foot and the footer’s head in step 6', () => {
-		expect(declared(page, '.page-mast')['border-block-end']).toBe(
-			'var(--_border) solid var(--page-plane-edge)'
-		);
+	it('edges a plane in step 6', () => {
 		expect(ground['--page-plane-edge']).toBe('var(--_n6)');
-		expect(declared(page, '.page-foot')['border-block-start']).toBe(
-			'var(--_border) solid var(--_n6)'
-		);
 	});
 });
 
@@ -1186,19 +1178,6 @@ describe('the profile head’s type', () => {
 	});
 });
 
-describe('the organisation’s name in the top bar', () => {
-	// happy-dom does no layout, so the cut is read off the sheet: a name that wrapped would stand the
-	// bar taller than the header's first-screen sum counts, and Share takes width from the name's row.
-	it('is cut to one line with an ellipsis, and gives up its width rather than widening the bar', () => {
-		expect(declared(page, '.page-mast-name')).toMatchObject({
-			'white-space': 'nowrap',
-			overflow: 'hidden',
-			'text-overflow': 'ellipsis',
-			'min-inline-size': '0'
-		});
-	});
-});
-
 describe('the squint tiers on the page', () => {
 	// `--_sp2` is an em step, so it is read at the heading's own size; the heading's largest size is
 	// the top of its clamp, where the step is widest.
@@ -1274,6 +1253,8 @@ describe('the sections ./page.css draws', () => {
 	const components = [
 		join(here, 'page-view.tsx'),
 		join(here, 'gift-page.tsx'),
+		join(here, 'site-nav.tsx'),
+		join(here, 'site-footer.tsx'),
 		...globSync(join(here, 'sections/*.tsx')).filter((file) => !file.includes('.spec.'))
 	];
 	const FORM_LAYOUT = require.resolve('@better-giving/form/styles/layout.css');
@@ -1288,10 +1269,14 @@ describe('the sections ./page.css draws', () => {
 	const GIFT = ['notice-card-css', 'badge-css', 'text-button-css'].map((item) =>
 		require.resolve(`@better-giving/operator/registry/styles/${item}.css`)
 	);
+	// the registry's site nav and compact footer (`SITE_CHROME_SHEETS` in ./plain-page.tsx).
+	const CHROME = ['site-nav-css', 'site-footer-css'].map((item) =>
+		require.resolve(`@better-giving/operator/registry/styles/${item}.css`)
+	);
 	const drawn = new Set(
 		[
 			pageText,
-			...[FORM_LAYOUT, FORM_BUTTON, SPINNER, LEAD, FIELD, ...GIFT].map((file) =>
+			...[FORM_LAYOUT, FORM_BUTTON, SPINNER, LEAD, FIELD, ...GIFT, ...CHROME].map((file) =>
 				readFileSync(file, 'utf8')
 			)
 		].flatMap((css) =>

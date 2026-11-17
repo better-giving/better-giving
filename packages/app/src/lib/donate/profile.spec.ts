@@ -47,11 +47,6 @@ describe('donateProfile()', () => {
 			logo: { src: '/image/logo-1', width: 400, height: 400 },
 			mission: 'Clean water for every family.',
 			vision: 'A river anyone can drink from.',
-			footer: {
-				addressLines: ['1 Main St', 'Springfield, IL 62701', 'US'],
-				email: null,
-				socialLinks: [{ platform: 'instagram', href: 'https://instagram.com/riverbank' }]
-			},
 			messages: MESSAGES,
 			videos: [
 				{

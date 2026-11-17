@@ -9,10 +9,17 @@ import { DonateCard } from '../../donate/card';
 import { DonateNotice } from '../../donate/notice';
 import { PageRoot } from '../../donate/page-root';
 import { initials } from '../../donate/page-view';
-import { donorPageLinks, EndedCampaignPage, FORM_LOOK, PlainPage } from '../../donate/plain-page';
+import {
+	donorPageLinks,
+	EndedCampaignPage,
+	FORM_LOOK,
+	PlainPage,
+	SITE_CHROME_SHEETS
+} from '../../donate/plain-page';
 import { DonorMessages, type DonorMessagesWiring } from '../../donate/sections/messages';
-import { OrgContact } from '../../donate/sections/org-info';
 import { Share } from '../../donate/sections/share';
+import { SiteFooter } from '../../donate/site-footer';
+import { MAIN_ID, SiteNav } from '../../donate/site-nav';
 import { imageSrc } from '../../page/image-src';
 import areaSheet from '../area/area.css?url';
 import { NoticeCard } from '../area/cards';
@@ -35,16 +42,20 @@ import type {
 // the photo where there is one, and what has been raised, then the donation box and who the gift
 // goes to, then the story and the messages from donors. on a phone they stand in that order; from
 // 60rem the box and who it goes to are a column beside the rest. the donation box is the page's one
-// primary. the share row and the footer close it as they close every donor page.
+// primary. the site nav heads it and the share row and the site footer close it, as on every
+// donor page; "Start your own fundraiser", where the setting is on, stands under the share row.
 //
 // ended, it is an ended campaign's screen with the final total under the thanks and no box. hidden,
 // pending and unknown alike are the plain notice an unknown campaign address gets, so a visitor
 // learns nothing of a page that is not public.
 
-/** a donor page's sheets, then the registry's avatar, badge and goal bar, then this page's own. */
+/**
+ * a donor page's sheets with the site nav's and footer's, then the registry's avatar, badge and goal
+ * bar, then this page's own.
+ */
 export function fundraiserPageLinks() {
 	return [
-		...donorPageLinks(),
+		...donorPageLinks(SITE_CHROME_SHEETS),
 		...[registryAvatar, registryBadge, registryProgress, fundraiserSheet].map((href) => ({
 			rel: 'stylesheet' as const,
 			href
@@ -110,8 +121,10 @@ export function FundraiserPage(props: FundraiserPageViewProps) {
 			brandColour={look.brandColour}
 			layout="plain"
 			className={className === undefined ? 'fundraiser-page' : `fundraiser-page ${className}`}
+			header={<SiteNav name={org.name} logo={org.logo ?? null} current={false} />}
+			footer={<SiteFooter info={{ ...props.contact, legalName: org.name, ein: org.taxId }} />}
 		>
-			<main className="page-body">
+			<main className="page-body" id={MAIN_ID} tabIndex={-1}>
 				<div className="page-in page-layout fundraiser-layout">
 					<div className="fundraiser-who" data-area="who">
 						{props.staffNotice?.hidden ? (
@@ -178,18 +191,13 @@ export function FundraiserPage(props: FundraiserPageViewProps) {
 			<section className="page-end" aria-labelledby={shareHeading} data-area="share">
 				<div className="page-in">
 					<Share headingId={shareHeading} sharing={props.sharing} heading={copy.SHARE_HEADING} />
-				</div>
-			</section>
-			<footer className="page-foot">
-				<div className="page-in page-org">
-					<OrgContact contact={props.contact} />
 					{props.fundraiserEntry ? (
-						<p>
+						<p className="fundraiser-start">
 							<a href={copy.START_HREF}>{copy.START_YOUR_OWN}</a>
 						</p>
 					) : null}
 				</div>
-			</footer>
+			</section>
 		</PageRoot>
 	);
 }

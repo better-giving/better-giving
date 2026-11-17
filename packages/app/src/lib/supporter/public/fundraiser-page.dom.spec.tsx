@@ -175,14 +175,32 @@ describe('a live fundraiser, part way', () => {
 		expect(story?.querySelectorAll('.fundraiser-story > p')).toHaveLength(2);
 	});
 
-	it('closes on the share row and the footer, with the way to start one while the feature is on', () => {
+	it('closes on the share row, with the way to start one under it while the feature is on', () => {
 		const root = mount(<FundraiserPage {...props(PART_WAY)} />);
-		expect(root.querySelector('.page-share-heading')?.textContent).toBe('Share this page');
-		const foot = root.querySelector('footer');
-		expect(foot?.textContent).toContain('2200 Lake Avenue, Cleveland, Ohio');
-		expect(foot?.querySelector('a[href="mailto:hello@harborlight.example"]')).not.toBeNull();
-		const start = foot?.querySelector<HTMLAnchorElement>('a[href="/fundraise"]');
+		const share = root.querySelector('[data-area="share"]');
+		expect(share?.querySelector('.page-share-heading')?.textContent).toBe('Share this page');
+		const start = share?.querySelector<HTMLAnchorElement>('a[href="/fundraise"]');
 		expect(start?.textContent).toBe('Start your own fundraiser');
+	});
+
+	it('heads the page with the site nav, Donate not marked current', () => {
+		const root = mount(<FundraiserPage {...props(PART_WAY)} />);
+		const nav = root.querySelector('.ds-site-nav');
+		expect(nav?.querySelector('.ds-site-nav-brand')?.textContent).toBe('Harbor Light');
+		expect(nav?.querySelector('.ds-site-nav-link')?.getAttribute('href')).toBe('/donate');
+		expect(root.querySelector('[aria-current]')).toBeNull();
+		expect(root.querySelector('main')?.id).toBe('main');
+	});
+
+	it('ends on the site footer: the legal line once, then the ways to reach the organisation', () => {
+		const root = mount(<FundraiserPage {...props(PART_WAY)} />);
+		const feet = root.querySelectorAll('footer');
+		expect(feet).toHaveLength(1);
+		expect(feet[0]?.querySelector('p')?.textContent).toBe(
+			'Harbor Light · EIN 84-1234567 · 2200 Lake Avenue, Cleveland, Ohio'
+		);
+		expect(feet[0]?.querySelector('a[href="mailto:hello@harborlight.example"]')).not.toBeNull();
+		expect(feet[0]?.querySelector('a[href="/fundraise"]')).toBeNull();
 	});
 
 	it('calls a supporter by the whole name where its first word is a title or an initial', () => {
@@ -372,7 +390,7 @@ describe('an ended fundraiser', () => {
 
 	it('names the organisation, says it ended, thanks, and states the final total', () => {
 		const root = ended();
-		expect(root.querySelector('.page-mast-name')?.textContent).toBe('Harbor Light');
+		expect(root.querySelector('.ds-site-nav-brand')?.textContent).toBe('Harbor Light');
 		expect(root.querySelector('h1')?.textContent).toBe(
 			'Ended: Keep the pantry trucks running this winter'
 		);

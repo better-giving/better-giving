@@ -1,6 +1,4 @@
 import { brandScaleCss, generateBrandScale } from '@better-giving/form/styles/radix-scale';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { act, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
@@ -135,7 +133,39 @@ describe('the whole layout a campaign is drawn in', () => {
 		const root = mount(<PageView {...props('campaign', defaultCampaign())} />);
 		expect(layoutOf(root)).toBe('card');
 		expect(areas(root)).toEqual(['title', 'box', 'share']);
-		expect(root.querySelector('.page-org')).not.toBeNull();
+		expect(root.querySelector('footer.ds-site-footer-compact')).not.toBeNull();
+	});
+});
+
+describe('the site chrome', () => {
+	it.each([
+		['campaign', defaultCampaign(), null],
+		['donation_page', defaultDonationPage(), 'page']
+	] as const)('heads the %s with the site nav, Donate marked %s', (type, page, current) => {
+		const root = mount(<PageView {...props(type, page)} />);
+		const first = root.querySelector('a[href], button');
+		expect(first?.className).toBe('ds-site-nav-skip');
+		expect(root.querySelector(first?.getAttribute('href') ?? '')).toBe(root.querySelector('main'));
+		const link = root.querySelector('.ds-site-nav-link');
+		expect(link?.getAttribute('aria-current')).toBe(current);
+		expect(root.querySelector('.ds-site-nav-brand')?.textContent).toBe('Northside Neighbors');
+	});
+
+	it('states the legal block once, in the site footer, after the share row', () => {
+		const root = mount(<PageView {...props('campaign', CARD)} />);
+		const legal =
+			'Northside Neighbors · EIN 84-2913377 · 40 Elm Street, Easton, PA 18042, United States';
+		const lines = [...root.querySelectorAll('p')].filter((p) => p.textContent === legal);
+		expect(lines).toHaveLength(1);
+		const footer = lines[0]?.closest('footer');
+		expect(footer?.className).toBe('ds-site-footer-compact');
+		const share = root.querySelector('[data-area="share"]');
+		expect(
+			share !== null && footer !== null && footer !== undefined
+				? share.compareDocumentPosition(footer) & Node.DOCUMENT_POSITION_FOLLOWING
+				: 0
+		).toBeTruthy();
+		expect(root.querySelector('main')?.contains(footer ?? null)).toBe(false);
 	});
 });
 
@@ -391,16 +421,7 @@ describe('the one colour', () => {
 	});
 });
 
-describe('the masthead with no logo', () => {
-	const masthead = (name: string, brandColour: string | null) => {
-		const base = props('donation_page', defaultDonationPage());
-		const root = mount(
-			<PageView {...base} org={{ ...base.org, name }} logo={null} look={{ brandColour }} />
-		);
-		const badge = root.querySelector<HTMLElement>('.page-mast-badge');
-		return { root, badge };
-	};
-
+describe('a name’s initials', () => {
 	it.each([
 		['Hope Foundation', 'HF'],
 		['The Hope Fund', 'HF'],
@@ -417,9 +438,8 @@ describe('the masthead with no logo', () => {
 		['\u062c\u0645\u0639\u064a\u0629 \u0627\u0644\u0628\u0631', '\u062c\u200c\u0628'],
 		['Hope \u062c\u0645\u0639\u064a\u0629', 'H\u062c'],
 		['The 1%', 'T']
-	])('%s: the badge reads %s', (name, letters) => {
+	])('%s: reads %s', (name, letters) => {
 		expect(initials(name)).toBe(letters);
-		expect(masthead(name, '#1d6b4f').badge?.textContent).toBe(letters);
 	});
 
 	it('upper-cases the same in a Turkish-locale browser as on the server', () => {
@@ -429,49 +449,26 @@ describe('the masthead with no logo', () => {
 			return this.replaceAll('i', '\u0130').toUpperCase();
 		});
 		onTestFinished(() => turkish.mockRestore());
-		expect(masthead('iCare Fund', '#1d6b4f').badge?.textContent).toBe('IF');
+		expect(initials('iCare Fund')).toBe('IF');
 	});
 
-	it('draws no badge for a name holding no letter, and still draws the name', () => {
-		const { root, badge } = masthead('1234', '#1d6b4f');
+	it('is empty for a name holding no letter', () => {
 		expect(initials('1234')).toBe('');
-		expect(badge).toBeNull();
-		expect(root.querySelector('.page-mast-name')?.textContent).toBe('1234');
+	});
+});
+
+describe('the brand colour', () => {
+	const seeded = (brandColour: string | null) =>
+		mount(<PageView {...props('donation_page', defaultDonationPage())} look={{ brandColour }} />)
+			.querySelector<HTMLElement>('[data-donate-root]')
+			?.style.getPropertyValue('--donate-primary');
+
+	it('is seeded on the page root', () => {
+		expect(seeded('#1d6b4f')).toBe('#1d6b4f');
 	});
 
-	it('says nothing of its own beside the name, which names the organisation', () => {
-		const { root, badge } = masthead('Hope Foundation', '#1d6b4f');
-		expect(badge?.getAttribute('aria-hidden')).toBe('true');
-		expect(badge?.hasAttribute('role')).toBe(false);
-		expect(badge?.hasAttribute('aria-label')).toBe(false);
-		expect(root.querySelector('.page-mast img')).toBeNull();
-		expect(root.querySelector('.page-mast-name')?.textContent).toBe('Hope Foundation');
-	});
-
-	// ./page.css cuts the name to one line, so the whole of it rides on the line's `title`.
-	it('carries the whole name in its title, where the cut takes the end off', () => {
-		const name = 'Greater Springfield Community Food Bank';
-		expect(
-			masthead(name, '#1d6b4f').root.querySelector('.page-mast-name')?.getAttribute('title')
-		).toBe(name);
-	});
-
-	// the fill is the stylesheet's to paint, and happy-dom resolves no custom property: the badge is
-	// held to standing under the root that seeds the brand colour, and the sheet to filling it so.
-	it('stands on the brand colour the page root seeds', () => {
-		const { badge } = masthead('Hope Foundation', '#1d6b4f');
-		const seeded = badge?.closest<HTMLElement>('[data-donate-root]');
-		expect(seeded?.style.getPropertyValue('--donate-primary')).toBe('#1d6b4f');
-		const sheet = readFileSync(join(import.meta.dirname, 'page.css'), 'utf8');
-		const rule = /\.page-mast-badge\s*\{([^}]*)\}/.exec(sheet)?.[1] ?? '';
-		expect(rule).toMatch(/background:\s*var\(--_p\);/);
-		expect(rule).toMatch(/color:\s*var\(--_on-p\);/);
-	});
-
-	it('seeds no brand colour where the organisation has none', () => {
-		const { badge } = masthead('Hope Foundation', null);
-		const root = badge?.closest<HTMLElement>('[data-donate-root]');
-		expect(root?.style.getPropertyValue('--donate-primary')).toBe('');
+	it('is seeded nowhere where the organisation has none', () => {
+		expect(seeded(null)).toBe('');
 	});
 });
 
@@ -539,26 +536,6 @@ describe('share', () => {
 		expect(section?.contains(label ?? null)).toBe(true);
 	});
 
-	it.each([
-		['campaign', defaultCampaign(), 'Share this campaign'],
-		['donation_page', defaultDonationPage(), 'Share this page']
-	] as const)(
-		'jumps the masthead Share link to the one share region, on the %s',
-		(type, page, heading) => {
-			const root = mount(<PageView {...props(type, page)} />);
-			const link = root.querySelector<HTMLAnchorElement>('.page-mast-share');
-			expect(link?.getAttribute('href')).toBe('#page-share');
-			const targets = root.querySelectorAll('[id="page-share"]');
-			expect(targets).toHaveLength(1);
-			const target = targets[0];
-			expect(target?.getAttribute('data-area')).toBe('share');
-			const label = root.ownerDocument.getElementById(
-				target?.getAttribute('aria-labelledby') ?? ''
-			);
-			expect(label?.textContent).toBe(heading);
-		}
-	);
-
 	it('copies the page’s address and says so at the press alone', async () => {
 		const writeText = vi.fn(async () => {});
 		vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
@@ -585,23 +562,6 @@ describe('share', () => {
 			'Copy link'
 		);
 	});
-
-	it.each([
-		['card', 'campaign', CARD],
-		['letter', 'campaign', LETTER],
-		['feature', 'campaign', FEATURE],
-		['donation page', 'donation_page', defaultDonationPage()]
-	] as const)(
-		'ends the top bar on a Share link to the share section, on the %s',
-		(_, type, page) => {
-			const root = mount(<PageView {...props(type, page)} />);
-			const link = root.querySelector<HTMLAnchorElement>('.page-mast a');
-			expect(link?.textContent).toBe('Share');
-			const target = link?.getAttribute('href') ?? '';
-			expect(target).toMatch(/^#./);
-			expect(root.querySelector(target)?.getAttribute('data-area')).toBe('share');
-		}
-	);
 });
 
 describe('the preview', () => {

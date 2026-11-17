@@ -4,7 +4,7 @@ import { writtenText } from '../page/profile-shape';
 import { type ShownVideo, shownVideos } from '../page/videos';
 import type { DonorMessages } from './messages';
 import type { PageLogo } from './page-view';
-import type { OrgInfo, PageOrg } from './sections/types';
+import type { PageOrg } from './sections/types';
 
 // what the Donation page's profile head draws at /donate: who the organisation is and how to reach
 // it, and never what it has raised: a campaign's goal bar alone draws progress. the loader reads it
@@ -31,7 +31,6 @@ export type DonateProfile = {
 	/** plain text, a blank line between paragraphs; null where the organisation has written none. */
 	readonly mission: string | null;
 	readonly vision: string | null;
-	readonly footer: Pick<OrgInfo, 'addressLines' | 'email' | 'socialLinks'>;
 	/**
 	 * the newest six messages from donors, read on this request (`readShownMessages` in
 	 * ../server/pages/messages.ts); the next six are `/donate/messages?after=` `messages.next`.
@@ -60,10 +59,9 @@ export function donateProfile({
 	readonly messages: DonorMessages;
 	readonly videos: readonly Video[] | undefined;
 }): DonateProfile {
-	const { ein, addressLines, email, socialLinks } = org.info;
 	return {
 		name: org.name,
-		taxId: ein,
+		taxId: org.info.ein,
 		banner: bannerImageId === null ? null : { src: imageSrc(bannerImageId) },
 		logo:
 			logo === null
@@ -71,7 +69,6 @@ export function donateProfile({
 				: { src: imageSrc(logo.imageId), width: logo.width, height: logo.height },
 		mission: writtenText(org.mission),
 		vision: writtenText(org.vision),
-		footer: { addressLines, email, socialLinks },
 		messages,
 		videos: shownVideos(videos)
 	};

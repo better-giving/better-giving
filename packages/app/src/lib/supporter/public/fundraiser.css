@@ -260,6 +260,12 @@
 	overflow-wrap: anywhere;
 }
 
+/* "Start your own fundraiser", where the setting is on: a line under the share row, an item's step
+   off it. */
+.fundraiser-start {
+	margin-block-start: var(--page-gap-item);
+}
+
 /* an ended fundraiser's total, under the thanks: the text ink, where the thanks is the quiet one. */
 .ended .fundraiser-ended-total {
 	color: var(--_n12);

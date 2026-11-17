@@ -7,7 +7,7 @@ import { PageView, type PageViewProps } from './page-view';
 import { EndedCampaignPage, PlainPage } from './plain-page';
 
 // the images a page draws beside its own photos, through the renderer: the organisation's logo in
-// the masthead and a program's photo on its chooser option — and the logo on an ended campaign's
+// the site nav and a program's photo on its chooser option — and the logo on an ended campaign's
 // screen, which is drawn beside the renderer rather than by it. every one is drawn from the
 // deployment's image route by its stored id, and the cover and the photos beside it draw as plain
 // photos with nothing captioning them. how any of it looks is left to a person looking at it.
@@ -71,38 +71,28 @@ function mount(tree: ReactNode): HTMLElement {
 	return root;
 }
 
-/** what a masthead prints, less its Share link: the words a wide logo stands in for. */
-function wordsOf(mast: Element | null | undefined): string {
-	const copy = mast?.cloneNode(true) as Element | undefined;
-	copy?.querySelector('.page-mast-share')?.remove();
-	return copy?.textContent ?? '(no masthead)';
-}
-
-describe('the logo atop the page', () => {
-	const masthead = (logo: PageViewProps['logo']) =>
+describe('the logo in the site nav', () => {
+	const brand = (logo: PageViewProps['logo']) =>
 		mount(<PageView {...props('donation_page', donationPage(), { logo })} />).querySelector(
-			'.page-mast'
+			'.ds-site-nav-brand'
 		);
 
-	it('none: the name, beside the badge of its initials', () => {
-		const mast = masthead(null);
-		expect(mast?.querySelector('img')).toBeNull();
-		expect(mast?.querySelector('.page-mast-badge')?.getAttribute('aria-hidden')).toBe('true');
-		expect(mast?.querySelector('.page-mast-name')?.textContent).toBe(ORG);
+	it('none: the name alone', () => {
+		const home = brand(null);
+		expect(home?.querySelector('img')).toBeNull();
+		expect(home?.textContent).toBe(ORG);
 	});
 
 	it.each([
 		['wide', 420, 80],
 		['exactly twice as wide as tall', 200, 100]
 	])('%s: stands in for the name, carrying it as its alt', (_, width, height) => {
-		const mast = masthead({ imageId: LOGO, width, height });
-		const logo = mast?.querySelector('img');
+		const home = brand({ imageId: LOGO, width, height });
+		const logo = home?.querySelector('img');
 
 		expect(logo?.getAttribute('src')).toBe(`/image/${LOGO}`);
 		expect(logo?.getAttribute('alt')).toBe(ORG);
-		expect(logo?.parentElement?.className).toBe('page-mast-name');
-		expect(wordsOf(mast)).toBe('');
-		expect(mast?.querySelector('.page-mast-share')?.textContent).toBe('Share');
+		expect(home?.textContent).toBe('');
 	});
 
 	it.each([
@@ -110,12 +100,12 @@ describe('the logo atop the page', () => {
 		['just under twice as wide', 199, 100],
 		['tall', 60, 120]
 	])('%s: stands beside the name and says nothing of its own', (_, width, height) => {
-		const mast = masthead({ imageId: LOGO, width, height });
-		const logo = mast?.querySelector('img');
+		const home = brand({ imageId: LOGO, width, height });
+		const logo = home?.querySelector('img');
 
 		expect(logo?.getAttribute('src')).toBe(`/image/${LOGO}`);
 		expect(logo?.getAttribute('alt')).toBe('');
-		expect(logo?.nextElementSibling?.textContent).toBe(ORG);
+		expect(home?.textContent).toBe(ORG);
 	});
 
 	it('is atop a campaign with a cover too', () => {
@@ -125,7 +115,7 @@ describe('the logo atop the page', () => {
 				{...props('campaign', cover, { logo: { imageId: LOGO, width: 420, height: 80 } })}
 			/>
 		);
-		expect(root.querySelector('.page-mast img')?.getAttribute('alt')).toBe(ORG);
+		expect(root.querySelector('.ds-site-nav-brand img')?.getAttribute('alt')).toBe(ORG);
 	});
 
 	describe('on an ended campaign', () => {
@@ -137,37 +127,29 @@ describe('the logo atop the page', () => {
 					logo={logo}
 					look={{ brandColour: '#1d6b4f' }}
 				/>
-			).querySelector('.page-mast');
+			);
 
 		it('a wide logo stands in for the name, carrying it as its alt', () => {
-			const mast = ended({ imageId: LOGO, width: 420, height: 80 });
-			const logo = mast?.querySelector('img');
-
-			expect(logo?.getAttribute('src')).toBe(`/image/${LOGO}`);
-			expect(logo?.getAttribute('alt')).toBe(ORG);
-			expect(wordsOf(mast)).toBe('');
+			const home = ended({ imageId: LOGO, width: 420, height: 80 }).querySelector(
+				'.ds-site-nav-brand'
+			);
+			expect(home?.querySelector('img')?.getAttribute('alt')).toBe(ORG);
+			expect(home?.textContent).toBe('');
 		});
 
-		it('draws no Share link, there being no share section to jump to', () => {
-			expect(ended(null)?.querySelector('.page-mast-share')).toBeNull();
-			expect(ended({ imageId: LOGO, width: 420, height: 80 })?.querySelector('a')).toBeNull();
+		it('none: the name alone, and Donate not marked current', () => {
+			const root = ended(null);
+			expect(root.querySelector('.ds-site-nav-brand')?.textContent).toBe(ORG);
+			expect(root.querySelector('[aria-current]')).toBeNull();
 		});
 
-		it('draws a plain page with no masthead, and so no Share link', () => {
+		it('draws a plain page with no site nav', () => {
 			const root = mount(
 				<PlainPage look={{ brandColour: null }}>
 					<p>Nothing to share</p>
 				</PlainPage>
 			);
-			expect(root.querySelector('.page-mast')).toBeNull();
-			expect(root.querySelector('.page-mast-share')).toBeNull();
-		});
-
-		it('none: the name, beside the badge of its initials', () => {
-			const mast = ended(null);
-			expect(mast?.querySelector('img')).toBeNull();
-			expect(mast?.querySelector('.page-mast-badge')?.getAttribute('aria-hidden')).toBe('true');
-			expect(mast?.querySelector('.page-mast-name')?.textContent).toBe(ORG);
+			expect(root.querySelector('.ds-site-nav')).toBeNull();
 		});
 	});
 });

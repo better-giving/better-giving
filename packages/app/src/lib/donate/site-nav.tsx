@@ -1,4 +1,12 @@
-import { type FocusEvent, type KeyboardEvent, type ReactNode, useEffect, useId, useRef, useState } from 'react';
+import {
+	type FocusEvent,
+	type KeyboardEvent,
+	type ReactNode,
+	useEffect,
+	useId,
+	useRef,
+	useState
+} from 'react';
 import { imageSrc } from '../page/image-src';
 import type { PageLogo } from './page-view';
 
@@ -89,12 +97,12 @@ export function SiteNav({ name, logo, current, end }: SiteNavProps) {
 		};
 	}, [open]);
 
-	const escape = (event: KeyboardEvent) => {
+	const closeOnEscape = (event: KeyboardEvent) => {
 		if (event.key !== 'Escape' || !open) return;
 		setOpen(false);
 		button.current?.focus();
 	};
-	const left = (event: FocusEvent) => {
+	const closeOnLeave = (event: FocusEvent) => {
 		const next = event.relatedTarget;
 		if (next instanceof Node && (panel.current?.contains(next) || button.current === next)) return;
 		setOpen(false);
@@ -127,7 +135,7 @@ export function SiteNav({ name, logo, current, end }: SiteNavProps) {
 						aria-expanded={open}
 						aria-controls={menuId}
 						onClick={() => setOpen((was) => !was)}
-						onKeyDown={escape}
+						onKeyDown={closeOnEscape}
 					>
 						<svg
 							width="20"
@@ -162,8 +170,8 @@ export function SiteNav({ name, logo, current, end }: SiteNavProps) {
 					className="ds-site-nav-menu"
 					aria-label="Main"
 					hidden={!open}
-					onKeyDown={escape}
-					onBlur={left}
+					onKeyDown={closeOnEscape}
+					onBlur={closeOnLeave}
 				>
 					<ul>
 						<li>

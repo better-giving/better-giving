@@ -8,7 +8,8 @@ import {
 	EndedCampaignPage,
 	FORM_LOOK,
 	PlainDonationPage,
-	PlainPage
+	PlainPage,
+	SITE_CHROME_SHEETS
 } from '$lib/donate/plain-page';
 import { shareImage } from '$lib/page/image-src';
 import { checkSlug } from '$lib/page/slug';
@@ -137,7 +138,7 @@ export function meta({ loaderData }: Route.MetaArgs): Route.MetaDescriptors {
 }
 
 export function links(): Route.LinkDescriptors {
-	return donorPageLinks();
+	return donorPageLinks(SITE_CHROME_SHEETS);
 }
 
 export default function CampaignPage({ loaderData }: Route.ComponentProps) {
