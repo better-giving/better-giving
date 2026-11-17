@@ -1,5 +1,4 @@
-import { ErrorPanel } from '@better-giving/operator/components/shell/ErrorPanel';
-import { MarkedText } from '@better-giving/operator/marked-text.react';
+import { Button } from '@better-giving/operator/components/controls/Button';
 import type { ReactNode } from 'react';
 import {
 	isRouteErrorResponse,
@@ -14,7 +13,7 @@ import {
 } from 'react-router';
 import type { Route } from './+types/root';
 import { APP_NAME } from '$lib/admin/screen-title';
-import { LOGS_SAY_WHY } from '$lib/deployment-logs';
+import { ErrorState, errorTitle } from '$lib/error-state';
 // the operator stylesheet is not imported here, and that absence is the mechanism: the document
 // below renders the donor pages, `/donate` and each campaign's address, as well as every operator
 // screen, and the donation form's sheets are unlayered while every operator declaration is
@@ -72,8 +71,10 @@ export default function App() {
 const DONOR_PAGE_ROUTE_IDS: ReadonlySet<string> = new Set(['routes/donate', 'routes/$slug']);
 
 /**
- * the app's one error page, and it is on the root rather than on the protected layout
- * deliberately, so a failure behind the login reads the same as one anywhere.
+ * the error page of everything the operator shell does not frame: the donor pages, the screens
+ * outside the login, and a failure of the protected layout's own reading. a screen under the
+ * layout fails inside the shell (`ErrorBoundary` in ./routes/_app.tsx), in the same words, both
+ * drawn by `ErrorState` ($lib/error-state.tsx).
  *
  * an address matching no route matches nothing under `./routes/_app.tsx` either, so the gate never
  * runs for it and there is no session in the answer at all — which is what makes this reachable on
@@ -97,7 +98,7 @@ export function ErrorBoundary() {
 	// sheets — there are none here.
 	const sheet = <link rel="stylesheet" precedence="operator" href={operatorSheet} />;
 
-	// the tab names the face the panel draws, in $lib/admin/screen-title.ts's shape, and react
+	// the tab names the state drawn, in $lib/admin/screen-title.ts's shape, and react
 	// hoists the tag into the head as it does the sheet. it reads the project's name rather than the
 	// organisation's off the layout's match, because the layout's own read may be what failed and
 	// this page depends on no data. `<Meta />` draws no title over it: it reads no route beneath a
@@ -109,87 +110,37 @@ export function ErrorBoundary() {
 	const onDonorPage = useMatches().some((match) => DONOR_PAGE_ROUTE_IDS.has(match.id));
 	const tab = (face: string) => <title>{`${face} · ${onDonorPage ? 'Donate' : APP_NAME}`}</title>;
 
-	// the panel has three faces, and the 404 and the 4xx have a way out: an address that is not
-	// there, or a request the app refused, leaves a working deployment with somewhere to send
-	// anybody, while a deployment that would serve the next screen is the thing that failed.
-	// `ErrorPanel` draws the panel; the address is this app's and is stated here, because the part is
-	// a leaf shared with another surface whose route table is not this one's.
-	//
-	// `Link` and never a bare anchor: /admin is one document and a way out that reloads it throws
-	// away the whole client for a destination the router already has
-	// ($lib/admin/button-navigates.dom.spec.tsx).
-	//
-	// a donor holds no staff session, so on a donor page the way out is a sign-in screen they
-	// cannot pass and is not drawn at all.
-	const toForms = onDonorPage
-		? {}
-		: ({ wayOut: 'Go to forms', wayOutProps: { as: Link, to: '/admin/forms' } } as const);
-	if (status === 404) {
-		const title = 'No such page';
-		return (
-			<>
-				{sheet}
-				{tab(title)}
-				<ErrorPanel code="404" title={title} {...toForms}>
-					It may have been deleted, or the address may be wrong.
-				</ErrorPanel>
-			</>
-		);
-	}
-
 	// the failures able to reach here are written where the failure is known and mark their
 	// commands and variable names with backticks — the message for a pin that names no address
 	// names `BETTER_AUTH_URL` and how to set it ($lib/server/auth/pin.ts). react router hides the
 	// text of anything it did not expect, so the fallback is a state rather than a sentence
-	// somebody wrote for it.
+	// somebody wrote for it. a 4xx is the app answering, not failing: the form layer refuses a
+	// hand-built body with a 400 ($lib/server/conform.ts), and its sentence is drawn as page copy
+	// on every page this boundary replaces, a donor page included.
 	const message = isRouteErrorResponse(error) && typeof error.data === 'string' ? error.data : '';
 
-	// a 4xx is the app answering, not failing: the form layer refuses a hand-built body with a 400
-	// ($lib/server/conform.ts), and the page says what the status says. a string thrown with a 4xx
-	// is drawn as page copy on every page this boundary replaces, a donor page included, so a
-	// 4xx thrown anywhere under it is a sentence its reader will see.
-	if (status >= 400 && status < 500) {
-		const title = 'This request was refused';
-		return (
-			<>
-				{sheet}
-				{tab(title)}
-				<ErrorPanel code={`${status}`} title={title} {...toForms}>
-					<MarkedText
-						text={
-							message ||
-							`Nothing more is known about why. Go back and try again${onDonorPage ? '' : ', or go to forms'}.`
-						}
-					/>
-				</ErrorPanel>
-			</>
-		);
-	}
-
-	// a donor can do nothing with the sentence a failure was thrown with or with the deployment's
-	// logs — both are staff's — so on the donor's page the face says only that the page did not load
-	// and what the donor can do about it.
-	if (onDonorPage) {
-		const title = 'This donation page couldn’t load';
-		return (
-			<>
-				{sheet}
-				{tab(title)}
-				<ErrorPanel code="500" title={title}>
-					Please try again in a moment.
-				</ErrorPanel>
-			</>
-		);
-	}
-
-	const title = 'This deployment could not answer';
+	// the 404 alone has a way out, the dashboard, which every staff session may open. `Link` and
+	// never a bare anchor: /admin is one document and a way out that reloads it throws away the
+	// whole client for a destination the router already has ($lib/admin/button-navigates.dom.spec.tsx).
+	// a donor holds no staff session, so on a donor page it is a sign-in screen they cannot pass and
+	// is not drawn at all; and a donor is told only that the page did not load, never the
+	// deployment's sentence or its logs.
 	return (
-		<>
+		<main>
 			{sheet}
-			{tab(title)}
-			<ErrorPanel code="500" title={title}>
-				<MarkedText text={message || `Nothing more is known here. ${LOGS_SAY_WHY}`} />
-			</ErrorPanel>
-		</>
+			{tab(errorTitle(status, onDonorPage))}
+			<ErrorState
+				status={status}
+				message={message}
+				donor={onDonorPage}
+				way={
+					onDonorPage ? undefined : (
+						<Button as={Link} to="/admin" variant="primary">
+							Go to dashboard
+						</Button>
+					)
+				}
+			/>
+		</main>
 	);
 }

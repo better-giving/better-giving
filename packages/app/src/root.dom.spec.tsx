@@ -95,7 +95,7 @@ async function boundaryOverAction(thrown: unknown): Promise<HTMLElement> {
 }
 
 function code(root: HTMLElement): string | null | undefined {
-	return root.querySelector('.adm-num')?.textContent;
+	return root.querySelector('.ds-page-state-code')?.textContent;
 }
 
 it('draws a refused request with its own status and the reason it was refused', async () => {
@@ -103,17 +103,14 @@ it('draws a refused request with its own status and the reason it was refused', 
 
 	expect(code(root)).toBe('400');
 	expect(root.querySelector('h1')?.textContent).toBe('This request was refused');
-	expect(root.textContent).toContain('amount is not a number.');
+	expect(root.querySelector('[role="alert"]')?.textContent).toContain('amount is not a number.');
 });
 
-/** the deployment is answering, so a refusal has the same way out a missing address has. */
-it('offers a refused request the way out to forms', async () => {
+/** a refusal is drawn as an error is, with no action: going elsewhere does not change it. */
+it('offers a refused request no way out', async () => {
 	const root = await boundaryOver(data('`amount` is not a number.', { status: 400 }));
 
-	const ways = root.querySelectorAll('a, button');
-	expect(ways).toHaveLength(1);
-	expect(ways[0]?.textContent).toBe('Go to forms');
-	expect(ways[0]?.getAttribute('href')).toBe('/admin/forms');
+	expect(root.querySelectorAll('a, button')).toHaveLength(0);
 });
 
 /** an action's thrown `Response` is read as text, which is how the form layer's sentence arrives. */
@@ -124,15 +121,16 @@ it('draws the sentence a refused submission was thrown with', async () => {
 	expect(code(root)).toBe('400');
 	expect(root.querySelector('h1')?.textContent).toBe('This request was refused');
 	expect(root.textContent).toContain('__form names no form on this screen.');
-	expect(root.querySelector('a')?.getAttribute('href')).toBe('/admin/forms');
 });
 
-it('draws a missing address as before, with its way out', async () => {
+it('draws a missing address with the way to the dashboard', async () => {
 	const root = await boundaryOver(data(null, { status: 404 }));
 
 	expect(code(root)).toBe('404');
 	expect(root.querySelector('h1')?.textContent).toBe('No such page');
-	expect(root.querySelector('a')?.getAttribute('href')).toBe('/admin/forms');
+	expect(root.textContent).toContain('It may have been deleted, or the address may be wrong.');
+	const way = root.querySelector('a');
+	expect([way?.textContent, way?.getAttribute('href')]).toEqual(['Go to dashboard', '/admin']);
 });
 
 it('draws a thrown error that is no response as the deployment failing', async () => {
@@ -149,10 +147,16 @@ it('says nothing more is known when a refusal carries no sentence', async () => 
 
 	expect(code(root)).toBe('403');
 	expect(root.querySelector('h1')?.textContent).toBe('This request was refused');
-	expect(root.textContent).toContain(
-		'Nothing more is known about why. Go back and try again, or go to forms.'
+	expect(root.textContent).toContain('Nothing more is known about why. Go back and try again.');
+});
+
+it('names the log and the command that reads it when a failure carries no sentence', async () => {
+	const root = await boundaryOver(new Error('the database is not answering'));
+
+	expect(root.querySelector('[role="alert"]')?.textContent).toContain(
+		'Nothing more is known here. The app’s log has the cause:'
 	);
-	expect(root.querySelector('a')?.getAttribute('href')).toBe('/admin/forms');
+	expect(root.querySelector('code')?.textContent).toBe('docker compose logs app');
 });
 
 /** the tab names the failure the panel draws, in the shape every other screen's tab title takes. */
@@ -198,10 +202,9 @@ describe.each(DONOR_PAGES)('on the donor page $at', (donorPage) => {
 	it.each([
 		['a missing address', data(null, { status: 404 })],
 		['a refused request', data('`amount` is not a number.', { status: 400 })]
-	])('offers no way out to forms after %s', async (_face, thrown) => {
+	])('offers no way out to the dashboard after %s', async (_face, thrown) => {
 		const root = await boundaryOver(thrown, donorPage);
 
-		expect(root.querySelector('a[href="/admin/forms"]')).toBeNull();
 		expect(root.querySelectorAll('a, button')).toHaveLength(0);
 	});
 
@@ -210,7 +213,6 @@ describe.each(DONOR_PAGES)('on the donor page $at', (donorPage) => {
 		const root = await boundaryOver(data({ field: 'amount' }, { status: 403 }), donorPage);
 
 		expect(root.textContent).toContain('Nothing more is known about why. Go back and try again.');
-		expect(root.textContent).not.toContain('go to forms');
 	});
 });
 
