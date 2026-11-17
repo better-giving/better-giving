@@ -213,6 +213,15 @@ describe('what the screen is drawn from', () => {
 		expect(await read()).toBeNull();
 	});
 
+	it('states whether the organisation’s details are saved, which a save here needs', async () => {
+		const read = async () =>
+			((await (await get(deployer)).json()) as { hasProfile: boolean }).hasProfile;
+
+		expect(await read()).toBe(true);
+		await run(stmt('delete from org_profile'));
+		expect(await read()).toBe(false);
+	});
+
 	it('names the save that just landed, on the page it lands on', async () => {
 		const saved = await post(deployer, {
 			notification_email: 'ops@riverbanktrust.org',

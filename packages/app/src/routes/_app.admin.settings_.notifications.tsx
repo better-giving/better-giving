@@ -1,3 +1,4 @@
+import { Button } from '@better-giving/operator/components/controls/Button';
 import { Field } from '@better-giving/operator/components/forms/Field';
 import {
 	SettingsLayout,
@@ -7,7 +8,7 @@ import { Banner } from '@better-giving/operator/components/status/Banner';
 import { ORG_PROFILE_FIELD_RULES } from '@better-giving/operator/console/org-rules';
 import { useSaveState } from '@better-giving/operator/save-state.react';
 import { getFormProps } from '@conform-to/react';
-import { data, Form } from 'react-router';
+import { data, Form, href, Link } from 'react-router';
 import { z } from 'zod';
 import { ScreenHeading } from '$lib/admin/crumbs';
 import { savedSection } from '$lib/admin/saved-section';
@@ -52,7 +53,11 @@ const NOT_HERE =
 	`No page at ${SCREEN} for a member’s session. The organisation’s notification address is the ` +
 	'deployer’s: sign in with `ADMIN_PASSWORD` at /login.';
 
-/** an address saved ahead of the details: a profile row cannot exist without a legal name. */
+/**
+ * an address saved ahead of the details: a profile row cannot exist without a legal name. the
+ * screen offers no save until there is one, so this answers a save raced by a deleted row or a
+ * request built by hand.
+ */
 const NO_PROFILE_YET = 'Save the organisation details first, then the notification address.';
 
 const NOTIFICATIONS_FORM_ID = 'settings-notifications';
@@ -86,6 +91,7 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 	return data(
 		{
 			notificationEmail: state.profile?.notificationEmail ?? null,
+			hasProfile: state.profile !== null,
 			saved: savedSection(landed?.marker ?? null, ['notifications'] as const),
 			// the version the save is written against, carried back in the `<form>`.
 			version: orgProfileVersion(state.profile)
@@ -137,7 +143,7 @@ export function clientAction({ request, serverAction }: Route.ClientActionArgs) 
 }
 
 export default function Notifications({ loaderData, actionData }: Route.ComponentProps) {
-	const { notificationEmail: address, version } = loaderData;
+	const { notificationEmail: address, hasProfile, version } = loaderData;
 	const [form, fields] = useAdminForm(NOTIFICATIONS_FORM, actionData, {
 		defaultValue: { notification_email: address ?? '' }
 	});
@@ -159,35 +165,54 @@ export default function Notifications({ loaderData, actionData }: Route.Componen
 					<header className="ds-card-header">
 						<h2 id={`${form.id}-title`}>Notifications</h2>
 					</header>
-					<Form method="post" className="ds-card-body" {...getFormProps(form)}>
-						<input {...whichForm(NOTIFICATIONS_FORM.id)} />
-						<input {...recordVersion(version)} />
-						{/* read off the stored row rather than the box: what is dropped is decided by what is
-						    saved, and a box typed into and not saved reaches nobody yet either. */}
-						{address === null ? (
-							<Banner tone="attention" word="Nothing reaches you yet">
-								Alerts about gifts, refunds and dispute deadlines are dropped until an address is
-								saved here.
+					{hasProfile ? (
+						<>
+							<Form method="post" className="ds-card-body" {...getFormProps(form)}>
+								<input {...whichForm(NOTIFICATIONS_FORM.id)} />
+								<input {...recordVersion(version)} />
+								{/* read off the stored row rather than the box: what is dropped is decided by what is
+								    saved, and a box typed into and not saved reaches nobody yet either. */}
+								{address === null ? (
+									<Banner tone="attention" word="Nothing reaches you yet">
+										Alerts about gifts, refunds and dispute deadlines are dropped until an address
+										is saved here.
+									</Banner>
+								) : null}
+								<Field
+									{...marked(fields.notification_email)}
+									label="Notification email"
+									hint="Where this site reaches you about the gifts it takes and anything that goes wrong."
+									type="email"
+									autoComplete="email"
+									placeholder="alerts@better.giving"
+								/>
+								<FormRefusal errors={form.errors} />
+							</Form>
+							<footer className="ds-card-footer">
+								<SettingsSave
+									state={save}
+									form={form.id}
+									saveLabel="Save address"
+									onDiscard={() => form.reset()}
+								/>
+							</footer>
+						</>
+					) : (
+						<div className="ds-card-body">
+							<Banner
+								tone="attention"
+								word="Save the organisation’s details first"
+								actions={
+									<Button as={Link} to={href('/admin/settings/organisation')}>
+										Open Organisation details
+									</Button>
+								}
+							>
+								The notification address is saved with the organisation’s details, so it can be
+								added once they are.
 							</Banner>
-						) : null}
-						<Field
-							{...marked(fields.notification_email)}
-							label="Notification email"
-							hint="Where this site reaches you about the gifts it takes and anything that goes wrong."
-							type="email"
-							autoComplete="email"
-							placeholder="alerts@better.giving"
-						/>
-						<FormRefusal errors={form.errors} />
-					</Form>
-					<footer className="ds-card-footer">
-						<SettingsSave
-							state={save}
-							form={form.id}
-							saveLabel="Save address"
-							onDiscard={() => form.reset()}
-						/>
-					</footer>
+						</div>
+					)}
 				</section>
 			</SettingsLayout>
 		</>

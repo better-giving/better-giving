@@ -9,9 +9,12 @@ import Notifications from './_app.admin.settings_.notifications';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-/** the screen drawn with `address` stored, and its card headed Notifications. */
-function notificationsCard(address: string | null): HTMLElement {
-	const drawn = { notificationEmail: address, saved: null, version: 0 };
+/**
+ * the screen drawn with `address` stored, and its card headed Notifications — on a deployment whose
+ * organisation details are saved unless `hasProfile` says otherwise.
+ */
+function notificationsCard(address: string | null, hasProfile = true): HTMLElement {
+	const drawn = { notificationEmail: address, hasProfile, saved: null, version: 0 };
 	const Stub = createRoutesStub([
 		{
 			id: 'notifications',
@@ -81,5 +84,28 @@ describe('the notifications card', () => {
 		expect(save?.textContent).toBe('Save address');
 		expect(save?.getAttribute('form')).toBe(form?.id);
 		expect(save?.getAttribute('aria-disabled')).toBe('true');
+	});
+
+	// a profile row cannot exist without a legal name, so the action refuses a save made ahead of
+	// the details (./_app.admin.settings_.notifications.db.spec.ts). the screen says so up front.
+	it('sends the deployer to the organisation’s details first where none are saved', () => {
+		const notifications = notificationsCard(null, false);
+		const way = notifications.querySelector('.adm-banner a');
+
+		expect(notifications.querySelector('.adm-banner')?.textContent).toContain(
+			'Save the organisation’s details first'
+		);
+		expect([way?.getAttribute('href'), way?.textContent]).toEqual([
+			'/admin/settings/organisation',
+			'Open Organisation details'
+		]);
+	});
+
+	it('offers no save the server would refuse while no details are saved', () => {
+		const notifications = notificationsCard(null, false);
+
+		expect(notifications.querySelector('form')).toBeNull();
+		expect(notifications.querySelector('button[type="submit"]')).toBeNull();
+		expect(notifications.textContent).not.toContain('Nothing reaches you yet');
 	});
 });

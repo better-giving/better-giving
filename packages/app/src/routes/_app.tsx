@@ -23,6 +23,7 @@ import { STAFF_USER_ID } from '$lib/server/auth';
 import { staffGate } from '$lib/server/auth/gate';
 import { readSetupState } from '$lib/server/config/setup-state';
 import { database, platform, staff } from '../context';
+import { UnframedError } from '../unframed-error';
 import type { Route } from './+types/_app';
 
 // the layout every screen behind the login sits under, and where the session gate is mounted for
@@ -162,13 +163,16 @@ export default function ProtectedLayout({ loaderData }: Route.ComponentProps) {
  * a screen beneath that failed, drawn inside the frame so the rail stays: a 404 for a record that
  * is not there or a page a member may not open, and the 500 for a read that did not land.
  *
- * where this layout's own reading is what failed there is no frame to draw, and the error goes on
- * to ../root.tsx's boundary.
+ * where the layout has no reading — its own loader failed, or the gate threw before it ran, which
+ * react router hands to this boundary (react-router/docs/how-to/middleware.md, "next() and Error
+ * Handling") — there is no frame to draw, and it is the root's unframed page instead. never a
+ * rethrow: react's server render has no boundary to catch one, so the document request fails its
+ * render and leaves the page to react router's retry.
  */
 export function ErrorBoundary() {
 	const error = useRouteError();
 	const data = useRouteLoaderData<LayoutData>('routes/_app');
-	if (data === undefined) throw error;
+	if (data === undefined) return <UnframedError />;
 
 	const status = isRouteErrorResponse(error) ? error.status : 500;
 	const message = isRouteErrorResponse(error) && typeof error.data === 'string' ? error.data : '';
