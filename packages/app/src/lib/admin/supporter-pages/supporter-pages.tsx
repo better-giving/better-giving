@@ -309,7 +309,8 @@ export function SupporterPages({
 
 	return (
 		<Column wide>
-			<PageHeading title={SCREEN_TITLE} description={standfirst} />
+			<PageHeading title={SCREEN_TITLE} />
+			<p className="adm-hint">{standfirst}</p>
 			<SettingCard setting={setting} onSave={onSaveSetting} />
 			{pages.length === 0 ? (
 				<EmptyCard enabled={setting.enabled} mayChange={setting.mayChange} />
