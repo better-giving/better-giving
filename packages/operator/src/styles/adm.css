@@ -5105,6 +5105,13 @@
 		border-end-start-radius: inherit;
 		border-end-end-radius: inherit;
 	}
+
+	/* a company's image standing where nav-list-css draws a glyph. that sheet sizes and lifts only
+	   an `svg` first child (a registry gap: it has no image slot), so the image takes the mark box
+	   from `.adm-mark` and is lifted onto the label's first line here, as the svg is there. */
+	.adm-nav-image {
+		margin-block-start: calc((1lh - var(--admin-mark-size)) / 2);
+	}
 }
 
 @layer layout {

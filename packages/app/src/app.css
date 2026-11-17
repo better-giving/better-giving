@@ -10,6 +10,18 @@
 @import '@better-giving/operator/registry/styles/switch-css.css' layer(registry);
 @import '@better-giving/operator/registry/styles/state-card-css.css' layer(registry);
 @import '@better-giving/operator/registry/styles/dialog-css.css' layer(registry);
+@import '@better-giving/operator/registry/styles/lead-css.css' layer(registry);
+@import '@better-giving/operator/registry/styles/spinner-css.css' layer(registry);
+@import '@better-giving/operator/registry/styles/avatar-css.css' layer(registry);
+@import '@better-giving/operator/registry/styles/menu-css.css' layer(registry);
+@import '@better-giving/operator/registry/styles/bare-icon-button-css.css' layer(registry);
+@import '@better-giving/operator/registry/styles/nav-list-css.css' layer(registry);
+@import '@better-giving/operator/registry/styles/top-bar-css.css' layer(registry);
+@import '@better-giving/operator/registry/styles/site-nav-css.css' layer(registry);
+@import '@better-giving/operator/registry/styles/page-header-css.css' layer(registry);
+@import '@better-giving/operator/registry/styles/page-state-css.css' layer(registry);
+@import '@better-giving/operator/registry/styles/settings-layout-css.css' layer(registry);
+@import '@better-giving/operator/registry/styles/app-shell-css.css' layer(registry);
 @import '@better-giving/operator/styles/tokens.css';
 @import '@better-giving/operator/styles/base.css';
 @import '@better-giving/operator/styles/adm.css';
@@ -60,8 +72,8 @@
    `:root` (light, and dark under `.dark`, in ../../operator/src/registry/styles/themes/default.css),
    and being unlayered it outranks a `color-scheme` any of the layers sets; none sets one.
 
-   the registry's component sheets /admin draws with (button-css, badge-css, card-css, field-css,
-   select-css, switch-css, state-card-css and dialog-css, beside variables.css) are copied
+   the registry's component sheets /admin draws with (the ones imported above into `registry`,
+   beside variables.css, each after the sheets its usage note says it reads) are copied
    unlayered and imported into `registry`, between `base` and
    `elements`. so a `ds-*` class outranks the reset and the document defaults under it, and a rule
    of adm.css's outranks it: the registry's usage notes expect the page's own classes to be read

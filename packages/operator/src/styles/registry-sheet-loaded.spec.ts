@@ -57,7 +57,19 @@ const COMPONENT_SHEETS = [
 	'select-css',
 	'switch-css',
 	'state-card-css',
-	'dialog-css'
+	'dialog-css',
+	'lead-css',
+	'spinner-css',
+	'avatar-css',
+	'menu-css',
+	'bare-icon-button-css',
+	'nav-list-css',
+	'top-bar-css',
+	'site-nav-css',
+	'page-header-css',
+	'page-state-css',
+	'settings-layout-css',
+	'app-shell-css'
 ];
 
 /** the specifiers a sheet `@import`s into the `registry` layer. */
