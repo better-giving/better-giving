@@ -81,6 +81,14 @@ describe('the links', () => {
 		expect(brand?.querySelector('img')?.getAttribute('alt')).toBe('');
 	});
 
+	it('draws the name in its own box, carrying it whole in its title, so ./page.css can cut a long one', () => {
+		const long = 'Greater Philadelphia Community Food Bank';
+		const root = nav({ name: long, logo: { imageId: 'logo-1', width: 400, height: 400 } });
+		const name = root.querySelector('.ds-site-nav-brand > .page-site-name');
+		expect(name?.textContent).toBe(long);
+		expect(name?.getAttribute('title')).toBe(long);
+	});
+
 	it('lets a wordmark stand in for the name, carrying it as its alt', () => {
 		const root = nav({ logo: { imageId: 'logo-1', width: 800, height: 200 } });
 		const brand = root.querySelector('.ds-site-nav-brand');

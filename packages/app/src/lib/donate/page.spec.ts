@@ -631,14 +631,27 @@ describe('the site nav and the site footer', () => {
 	const CHROME = '.page > :is(.ds-site-nav-skip, .ds-site-nav, .ds-site-footer-compact)';
 
 	// they stand beside the ground (./page-root.tsx) and are the registry's to draw: this sheet
-	// gives them the page's face and nothing else.
+	// gives them the page's face, the logo's spacing, and the home link's shrink, and nothing else.
 	it('sets their face from the registry role, and nothing more', () => {
 		expect(declared(page, CHROME)).toEqual({ 'font-family': 'var(--font-body)' });
 		const others = page.filter(({ at }) => /\.ds-site-(?:nav|footer)/.test(at.at(-1) ?? ''));
 		expect(others.map(({ at }) => at.at(-1))).toEqual([
 			CHROME,
-			'.ds-site-nav-brand:has(> .page-site-logo)'
+			'.ds-site-nav-brand:has(> .page-site-logo)',
+			'.ds-site-nav-brand'
 		]);
+	});
+
+	// site-nav-css gives the home link no rule to shrink by, and a long name would push the menu
+	// button off a 375px screen; the name is cut to an ellipsis instead.
+	it('lets the home link shrink and cuts a long name to one line', () => {
+		expect(declared(page, '.ds-site-nav-brand')).toEqual({ 'min-inline-size': '0' });
+		expect(declared(page, '.page-site-name')).toEqual({
+			'min-inline-size': '0',
+			overflow: 'hidden',
+			'text-overflow': 'ellipsis'
+		});
+		expect(declared(page, '.page-site-logo')['max-inline-size']).toBe('100%');
 	});
 
 	it('sizes the logo in the nav’s own spacing steps, two of them off the name', () => {

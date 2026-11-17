@@ -81,8 +81,11 @@ export type PublicMessagesProps = {
 	readonly onShow: (donationId: string) => void;
 	/** absent where the route reads no page past the first, which the cap note then says. */
 	readonly older?: OlderMessages;
-	/** the pages above this one, as the route's handle states them ($lib/admin/crumbs.tsx). */
-	readonly crumbs?: readonly Crumb[];
+	/**
+	 * the pages above this one, as the route's handle states them ($lib/admin/crumbs.tsx). required:
+	 * `PageHeading` draws the standfirst only under a trail.
+	 */
+	readonly crumbs: readonly Crumb[];
 };
 
 const SCREEN_TITLE = 'Public messages';

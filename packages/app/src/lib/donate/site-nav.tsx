@@ -48,7 +48,8 @@ export const isWordmark = (logo: Pick<PageLogo, 'width' | 'height'>): boolean =>
 
 /**
  * the home link: a wordmark stands in for the name and carries it as its alt; a narrower logo
- * stands beside the name and says nothing of its own.
+ * stands beside the name and says nothing of its own. the name is its own box, carried whole in its
+ * title, so ./page.css can cut a long one to an ellipsis.
  */
 function Brand({ name, logo }: { readonly name: string; readonly logo: PageLogo | null }) {
 	const art = (alt: string) =>
@@ -68,7 +69,9 @@ function Brand({ name, logo }: { readonly name: string; readonly logo: PageLogo 
 			) : (
 				<>
 					{art('')}
-					{name}
+					<span className="page-site-name" title={name}>
+						{name}
+					</span>
 				</>
 			)}
 		</a>

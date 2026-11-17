@@ -690,7 +690,23 @@ body {
 	flex: none;
 	block-size: calc(var(--ds-spacing) * 8);
 	inline-size: auto;
+	max-inline-size: 100%;
 	object-fit: contain;
+}
+
+/* site-nav-css sets the home link `white-space: nowrap` and gives it no rule to shrink by, so a long
+   name would widen the bar past a 375px viewport and push the menu button, the only way to Donate
+   under the fold, off the screen. the link is a flex item at zero rather than the default minimum,
+   and the name inside it is cut to one line with an ellipsis, carried whole in its `title`
+   (./site-nav.tsx). */
+.ds-site-nav-brand {
+	min-inline-size: 0;
+}
+
+.page-site-name {
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
 }
 
 .page-body {

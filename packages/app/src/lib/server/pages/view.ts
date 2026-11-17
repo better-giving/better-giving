@@ -378,7 +378,7 @@ function chooserPhotos(
 }
 
 /**
- * the identity and the social links the org-info block states. the EIN is the served config's,
+ * the identity and the social links the site footer states. the EIN is the served config's,
  * which the ladder has already refused without. `org_profile` holds no donor-facing email — its
  * `notification_email` is operational — so none is drawn.
  */

@@ -18,6 +18,7 @@ import * as copy from './copy';
 import pageChrome from './page.css?url';
 import { PageRoot } from './page-root';
 import type { PageLogo, PageLook } from './page-view';
+import { SiteFooter, type SiteFooterInfo } from './site-footer';
 import { MAIN_ID, SiteNav } from './site-nav';
 
 // what every donor page route shares beyond the renderer: its stylesheets, and the plain page drawn
@@ -114,14 +115,15 @@ export function PlainDonationPage({
  * an ended campaign's address, and an ended supporter fundraiser's: the site nav as /donate draws
  * it, then the campaign's name, that it has ended, what the caller states under that, and the way
  * on to /donate — at the page's reading measure, in the campaign's own published look (`donorLook`
- * in $lib/server/pages/view.ts), with no donation box. a deployment with no organisation name yet
- * draws no home link in the nav, logo or not.
+ * in $lib/server/pages/view.ts), with no donation box — and the compact site footer under it. a
+ * deployment with no organisation name yet draws no home link in the nav, logo or not.
  */
 export function EndedCampaignPage({
 	name,
 	orgName,
 	logo,
 	look,
+	footer,
 	children
 }: {
 	readonly name: string;
@@ -129,6 +131,8 @@ export function EndedCampaignPage({
 	/** the organisation's logo, in the site nav; null or absent where it has none. */
 	readonly logo?: PageLogo | null | undefined;
 	readonly look: PageLook;
+	/** what the site footer states; absent, no footer is drawn. */
+	readonly footer?: SiteFooterInfo | undefined;
 	/** what the page states under the thanks and over the way on: an ended fundraiser's total. */
 	readonly children?: ReactNode;
 }) {
@@ -137,6 +141,7 @@ export function EndedCampaignPage({
 			brandColour={look.brandColour}
 			layout="plain"
 			header={<SiteNav name={orgName} logo={logo ?? null} current={false} />}
+			footer={footer === undefined ? undefined : <SiteFooter info={footer} />}
 		>
 			<main className="stage ended" id={MAIN_ID} tabIndex={-1}>
 				<h1>{copy.campaignEnded(name)}</h1>

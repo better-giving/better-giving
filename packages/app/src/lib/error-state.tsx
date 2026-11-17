@@ -1,12 +1,16 @@
 import { PageState } from '@better-giving/operator/components/shell/PageState';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
-import type { ReactNode } from 'react';
+import { type ReactNode, useEffect, useRef } from 'react';
 import { LOGS_SAY_WHY } from '$lib/deployment-logs';
 
 // what a failed answer draws in place of its page, inside the operator shell
 // (../routes/_app.tsx) or on its own (../root.tsx): page-state-css's 404 and 500, and for any other
 // refusal the same error layout under the status the answer carried, since `PageState` states
 // no code but 404 and 500.
+//
+// a boundary draws this only where a navigation landed on the failure, so drawn is landed: the
+// title takes focus as it is drawn, or focus would stay on the link that was pressed and a screen
+// reader would say nothing changed.
 
 /** the tab's words for `status`, which are the state's title. */
 export function errorTitle(status: number, donor: boolean): string {
@@ -39,25 +43,12 @@ export function ErrorState({
 				title={title}
 				body="It may have been deleted, or the address may be wrong."
 				action={way}
+				focusTitle
 			/>
 		);
 
 	if (status >= 400 && status < 500)
-		return (
-			// page-state-css's error layout under the answer's own status: `PageState`'s error variant
-			// is the 500 alone.
-			<div className="ds-page-state ds-page-state-error">
-				<p className="ds-page-state-code">{status}</p>
-				<div className="ds-page-state-message" role="alert">
-					<h1 className="ds-page-state-title">{title}</h1>
-					<p className="ds-page-state-body">
-						<MarkedText
-							text={message || 'Nothing more is known about why. Go back and try again.'}
-						/>
-					</p>
-				</div>
-			</div>
-		);
+		return <Refused status={status} title={title} message={message} />;
 
 	return (
 		<PageState
@@ -70,6 +61,40 @@ export function ErrorState({
 					<MarkedText text={message || `Nothing more is known here. ${LOGS_SAY_WHY}`} />
 				)
 			}
+			focusTitle
 		/>
+	);
+}
+
+/**
+ * page-state-css's error layout under the answer's own status: `PageState`'s error variant is the
+ * 500 alone. its title takes focus as `PageState`'s does, again whenever another refusal replaces it.
+ */
+function Refused({
+	status,
+	title,
+	message
+}: {
+	readonly status: number;
+	readonly title: string;
+	readonly message: string;
+}) {
+	const heading = useRef<HTMLHeadingElement>(null);
+	// keyed on the refusal that landed, so a second one in the same boundary moves focus again.
+	useEffect(() => {
+		heading.current?.focus();
+	}, [status, message]);
+	return (
+		<div className="ds-page-state ds-page-state-error">
+			<p className="ds-page-state-code">{status}</p>
+			<div className="ds-page-state-message" role="alert">
+				<h1 ref={heading} className="ds-page-state-title" tabIndex={-1}>
+					{title}
+				</h1>
+				<p className="ds-page-state-body">
+					<MarkedText text={message || 'Nothing more is known about why. Go back and try again.'} />
+				</p>
+			</div>
+		</div>
 	);
 }
