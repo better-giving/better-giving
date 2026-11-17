@@ -31,11 +31,7 @@ export function useCrumbs(): readonly Crumb[] {
 /**
  * a dashboard screen's heading: `PageHeading` with the trail the screen's route states and the
  * dashboard's router link, so a press on a crumb or an internal action stays in the running app.
- * a trail of one, a destination naming itself, is no trail and draws none.
  */
 export function ScreenHeading(props: Omit<ComponentProps<typeof PageHeading>, 'crumbs' | 'link'>) {
-	const crumbs = useCrumbs();
-	return (
-		<PageHeading {...props} crumbs={crumbs.length > 1 ? crumbs : undefined} link={RouterLink} />
-	);
+	return <PageHeading {...props} crumbs={useCrumbs()} link={RouterLink} />;
 }
