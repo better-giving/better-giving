@@ -1,5 +1,4 @@
 import { Field } from '@better-giving/operator/components/forms/Field';
-import { PageHeading } from '@better-giving/operator/components/shell/PageHeading';
 import {
 	SettingsLayout,
 	SettingsSave
@@ -10,8 +9,7 @@ import { useSaveState } from '@better-giving/operator/save-state.react';
 import { getFormProps } from '@conform-to/react';
 import { data, Form } from 'react-router';
 import { z } from 'zod';
-import { type CrumbHandle, useCrumbs } from '$lib/admin/crumbs';
-import { RouterLink } from '$lib/admin/router-link';
+import { type CrumbHandle, ScreenHeading } from '$lib/admin/crumbs';
 import { savedSection } from '$lib/admin/saved-section';
 import { screenTitle } from '$lib/admin/screen-title';
 import {
@@ -160,7 +158,7 @@ export default function Notifications({ loaderData, actionData }: Route.Componen
 
 	return (
 		<>
-			<PageHeading title={SCREEN_TITLE} crumbs={useCrumbs()} link={RouterLink} />
+			<ScreenHeading title={SCREEN_TITLE} />
 			<SettingsLayout>
 				<section className="ds-card" aria-labelledby={`${form.id}-title`}>
 					<header className="ds-card-header">

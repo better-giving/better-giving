@@ -4,7 +4,6 @@ import {
 	RepeatingRows,
 	type RowControl
 } from '@better-giving/operator/components/forms/RepeatingRows';
-import { PageHeading } from '@better-giving/operator/components/shell/PageHeading';
 import {
 	SettingsLayout,
 	SettingsSave
@@ -18,8 +17,7 @@ import { getFormProps } from '@conform-to/react';
 import { useEffect, useEffectEvent, useId, useState } from 'react';
 import { data, Form, useFetcher } from 'react-router';
 import { z } from 'zod';
-import { type CrumbHandle, useCrumbs } from '$lib/admin/crumbs';
-import { RouterLink } from '$lib/admin/router-link';
+import { type CrumbHandle, ScreenHeading } from '$lib/admin/crumbs';
 import { savedSection } from '$lib/admin/saved-section';
 import { screenTitle } from '$lib/admin/screen-title';
 import { BannerPicker } from '$lib/admin/settings/banner-picker';
@@ -284,11 +282,9 @@ function listed(errors: Readonly<Record<string, string>>): Record<string, string
 export default function OrganisationDetails({ loaderData, actionData }: Route.ComponentProps) {
 	return (
 		<>
-			<PageHeading
+			<ScreenHeading
 				title={SCREEN_TITLE}
 				description="Every receipt carries these. Filled from the IRS list; check the name’s capitals. No form goes live until the EIN and registered name are in."
-				crumbs={useCrumbs()}
-				link={RouterLink}
 			/>
 			<SettingsLayout>
 				<DetailsCard data={loaderData} actionData={actionData} />

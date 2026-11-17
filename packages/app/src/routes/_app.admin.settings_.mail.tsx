@@ -2,7 +2,6 @@ import { Button } from '@better-giving/operator/components/controls/Button';
 import { CodeSlab } from '@better-giving/operator/components/data/CodeSlab';
 import { Field } from '@better-giving/operator/components/forms/Field';
 import { StatedValue } from '@better-giving/operator/components/forms/StatedValue';
-import { PageHeading } from '@better-giving/operator/components/shell/PageHeading';
 import { SettingsLayout } from '@better-giving/operator/components/shell/SettingsLayout';
 import { Banner } from '@better-giving/operator/components/status/Banner';
 import { EMAIL, MAX_EMAIL, REQUIRED } from '@better-giving/operator/console/org-rules';
@@ -11,8 +10,7 @@ import { MarkedText } from '@better-giving/operator/marked-text.react';
 import { getFormProps } from '@conform-to/react';
 import { useFetcher } from 'react-router';
 import { z } from 'zod';
-import { type CrumbHandle, useCrumbs } from '$lib/admin/crumbs';
-import { RouterLink } from '$lib/admin/router-link';
+import { type CrumbHandle, ScreenHeading } from '$lib/admin/crumbs';
 import { screenTitle } from '$lib/admin/screen-title';
 import { marked, settingsCrumbs } from '$lib/admin/settings/settings-card';
 import { formPress } from '$lib/admin/unreached';
@@ -128,7 +126,7 @@ export default function Mail({ loaderData }: Route.ComponentProps) {
 	const { mail, notificationEmail } = loaderData;
 	return (
 		<>
-			<PageHeading title={SCREEN_TITLE} crumbs={useCrumbs()} link={RouterLink} />
+			<ScreenHeading title={SCREEN_TITLE} />
 			<SettingsLayout>
 				<section className="ds-card" aria-labelledby="settings-mail-title">
 					<header className="ds-card-header">

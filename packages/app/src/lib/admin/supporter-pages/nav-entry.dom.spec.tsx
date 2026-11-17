@@ -1,11 +1,11 @@
-import { AppShell } from '@better-giving/operator/components/shell/AppShell';
+import { Shell } from '@better-giving/operator/components/shell/Shell';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { expect, it, onTestFinished } from 'vitest';
 import { DESTINATION_GROUPS, destinationGroupsFor } from '../destinations';
 
-// the Supporter pages cell as the shell draws it: in the column, left off the phone's bar, and on
-// the More sheet a press on More opens. ../destinations.spec.ts holds the entry's own fields.
+// the Supporter pages row as the shell draws it: in the sidebar after Campaigns, and in the
+// phone's drawer the same. ../destinations.spec.ts holds the entry's own fields.
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -15,14 +15,18 @@ function mount(deployer: boolean): HTMLElement {
 	const root = createRoot(host);
 	act(() =>
 		root.render(
-			<AppShell
-				org="Harbor Light"
+			<Shell
+				orgName="Harbor Light"
+				home={{ href: '/admin', label: 'Dashboard' }}
 				groups={destinationGroupsFor(deployer)}
-				current="Dashboard"
-				wayOut={null}
+				current={{ label: 'Dashboard', kind: 'page' }}
+				staff={{ name: 'Nadia Hart', email: 'nadia@harborlight.example' }}
+				donationPage="/donate"
+				editDonationPage="/admin/donation-page"
+				onSignOut={() => {}}
 			>
 				<p>the screen</p>
-			</AppShell>
+			</Shell>
 		)
 	);
 	onTestFinished(() => {
@@ -32,44 +36,34 @@ function mount(deployer: boolean): HTMLElement {
 	return host;
 }
 
-const railCell = (host: HTMLElement, label: string) =>
-	[...host.querySelectorAll('.adm-rail__cells a')].find(
-		(a) => a.querySelector('.adm-dest__full')?.textContent === label
-	) ?? null;
-
-it('draws Supporter pages in the column, left to the More sheet on the bar', () => {
-	const host = mount(true);
-	const cell = railCell(host, 'Supporter pages');
-
-	expect(cell?.getAttribute('href')).toBe('/admin/supporter-pages');
-	expect(cell?.querySelector('.adm-dest__short')?.textContent).toBe('Supporter');
-	expect(cell?.classList.contains('adm-dest--offbar')).toBe(true);
-	expect(
-		[...host.querySelectorAll('.adm-rail__cells a:not(.adm-dest--offbar)')].map(
-			(a) => a.querySelector('.adm-dest__full')?.textContent
-		)
-	).toEqual(['Dashboard', 'Campaigns', 'Donors', 'Gifts']);
-});
-
-it('lists Supporter pages first on the More sheet, before Donation forms', async () => {
-	const host = mount(true);
-	const more = host.querySelector<HTMLButtonElement>('.adm-rail__more');
-	await act(async () => more?.click());
-	const sheet = document.querySelector('.adm-moresheet__cells');
-	const labels = [...(sheet?.querySelectorAll('a') ?? [])].map(
-		(a) => a.querySelector('.adm-dest__full')?.textContent
+/** the labels of the rows in `place`, in order: the sidebar or the drawer. */
+const rows = (host: HTMLElement, place: '.ds-shell-sidebar' | '.ds-shell-drawer') =>
+	[...host.querySelectorAll(`${place} nav[aria-label="Sidebar"] a.ds-nav-link`)].map(
+		(a) => a.querySelector('.ds-nav-label')?.textContent
 	);
 
-	expect(labels[0]).toBe('Supporter pages');
-	expect(labels).toContain('Donation forms');
-	expect(labels.indexOf('Supporter pages')).toBeLessThan(labels.indexOf('Donation forms'));
+it('draws Supporter pages right after Campaigns, at its own address', () => {
+	const host = mount(true);
+	const labels = rows(host, '.ds-shell-sidebar');
+	const row = [...host.querySelectorAll('.ds-shell-sidebar a.ds-nav-link')].find(
+		(a) => a.querySelector('.ds-nav-label')?.textContent === 'Supporter pages'
+	);
+
+	expect(row?.getAttribute('href')).toBe('/admin/supporter-pages');
+	expect(labels.indexOf('Supporter pages')).toBe(labels.indexOf('Campaigns') + 1);
 });
 
-it('is drawn for a member as for the deployer, and leaves the deployer-only cells as they were', () => {
-	const host = mount(false);
+it('draws it in the phone’s drawer as in the sidebar', () => {
+	const host = mount(true);
 
-	expect(railCell(host, 'Supporter pages')).not.toBeNull();
-	expect(railCell(host, 'Settings')).toBeNull();
-	expect(railCell(host, 'Payments')).toBeNull();
+	expect(rows(host, '.ds-shell-drawer')).toContain('Supporter pages');
+});
+
+it('is drawn for a member as for the deployer, and leaves the deployer-only rows as they were', () => {
+	const labels = rows(mount(false), '.ds-shell-sidebar');
+
+	expect(labels).toContain('Supporter pages');
+	expect(labels).not.toContain('Settings');
+	expect(labels).not.toContain('Payments');
 	expect(destinationGroupsFor(true)).toEqual(DESTINATION_GROUPS);
 });

@@ -10,17 +10,16 @@ import { handle as newProgramHandle } from '../../routes/_app.admin.programs.new
 import { handle as recurringHandle } from '../../routes/_app.admin.recurring.$id';
 import { handle as destinationHandle } from '../../routes/_app.admin.integrations.webhooks.$id';
 import { handle as newDestinationHandle } from '../../routes/_app.admin.integrations.webhooks.new';
-import { ScreenCrumbs } from './crumbs';
+import { ScreenHeading } from './crumbs';
 
 // the trail each screen standing under a section states, and what a press on its way back does.
 //
 // the trail is read off the matched route's `handle` (./crumbs.tsx), so a case mounts each screen's
 // real `handle` under its real address with the loader data that screen reads, and asserts what a
-// reader meets: the section first and linked, the screen itself last and not. the screen draws none
-// of it — the layout's top strip does, and ../../routes/_app.dom.spec.tsx holds which screens it
-// carries a trail over.
+// reader meets: the section first and linked, the screen itself last and not. the screen draws it
+// in its heading, `ScreenHeading`.
 //
-// the press is the same argument as ./rail-navigates.dom.spec.tsx, one part along. `Breadcrumbs` is
+// the press is the same argument as ./rail-navigates.dom.spec.tsx, one part along. `PageHeading` is
 // packages/operator's and takes what it is drawn as as a prop; mounted without one it draws a plain
 // anchor carrying the same address, and every press back then throws away the running application
 // and fetches the section off the network again. nothing in the markup tells the two apart, so the
@@ -59,7 +58,12 @@ type Screen = {
 /** one screen under its address, with the section it names standing beside it to be arrived at. */
 function screen({ path, at, handle, loaderData, section }: Screen): Promise<HTMLElement> {
 	const Stub = createRoutesStub([
-		{ path, handle, loader: () => loaderData ?? null, Component: ScreenCrumbs },
+		{
+			path,
+			handle,
+			loader: () => loaderData ?? null,
+			Component: () => <ScreenHeading title="the screen" />
+		},
 		{ path: section, Component: () => <p>arrived</p> }
 	]);
 	return mount(<Stub initialEntries={[at]} />);

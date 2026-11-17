@@ -13,7 +13,13 @@ const layout = (orgName: string | null): LayoutMatch => ({
 	params: {},
 	pathname: '/admin',
 	meta: [],
-	loaderData: { orgName, deployer: true, viewerZone: null }
+	loaderData: {
+		orgName,
+		orgLogo: null,
+		staff: { name: 'Nadia Hart', email: 'nadia@hope.example' },
+		deployer: true,
+		viewerZone: null
+	}
 });
 
 describe('a screen title', () => {
