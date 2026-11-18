@@ -15,7 +15,7 @@ describe('a page state', () => {
 		});
 
 		const state = root.querySelector('.ds-page-state');
-		expect(state?.className).toBe('ds-page-state');
+		expect(state?.className).toBe('ds-page-state adm-pagestate');
 		expect(state?.querySelector('.ds-page-state-title')?.tagName).toBe('H2');
 		expect(state?.querySelector('.ds-page-state-code')).toBeNull();
 		expect(state?.querySelector('.ds-page-state-actions')).toBeNull();
@@ -47,7 +47,7 @@ describe('a page state', () => {
 		});
 
 		const state = root.querySelector('.ds-page-state');
-		expect(state?.className).toBe('ds-page-state ds-page-state-error');
+		expect(state?.className).toBe('ds-page-state ds-page-state-error adm-pagestate');
 		expect(state?.firstElementChild?.textContent).toBe('500');
 		const alert = state?.querySelector('[role="alert"]');
 		expect(alert?.className).toBe('ds-page-state-message');
@@ -111,6 +111,7 @@ describe('a page state', () => {
 		await act(async () => {});
 
 		const state = root.querySelector('.ds-page-state-loading');
+		expect(state?.classList.contains('adm-pagestate')).toBe(true);
 		expect(state?.getAttribute('role')).toBe('status');
 		expect(state?.getAttribute('aria-live')).toBe('polite');
 		expect(state?.querySelector('.ds-spinner')?.getAttribute('aria-hidden')).toBe('true');

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { rulesIn, sheet } from './sheet-rule.testing';
+import { ruleOf, rulesIn, sheet } from './sheet-rule.testing';
 
 // what ./adm.css adds to page-state-css (../components/shell/PageState.jsx).
 
@@ -18,5 +18,23 @@ describe('a page state’s title taking focus', () => {
 
 	it('draws no ring', () => {
 		expect(rule?.stated.get('box-shadow')).toBe('none');
+	});
+});
+
+// page-state-css centres the state in what `<main>` gives it by `flex: 1` (app-shell-css's
+// `.ds-shell-main` is a flex column), and a screen whose state stands under its own header in the
+// measured column (`Column` in ../components/shell/Layout.jsx) puts it one box further in, where
+// nothing grows: the state then sits at the top. a column holding one fills what main gives it and
+// becomes a flex column, so the header keeps its own height above and the state takes the rest.
+describe('a column holding a page state', () => {
+	const column = ruleOf(css, '.adm-column:has(> .adm-pagestate)');
+
+	it('fills what main gives it', () => {
+		expect(column.get('flex')).toBe('1 1 auto');
+	});
+
+	it('lets the state grow into the rest, under the header', () => {
+		expect(column.get('display')).toBe('flex');
+		expect(column.get('flex-direction')).toBe('column');
 	});
 });

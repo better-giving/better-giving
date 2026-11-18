@@ -55,7 +55,7 @@ function Stated(props) {
 
 	if (variant === 'error')
 		return (
-			<div className="ds-page-state ds-page-state-error">
+			<div className="ds-page-state ds-page-state-error adm-pagestate">
 				<p className="ds-page-state-code">500</p>
 				{/* the code stays outside the alert, so it is not read as part of it. */}
 				<div className="ds-page-state-message" role="alert">
@@ -64,7 +64,7 @@ function Stated(props) {
 			</div>
 		);
 	return (
-		<div className="ds-page-state">
+		<div className="ds-page-state adm-pagestate">
 			{variant === 'not-found' ? <p className="ds-page-state-code">404</p> : null}
 			{words}
 			{action === undefined ? null : <div className="ds-page-state-actions">{action}</div>}
@@ -79,7 +79,11 @@ function Loading({ label }) {
 	const [said, setSaid] = useState('');
 	useEffect(() => setSaid(label), [label]);
 	return (
-		<div className="ds-page-state ds-page-state-loading" role="status" aria-live="polite">
+		<div
+			className="ds-page-state ds-page-state-loading adm-pagestate"
+			role="status"
+			aria-live="polite"
+		>
 			<span className="ds-spinner" aria-hidden="true" />
 			<span>{said}</span>
 		</div>

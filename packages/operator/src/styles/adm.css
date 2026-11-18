@@ -4793,6 +4793,17 @@
 		max-inline-size: var(--admin-measure-column-wide);
 	}
 
+	/* page-state-css centres a state by growing it in `.ds-shell-main`'s flex column, and a state
+	   under a screen's own header stands in this column instead, where nothing grows and it sits at
+	   the top. a column holding one fills what main gives it and lays its items in a flex column, so
+	   the header keeps its own height and the state's own `flex: 1` takes the rest; the stack's gap
+	   still stands between them. ./page-state.spec.ts pins it. */
+	.adm-column:has(> .adm-pagestate) {
+		display: flex;
+		flex: 1 1 auto;
+		flex-direction: column;
+	}
+
 	/* a quiet control at the start of a group's own row of presses (`Grouped` in
 	   packages/operator/src/components/shell/Layout.jsx) aligns by its word rather than by its box:
 	   the row always starts at the column's edge, under the labels of the boxes above it — the API
