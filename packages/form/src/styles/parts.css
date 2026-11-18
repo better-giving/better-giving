@@ -1780,7 +1780,7 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 /*
  * the action without the registry's class, drawn here from the same registry variables. every
  * action the element and the react card draw carries it (`REGISTRY_CLASS` in ../parts.ts); the one
- * that does not is an ended campaign's link on to /donate (`EndedCampaignPage` in
+ * that does not is an ended campaign's link on to `/` (`EndedCampaignPage` in
  * packages/app/src/lib/donate/plain-page.tsx), which is never busy.
  */
 [part~='action']:where(:not(.ds-btn)) {

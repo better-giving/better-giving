@@ -10,7 +10,7 @@
  * **the folds and the jobs are two lists, and {@link SETUP_JOBS} is the shorter one.** a fold is
  * somewhere an operator opens and edits; a job is something a deployment's set-up is read as
  * unfinished without. `sites` is a fold and no job: a deployment with no website of its own still
- * takes gifts, on the donation page it serves at /donate (AGENTS.md → Product surface). so an empty
+ * takes gifts, on the donation page it serves at `/` (AGENTS.md → Product surface). so an empty
  * list is a list nobody has added to rather than set-up left unfinished, and reaching for the six
  * where the five are meant reads a working deployment as unfinished for as long as the
  * organisation has no website.
