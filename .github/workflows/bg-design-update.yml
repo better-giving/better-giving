@@ -8,15 +8,28 @@
 # Needs: Settings → Actions → General → "Allow GitHub Actions to create and
 # approve pull requests".
 #
-# Checks on the PR: a push or PR made with the default GITHUB_TOKEN starts no
-# other workflows, so your CI and design-check never run on the update PR and
-# required checks stay "Expected". Add a repo secret DESIGN_REGISTRY_PR_TOKEN (a
+# Checks on the PR: a PR opened or updated with the default GITHUB_TOKEN does
+# create runs of your CI and design-check, but they wait for approval: a user
+# with write access must choose "Approve workflows to run" on the PR, and required
+# checks stay "Expected" until then. Add a repo secret DESIGN_REGISTRY_PR_TOKEN (a
 # fine-grained PAT or GitHub App token with contents + pull requests write) and
-# the push and the PR use it instead, which does start them. Issues are always
-# listed, opened and closed with the default GITHUB_TOKEN (issues: write below),
-# so this token needs no issues permission. The checkout keeps no token in git
-# config, so the registry's CLI, which the job downloads and runs, cannot read
-# it; git is given the token only in the step that pushes.
+# the push and the PR use it instead, which starts them without approval. Issues
+# are always listed, opened and closed with the default GITHUB_TOKEN (issues:
+# write below), so this token needs no issues permission.
+#
+# Two jobs. "update" downloads the registry's CLI, checks it against the sha256
+# in the registry's index.json and runs it with contents: read, no secrets and no
+# write permission. It hands over an artifact: a patch of the item changes, the
+# CLI's output and a version. "open-pr" holds the tokens and runs none of the
+# registry's code. It validates everything it takes from the artifact (the
+# patch may only touch the item directory and bg-design.json, the version must
+# be a bare version, the output goes in the PR body inside a fence) and takes
+# the CLI pin from its own download of index.json, never from the artifact. The
+# hash comes from the same registry host as the CLI, so it catches a CLI that
+# does not match its index, not a host that serves both.
+#
+# One run at a time: a scheduled and a manual run started together would both
+# push the update branch, and the second would fail to lock its ref.
 #
 # CLI pins: an app that pins the CLI in its own workflows (a versioned URL,
 # /registry/cli/<version>/cli.mjs, and its sha256; see the README) keeps the
@@ -49,9 +62,12 @@ on:
     types: [design-registry-release]
 
 permissions:
-  contents: write
-  pull-requests: write
-  issues: write
+  contents: read
+
+# one run at a time; a queued run waits instead of cancelling the one pushing
+concurrency:
+  group: bg-design-update
+  cancel-in-progress: false
 
 env:
   REGISTRY: https://design.better.giving/registry
@@ -62,6 +78,91 @@ jobs:
   update:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.update.outputs.version }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+      - name: Fetch the CLI
+        run: |
+          set -euo pipefail
+          handoff="$RUNNER_TEMP/handoff"
+          mkdir -p "$handoff"
+          curl --fail --silent --show-error --location "${REGISTRY%/}/index.json" --output "$RUNNER_TEMP/index.json"
+          # the CLI the index lists, at its versioned URL, with the sha256 it
+          # publishes; nothing from the index but that shape is used
+          listed=$(node -e '
+            const { cli } = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
+            const ok = cli
+              && typeof cli.version === "string" && /^\d+\.\d+\.\d+$/.test(cli.version)
+              && typeof cli.url === "string" && cli.url === `cli/${cli.version}/cli.mjs`
+              && typeof cli.sha256 === "string" && /^[0-9a-f]{64}$/.test(cli.sha256);
+            if (!ok) {
+              console.error("the registry index lists no usable cli entry");
+              process.exit(1);
+            }
+            console.log(cli.url, cli.sha256);
+          ' "$RUNNER_TEMP/index.json")
+          read -r cli_url cli_sha <<< "$listed"
+          cli="$RUNNER_TEMP/bg-design.mjs"
+          curl --fail --silent --show-error --location "${REGISTRY%/}/${cli_url}" --output "$cli"
+          printf '%s  %s\n' "$cli_sha" "$cli" | sha256sum --check --strict -
+      - name: Take new versions
+        id: update
+        working-directory: ${{ env.APP_DIR }}
+        run: |
+          set -uo pipefail
+          handoff="$RUNNER_TEMP/handoff"
+          cli="$RUNNER_TEMP/bg-design.mjs"
+          # no pipe, so the CLI's own exit code is the one tested
+          node "$cli" update --registry "$REGISTRY" > "$handoff/update.txt" 2>&1
+          code=$?
+          cat "$handoff/update.txt"
+          # 0 = updated, 3 = finished but skipped locally edited items (listed in
+          # the PR). Anything else (1 runtime error, 2 usage) is a failure.
+          case "$code" in
+            0|3) ;;
+            *) echo "::error::bg-design update failed with exit code $code"; exit 1 ;;
+          esac
+          version=$(node -p 'require("./bg-design.json").registryVersion') || exit 1
+          # the version goes into a commit message and a PR title
+          case "$version" in
+            ""|*[!0-9A-Za-z._+-]*) echo "::error::bg-design.json has an unusable registryVersion"; exit 1 ;;
+          esac
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Stage the item update
+        run: |
+          set -euo pipefail
+          handoff="$RUNNER_TEMP/handoff"
+          # an empty patch means no item changed; no rename detection, so every
+          # path open-pr checks is a plain add, change or delete
+          git add -A
+          git diff --cached --binary --no-renames > "$handoff/items.patch"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: bg-design-update
+          path: ${{ runner.temp }}/handoff
+          if-no-files-found: error
+          retention-days: 1
+
+  # holds the tokens and runs none of the registry's code: it checks what the
+  # update job handed over, applies the item patch, takes the CLI pin from its
+  # own download of the index, then commits, pushes and opens the PR or issue
+  open-pr:
+    needs: update
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -72,39 +173,86 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
-      - name: Take new versions
-        id: update
-        working-directory: ${{ env.APP_DIR }}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: bg-design-update
+          path: ${{ runner.temp }}/handoff
+      - name: Check the handoff
+        env:
+          VERSION: ${{ needs.update.outputs.version }}
         run: |
-          set -uo pipefail
-          cli="$RUNNER_TEMP/bg-design.mjs"
-          curl --fail --silent --show-error --location "${REGISTRY%/}/cli.mjs" --output "$cli"
-          # no pipe, so the CLI's own exit code is the one tested
-          node "$cli" update --registry "$REGISTRY" > "$RUNNER_TEMP/update.txt" 2>&1
-          code=$?
-          cat "$RUNNER_TEMP/update.txt"
-          # 0 = updated, 3 = finished but skipped locally edited items (listed in
-          # the PR). Anything else (1 runtime error, 2 usage) is a failure.
-          case "$code" in
-            0|3) ;;
-            *) echo "::error::bg-design update failed with exit code $code"; exit 1 ;;
-          esac
-          version=$(node -p 'require("./bg-design.json").registryVersion') || exit 1
-          echo "version=$version" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          handoff="$RUNNER_TEMP/handoff"
+          # the version goes into a commit message and a PR title
+          [[ $VERSION =~ ^[0-9A-Za-z._+-]+$ ]] || { echo "::error::the update job's version is not a plain version"; exit 1; }
+          [ -s "$handoff/items.patch" ] || exit 0
+          # first filter: the update job uses no rename detection, so a patch
+          # with a rename or copy header is forged
+          if grep -qE '^(rename|copy) (from|to|old|new) |^similarity index ' "$handoff/items.patch"; then
+            echo "::error::the item update renames or copies a file; not pushing it"
+            exit 1
+          fi
+          # the check that counts judges the result, not the patch text: apply it
+          # to a scratch index (this checkout stays untouched) and read back what
+          # changed against HEAD, every path and mode NUL separated and whole
+          index="$RUNNER_TEMP/check.index"
+          rm -f "$index"
+          GIT_INDEX_FILE="$index" git read-tree HEAD
+          # a patch that does not apply is refused below, after the item directory
+          # is checked, so the first thing wrong with it is the one reported
+          apply_error=""
+          : > "$RUNNER_TEMP/changes.bin"
+          if GIT_INDEX_FILE="$index" git apply --cached "$handoff/items.patch" 2> "$RUNNER_TEMP/apply.err"; then
+            GIT_INDEX_FILE="$index" git diff --cached --no-renames --raw -z HEAD > "$RUNNER_TEMP/changes.bin"
+          else
+            apply_error=$(tr '\n' ' ' < "$RUNNER_TEMP/apply.err")
+          fi
+          # only the item directory and the lock may change, both read from this
+          # checkout, never from the artifact, and only as regular files
+          APPLY_ERROR="$apply_error" node -e '
+            const fs = require("node:fs");
+            const path = require("node:path").posix;
+            const app = process.env.APP_DIR;
+            const lock = JSON.parse(fs.readFileSync(`${app}/bg-design.json`, "utf8"));
+            // a dir written with a trailing slash ("src/ui/") names the same directory
+            const dir = typeof lock.dir === "string" ? path.normalize(path.join(app, lock.dir.replace(/\/+$/, ""))) : "";
+            const usable = dir && dir !== "." && !path.isAbsolute(dir) && !dir.startsWith("..") && !/^\.git(hub)?(\/|$)/.test(dir);
+            const fail = (m) => { console.error(`::error::${m}`); process.exit(1); };
+            if (!usable) fail("bg-design.json names no usable item directory");
+            if (process.env.APPLY_ERROR) fail(`the item update does not apply: ${process.env.APPLY_ERROR}`);
+            const allowed = (p) => p === path.normalize(path.join(app, "bg-design.json")) || (p.startsWith(`${dir}/`) && !p.split("/").includes(".."));
+            const tokens = fs.readFileSync(process.argv[1], "latin1").split("\0");
+            const text = (s) => Buffer.from(s, "latin1").toString("utf8");
+            const changes = [];
+            for (let i = 0; i < tokens.length; i += 2) {
+              if (!tokens[i]) continue;
+              const m = /^:(\d{6}) (\d{6}) [0-9a-f]+ [0-9a-f]+ ([A-Z])\d*$/.exec(tokens[i]);
+              if (!m || tokens[i + 1] === undefined) fail("the item update has an entry this check cannot read");
+              changes.push({ mode: m[2], status: m[3], path: text(tokens[i + 1]) });
+            }
+            const bad = changes.filter((c) => !allowed(c.path));
+            if (bad.length) fail(`the item update touches ${bad.length} path(s) outside ${dir}/ and bg-design.json, for example ${JSON.stringify(bad[0].path)}; not pushing it`);
+            // a deleted entry has mode 000000; anything else must be a regular file
+            const odd = changes.filter((c) => c.status !== "D" && c.mode !== "100644" && c.mode !== "100755");
+            if (odd.length) fail(`the item update has a mode other than 100644 or 100755 (a symlink or submodule, say) at ${JSON.stringify(odd[0].path)}; not pushing it`);
+          ' "$RUNNER_TEMP/changes.bin"
       - name: Find the CLI pin
         run: |
           set -euo pipefail
-          rm -f "$RUNNER_TEMP/pin.txt" "$RUNNER_TEMP/pin.behind" "$RUNNER_TEMP/pin.version"
+          pin_dir="$RUNNER_TEMP/pin"
+          mkdir -p "$pin_dir"
+          rm -f "$pin_dir"/pin.txt "$pin_dir"/pin.behind "$pin_dir"/pin.version "$pin_dir"/pin-moved.txt "$pin_dir"/index.json
           mapfile -d '' files < <(grep -rlZE '#[[:space:]]*bg-design-cli-pin' .github/workflows 2>/dev/null || true)
           if [ "${#files[@]}" -eq 0 ]; then
             echo "no workflow carries a bg-design-cli-pin line"
             exit 0
           fi
-          # nothing about a pin may stop the item update: a pin that cannot be
-          # read is a warning, and without pin.txt the PR step leaves pin issues alone
-          if ! curl --fail --silent --show-error --location "${REGISTRY%/}/index.json" --output "$RUNNER_TEMP/index.json"; then
-            echo "::warning::the registry index could not be read for the CLI pin; pins left alone"
-            exit 0
+          # the pin comes from this job's own download of the index, never from
+          # the artifact; a failed download stops the job before anything is
+          # pushed, and the next run tries again
+          if ! curl --fail --silent --show-error --location "${REGISTRY%/}/index.json" --output "$pin_dir/index.json"; then
+            echo "::error::the registry index could not be downloaded for the CLI pin; nothing was pushed, the next run tries again"
+            exit 1
           fi
           # the rewrite: a marked line holding /cli/<version>/cli.mjs names the
           # pinned version; when the index's differs, that URL and the sha256 on
@@ -161,27 +309,30 @@ jobs:
           process.exit(behind ? 10 : 0);
           JS
           rc=0
-          node "$RUNNER_TEMP/pin.mjs" "$RUNNER_TEMP/index.json" "${files[@]}" > "$RUNNER_TEMP/pin.txt" 2> "$RUNNER_TEMP/pin.err" || rc=$?
-          cat "$RUNNER_TEMP/pin.txt"
+          node "$RUNNER_TEMP/pin.mjs" "$pin_dir/index.json" "${files[@]}" > "$pin_dir/pin.txt" 2> "$RUNNER_TEMP/pin.err" || rc=$?
+          cat "$pin_dir/pin.txt"
           case "$rc" in
             0) ;;
             10)
-              touch "$RUNNER_TEMP/pin.behind"
-              node -p 'require(process.argv[1]).cli.version' "$RUNNER_TEMP/index.json" > "$RUNNER_TEMP/pin.version"
+              touch "$pin_dir/pin.behind"
+              node -p 'require(process.argv[1]).cli.version' "$pin_dir/index.json" > "$pin_dir/pin.version"
+              [[ $(<"$pin_dir/pin.version") =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::the CLI pin version is not a plain version"; exit 1; }
               ;;
             *)
               echo "::warning::the CLI pins were not read (exit code $rc): $(tr '\n' ' ' < "$RUNNER_TEMP/pin.err"); pins left alone"
-              rm -f "$RUNNER_TEMP/pin.txt"
+              rm -f "$pin_dir/pin.txt"
               ;;
           esac
       - name: Open the PR
         env:
           GH_TOKEN: ${{ secrets.DESIGN_REGISTRY_PR_TOKEN || github.token }}
           ISSUES_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.update.outputs.version }}
+          VERSION: ${{ needs.update.outputs.version }}
           BOT_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
         run: |
           set -euo pipefail
+          handoff="$RUNNER_TEMP/handoff"
+          pin_dir="$RUNNER_TEMP/pin"
           branch="design-registry/update"
           pin_title="Move the bg-design CLI pin"
 
@@ -193,12 +344,23 @@ jobs:
             gh_issue list --state open --search "in:title \"$pin_title\"" --limit 100 \
               --json number,title --jq ".[] | select(.title | startswith(\"$pin_title\")) | .number"
           }
+          # prints file $1 in a code fence longer than any run of backticks in it,
+          # with a zero-width space after each @ so it mentions no one
+          fenced() {
+            local longest fence
+            longest=$({ grep -o '`*' "$1" || true; } | awk '{ if (length($0) > m) m = length($0) } END { print m + 0 }')
+            [ "$longest" -ge 3 ] || longest=2
+            fence=$(printf '`%.0s' $(seq 1 $((longest + 1))))
+            echo "$fence"
+            awk -v z="$(printf '\342\200\213')" '{ gsub(/@/, "@" z); print }' "$1"
+            echo "$fence"
+          }
           # a cleanup: an app with no pin line never had a pin issue, and a
           # failure here (Issues turned off, say) warns instead of failing the job
           close_pin_issues() {
             local numbers n
             # the pin step writes pin.txt only when some workflow is marked
-            [ -f "$RUNNER_TEMP/pin.txt" ] || return 0
+            [ -f "$pin_dir/pin.txt" ] || return 0
             if ! numbers=$(open_pin_issues); then
               echo "::warning::could not list open issues to close a \"${pin_title}\" issue; close it by hand if there is one"
               return 0
@@ -210,9 +372,9 @@ jobs:
           }
 
           items=false
-          [ -n "$(git status --porcelain)" ] && items=true
+          [ -s "$handoff/items.patch" ] && items=true
           behind=false
-          [ -f "$RUNNER_TEMP/pin.behind" ] && behind=true
+          [ -f "$pin_dir/pin.behind" ] && behind=true
           if [ "$behind" = false ]; then
             close_pin_issues "The CLI pin is current."
           fi
@@ -274,16 +436,16 @@ jobs:
           # no push at all
           git checkout -B "$branch"
           if [ "$items" = true ]; then
-            git add -A
+            git apply --index "$handoff/items.patch"
             git commit -m "Update design registry to ${VERSION}"
           fi
           items_head=$(git rev-parse HEAD)
           pin_head=""
           if [ "$behind" = true ]; then
             mapfile -d '' files < <(grep -rlZE '#[[:space:]]*bg-design-cli-pin' .github/workflows)
-            WRITE=1 node "$RUNNER_TEMP/pin.mjs" "$RUNNER_TEMP/index.json" "${files[@]}" > "$RUNNER_TEMP/pin-moved.txt"
+            WRITE=1 node "$RUNNER_TEMP/pin.mjs" "$pin_dir/index.json" "${files[@]}" > "$pin_dir/pin-moved.txt"
             git add -A
-            git commit -m "Move the bg-design CLI pin to $(cat "$RUNNER_TEMP/pin.version")"
+            git commit -m "Move the bg-design CLI pin to $(cat "$pin_dir/pin.version")"
             pin_head=$(git rev-parse HEAD)
           fi
 
@@ -337,9 +499,9 @@ jobs:
 
           if [ "$items" = false ] && [ "$pin_push" = refused ]; then
             # nothing to open a PR for: the notice goes in an issue
-            title="${pin_title} to $(cat "$RUNNER_TEMP/pin.version")"
+            title="${pin_title} to $(cat "$pin_dir/pin.version")"
             {
-              cat "$RUNNER_TEMP/pin.txt"
+              cat "$pin_dir/pin.txt"
               echo
               echo "The update job could not push the change: pushing a workflow file needs a DESIGN_REGISTRY_PR_TOKEN that can write workflows (a fine-grained token: Workflows, read and write; a classic token: the workflow scope). Edit the lines marked bg-design-cli-pin by hand, or fix the token and run this workflow again."
             } > "$RUNNER_TEMP/issue.md"
@@ -364,7 +526,7 @@ jobs:
           if [ "$items" = true ]; then
             title="Update design registry to ${VERSION}"
           else
-            title="Update bg-design CLI pin to $(cat "$RUNNER_TEMP/pin.version")"
+            title="Update bg-design CLI pin to $(cat "$pin_dir/pin.version")"
           fi
           {
             echo "## Summary"
@@ -372,9 +534,7 @@ jobs:
             if [ "$items" = true ]; then
               echo "Updates the design registry components to registry ${VERSION}."
               echo
-              echo '```'
-              cat "$RUNNER_TEMP/update.txt"
-              echo '```'
+              fenced "$handoff/update.txt"
               echo
               echo "If a pnpm add line is listed above, run it: the new version needs those packages."
             fi
@@ -382,17 +542,13 @@ jobs:
               echo
               echo "Moves the pinned bg-design CLI."
               echo
-              echo '```'
-              cat "$RUNNER_TEMP/pin-moved.txt"
-              echo '```'
+              fenced "$pin_dir/pin-moved.txt"
             elif [ "$pin_push" = failed ]; then
               echo
               echo "The CLI pin commit could not be pushed; the next run tries again."
             elif [ "$pin_push" = refused ]; then
               echo
-              echo '```'
-              cat "$RUNNER_TEMP/pin.txt"
-              echo '```'
+              fenced "$pin_dir/pin.txt"
               echo
               echo "The CLI pin was not moved: pushing a workflow file needs a DESIGN_REGISTRY_PR_TOKEN that can write workflows (fine-grained: Workflows, read and write; classic: the workflow scope)."
             fi
