@@ -12,6 +12,15 @@ describe('the rail preference cookie', () => {
 		expect(parseRail(null)).toBe(false);
 	});
 
+	it('takes the first of two rail pairs, so a stale one ahead decides', () => {
+		expect(parseRail(`${RAIL_COOKIE}=expanded; ${RAIL_COOKIE}=collapsed`)).toBe(false);
+		expect(parseRail(`${RAIL_COOKIE}=collapsed; ${RAIL_COOKIE}=expanded`)).toBe(true);
+	});
+
+	it('does not unquote a value, so a quoted collapsed reads open', () => {
+		expect(parseRail(`${RAIL_COOKIE}="collapsed"`)).toBe(false);
+	});
+
 	it('writes a year-long cookie on / that plain http keeps', () => {
 		// on /, so a navigation's data request (/admin.data), outside /admin, carries it too
 		expect(railCookie(true)).toBe(

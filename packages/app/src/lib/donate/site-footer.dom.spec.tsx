@@ -1,3 +1,4 @@
+import { SOCIAL_PLATFORMS } from '@better-giving/operator/console/org';
 import { act, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { describe, expect, it, onTestFinished } from 'vitest';
@@ -78,6 +79,32 @@ describe('the ways to reach the organisation', () => {
 
 	it('draws no list where there are none', () => {
 		expect(footer({ email: null, socialLinks: [] })?.querySelector('nav')).toBeNull();
+	});
+});
+
+describe('every social platform', () => {
+	// literal names, not SOCIAL_PLATFORM_NAMES: a blank or wrong entry there must fail here
+	const NAMES = {
+		facebook: 'Facebook',
+		instagram: 'Instagram',
+		youtube: 'YouTube',
+		linkedin: 'LinkedIn',
+		tiktok: 'TikTok',
+		x: 'X'
+	} as const;
+
+	it('is held to a name here, so a new platform fails until it is added', () => {
+		expect([...SOCIAL_PLATFORMS].sort()).toEqual(Object.keys(NAMES).sort());
+	});
+
+	it.each(SOCIAL_PLATFORMS)('draws %s by its name, in a new tab, labelled so', (platform) => {
+		const href = `https://example.org/${platform}`;
+		const link = footer({ email: null, socialLinks: [{ platform, href }] })?.querySelector('a');
+		expect(link?.textContent).toBe(NAMES[platform]);
+		expect(link?.getAttribute('href')).toBe(href);
+		expect(link?.getAttribute('target')).toBe('_blank');
+		expect(link?.getAttribute('rel')).toBe('noopener noreferrer');
+		expect(link?.getAttribute('aria-label')).toBe(`${NAMES[platform]}, opens in a new tab`);
 	});
 });
 
