@@ -3,9 +3,11 @@ import { act, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { describe, expect, it, onTestFinished } from 'vitest';
 import { SiteFooter, type SiteFooterInfo } from './site-footer';
+import { StaffMarkerContext } from './staff-marker-context';
 
 // the site footer, mounted: the legal line once, each way to reach the organisation only where it
-// has set one, and the staff link at the end of the list everywhere.
+// has set one, and the console link at the end of the list only for a browser carrying the
+// returning-staff marker.
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -61,10 +63,9 @@ describe('the ways to reach the organisation', () => {
 		expect(links.map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
 			['hello@greenfieldfoodbank.org', 'mailto:hello@greenfieldfoodbank.org'],
 			['Instagram', 'https://instagram.com/greenfieldfoodbank'],
-			['Facebook', 'https://facebook.com/greenfieldfoodbank'],
-			['Staff sign in', '/admin']
+			['Facebook', 'https://facebook.com/greenfieldfoodbank']
 		]);
-		const social = links.slice(1, 3);
+		const social = links.slice(1);
 		expect(social.map((a) => a.getAttribute('target'))).toEqual(['_blank', '_blank']);
 		expect(social.map((a) => a.getAttribute('rel'))).toEqual([
 			'noopener noreferrer',
@@ -75,27 +76,45 @@ describe('the ways to reach the organisation', () => {
 
 	it('draws a link only where the organisation has one', () => {
 		const root = footer({ email: null, socialLinks: [{ platform: 'x', href: 'https://x.com/g' }] });
-		expect([...(root?.querySelectorAll('a') ?? [])].map((a) => a.textContent)).toEqual([
-			'X',
-			'Staff sign in'
-		]);
+		expect([...(root?.querySelectorAll('a') ?? [])].map((a) => a.textContent)).toEqual(['X']);
+	});
+
+	it('draws no list where there are none', () => {
+		expect(footer({ email: null, socialLinks: [] })?.querySelector('nav')).toBeNull();
 	});
 });
 
-describe('the staff link', () => {
+describe('the console link', () => {
 	const NOTHING = { legalName: null, ein: null, addressLines: [], email: null, socialLinks: [] };
+	const asStaff = (over: Partial<SiteFooterInfo> = {}) =>
+		mount(
+			<StaffMarkerContext value={true}>
+				<SiteFooter info={{ ...INFO, ...over }} />
+			</StaffMarkerContext>
+		).querySelector('footer');
 
-	it('ends the list, a plain link to the dashboard', () => {
-		const links = [...(footer()?.querySelectorAll('nav[aria-label="Footer"] li a') ?? [])];
+	it('is not drawn for a donor, who carries no marker', () => {
+		const text = footer()?.textContent ?? '';
+		expect(text).not.toContain('Console');
+		expect(text).not.toContain('Staff');
+		expect(footer()?.querySelector('a[href="/admin"]')).toBeNull();
+	});
+
+	it('ends the list, a plain link to the dashboard, where the marker is present', () => {
+		const links = [...(asStaff()?.querySelectorAll('nav[aria-label="Footer"] li a') ?? [])];
 		const last = links.at(-1);
-		expect(last?.textContent).toBe('Staff sign in');
+		expect(last?.textContent).toBe('Console');
 		expect(last?.getAttribute('href')).toBe('/admin');
 		expect(last?.hasAttribute('target')).toBe(false);
 		expect(last?.closest('li')?.nextElementSibling).toBeNull();
 	});
 
-	it('is drawn where the organisation has set nothing at all', () => {
-		const root = footer(NOTHING);
+	it('draws nothing at all with no organisation details and no marker', () => {
+		expect(footer(NOTHING)).toBeNull();
+	});
+
+	it('is drawn alone where the marker is present and the organisation has set nothing', () => {
+		const root = asStaff(NOTHING);
 		expect(root?.className).toBe('ds-site-footer-compact');
 		expect(root?.querySelector('p')).toBeNull();
 		expect([...(root?.querySelectorAll('a') ?? [])].map((a) => a.getAttribute('href'))).toEqual([

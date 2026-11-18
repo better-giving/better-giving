@@ -256,7 +256,10 @@ const PUBLIC_ROUTE_FILES: readonly string[] = [
 	// endpoint above it, same-origin, which owes all four of that surface's checks. the one write
 	// its loader makes is the page itself, once per deployment — the one-Donation-page index turns
 	// every later arrival into a read. and what it hands the browser is the served config alone,
-	// never the `form` row it was read from — that row carries `allowed_origins`.
+	// never the `form` row it was read from — that row carries `allowed_origins`. on a deployment
+	// with no organisation set up it answers a temporary redirect to `/admin` and nothing else, so
+	// the first visitor lands in setup; that reads one row and sends a caller who holds no session to
+	// the dashboard's own gate.
 	DONOR_PAGE,
 	// a campaign's page, opened from a link the organisation published, and public for the same
 	// reasons: no session, no submission, the gift through the endpoint above, the served config

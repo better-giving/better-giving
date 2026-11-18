@@ -416,6 +416,34 @@ describe('POST /login — where a sign-in ends up', () => {
 		expect(await sessions()).toBe(1);
 		expect(answer.headers.getSetCookie().some((value) => value.includes('session'))).toBe(true);
 	});
+
+	/**
+	 * and the returning-staff marker beside it ($lib/staff-marker.ts): the fixed value and no
+	 * session data, scoped to the whole site, kept about a year, and not readable by a script.
+	 */
+	it('sets the returning-staff marker, and nothing of the session in it', async () => {
+		const answer = (await post(typed(PASSWORD))) as Response;
+
+		const marker = answer.headers
+			.getSetCookie()
+			.find((value) => value.startsWith('bg_staff_seen='));
+		expect(marker).toBeDefined();
+		expect(marker).toContain('bg_staff_seen=1;');
+		expect(marker).toContain('Path=/');
+		expect(marker).toContain('Max-Age=31536000');
+		expect(marker).toContain('HttpOnly');
+		expect(marker).toContain('SameSite=Lax');
+		// the spec's origin is https, so the marker is Secure (plain http is ../lib/staff-marker.spec.ts).
+		expect(marker).toContain('; Secure');
+		expect(marker).not.toContain('session');
+	});
+
+	it('sets no marker for a refused password', async () => {
+		// a refusal is the form's data and not a response, so there is no cookie to carry a marker.
+		const answer = await post(typed('not the password'));
+
+		expect(answer).not.toBeInstanceOf(Response);
+	});
 });
 
 describe('POST /login — what the browser gets back', () => {

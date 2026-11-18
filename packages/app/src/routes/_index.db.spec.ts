@@ -179,8 +179,9 @@ describe('GET / on a fresh deployment', () => {
 		expect(await donationPageRows()).toBe(1);
 	});
 
-	// the page is public and reads no session: a browser holding the staff cookie is drawn the page a
-	// donor is, which is what keeps the footer's staff link the same for everyone.
+	// the page is public and reads no session: a browser holding a staff session is drawn the page a
+	// donor is. the console link on a returning-staff browser is the root route's marker cookie
+	// (../root.spec.ts), not anything this loader reads.
 	it('draws the same page for a caller with no session and for one holding a staff cookie', async () => {
 		const anonymous = await visit();
 		const staff = await visit(STRIPE, { cookie: await signIn(db) });
@@ -191,10 +192,11 @@ describe('GET / on a fresh deployment', () => {
 		expect(staff.headers.get('cache-control')).toBe('no-store');
 	});
 
-	it('draws the staff sign-in link under the published page', async () => {
+	it('shows a donor no staff link under the published page', async () => {
 		const answered = await visit();
 		expect(answered.data.kind).toBe('page');
-		expect(markup(answered.data)).toContain('<a href="/admin">Staff sign in</a>');
+		expect(markup(answered.data)).not.toContain('href="/admin"');
+		expect(markup(answered.data)).not.toContain('Staff sign in');
 	});
 
 	it('draws the chooser once two programs are active, on a page made before any was', async () => {
@@ -733,29 +735,70 @@ describe('a published Donation page the read rule refuses', () => {
 		);
 	});
 
-	// the box drawn alone is still the deployment's home page, so its owner keeps the way in.
-	it('draws the staff link under the donation box drawn alone', async () => {
+	it('shows a donor no staff link under the donation box drawn alone', async () => {
 		await publish({});
 		logged();
 		const answered = await visit();
 		expect(answered.data.kind).toBe('plain');
-		expect(markup(answered.data)).toContain('<a href="/admin">Staff sign in</a>');
+		expect(markup(answered.data)).not.toContain('href="/admin"');
 	});
 });
 
+/** the loader's own response where it answers with one (a redirect), and its status and location. */
+async function redirected(vars: Record<string, string> = STRIPE) {
+	const request = new Request(`${OWN}/`);
+	const answered = (await handler.query(request, {
+		requestContext: requestContext({ env: envWith(vars), deferred: createDeferredWork(), client }),
+		generateMiddlewareResponse: async (query) => {
+			const result = await query(request);
+			if (result instanceof Response) return result;
+			return new Response(null, { status: result.statusCode });
+		}
+	})) as Response;
+	return { status: answered.status, location: answered.headers.get('location') };
+}
+
 describe('/ where the served config refuses', () => {
-	// the deployment is unfinished rather than the link wrong, and the donor is told the same thing
-	// either way: there is nothing they can do about which of the two it is.
+	/** the page's settings row taken off, which is a set-up organisation whose page is off. */
+	async function takeThePageOff() {
+		await donationFormId();
+		await run(stmt(`update form set status = 'draft'`));
+	}
+
+	// a set-up organisation whose page is off or failed is the deployment being unfinished rather
+	// than the link wrong, and the donor is told the same thing either way: there is nothing they can
+	// do about which of the two it is. it is not forwarded to the dashboard.
 	it('draws the notice with a 404 nothing keeps, and names nobody in the tab', async () => {
-		await run(stmt('delete from org_profile'));
+		await takeThePageOff();
 		const answered = await visit();
 		expect(answered.status).toBe(404);
 		expect(answered.headers.get('cache-control')).toBe('no-store');
 		expect(markup(answered.data)).toContain(NO_FORM);
-		expect(markup(answered.data)).toContain('<a href="/admin">Staff sign in</a>');
+		expect(markup(answered.data)).not.toContain('/admin');
 		expect(donatePage.meta({ loaderData: answered.data } as unknown as Route.MetaArgs)).toEqual([
 			{ title: 'Donate' }
 		]);
+	});
+
+	it('does not forward a set-up organisation’s refusal to the dashboard', async () => {
+		await takeThePageOff();
+		const answered = await redirected();
+		expect(answered.status).toBe(404);
+		expect(answered.location).toBeNull();
+	});
+
+	// the first visitor to a fresh install has nothing to be shown and is sent to set it up. the
+	// check is `identityMissing` ($lib/server/org/identity.ts), the registered name and EIN a page
+	// cannot go live without.
+	it.each([
+		['no organisation row', 'delete from org_profile'],
+		['no EIN', 'update org_profile set tax_id = NULL']
+	])('forwards to the dashboard with a temporary redirect with %s', async (_why, sql) => {
+		await donationFormId();
+		await run(stmt(sql));
+		const answered = await redirected();
+		expect([302, 303]).toContain(answered.status);
+		expect(answered.location).toBe('/admin');
 	});
 });
 
@@ -1042,8 +1085,8 @@ describe('the limit on GET /', () => {
 
 		expect(refused.data.kind).toBe('refused');
 		expect(markup(refused.data)).toContain(NO_FORM);
-		// the refusal still carries the way into the dashboard, and names nobody.
-		expect(markup(refused.data)).toContain('<a href="/admin">Staff sign in</a>');
+		// a limited caller is never sent on to the dashboard, and is shown no staff link.
+		expect(markup(refused.data)).not.toContain('href="/admin"');
 		expect(refused.headers.get('retry-after')).toBe('60');
 		expect(refused.headers.get('cache-control')).toBe('no-store');
 	});

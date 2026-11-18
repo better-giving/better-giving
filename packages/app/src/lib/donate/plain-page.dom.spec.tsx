@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { describe, expect, it, onTestFinished } from 'vitest';
 import { EndedCampaignPage, PlainDonationPage } from './plain-page';
 import { NAMELESS_FOOTER, SiteFooter, type SiteFooterInfo } from './site-footer';
+import { StaffMarkerContext } from './staff-marker-context';
 
 // an ended campaign's screen, mounted: the site nav over it and the compact site footer under it,
 // as every other donor page draws them. and the plain donation page, which draws the footer it is
@@ -53,13 +54,9 @@ describe('an ended campaign’s screen', () => {
 		expect(main?.compareDocumentPosition(footer as Node)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
 	});
 
-	it('draws the footer with only the staff link where the organisation has set no details', () => {
+	it('draws no footer where the organisation has set no details and no marker is present', () => {
 		const none = { legalName: null, ein: null, addressLines: [], email: null, socialLinks: [] };
-		const footer = ended(none).querySelector('footer.ds-site-footer-compact');
-		expect(footer?.querySelector('p')).toBeNull();
-		expect([...(footer?.querySelectorAll('a') ?? [])].map((a) => a.getAttribute('href'))).toEqual([
-			'/admin'
-		]);
+		expect(ended(none).querySelector('footer')).toBeNull();
 	});
 });
 
@@ -91,19 +88,22 @@ const CONFIG: FormConfig = {
 };
 
 describe('the plain donation page', () => {
-	it('draws the nameless footer it is given after its main, holding only the staff link', () => {
-		const root = mount(
+	it('draws a nameless footer after its main only for a browser carrying the marker', () => {
+		const page = (
 			<PlainDonationPage
 				config={CONFIG}
 				look={{ brandColour: null }}
 				footer={<SiteFooter info={NAMELESS_FOOTER} />}
 			/>
 		);
+		expect(mount(page).querySelector('footer')).toBeNull();
+
+		const root = mount(<StaffMarkerContext value={true}>{page}</StaffMarkerContext>);
 		const footer = root.querySelector('footer.ds-site-footer-compact');
 		expect(footer?.querySelector('p')).toBeNull();
 		const links = [...(footer?.querySelectorAll('a') ?? [])];
 		expect(links.map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
-			['Staff sign in', '/admin']
+			['Console', '/admin']
 		]);
 		const main = root.querySelector('main');
 		expect(main?.compareDocumentPosition(footer as Node)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);

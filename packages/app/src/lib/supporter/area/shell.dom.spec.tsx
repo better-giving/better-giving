@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { StaffMarkerContext } from '../../donate/staff-marker-context';
 import { ACCOUNT, mountScreen, ORG, one } from './area.testing';
 import { SupporterShell, type SupporterOrg } from './shell';
 
@@ -32,12 +33,11 @@ describe('the supporter area’s site footer', () => {
 		);
 	});
 
-	it('draws only the staff link where the organisation has set no links', () => {
+	it('draws no links where the organisation has set none, and a donor is shown no staff link', () => {
 		const { root } = frame();
-		const links = [...one(root, 'footer').querySelectorAll('a')];
-		expect(links.map((link) => [link.textContent, link.getAttribute('href')])).toEqual([
-			['Staff sign in', '/admin']
-		]);
+		const footer = one(root, 'footer');
+		expect(footer.querySelector('nav')).toBeNull();
+		expect(footer.querySelectorAll('a')).toHaveLength(0);
 	});
 
 	it('links the email, then each social link, where they are set', () => {
@@ -48,13 +48,25 @@ describe('the supporter area’s site footer', () => {
 		const links = [...one(root, 'footer nav[aria-label="Footer"]').querySelectorAll('a')];
 		expect(links.map((link) => link.getAttribute('href'))).toEqual([
 			'mailto:hello@harborlight.org',
-			'https://instagram.com/harborlight',
-			'/admin'
+			'https://instagram.com/harborlight'
 		]);
 	});
 
-	it('still draws the footer, with the staff link, where nothing is set', () => {
+	it('draws no footer where nothing is set and no marker is present', () => {
 		const { root } = frame({ legalName: null });
-		expect(root.querySelector('footer a')?.getAttribute('href')).toBe('/admin');
+		expect(root.querySelector('footer')).toBeNull();
+	});
+
+	it('ends with the console link on a browser carrying the returning-staff marker', () => {
+		const { root } = mountScreen(() => (
+			<StaffMarkerContext value={true}>
+				<SupporterShell org={ORG} account={ACCOUNT}>
+					<h1>Your fundraisers</h1>
+				</SupporterShell>
+			</StaffMarkerContext>
+		));
+		const links = [...one(root, 'footer nav[aria-label="Footer"]').querySelectorAll('a')];
+		expect(links.at(-1)?.textContent).toBe('Console');
+		expect(links.at(-1)?.getAttribute('href')).toBe('/admin');
 	});
 });

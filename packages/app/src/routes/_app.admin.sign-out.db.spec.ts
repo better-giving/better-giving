@@ -113,6 +113,18 @@ describe('signing out', () => {
 		);
 	});
 
+	// the returning-staff marker says this browser has been used by staff, not that anyone is signed
+	// in now ($lib/staff-marker.ts), so signing out neither clears nor re-sets it.
+	it('leaves the returning-staff marker alone', async () => {
+		const cookie = await signIn();
+
+		const response = await request(post(`${cookie}; bg_staff_seen=1`), { env: DEPLOYED });
+
+		expect(response.headers.getSetCookie().some((value) => value.includes('bg_staff_seen'))).toBe(
+			false
+		);
+	});
+
 	it('turns an anonymous caller away instead of ending anything', async () => {
 		// the route is under the gate, so there is no address here a caller without a session can
 		// reach — which is what keeps this from being a way to spend somebody else's request.
