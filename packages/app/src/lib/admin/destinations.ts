@@ -19,7 +19,7 @@ import zapierImage from '@better-giving/operator/brand/zapier.png';
  * and the sign-in password is not.
  *
  * a `label` is the word a fundraiser says and a path is the word the domain uses, and the two need
- * not be one: `/admin/donations` is Gifts. CLAUDE.md → Product surface is the rule, and it is why a
+ * not be one: `/admin/donations` is Gifts. AGENTS.md → Product surface is the rule, and it is why a
  * section is never named after the table under it.
  *
  * bare paths, as every address in this app is: nothing configures a base path, so a fork that ever

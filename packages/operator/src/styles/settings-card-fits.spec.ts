@@ -7,7 +7,7 @@ import { ruleOf, rulesIn, sheet } from './sheet-rule.testing';
 // a settings section's card holds to the 375px floor. the section's column is a grid track sized
 // by its cards, and the organisation card's footer holds a quiet press beside Discard and Save
 // (packages/app/src/routes/_app.admin.settings_.organisation.tsx): on one unwrapped row at the
-// floor that footer was wider than the column and widened the page.
+// floor that footer is wider than the column and widens the page.
 
 const css = sheet('adm.css');
 const registry = stripComments(

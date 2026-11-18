@@ -9,8 +9,7 @@ import type { Route } from './+types/_app.admin.settings_.nonprofits';
 // the box holds an EIN, the one lookup by it. a `loader` with no component, which the Organisation
 // details screen (./_app.admin.settings_.organisation.tsx) asks by fetcher, out of
 // ./_app.admin.settings.tsx's nesting by the `settings_` in its name. the service, its limits and
-// its answers are
-// $lib/server/org/nonprofits.ts's; what each answer looks like is $lib/org/nonprofit-answers.ts's.
+// its answers are $lib/server/org/nonprofits.ts's; what each answer looks like is $lib/org/nonprofit-answers.ts's.
 //
 // **an EIN is looked up, never searched and then looked up**, because the service's keyless
 // allowance is a request a minute: a whole EIN in the box is one call, and the lookup is what

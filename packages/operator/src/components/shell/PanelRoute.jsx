@@ -35,10 +35,8 @@ export function PanelRoute({ bar, foot, bare = false, children }) {
 		<div className="adm-panelroute">
 			{/* each strip is the row it is written in — ../../styles/adm.css places nothing by name —
 			    so the head stands before the panel and the foot after it. a route handed no strip draws
-			    none rather than an empty one: the row would stand at that edge with nothing in it, and
-			    the panel would centre in what is left beside a strip nobody can see. the sheet tracks
-			    all three combinations that carry one, so a route with a foot and no head is a panel
-			    centred over its foot rather than one dropped into the top row. */}
+			    none rather than an empty one, which would stand at that edge with nothing in it and
+			    pull the panel off centre. the sheet tracks all three combinations that carry one. */}
 			{bar === undefined ? null : (
 				<div className="adm-head">
 					<div className="adm-headstrip">{bar}</div>

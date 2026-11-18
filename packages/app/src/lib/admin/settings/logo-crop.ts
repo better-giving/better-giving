@@ -16,9 +16,9 @@ import type { ResizeRefusal } from '@better-giving/operator/images/resize';
 
 /**
  * the smallest side a cropped logo may have, in the image's own pixels: at least twice the 32px a
- * donor page's site nav draws the logo at (`.page-site-logo` in packages/app/src/lib/donate/page.css),
- * so a phone screen, at two device pixels to each of the nav's, draws it sharp. a square under it is most
- * often a drag that shrank the box by accident.
+ * donor page's site nav draws the logo at (`.page-site-logo` in
+ * packages/app/src/lib/donate/page.css), so a phone screen, at two device pixels to each of the
+ * nav's, draws it sharp. a square under it is most often a drag that shrank the box by accident.
  */
 export const LOGO_CROP_MIN = 88;
 

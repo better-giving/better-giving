@@ -24,9 +24,9 @@ describe('the landmark a panel route stands its page in', () => {
 
 describe('the strips a panel route can carry', () => {
 	it('draws none at all where the surface handed it none', () => {
-		// the route is what it has always been: a panel in the middle of the window and nothing over
-		// it. an empty strip is a row standing above the panel with nothing in it, and the panel is
-		// centred in what is left under a bar that is not there.
+		// a route handed no strip is a panel in the middle of the window and nothing over it. an
+		// empty strip is a row above the panel with nothing in it, and the panel is centred in what
+		// is left under a bar that is not there.
 		const root = render(PanelRoute, { children: <h1>Sign in</h1> });
 
 		expect(root.querySelector('.adm-head')).toBeNull();
