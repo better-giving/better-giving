@@ -46,7 +46,7 @@ function Stated(props) {
 	const Title = variant === 'empty' ? 'h2' : 'h1';
 	const words = (
 		<>
-			<Title ref={heading} className="ds-page-state-title" tabIndex={-1}>
+			<Title ref={heading} className="ds-page-state-title adm-pagestate__title" tabIndex={-1}>
 				{title}
 			</Title>
 			{body === undefined ? null : <p className="ds-page-state-body">{body}</p>}

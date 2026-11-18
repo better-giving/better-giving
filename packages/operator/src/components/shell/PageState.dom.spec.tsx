@@ -68,6 +68,8 @@ describe('a page state', () => {
 		const title = root.querySelector('.ds-page-state-title');
 		expect(title?.getAttribute('tabindex')).toBe('-1');
 		expect(document.activeElement).toBe(title);
+		// the hook ../../styles/adm.css takes base.css's ring off by (../../styles/page-state.spec.ts).
+		expect(title?.className).toBe('ds-page-state-title adm-pagestate__title');
 	});
 
 	it('takes focus again for each arrival its caller keys, even one that reads the same', () => {

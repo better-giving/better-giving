@@ -4753,6 +4753,15 @@
 	.adm-logo--rail {
 		block-size: calc(var(--ds-spacing) * 7);
 	}
+
+	/* a page state's title takes focus from script when a navigation lands on it, and it is no
+	   control, so page-state-css draws it no ring (its usage note). that sheet takes the outline
+	   off; ./base.css's ring is a box-shadow it does not name, so it is taken off here.
+	   ./page-state.spec.ts pins it. */
+	.adm-pagestate__title:focus-visible,
+	.adm-pagestate__title.is-focus {
+		box-shadow: none;
+	}
 }
 
 @layer layout {

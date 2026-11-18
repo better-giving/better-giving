@@ -287,7 +287,8 @@
 	   two, because a band of the page laid inside the ring reads as the control sitting in a
 	   box that arrived with the keyboard. ./adm.css takes the shadow back off the two
 	   controls that draw theirs inset, and ./tokens.css holds the arithmetic that makes them
-	   the two. */
+	   the two. it takes it off a page state's title too, which script focuses and which is no
+	   control. */
 	:focus-visible,
 	.is-focus {
 		outline: var(--admin-focus-width) solid transparent;
