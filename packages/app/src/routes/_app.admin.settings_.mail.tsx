@@ -247,7 +247,7 @@ function MailSet({ mail, to }: { readonly mail: MailValues; readonly to: string 
 				/>
 			</fetcher.Form>
 			{/* mounted in every state, so the sentence arriving in it is a change a reader is told. */}
-			<p className="adm-hint" role="status">
+			<p className="adm-hint adm-sendnote" role="status">
 				{report?.outcome === 'sent' ? 'Sent. Check that inbox for it.' : null}
 			</p>
 			{report?.outcome === 'failed' ? (

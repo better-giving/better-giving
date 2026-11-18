@@ -1594,11 +1594,15 @@
 		margin-block-start: calc(-1 * var(--admin-space-3));
 	}
 
-	/* what a found organisation's fill says under the details boxes it filled
-	   (packages/app/src/routes/_app.admin.settings_.organisation.tsx), a row of the card's own. it is there before
-	   it speaks, and while empty the card's gap above it is taken back, so it holds no room. */
-	.adm-findnote:empty {
-		margin-block-start: calc(-1 * var(--admin-space-5));
+	/* a status line that is a row of a settings card's own: what a found organisation's fill says
+	   under the details boxes it filled (packages/app/src/routes/_app.admin.settings_.organisation.tsx),
+	   and what mail's test send reports (packages/app/src/routes/_app.admin.settings_.mail.tsx). each
+	   is there before it speaks, and while empty the card body's gap above it (`.adm-settings > * >
+	   .adm-stack`) is taken back, so it holds no room. ./settings-card-rows.spec.ts holds the two
+	   steps equal. */
+	.adm-findnote:empty,
+	.adm-sendnote:empty {
+		margin-block-start: calc(-1 * var(--admin-space-7));
 	}
 
 	/* the matches. ruled as a box of its own, the height of four and a half rows at the row's floor
@@ -4918,6 +4922,12 @@
 	   as the card's `<footer>` so a card a route adds is covered without a class of its own. */
 	.adm-settings > * > footer {
 		flex-wrap: wrap;
+	}
+
+	/* a settings card's body stacks its rows a step wider than a stack's own, as the approved
+	   Settings frames draw them. ./settings-card-rows.spec.ts pins it. */
+	.adm-settings > * > .adm-stack {
+		gap: var(--admin-space-7);
 	}
 
 	/* the step a run of cards takes under whatever is not one. the column gaps everything it holds
