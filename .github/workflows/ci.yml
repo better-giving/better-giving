@@ -86,7 +86,8 @@ jobs:
           node-version: 24
       # the CLI is pinned to one version and checked against its sha-256 before it runs, so a new
       # CLI reaches CI only through a reviewed change. when the registry publishes a new CLI,
-      # bg-design-update.yml moves the URL and the hash together: the two lines carrying the pin marker.
+      # bg-design-update.yml moves the two lines carrying the pin marker (the URL and the hash)
+      # together, or reports the pin as behind when its token cannot write workflows.
       - name: design registry in sync
         env:
           BG_DESIGN_CLI_SHA256: 2f7b1ee44871c0ca4d57b17187cba884d332d7c75498b00748c0f5f25cac9587 # bg-design-cli-pin

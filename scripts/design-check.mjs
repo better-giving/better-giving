@@ -14,7 +14,7 @@
 // copied into this repository, where it would drift from the registry it checks against.
 //
 // CI hands over its own copy in BG_DESIGN_CLI instead: a pinned version whose sha-256 it checked first
-// (.github/workflows/ci.yml, the lines marked bg-design-cli-pin). A run without it fetches the newest CLI.
+// (.github/workflows/ci.yml, the lines marked bg-design-cli-pin). a run without it fetches the newest CLI.
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
