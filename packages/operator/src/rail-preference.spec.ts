@@ -12,12 +12,13 @@ describe('the rail preference cookie', () => {
 		expect(parseRail(null)).toBe(false);
 	});
 
-	it('writes a year-long cookie on /admin that plain http keeps', () => {
+	it('writes a year-long cookie on / that plain http keeps', () => {
+		// on /, so a navigation's data request (/admin.data), outside /admin, carries it too
 		expect(railCookie(true)).toBe(
-			'bg_operator_rail=collapsed; Path=/admin; Max-Age=31536000; SameSite=Lax'
+			'bg_operator_rail=collapsed; Path=/; Max-Age=31536000; SameSite=Lax'
 		);
 		expect(railCookie(false)).toBe(
-			'bg_operator_rail=expanded; Path=/admin; Max-Age=31536000; SameSite=Lax'
+			'bg_operator_rail=expanded; Path=/; Max-Age=31536000; SameSite=Lax'
 		);
 	});
 

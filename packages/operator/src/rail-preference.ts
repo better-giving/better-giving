@@ -23,9 +23,10 @@ export function parseRail(cookieHeader: string | null): boolean {
 }
 
 /**
- * the `document.cookie` string that keeps `collapsed`. scoped to `/admin`, where the shell is drawn,
- * and not `Secure`, so a dashboard served over plain http in development keeps it too.
+ * the `document.cookie` string that keeps `collapsed`. its path is `/`, not `/admin`: a navigation's
+ * data request (`/admin.data`) is outside `/admin`, and a cookie scoped there never reaches its
+ * loader. not `Secure`, so a dashboard served over plain http in development keeps it too.
  */
 export function railCookie(collapsed: boolean): string {
-	return `${RAIL_COOKIE}=${collapsed ? COLLAPSED : EXPANDED}; Path=/admin; Max-Age=${MAX_AGE}; SameSite=Lax`;
+	return `${RAIL_COOKIE}=${collapsed ? COLLAPSED : EXPANDED}; Path=/; Max-Age=${MAX_AGE}; SameSite=Lax`;
 }

@@ -208,20 +208,14 @@ describe('the rail toggle', () => {
 	});
 
 	describe('and its cookie', () => {
-		// the cookie is scoped to /admin, so the document stands on a dashboard address to read it
-		const before = location.pathname;
-		beforeEach(() => {
-			history.replaceState(null, '', '/admin/donations');
-			localStorage.clear();
-		});
+		beforeEach(() => localStorage.clear());
 		const setCookie = (value: string) => {
 			// biome-ignore lint/suspicious/noDocumentCookie: the shell writes it this way, so the spec does.
 			document.cookie = value;
 		};
 		afterEach(() => {
-			setCookie(`${RAIL_COOKIE}=; Path=/admin; Max-Age=0`);
+			setCookie(`${RAIL_COOKIE}=; Path=/; Max-Age=0`);
 			localStorage.clear();
-			history.replaceState(null, '', before);
 		});
 		const kept = () => parseRail(document.cookie);
 		const cookieSet = () => document.cookie.includes(`${RAIL_COOKIE}=`);
