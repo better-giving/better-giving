@@ -38,9 +38,9 @@
    count along. twenty-three of the forty-eight steps are unread today and stay for
    that reason: `--admin-neutral-9` and `-10`; `--admin-accent-1`, `-4`, `-6` and `-10`;
    `--admin-blocker-1`, `-2`, `-4`, `-5`, `-6`, `-7`, `-9` and `-10`; `--admin-attention-1`, `-2`,
-   `-4`, `-5`, `-6`, `-7`, `-8`, `-9` and `-10`. two more are unread outside colour: `--admin-text-xl`
-   and `--admin-weight-bold`. the exemption is membership of a scale and never a token that has
-   merely not been reached for yet. those twenty-five are named again in
+   `-4`, `-5`, `-6`, `-7`, `-8`, `-9` and `-10`. three more are unread outside colour: `--admin-text-xl`,
+   `--admin-weight-bold` and `--admin-space-11`. the exemption is membership of a scale and never a
+   token that has merely not been reached for yet. those twenty-six are named again in
    packages/app/src/lib/admin/styles/conformance.spec.ts, which is what fails when the two
    lists stop agreeing — in both directions, so a step this paragraph calls unread that something
    has since reached for fails it as well.
@@ -61,7 +61,7 @@
    guarantees no rule here can reach the form. packages/app/src/app.css declares the order, and it is
    five names: `tokens, reset, base, elements, layout`. `base` is the document's own
    defaults — the element selectors, the link, the ring; `elements` is every `.adm-*` an
-   operator screen draws; `layout` is the shell, the rail, the measured column and the page header,
+   operator screen draws; `layout` is the measured column, the panel route and the page's sections,
    and it is last so a screen's arrangement of an element outranks that element's own rule
    without either one raising its specificity to say so. a component's scoped <style> block
    stays unlayered and therefore outranks all five, which is what lets a page arrange what
@@ -92,8 +92,8 @@
    the screen is opaque at every point and the `transparent` stops are how a tint ends rather than
    a shade of their own.
 
-   flat. no surface /admin draws casts a shadow: a plane, a menu, a list, the calendar, a sheet and
-   the phone's bar are each told from what they stand on by a step-6 edge and nothing else. a
+   flat. no surface /admin draws casts a shadow: a plane, a menu, a list and the calendar are each
+   told from what they stand on by a step-6 edge and nothing else. a
    `box-shadow` in ./adm.css is a focus ring, a link's bleed or the scrim's spread, and never
    depth. the dialog is the registry's (`ds-dialog`, ../registry/styles/dialog-css.css), and it
    keeps the registry's floating shadow over its step-6 edge.
@@ -176,7 +176,7 @@
    ring meets an edge on its own step wherever it hugs a hovered control; the exception under
    legibility below is where that would read as one edge.
 
-   so a card, a panel, the top bar, the phone's bar and a text box's face are step 1 and the page
+   so a card, a panel and a text box's face are step 1 and the page
    is step 2. a control rests on 3, answers a pointer on 4 and is pressed or selected on 5. every
    rule, and the edge of everything that is not a control, is 6. a control's own edge is 7 at rest
    and 8 under a pointer, and the focus ring is the registry's `--ring`: the accent's 8 in light
@@ -304,14 +304,12 @@
 
 		   a page on step 2 and, on it, planes on step 1 — a card, a panel, a record, a group, a
 		   status section, a table's plane, the sign-in panel — each with a step-6 edge and no
-		   shadow. a plane inside another plane is drawn the same way, edge and all. the top bar and
-		   the phone's bar of destinations are step 1 with a step-6 rule on the side the page is;
-		   the rail at the wide breakpoint is no surface and stands on the page's wash.
+		   shadow. a plane inside another plane is drawn the same way, edge and all.
 
 		   `--admin-page-wash` is the page as it is painted: a radial tint of the accent's step 2 at
 		   the upper left and of its step 3 at the lower right, each fading to `transparent` over a
-		   solid step 2, painted once behind the whole shell (`.adm-shell` in ./adm.css says where it
-		   holds still and where it scrolls). `--admin-page` is that solid, and is what every rule
+		   solid step 2, painted once behind a route outside the shell (`.adm-panelroute` in ./adm.css,
+		   fixed to the window). `--admin-page` is that solid, and is what every rule
 		   that needs one flat colour reads — the document's own ground, a floated date label's
 		   fallback and the mail. the wash is the one gradient in /admin, and there is no imagery, no
 		   texture and no pattern.
@@ -322,8 +320,8 @@
 		   and a placed photo's frame among them. either may be re-pointed without the other. */
 		--admin-page: var(--admin-neutral-2);
 		/* the sizes are shares of the box the wash is painted over: the window wherever the wash
-		   holds still, and the whole scrolled shell on iOS Safari, where it scrolls with the page and
-		   the tints stretch with a long one (`.adm-shell` in ./adm.css). */
+		   holds still, and the whole scrolled route on iOS Safari, where it scrolls with the page and
+		   the tints stretch with a long one (`.adm-panelroute` in ./adm.css). */
 		--admin-page-wash:
 			radial-gradient(80% 65% at 15% 30%, var(--admin-accent-2), transparent 70%),
 			radial-gradient(65% 65% at 95% 90%, var(--admin-accent-3), transparent 70%),
@@ -332,8 +330,7 @@
 		--admin-surface-sunken: var(--admin-neutral-3);
 		--admin-surface-fill: var(--admin-neutral-3);
 		/* step 6, the subtle border: every rule, inside a plane or on the page, and the edge of
-		   every surface that is not a control — a plane, the top bar, a rail tile, a menu, a list,
-		   the calendar, a sheet and the phone's bar. */
+		   every surface that is not a control — a plane, a menu, a list and the calendar. */
 		--admin-divider: var(--hairline);
 		--admin-border: var(--admin-neutral-7);
 		--admin-ink: var(--admin-neutral-12);
@@ -421,7 +418,6 @@
 		   either rank may be re-pointed without the other. */
 		--admin-control-soft-bg: var(--admin-neutral-3);
 		--admin-control-soft-bg-hover: var(--admin-neutral-4);
-		--admin-control-quiet-bg-hover: var(--admin-neutral-3);
 		--admin-control-quiet-bg-active: var(--admin-neutral-4);
 		--admin-primary-bg: var(--admin-accent-9);
 		/* the label on the accent's step 9: the registry's own ink for that fill. */
@@ -461,23 +457,6 @@
 		   should. */
 		--admin-slab-bg: var(--admin-neutral-3);
 		--admin-slab-ink: var(--admin-neutral-12);
-
-		/* ---- the current destination ------------------------------------------------
-
-		   at the wide breakpoint the rail stands on the page's wash, and the current destination is
-		   the accent's selected step, 5, under its step 12; a resting destination's hover is the
-		   neutral's step 3. the current destination is also set one weight up, in ./adm.css: the
-		   fill, the ink and the weight carry the distinction together. the selected step is the top
-		   of radix's element ladder, so the current destination under a pointer restates it. */
-		--admin-rail-current-bg: var(--admin-accent-5);
-		--admin-rail-current-bg-hover: var(--admin-accent-5);
-		--admin-rail-current-ink: var(--admin-accent-12);
-		--admin-rail-hover-bg: var(--admin-neutral-3);
-		/* below the wide breakpoint the destinations stand in the phone's bar and its More sheet, and
-		   current there is the same selected step under the same ink. they are named apart from the
-		   rail's so either may be re-pointed without the other. */
-		--admin-bar-current-bg: var(--admin-accent-5);
-		--admin-bar-current-bg-hover: var(--admin-accent-5);
 
 		/* ---- type ---------------------------------------------------------------------
 
@@ -560,9 +539,8 @@
 		   which is what packages/app/src/lib/admin/styles/conformance.spec.ts reads.
 
 		   which line height each role takes. `heading` goes to the ranks read as a single line —
-		   the two heading ranks, the headline figure and the caption, which is a word under a mark
-		   in the rail rather than a run. `snug` goes to what is read as a short run of lines that
-		   is not prose — a control's label, a subhead, a hint, an aside, the standfirst. `body` is
+		   the two heading ranks, the headline figure and the caption. `snug` goes to what is read as a short run of lines that
+		   is not prose — a control's label, a subhead, a hint, an aside. `body` is
 		   the document's own and is what everything not saying otherwise is read at, so the two
 		   roles binding it are the ones that state it: the body itself, and the box text is typed
 		   into. `prose` binds to no role and stays `.adm-prose`'s, which is a container rather than
@@ -584,17 +562,13 @@
 		--admin-section-lh: var(--admin-lh-heading);
 		--admin-section-track: var(--admin-track-tight);
 		/* the third rank, and it is a rank rather than an element: the document's `h3`, the band
-		   over a group, a record's own name, the identity's. what those four have in common is that
-		   each is the name of the thing the box under it is about.
+		   over a group, a record's own name. what those three have in common is that each is the
+		   name of the thing the box under it is about.
 
-		   it binds no tracking. the `h3` takes none and is the rank in the display face; the
-		   identity's name is a `<div>` in the sans face and the one of the four the shell draws on
-		   every screen, so it tightens by reading the step at its own rule and says so there. */
+		   it binds no tracking: the `h3` takes none and is the rank in the display face. */
 		--admin-subhead-size: var(--admin-text-md);
 		--admin-subhead-weight: var(--admin-weight-semibold);
 		--admin-subhead-lh: var(--admin-lh-snug);
-		--admin-standfirst-size: var(--admin-text-md);
-		--admin-standfirst-lh: var(--admin-lh-snug);
 		--admin-label-size: var(--admin-text-sm);
 		--admin-label-weight: var(--admin-weight-medium);
 		/* the one tracking a role binds outside the display face's own ranks, and both of these are
@@ -615,20 +589,16 @@
 		--admin-hint-size: var(--admin-text-sm);
 		--admin-hint-lh: var(--admin-lh-snug);
 		--admin-caption-size: var(--admin-text-xs);
-		/* the caption binds a leading because one rule stacks it under a mark — a destination in the
-		   rail, at the width the rail is a column — and there the caption is a word rather than a
-		   run. every other rule at this rank is one line inside something else and states none. */
+		/* the caption is read as one line, so it binds the heading leading. */
 		--admin-caption-lh: var(--admin-lh-heading);
 		/* the smallest thing an operator screen says, and a rung under the caption: an identifier
 		   printed under the name it belongs to, which is compared against something off the screen
 		   rather than read. nothing louder than that may take it. */
 		--admin-fineprint-size: var(--admin-text-2xs);
 		/* a control's own label, in the two sizes a control comes in. the `-sm` spelling follows
-		   `--admin-control-height-sm` below, the box the small label usually stands in — usually
-		   rather than always: `.adm-crumbs__list` reads this rank and is a trail of bare links with
-		   no box at all, runs of words standing where a small control would, so re-pointing the
-		   rank moves the breadcrumbs with the buttons. the line height is the label's rather than
-		   the box's: a control whose label wraps is read as a short run of lines. */
+		   `--admin-control-height-sm` below, the box the small label stands in. the line height is
+		   the label's rather than the box's: a control whose label wraps is read as a short run of
+		   lines. */
 		--admin-control-size: var(--admin-text-base);
 		--admin-control-size-sm: var(--admin-text-sm);
 		--admin-control-weight: var(--admin-weight-medium);
@@ -691,9 +661,8 @@
 		/* a listed video's poster, 16:9: 96px wide from the middle breakpoint and 72px under it. */
 		--admin-measure-poster: 6rem;
 		--admin-measure-poster-narrow: 4.5rem;
-		/* the column a wide sheet is read in (`.adm-sheet--wide` in ./adm.css), and a mail's
-		   (`MEASURE` in packages/emails/src/tokens.ts). it is authored apart from the panel above
-		   rather than pointed at it, so neither may drag the other. */
+		/* the column a mail is read in (`MEASURE` in packages/emails/src/tokens.ts). it is authored
+		   apart from the panel above rather than pointed at it, so neither may drag the other. */
 		--admin-measure-dialog: 34rem;
 
 		/* ---- spacing -------------------------------------------------------------------
@@ -731,12 +700,11 @@
 
 		   two radii wherever a corner is rounded at all, and both stay small, because a fully
 		   rounded control reads as a tag and a control is not a tag. `--admin-radius` is a
-		   control's and a field's corner, and a destination's and its mark tile's in the rail.
+		   control's and a field's corner.
 		   `--admin-radius-plane` is the corner of a plane on the page — a card, a panel, a record, a
 		   table's plane, a group, a status panel — and of a choice drawn as a card,
 		   twice the control's because a plane is the larger object and a corner keeps its proportion
-		   to what it rounds. `--admin-radius-0` is the word for
-		   square, so a rule that means square says it rather than leaving the corner unstated.
+		   to what it rounds.
 
 		   `--admin-radius-pill` is the exception, and its wearers are a named list, because a shape
 		   worn by whatever reaches for it turns into decoration. a new wearer joins this list and
@@ -754,7 +722,6 @@
 		   it will meet rather than measured, because what is inside sets that height.
 
 		   the bound is on a wearer beyond the list and not on one of them wearing it everywhere. */
-		--admin-radius-0: 0;
 		--admin-radius: var(--radius-control);
 		--admin-radius-plane: var(--radius-card);
 		--admin-radius-pill: 999px;
@@ -768,10 +735,6 @@
 		--admin-border-width-strong: 2px;
 		--admin-rule: var(--admin-border-width) solid var(--admin-divider);
 		--admin-hairline: var(--admin-border-width) solid var(--admin-border);
-		/* the strip over a rail tab's word, and at half, the line over a move to another page. it
-		   is the same number as `--admin-focus-bleed` below and means a different thing, so neither
-		   points at the other. */
-		--admin-edge: 3px;
 
 		/* the ring is a band outside the control's own edge rather than a weight on it, so it is
 		   not the state rung above: it adds to whatever border the control already draws, and at
@@ -786,7 +749,7 @@
 		/* ---- edges ----------------------------------------------------------------------
 
 		   what ./adm.css draws casts no shadow. what floats over the flow — a menu, a select's list,
-		   a finder's list, the calendar, the two sheets and the phone's bar of destinations — is told
+		   a finder's list and the calendar — is told
 		   from what it covers by this step-6 edge, the same subtle border a plane wears on the page.
 		   depth is a change of surface or a rule and nothing else. the dialog is the registry's, and
 		   its elevation is the registry's too (the head of this file). */
@@ -798,7 +761,7 @@
 		   (https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html).
 
 		   36px is a control. 44px is a row — the larger floor, because a row is what a finger
-		   arrives at on the rail and in a checkbox group, where the target is the whole line
+		   arrives at in a checkbox group, where the target is the whole line
 		   rather than the glyph. 28px is the small control, spent where one stands against a
 		   line of type and a box at the full height would push that line apart: the copy
 		   control in a slab's label row, the quiet pair in a page header, the add and remove
@@ -833,9 +796,6 @@
 		   at the weight of the words. ./base.css sets it on `.adm-mark`. */
 		--admin-mark-stroke: 1.75;
 		--admin-mark-gutter: 1.75rem;
-		/* the white tile a destination's mark stands in on the rail's column, a mark's box and five
-		   pixels round it: the tile is what holds the mark on the wash as a press's face would. */
-		--admin-mark-tile: 1.625rem;
 
 		/* the drawn height of a network's brand mark (`.adm-brand-mark` in ./base.css), held to
 		   LinkedIn's 21px minimum. */
@@ -843,12 +803,11 @@
 
 		/* ---- motion ---------------------------------------------------------------------
 
-		   four motions and each is motivated in one sentence. nothing else in /admin may
-		   animate, and nothing fades in in front of a sentence somebody is trying to read. the
-		   dwell at the foot is the fifth entry and is none of the four: it holds and does not
-		   move, which is why it is the one entry here that does not collapse below. a button's
-		   press and its press in flight are the registry's (../registry/styles/button-css.css) and
-		   take nothing from here.
+		   three motions and each is motivated in one sentence. nothing else in /admin may
+		   animate, and nothing fades in in front of a sentence somebody is trying to read. a
+		   button's press and its press in flight are the registry's
+		   (../registry/styles/button-css.css), and so is the route line over a move to another page
+		   (../registry/styles/top-bar-css.css); neither takes anything from here.
 
 		   state   - a control's fill answering something and its border with it: the pointer, so a
 		             dense page feels alive under the hand.
@@ -857,46 +816,16 @@
 		   dots    - one circuit of the dot loader on the status ledger. it is one
 		             dot's whole cycle, which is also the circuit: ./adm.css delays each dot by
 		             a sixth of it, so a re-pointing here moves the stagger with the loop and
-		             the dots cannot come to lap each other.
-		   braille-bar - the progress bar: twenty braille cells as the document's own waiting
-		             face, the way a terminal draws a bar, and a line along the viewport's top edge
-		             over a move to another page while the destination reads. both fill fast to a third,
-		             slower to two thirds, then crawl to nine tenths and hold,
-		             because nothing is measured — it says only that the screen is still on its way.
-		             the last tenth is the state duration's, not this one's: ./adm.css rushes
-		             the bar out to full when the screen is done and holds it there for the dwell
-		             below, and the screen waits for the hold rather than for the rush.
-		   dwell   - the beat a finished thing is seen for before the screen it stands on is
-		             replaced. every progress bar in /admin completes and is seen complete: the
-		             full state of the rush above begins at the rush's last instant, so without
-		             this the bar is on screen full for about one frame. ./adm.css spends it as
-		             `adm-dwell`, a keyframe list that changes nothing and exists to be waited
-		             on. */
+		             the dots cannot come to lap each other. */
 		--admin-dur-state: 80ms;
 		--admin-dur-reveal: 140ms;
 		--admin-dur-dots: 720ms;
-		--admin-dur-braille-bar: 6s;
-		/* three of `--admin-dur-state`, which is a quarter of a second, and the move this holds
-		   after — the bar's rush — runs at that step, so the hold is three times the move it
-		   follows. the arithmetic is stated and not spelled:
-		   that step collapses to nothing under reduced motion and this must not. */
-		--admin-dur-dwell: 240ms;
 		--admin-ease-state: cubic-bezier(0.2, 0, 0, 1);
 		--admin-ease-reveal: cubic-bezier(0.2, 0, 0.1, 1);
-		/* the last two are named for the job rather than for one motion, because each paces more than
-		   one of the motions above. this one is for a motion whose shape is already in its keyframe
-		   stops — the line's schedule, the dot's fade and then its hold — so the curve is asked to
-		   add nothing over them; ./adm.css states it at `adm-navigation-line`, where the stops are
-		   the curve. the dot loader and the navigation line's fill read it — the line's rush out to
-		   full is an arrival and takes the state curve instead. */
+		/* named for the job rather than for one motion: a motion whose shape is already in its
+		   keyframe stops — the dot's fade and then its hold — so the curve is asked to add nothing
+		   over them. the dot loader reads it (`adm-dot` in ./adm.css). */
 		--admin-ease-sweep: linear;
-		/* twenty braille cells and no position between two of them. what is animated is `content`,
-		   which is discrete and interpolates for nothing, so a curve here decides when each whole
-		   string swaps rather than how the bar moves: under the default easing the swap lands
-		   halfway along its interval and every stop shifts by half its gap, and this puts each swap
-		   on the percentage that wrote it. ./adm.css states it at `adm-braille-bar`. the cells and
-		   their rush out to all twenty read it. */
-		--admin-ease-cell: step-end;
 		--admin-transition-state:
 			background-color var(--admin-dur-state) var(--admin-ease-state),
 			border-color var(--admin-dur-state) var(--admin-ease-state),
@@ -919,23 +848,13 @@
 	   reader who asked for less of it while a hand-maintained list of selectors quietly stops
 	   being complete. packages/app/src/lib/admin/styles/conformance.spec.ts is what holds every duration to coming from a token.
 
-	   the loop and the progress bar slow rather than stopping. a still ledger under a deployment
-	   that is still deploying, or a bar that has stopped filling while the screen is still reading,
-	   is a lie about what is happening.
-
-	   the dwell is restated at its own value, which is the one entry here that does not move. a
-	   hold is not motion: what collapses to nothing is the move under it, and a full bar taken
-	   away the instant it fills is the failure the dwell exists to name — for a reader who asked
-	   for less motion as much as for anyone else. it is restated rather than left out because
-	   this block is what every `--admin-dur-*` is answered in, and a name absent from it reads as
-	   one nobody thought about. the two numbers are one decision and move together. */
+	   the loop slows rather than stopping: a still ledger under a deployment that is still
+	   deploying is a lie about what is happening. */
 	@media (prefers-reduced-motion: reduce) {
 		:root {
 			--admin-dur-state: 0ms;
 			--admin-dur-reveal: 0ms;
 			--admin-dur-dots: 2.4s;
-			--admin-dur-braille-bar: 12s;
-			--admin-dur-dwell: 240ms;
 			--admin-transition-state: none;
 		}
 	}

@@ -43,7 +43,7 @@
  *   level and the same group inside a panel folded under a heading takes another — so a component
  *   that picked one would be right on the first surface to use it and wrong on the next, which is
  *   the reason `StatusLine`'s own `labelAs` gives. `h2` is the ceiling because a screen's
- *   `PageHeader` draws its `h1`. every level is a heading and `span` is not among them, where
+ *   `PageHeading` draws its `h1`. every level is a heading and `span` is not among them, where
  *   `StatusLine` offers it: a band names the block, which is what a `Group` has and a `Stack` does
  *   not.
  * @property {ReactNode} [children]

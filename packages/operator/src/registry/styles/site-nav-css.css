@@ -1,0 +1,401 @@
+/* the registry's site header as plain css, no tailwind: the skip link, the
+   announcement band, the sticky bar, the mark, the main links, the actions
+   and, under 640px (75rem with the nav fold), the menu button's disclosure
+   panel. reads only the variables the `variables` item declares, the
+   button-css classes for the menu button and the actions, and
+   bare-icon-button-css's for the band's dismiss. site-nav-css.test.tsx
+   renders the React `SiteNav` beside it and asserts the same computed look in
+   light and dark, for the default and example themes, at a desktop and a
+   phone width.
+
+   the spacing step, the type sizes, the weight, the tracking, the z rungs, the
+   page widths and the popup's easing live only in tailwind's theme; they are
+   declared here under ds- names with the same values, and the test holds them
+   equal. a media query cannot read a variable, so its widths are written out:
+   40rem is tailwind's sm, 48rem md, 75rem the theme's nav, 80rem xl, 96rem
+   2xl. */
+.ds-site-nav,
+.ds-site-nav-skip,
+.ds-site-nav-announce {
+  --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
+  --ds-text-sm: calc(0.875 * var(--ds-rem, 1rem));
+  --ds-text-sm-lh: calc(1.25 / 0.875);
+  --ds-font-weight-semibold: 600;
+  --ds-font-weight-bold: 700;
+  --ds-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+/* hidden until focused, then a floating chip at the top start. it comes before
+   the header in the markup, so it is the first tab stop. */
+.ds-site-nav-skip {
+  --ds-z-index-floating: 60;
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border-width: 0;
+}
+.ds-site-nav-skip:focus {
+  inset-block-start: calc(var(--ds-spacing) * 3);
+  inset-inline-start: calc(var(--ds-spacing) * 3);
+  z-index: var(--ds-z-index-floating);
+  inline-size: auto;
+  block-size: auto;
+  margin: 0;
+  overflow: visible;
+  clip-path: none;
+  white-space: normal;
+  padding: calc(var(--ds-spacing) * 2) calc(var(--ds-spacing) * 4);
+  border-radius: var(--radius);
+  background-color: var(--popover);
+  box-shadow: var(--shadow-floating);
+  color: var(--gray-12);
+  font-size: var(--ds-text-sm);
+  line-height: var(--ds-text-sm-lh);
+  font-weight: var(--ds-font-weight-semibold);
+}
+.ds-site-nav-skip:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.ds-site-nav {
+  --ds-z-index-sticky: 30;
+  box-sizing: border-box;
+  position: sticky;
+  inset-block-start: 0;
+  z-index: var(--ds-z-index-sticky);
+  border-block-end: 1px solid var(--hairline);
+  background-color: var(--background);
+}
+/* the page's top bar is the header's own height (its 4rem row and 1px edge),
+   so a page state under it centers in what is left: --ds-bar-h is what
+   page-state-css takes off the viewport. an app shell declares its own on its
+   root, which wins inside it. */
+:root:has(.ds-site-nav) {
+  --ds-header-h: calc(4 * var(--ds-rem, 1rem) + 1px);
+  --ds-bar-h: var(--ds-header-h);
+}
+/* the band's one-line height (8px a side and a 12px line at 1.5), the
+   estimate that paints before the note's script measures the real one */
+:root:has(.ds-site-nav-announce) {
+  --ds-bar-h: calc(var(--ds-header-h) + 2.125 * var(--ds-rem, 1rem));
+}
+.ds-site-nav ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* the page shape: full-bleed with a 20px gutter, 40px from md, capped at 80rem
+   from xl and 96rem from 2xl */
+.ds-site-nav-bar {
+  --ds-breakpoint-xl: calc(80 * var(--ds-rem, 1rem));
+  --ds-breakpoint-2xl: calc(96 * var(--ds-rem, 1rem));
+  box-sizing: border-box;
+  display: flex;
+  align-items: safe center;
+  justify-content: space-between;
+  inline-size: 100%;
+  block-size: calc(var(--ds-spacing) * 16);
+  margin-inline: auto;
+  padding-inline: calc(var(--ds-spacing) * 5);
+}
+@media (width >= 48rem) {
+  .ds-site-nav-bar {
+    padding-inline: calc(var(--ds-spacing) * 10);
+  }
+}
+@media (width >= 80rem) {
+  .ds-site-nav-bar {
+    max-inline-size: var(--ds-breakpoint-xl);
+  }
+}
+@media (width >= 96rem) {
+  .ds-site-nav-bar {
+    max-inline-size: var(--ds-breakpoint-2xl);
+  }
+}
+
+/* the mark: the full header height, its 8px inset taken back by the margin so
+   the mark itself sits on the gutter */
+.ds-site-nav-brand {
+  --ds-text-xl: calc(1.25 * var(--ds-rem, 1rem));
+  --ds-text-xl-lh: calc(1.75 / 1.25);
+  --ds-tracking-tight: -0.025em;
+  box-sizing: border-box;
+  display: flex;
+  align-items: safe center;
+  block-size: calc(var(--ds-spacing) * 16);
+  margin-inline-start: calc(var(--ds-spacing) * -2);
+  padding-inline: calc(var(--ds-spacing) * 2);
+  border-radius: var(--radius);
+  white-space: nowrap;
+  color: var(--gray-12);
+  font-family: var(--font-display);
+  font-size: var(--ds-text-xl);
+  line-height: var(--ds-text-xl-lh);
+  font-weight: var(--ds-font-weight-bold);
+  letter-spacing: var(--ds-tracking-tight);
+  text-decoration: none;
+}
+
+.ds-site-nav-links {
+  block-size: 100%;
+}
+.ds-site-nav-links ul {
+  display: flex;
+  gap: var(--ds-spacing);
+  block-size: 100%;
+}
+
+/* the weight is 600 in every state: the current page never re-measures */
+.ds-site-nav-link,
+.ds-site-nav-menu-link {
+  box-sizing: border-box;
+  display: flex;
+  align-items: safe center;
+  border: 0 solid transparent;
+  color: var(--gray-11);
+  font-size: var(--ds-text-sm);
+  line-height: var(--ds-text-sm-lh);
+  font-weight: var(--ds-font-weight-semibold);
+  text-decoration: none;
+  /* tailwind's transition-colors, less its gradient stops */
+  transition-property:
+    color, background-color, border-color, outline-color, text-decoration-color,
+    fill, stroke;
+  transition-duration: var(--duration-fast);
+  transition-timing-function: var(--ds-ease-out);
+}
+.ds-site-nav-link {
+  block-size: 100%;
+  padding-inline: calc(var(--ds-spacing) * 4);
+  border-block-end-width: 2px;
+}
+@media (hover: hover) and (pointer: fine) {
+  .ds-site-nav-link:hover,
+  .ds-site-nav-menu-link:hover {
+    color: var(--gray-12);
+  }
+}
+.ds-site-nav-link[aria-current="page"] {
+  border-color: var(--primary);
+  color: var(--accent-11);
+}
+/* inset: the link fills the header, so an outer ring would be cut */
+.ds-site-nav-brand:focus-visible,
+.ds-site-nav-link:focus-visible,
+.ds-site-nav-menu-link:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -4px;
+}
+
+/* under 640px the links fold behind the menu button; from 640px the button
+   and its panel are gone. the toggle is also a .ds-btn, whose display: flex
+   it must outrank whichever stylesheet loads last, hence the scope */
+@media (width < 40rem) {
+  .ds-site-nav-links {
+    display: none;
+  }
+}
+@media (width >= 40rem) {
+  .ds-site-nav:not(.ds-site-nav-fold-nav) .ds-site-nav-toggle,
+  .ds-site-nav:not(.ds-site-nav-fold-nav) .ds-site-nav-menu {
+    display: none;
+  }
+}
+
+/* the end of the bar: the actions, the account and the menu button, 16px
+   after the links, which it pushes to meet it */
+.ds-site-nav-end {
+  display: flex;
+  align-items: safe center;
+  gap: calc(var(--ds-spacing) * 2);
+  margin-inline-start: calc(var(--ds-spacing) * 4);
+}
+.ds-site-nav-links:has(~ .ds-site-nav-end) {
+  margin-inline-start: auto;
+}
+.ds-site-nav-actions {
+  display: flex;
+  align-items: safe center;
+  gap: calc(var(--ds-spacing) * 2);
+}
+@media (width < 40rem) {
+  .ds-site-nav-actions {
+    display: none;
+  }
+}
+
+/* the disclosure panel, hung under the bar. `hidden` closes it. */
+.ds-site-nav-menu {
+  box-sizing: border-box;
+  position: absolute;
+  inset-inline: 0;
+  inset-block-start: 100%;
+  padding-block: calc(var(--ds-spacing) * 2);
+  border-block-end: 1px solid var(--hairline);
+  background-color: var(--popover);
+  box-shadow: var(--shadow-floating);
+  transform-origin: top;
+  animation: ds-popup-in var(--duration-fast) var(--ds-ease-out);
+}
+.ds-site-nav-menu[hidden] {
+  display: none;
+}
+.ds-site-nav-menu ul {
+  display: flex;
+  flex-direction: column;
+}
+.ds-site-nav-menu-link {
+  --ds-field-size: calc(var(--ds-spacing) * 12 + 2px);
+  block-size: var(--ds-field-size);
+  padding-inline: calc(var(--ds-spacing) * 5);
+  border-inline-start-width: 2px;
+}
+.ds-site-nav-menu-link[aria-current="page"] {
+  border-color: var(--primary);
+  background-color: var(--secondary);
+  color: var(--accent-11);
+}
+/* the nav fold: six links and the actions need the bar to 75rem. the links
+   take 12px a side and no gap, so the bar fits */
+.ds-site-nav-fold-nav .ds-site-nav-links ul {
+  gap: 0;
+}
+.ds-site-nav-fold-nav .ds-site-nav-link {
+  padding-inline: calc(var(--ds-spacing) * 3);
+  white-space: nowrap;
+}
+@media (width < 75rem) {
+  .ds-site-nav-fold-nav .ds-site-nav-links,
+  .ds-site-nav-fold-nav .ds-site-nav-actions {
+    display: none;
+  }
+}
+@media (width >= 75rem) {
+  .ds-site-nav-fold-nav .ds-site-nav-toggle,
+  .ds-site-nav-fold-nav .ds-site-nav-menu {
+    display: none;
+  }
+}
+
+/* the actions again under the panel's links, stacked full width */
+.ds-site-nav-menu-actions {
+  box-sizing: border-box;
+  display: grid;
+  gap: calc(var(--ds-spacing) * 2);
+  margin-block-start: calc(var(--ds-spacing) * 2);
+  padding: calc(var(--ds-spacing) * 3) calc(var(--ds-spacing) * 5)
+    calc(var(--ds-spacing) * 2);
+  border-block-start: 1px solid var(--hairline);
+}
+
+/* the announcement: a band above the header on the --primary fill, in the
+   page shape. the ring and the edge inside it are the fill's own, as
+   tailwind's surface-primary rebinds them */
+.ds-site-nav-announce {
+  --ring: var(--primary-ring);
+  --border: var(--primary-border);
+  background-color: var(--primary);
+  color: var(--primary-fg);
+}
+.ds-site-nav-announce-row {
+  --ds-text-xs: calc(0.75 * var(--ds-rem, 1rem));
+  --ds-leading-normal: 1.5;
+  --ds-breakpoint-xl: calc(80 * var(--ds-rem, 1rem));
+  --ds-breakpoint-2xl: calc(96 * var(--ds-rem, 1rem));
+  box-sizing: border-box;
+  display: flex;
+  align-items: flex-start;
+  gap: calc(var(--ds-spacing) * 2);
+  inline-size: 100%;
+  margin-inline: auto;
+  padding: calc(var(--ds-spacing) * 2) calc(var(--ds-spacing) * 5);
+  font-size: var(--ds-text-xs);
+  line-height: var(--ds-leading-normal);
+}
+@media (width >= 48rem) {
+  .ds-site-nav-announce-row {
+    padding-inline: calc(var(--ds-spacing) * 10);
+  }
+}
+@media (width >= 80rem) {
+  .ds-site-nav-announce-row {
+    max-inline-size: var(--ds-breakpoint-xl);
+  }
+}
+@media (width >= 96rem) {
+  .ds-site-nav-announce-row {
+    max-inline-size: var(--ds-breakpoint-2xl);
+  }
+}
+.ds-site-nav-announce-row > p {
+  flex: 1 1 0%;
+  margin: 0;
+  text-wrap: balance;
+}
+.ds-site-nav-announce-row a {
+  border-radius: var(--radius);
+  color: inherit;
+  font-weight: var(--ds-font-weight-bold);
+  text-decoration: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  .ds-site-nav-announce-row a:hover {
+    text-decoration-line: underline;
+  }
+}
+.ds-site-nav-announce-row a:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+.ds-site-nav-announce-row a > svg {
+  display: inline;
+  inline-size: calc(var(--ds-spacing) * 3);
+  block-size: calc(var(--ds-spacing) * 3);
+  vertical-align: -0.1em;
+}
+/* the dismiss: a bare-icon-button-css glyph in the band's own ink, hovered
+   and pressed too, which its own hover and press rules would turn gray.
+   the doubled class outranks them in any load order */
+.ds-site-nav-announce .ds-icon-bare,
+.ds-site-nav-announce .ds-icon-bare.ds-icon-bare:active {
+  border-color: var(--border);
+  color: inherit;
+}
+@media (hover: hover) and (pointer: fine) {
+  .ds-site-nav-announce .ds-icon-bare.ds-icon-bare:hover {
+    color: inherit;
+  }
+}
+/* forced colors paint a transparent edge in a system color, which would draw
+   the current page's line under every link: there the others take Canvas and
+   the current one Highlight */
+@media (forced-colors: active) {
+  .ds-site-nav-link,
+  .ds-site-nav-menu-link {
+    border-color: Canvas;
+  }
+  .ds-site-nav-link[aria-current="page"],
+  .ds-site-nav-menu-link[aria-current="page"] {
+    border-color: Highlight;
+  }
+}
+/* the frames of tailwind's own popup-in in ./theme.css, under a ds- name:
+   keyframes are document-global, and a host's own popup-in would win */
+@keyframes ds-popup-in {
+  from {
+    opacity: 0;
+    scale: 0.95;
+  }
+  to {
+    opacity: 1;
+    scale: 1;
+  }
+}

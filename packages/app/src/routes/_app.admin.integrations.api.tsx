@@ -11,6 +11,7 @@ import { getFormProps } from '@conform-to/react';
 import { type RefObject, useEffect, useRef, useState } from 'react';
 import { data, Form, Link, useNavigate, useNavigation } from 'react-router';
 import { z } from 'zod';
+import { ScreenHeading } from '$lib/admin/crumbs';
 import { screenTitle } from '$lib/admin/screen-title';
 import { LocalTime } from '$lib/admin/viewer-time.react';
 import { type AdminActionData, boxProps, useAdminForm, whichForm } from '$lib/admin/use-admin-form';
@@ -63,7 +64,7 @@ import type { Route } from './+types/_app.admin.integrations.api';
 // asked, a revoked row takes its Revoke with it — so each hands `fallbackFocus` the Name box, the
 // one control that stands through both answers.
 
-/** the screen's name in the document title. ./_app.tsx names the page in a hidden `h1`. */
+/** the screen's name, in its heading and in the document title. */
 const SCREEN_TITLE = 'API';
 
 /** the address this screen answers on, and the one a revoke redirects back to. */
@@ -209,6 +210,7 @@ export default function Api({ loaderData, actionData }: Route.ComponentProps) {
 
 	return (
 		<Column wide>
+			<ScreenHeading title={SCREEN_TITLE} />
 			<Groups>
 				<Grouped>
 					{/* remounted on each key made, so the box empties: a create form that stays on its

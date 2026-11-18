@@ -89,11 +89,9 @@ const JOBS: Record<string, Record<string, string>> = {
 		'--admin-control-bg': 'neutral-3',
 		'--admin-control-bg-disabled': 'neutral-3',
 		'--admin-control-soft-bg': 'neutral-3',
-		'--admin-control-quiet-bg-hover': 'neutral-3',
 		'--admin-field-bg-disabled': 'neutral-3',
 		'--admin-code-bg': 'neutral-3',
 		'--admin-slab-bg': 'neutral-3',
-		'--admin-rail-hover-bg': 'neutral-3',
 		'--admin-accent-tint': 'accent-3',
 		'--admin-tone-blocker-tint': 'blocker-3',
 		'--admin-tone-attention-tint': 'attention-3',
@@ -108,11 +106,7 @@ const JOBS: Record<string, Record<string, string>> = {
 	'5 active or selected ui element': {
 		'--admin-control-bg-active': 'neutral-5',
 		'--admin-selection-bg': 'accent-5',
-		'--admin-accent-selected': 'accent-5',
-		'--admin-rail-current-bg': 'accent-5',
-		'--admin-rail-current-bg-hover': 'accent-5',
-		'--admin-bar-current-bg': 'accent-5',
-		'--admin-bar-current-bg-hover': 'accent-5'
+		'--admin-accent-selected': 'accent-5'
 	},
 	'6 subtle borders and separators': {
 		'--admin-overlay-border': 'neutral-6',
@@ -163,7 +157,6 @@ const JOBS: Record<string, Record<string, string>> = {
 		'--admin-accent-ink-hover': 'accent-12',
 		'--admin-accent-deep': 'accent-12',
 		'--admin-selection-ink': 'accent-12',
-		'--admin-rail-current-ink': 'accent-12',
 		'--admin-tone-blocker-deep': 'blocker-12',
 		'--admin-tone-attention-deep': 'attention-12',
 		'--admin-tone-note-deep': 'neutral-12',

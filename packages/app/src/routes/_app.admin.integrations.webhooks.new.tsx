@@ -1,10 +1,9 @@
 import { Button } from '@better-giving/operator/components/controls/Button';
 import { Column } from '@better-giving/operator/components/shell/Layout';
-import { PageHeader } from '@better-giving/operator/components/shell/PageHeader';
 import { getFormProps } from '@conform-to/react';
 import type { MouseEvent } from 'react';
 import { Form, href, Link, useNavigation } from 'react-router';
-import type { CrumbHandle } from '$lib/admin/crumbs';
+import { type CrumbHandle, ScreenHeading } from '$lib/admin/crumbs';
 import { useAnswerRevision } from '$lib/admin/answer-revision';
 import { screenTitle } from '$lib/admin/screen-title';
 import { useAdminForm } from '$lib/admin/use-admin-form';
@@ -89,7 +88,7 @@ export default function NewDestination({ actionData }: Route.ComponentProps) {
 
 	return (
 		<Column>
-			<PageHeader title={SCREEN_TITLE} />
+			<ScreenHeading title={SCREEN_TITLE} />
 			<Form method="post" {...formProps} onSubmit={answers.onSubmit}>
 				<div className="adm-stack">
 					<DestinationFields

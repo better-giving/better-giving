@@ -15,10 +15,10 @@ import type { ResizeRefusal } from '@better-giving/operator/images/resize';
 // to grow into (`resizeCorner`), before the cropper reads it.
 
 /**
- * the smallest side a cropped logo may have, in the image's own pixels: twice the 44px row a donor
- * page draws the logo in (`.page-mast-logo` in packages/app/src/lib/donate/page.css), so a phone
- * screen, at two device pixels to each of the row's, draws it sharp. a square under it is most
- * often a drag that shrank the box by accident.
+ * the smallest side a cropped logo may have, in the image's own pixels: at least twice the 32px a
+ * donor page's site nav draws the logo at (`.page-site-logo` in
+ * packages/app/src/lib/donate/page.css), so a phone screen, at two device pixels to each of the
+ * nav's, draws it sharp. a square under it is most often a drag that shrank the box by accident.
  */
 export const LOGO_CROP_MIN = 88;
 

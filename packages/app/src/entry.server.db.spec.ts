@@ -2,12 +2,13 @@ import { ADMIN_USERNAME } from '@better-giving/operator/admin-password';
 import type { Config } from '@react-router/dev/config';
 import {
 	createRequestHandler,
+	isRouteErrorResponse,
 	type ServerBuild,
 	UNSAFE_withComponentProps,
 	UNSAFE_withErrorBoundaryProps
 } from 'react-router';
 import { eq } from 'drizzle-orm';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import routerConfig from '../react-router.config';
 import { createAuth } from '$lib/server/auth';
 import { resolveAuthSecret } from '$lib/server/auth/signing-key';
@@ -350,6 +351,36 @@ describe('a dashboard document', () => {
 		await expectStrictDocument(
 			await send('/admin', { headers: { cookie: session } }, {}, finished)
 		);
+	});
+});
+
+// the gate throws ahead of the layout's loader, so react router hands the error to the layout's
+// boundary with no frame to draw (react-router/docs/how-to/middleware.md, "next() and Error
+// Handling"). a boundary that rethrows there fails the server render: react router logs that
+// failure as an error of its own and renders again from whichever boundary it last saw, and a
+// second failure is its bare-text 500.
+describe('a dashboard document whose gate cannot sign anyone in', () => {
+	/** a deployment whose sign-in pin names no address (`requirePin` in $lib/server/auth/pin.ts). */
+	const UNPINNABLE = { ...DEPLOYED, BETTER_AUTH_URL: 'not an address' } as unknown as Env;
+
+	it('is the unframed error page, naming the variable to fix', async () => {
+		const response = await send('/admin', {}, {}, UNPINNABLE);
+		const body = await response.text();
+
+		expect(response.status).toBe(500);
+		expect(response.headers.get('content-type')).toMatch(/^text\/html/);
+		expect(body.replace(/<[^>]+>/g, '')).toContain('BETTER_AUTH_URL names no http(s) origin');
+		// the frame is drawn from the layout's reading, which never ran.
+		expect(body).not.toContain('ds-shell-sidebar');
+	});
+
+	it('logs the cause once, and no failed render', async () => {
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+		await (await send('/admin', {}, {}, UNPINNABLE)).text();
+
+		const firsts = logged.mock.calls.map(([first]) => first);
+		expect(firsts.filter((first) => String(first).startsWith('the sign-in pin'))).toHaveLength(1);
+		expect(firsts.filter((first) => isRouteErrorResponse(first))).toEqual([]);
 	});
 });
 

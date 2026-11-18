@@ -1,4 +1,8 @@
+import { Button } from '@better-giving/operator/components/controls/Button';
 import { Column } from '@better-giving/operator/components/shell/Layout';
+import { PageState } from '@better-giving/operator/components/shell/PageState';
+import { href, Link } from 'react-router';
+import { ScreenHeading } from '$lib/admin/crumbs';
 import { GiftsTable } from '$lib/admin/donations/gifts-table';
 import { screenTitle } from '$lib/admin/screen-title';
 import { formatMinor } from '$lib/donations/money';
@@ -23,8 +27,14 @@ import type { Route } from './+types/_app.admin.donations._index';
 // `$lib/donations/statuses.ts`, the table is `GiftsTable` ($lib/admin/donations/gifts-table.tsx),
 // and the only job here is turning rows into what the page renders.
 
-/** the screen's name in the document title. ./_app.tsx names the page in a hidden `h1`. */
+/** the screen's name, in its heading and in the document title. */
 const SCREEN_TITLE = 'Gifts';
+
+/** the ways off the list beside adding a gift: the accountant's export, and the notes donors show. */
+const HEADING_LINKS = [
+	{ label: 'Export', href: href('/admin/donations/export'), internal: true },
+	{ label: 'Public messages', href: href('/admin/donations/messages'), internal: true }
+] as const;
 
 export function meta({ matches }: Route.MetaArgs): Route.MetaDescriptors {
 	return [{ title: screenTitle(SCREEN_TITLE, matches) }];
@@ -154,6 +164,9 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 // what this page owes is that every gift a deployment has taken can be read: who gave, how much,
 // when, what state it is in, what they wrote, and where its employer match stands.
 export default function Donations({ loaderData }: Route.ComponentProps) {
+	// a deployment with no gifts at all, which is not a filter that matched nothing: that one keeps
+	// the table, whose filter is the way back out of it.
+	const none = loaderData.donations.length === 0 && loaderData.match === null;
 	return (
 		// one column, the wide measure, because a table plane is what it exists for. the table sits in
 		// the column directly, and nothing wraps it. a grid item's automatic minimum size is its
@@ -164,7 +177,25 @@ export default function Donations({ loaderData }: Route.ComponentProps) {
 		// automatic minimum is zero, so as the column's own child it shrinks and scrolls at every
 		// width.
 		<Column wide>
-			<GiftsTable {...loaderData} />
+			<ScreenHeading
+				title={SCREEN_TITLE}
+				primary={
+					<Button as={Link} to={href('/admin/donations/new')} variant="primary" mark="plus">
+						Add donation
+					</Button>
+				}
+				secondary={HEADING_LINKS}
+			/>
+			{none ? (
+				// the heading's Add donation is the way in, so the state offers no second one.
+				<PageState
+					variant="empty"
+					title="No gifts yet"
+					body="Gifts show up here as soon as a donor gives, or when you add one by hand."
+				/>
+			) : (
+				<GiftsTable {...loaderData} />
+			)}
 		</Column>
 	);
 }

@@ -213,7 +213,7 @@ describe('the setting', () => {
 describe('the list', () => {
 	it('counts the pages and heads the columns', () => {
 		const { host } = mount();
-		expect(host.querySelector('.adm-standfirst')?.textContent).toContain(
+		expect(host.querySelector('.adm-hint')?.textContent).toContain(
 			'Fundraisers your supporters started for Harbor Light.'
 		);
 		expect(host.querySelector('.adm-tablecaption')?.textContent).toBe(

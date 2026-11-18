@@ -3,10 +3,12 @@ import { Button } from '@better-giving/operator/components/controls/Button';
 import { DataTable } from '@better-giving/operator/components/data/DataTable';
 import { EmptyState } from '@better-giving/operator/components/data/EmptyState';
 import { Column } from '@better-giving/operator/components/shell/Layout';
-import { PageHeader } from '@better-giving/operator/components/shell/PageHeader';
+import { PageHeading } from '@better-giving/operator/components/shell/PageHeading';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
 import { CONFIRMATION_MS } from '@better-giving/operator/save-state';
 import { type RefObject, useEffect, useId, useRef, useState } from 'react';
+import type { Crumb } from '$lib/admin/crumbs';
+import { RouterLink } from '$lib/admin/router-link';
 import { LocalTime } from '$lib/admin/viewer-time.react';
 
 // Public messages at /admin/donations/messages: the notes donors asked to show on the donate page,
@@ -79,6 +81,11 @@ export type PublicMessagesProps = {
 	readonly onShow: (donationId: string) => void;
 	/** absent where the route reads no page past the first, which the cap note then says. */
 	readonly older?: OlderMessages;
+	/**
+	 * the pages above this one, as the route's handle states them ($lib/admin/crumbs.tsx). required:
+	 * `PageHeading` draws the description only under a trail.
+	 */
+	readonly crumbs: readonly Crumb[];
 };
 
 const SCREEN_TITLE = 'Public messages';
@@ -116,7 +123,8 @@ export function PublicMessages({
 	outcome = null,
 	onHide,
 	onShow,
-	older
+	older,
+	crumbs
 }: PublicMessagesProps) {
 	const pressOf = (id: string): PressState =>
 		presses !== undefined
@@ -209,7 +217,7 @@ export function PublicMessages({
 	if (messages.length === 0) {
 		return (
 			<Column wide>
-				<PageHeader title={SCREEN_TITLE} />
+				<PageHeading title={SCREEN_TITLE} crumbs={crumbs} link={RouterLink} />
 				<EmptyState>
 					No donor has chosen to show a note yet. A note appears here when a donor ticks Show my
 					note on the gift form.
@@ -223,7 +231,12 @@ export function PublicMessages({
 
 	return (
 		<Column wide>
-			<PageHeader title={SCREEN_TITLE} standfirst={STANDFIRST} />
+			<PageHeading
+				title={SCREEN_TITLE}
+				description={STANDFIRST}
+				crumbs={crumbs}
+				link={RouterLink}
+			/>
 			<DataTable
 				caption={`${total} ${total === 1 ? 'message' : 'messages'}, newest first.`}
 				capNote={withheld ? `Only the most recent ${messages.length} are shown.` : undefined}

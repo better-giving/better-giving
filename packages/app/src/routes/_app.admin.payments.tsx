@@ -20,6 +20,7 @@ import {
 import { type ReactNode, useEffect, useId, useRef } from 'react';
 import { useFetcher } from 'react-router';
 import { z } from 'zod';
+import { ScreenHeading } from '$lib/admin/crumbs';
 import { screenTitle } from '$lib/admin/screen-title';
 import { formPress } from '$lib/admin/unreached';
 import { resultFor, whichForm } from '$lib/admin/use-admin-form';
@@ -158,6 +159,7 @@ export default function Payments({ loaderData }: Route.ComponentProps) {
 	const { cards, others } = loaderData;
 	return (
 		<Column>
+			<ScreenHeading title={SCREEN_TITLE} />
 			{cards.length === 0 ? <NoProcessor /> : null}
 			{cards.map((card) => (
 				<ProcessorCard key={card.processor} card={card} />

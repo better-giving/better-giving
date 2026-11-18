@@ -84,7 +84,7 @@ const REFERENCE = /var\(\s*(--admin-[\w-]+)/g;
 // something has since reached for goes on claiming to be unread, and nothing about the tree says
 // otherwise. `exempts no token anything reads` is what fails then.
 //
-// the same twenty-five are named in packages/operator/src/styles/tokens.css's own header. they are written in both places on purpose:
+// the same twenty-six are named in packages/operator/src/styles/tokens.css's own header. they are written in both places on purpose:
 // the paragraph is what a reader meets, and this is what fails.
 const SCALE_EXEMPT = [
 	// the unread steps of the four ladders. each ladder is radix's twelve steps because the step
@@ -129,7 +129,10 @@ const SCALE_EXEMPT = [
 	'--admin-text-xl',
 	// the weight scale's top. three of the four weights are drawn and this is the fourth; it is a
 	// self-hosted file either way, so the name existing is what says the face has four.
-	'--admin-weight-bold'
+	'--admin-weight-bold',
+	// the one unread step of the spacing scale: steps 10 and 12 are drawn, so the scale keeps the
+	// step between them.
+	'--admin-space-11'
 ];
 
 // the six layers, in the order ../../../app.css declares them. later wins, which is why `layout` is
@@ -157,6 +160,12 @@ const defined = new Set(
 );
 const reads = sources.flatMap(referenced);
 const readNames = new Set(reads.map((r) => r.token));
+
+// a mail reads a token by name off packages/operator/src/styles/tokens.ts rather than through
+// `var()`, so a token a mail alone spends is read there and nowhere a sheet or a screen shows it.
+const MAIL_FILE = '../emails/src/tokens.ts';
+const MAIL_READ = /ADMIN_TOKENS\['(--admin-[\w-]+)'\]/g;
+const mailReadNames = new Set([...read(MAIL_FILE).matchAll(MAIL_READ)].flatMap((m) => m[1] ?? []));
 
 // every class this repository's markup writes onto an element, from every operator screen. built
 // once: the question a stylesheet asks is whether anything anywhere carries a name, so the answer
@@ -660,6 +669,7 @@ describe('the --admin-* token layer is what /admin is drawn from', () => {
 		// is a sentence that passes.
 		expect(defined.size).toBeGreaterThan(150);
 		expect(readNames.size).toBeGreaterThan(150);
+		expect(mailReadNames.size).toBeGreaterThan(10);
 	});
 
 	it('defines every token the scale exemption names', () => {
@@ -683,7 +693,9 @@ describe('the --admin-* token layer is what /admin is drawn from', () => {
 
 	it('defines no --admin-* that nothing reads, outside the scale exemption', () => {
 		const exempt = new Set(SCALE_EXEMPT);
-		const unread = [...defined].filter((t) => !readNames.has(t) && !exempt.has(t));
+		const unread = [...defined].filter(
+			(t) => !readNames.has(t) && !mailReadNames.has(t) && !exempt.has(t)
+		);
 		expect(unread.sort()).toEqual([]);
 	});
 });
@@ -879,7 +891,7 @@ describe('every motion in /admin collapses at source', () => {
 	it('finds the declarations and the block it is meant to be comparing', () => {
 		// both halves have to be non-empty or the comparison passes by reading nothing.
 		expect(swept.length).toBeGreaterThan(5);
-		expect(dur.root.size).toBeGreaterThanOrEqual(4);
+		expect(dur.root.size).toBeGreaterThanOrEqual(3);
 		expect(dur.reduced.size).toBeGreaterThan(0);
 	});
 

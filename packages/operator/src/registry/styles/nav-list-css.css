@@ -1,0 +1,273 @@
+/* the registry's nav list as plain css, no tailwind: vertical link rows in
+   groups (the sidebar), a parent row over its children (a section's pages,
+   Settings over Profile, Page, …), and the section variant, the same rows
+   from 768px and a sideways-scrolling underlined row under it.
+   reads only the variables the `variables` item declares; the count sits in
+   lead-css's ds-lead-row and ds-lead-1lh and is a badge-css ds-badge.
+   nav-list-css.test.tsx renders the React `NavList` beside it and asserts the
+   same computed look in light and dark, for the default and example themes,
+   at a desktop and a phone width.
+
+   the spacing step, the type sizes, the weights and the easing live only in
+   tailwind's theme; they are declared here under ds- names with the same
+   values, and the test holds them equal. the label tracking is variables'
+   --ds-tracking-label. a media query cannot read a variable, so its width is
+   written out: 48rem is tailwind's md. */
+.ds-nav-list {
+  --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
+  --ds-text-xs: calc(0.75 * var(--ds-rem, 1rem));
+  --ds-text-xs-lh: calc(1 / 0.75);
+  --ds-text-sm: calc(0.875 * var(--ds-rem, 1rem));
+  --ds-text-sm-lh: calc(1.25 / 0.875);
+  --ds-font-weight-medium: 500;
+  --ds-font-weight-semibold: 600;
+  --ds-font-weight-bold: 700;
+  --ds-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  display: grid;
+  align-content: flex-start;
+  gap: calc(var(--ds-spacing) * 5);
+}
+.ds-nav-list ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ds-nav-group,
+.ds-nav-group ul {
+  display: grid;
+  gap: calc(var(--ds-spacing) * 0.5);
+}
+/* a group's heading, an h2 that names it as a role="group" */
+.ds-nav-title {
+  margin: 0;
+  padding: 0 calc(var(--ds-spacing) * 3) var(--ds-spacing);
+  color: var(--gray-11);
+  font-family: var(--font-display);
+  font-size: var(--ds-text-xs);
+  line-height: var(--ds-text-xs-lh);
+  font-weight: var(--ds-font-weight-bold);
+  letter-spacing: var(--ds-tracking-label);
+  text-transform: uppercase;
+}
+
+/* a row: the glyph, the label with its count on the first line, the dot */
+.ds-nav-link {
+  position: relative;
+  box-sizing: border-box;
+  display: flex;
+  align-items: flex-start;
+  gap: calc(var(--ds-spacing) * 3);
+  min-block-size: calc(var(--ds-spacing) * 9);
+  padding: calc(var(--ds-spacing) * 2) calc(var(--ds-spacing) * 3);
+  /* drawn only by the section's narrow row, which colours it; at 0px the
+     colour is the page's edge, as on every element under tailwind's base */
+  border: 0 solid var(--border);
+  border-radius: var(--radius);
+  color: var(--gray-12);
+  font-size: var(--ds-text-sm);
+  line-height: var(--ds-text-sm-lh);
+  font-weight: var(--ds-font-weight-medium);
+  text-decoration: none;
+  /* tailwind's transition-colors, less its gradient stops */
+  transition-property:
+    color, background-color, border-color, outline-color, text-decoration-color,
+    fill, stroke;
+  transition-duration: var(--duration-fast);
+  transition-timing-function: var(--ds-ease-out);
+}
+/* 16px, centred on the label's first line, in the label's ink */
+.ds-nav-link > svg {
+  flex-shrink: 0;
+  inline-size: calc(var(--ds-spacing) * 4);
+  block-size: calc(var(--ds-spacing) * 4);
+  margin-block: calc(0.5lh - var(--ds-spacing) * 2);
+}
+.ds-nav-label {
+  flex: 1 1 0%;
+  min-inline-size: 0;
+}
+@media (hover: hover) and (pointer: fine) {
+  .ds-nav-link:hover:not([aria-current="page"], [aria-current="true"]) {
+    background-color: var(--gray-4);
+  }
+}
+/* pressed: a step darker than hover, on touch too */
+.ds-nav-link:active:not([aria-current="page"], [aria-current="true"]) {
+  background-color: var(--gray-5);
+}
+/* the section's sideways row takes no hover or press fill */
+@media (hover: hover) and (pointer: fine) and (width < 48rem) {
+  .ds-nav-list-section .ds-nav-link:hover:not([aria-current="page"]) {
+    background-color: transparent;
+  }
+}
+@media (width < 48rem) {
+  .ds-nav-list-section .ds-nav-link:active:not([aria-current="page"]) {
+    background-color: transparent;
+  }
+}
+/* current: the page (`page`), or in a rail the parent of the page (`true`) */
+.ds-nav-link:is([aria-current="page"], [aria-current="true"]) {
+  background-color: var(--secondary-active);
+}
+/* forced colors drop that fill: a Highlight ring 2px inside marks the row
+   there, giving way to the focus ring. the section row under 48rem has its
+   own underline instead */
+@media (forced-colors: active) {
+  .ds-nav-list:not(.ds-nav-list-section)
+    .ds-nav-link:is([aria-current="page"], [aria-current="true"]):not(
+      :focus-visible
+    ) {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+}
+@media (width >= 48rem) and (forced-colors: active) {
+  .ds-nav-list-section .ds-nav-link[aria-current="page"]:not(:focus-visible) {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+}
+/* inset: a row fills its list, so an outer ring would be cut */
+.ds-nav-link:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+
+/* a parent row: a link to its first child over its children, the row's look
+   with no fill of its own, 600 while open (aria-expanded, which the route
+   sets), a chevron at its end turned down while open (mirrored under rtl
+   while closed) */
+.ds-nav-parent[aria-expanded="true"] {
+  font-weight: var(--ds-font-weight-semibold);
+}
+.ds-nav-chev:dir(rtl) {
+  scale: -1 1;
+}
+.ds-nav-parent[aria-expanded="true"] > .ds-nav-chev {
+  rotate: 90deg;
+  scale: none;
+}
+/* its children: the same rows, 2px apart and 4px under it, no indent and no
+   edge, so their glyphs and labels share the top-level rows' edges. closed,
+   the list is not shown */
+.ds-nav-list .ds-nav-sub {
+  display: grid;
+  gap: calc(var(--ds-spacing) * 0.5);
+  margin-block-start: var(--ds-spacing);
+}
+.ds-nav-parent[aria-expanded="false"] + .ds-nav-sub {
+  display: none;
+}
+/* a child: gray-11 at rest, gray-12 hovered or current */
+.ds-nav-sublink {
+  color: var(--gray-11);
+}
+@media (hover: hover) and (pointer: fine) {
+  .ds-nav-sublink:hover {
+    color: var(--gray-12);
+  }
+}
+.ds-nav-sublink[aria-current="page"] {
+  color: var(--gray-12);
+}
+
+/* the count's dot: hidden, shown under an ancestor with data-collapsed, the
+   icon-only rail's hook. the rail itself is the app shell's to draw. */
+.ds-nav-dot {
+  position: absolute;
+  inset-block-start: calc(var(--ds-spacing) * 1.5);
+  inset-inline-end: calc(var(--ds-spacing) * 1.5);
+  display: none;
+  inline-size: calc(var(--ds-spacing) * 2);
+  block-size: calc(var(--ds-spacing) * 2);
+  border-radius: calc(infinity * 1px);
+  background-color: var(--primary);
+}
+[data-collapsed] .ds-nav-dot {
+  display: block;
+}
+
+/* the section variant: one list, the rows above from 768px */
+.ds-nav-list-section {
+  display: block;
+  align-content: normal;
+  gap: normal;
+}
+.ds-nav-list-section ul {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--ds-spacing) * 0.5);
+}
+/* its glyphs gray-11, gray-12 on the current row */
+.ds-nav-list-section .ds-nav-link > svg {
+  color: var(--gray-11);
+}
+.ds-nav-list-section .ds-nav-link[aria-current="page"] > svg {
+  color: var(--gray-12);
+}
+@media (width < 48rem) {
+  /* a sideways row on a hairline, its end under a 28px fade (the left end
+     under rtl). the nav scrolls and the list, as wide as its links, draws the
+     hairline: a link's underline overlaps it by 1px, which a list that
+     scrolled itself would clip, and scroll 1px down for */
+  .ds-nav-list-section {
+    overflow-x: auto;
+    scrollbar-width: none;
+    mask-image: linear-gradient(
+      to right,
+      black calc(100% - var(--ds-spacing) * 7),
+      transparent
+    );
+  }
+  .ds-nav-list-section:dir(rtl) {
+    mask-image: linear-gradient(
+      to left,
+      black calc(100% - var(--ds-spacing) * 7),
+      transparent
+    );
+  }
+  .ds-nav-list-section ul {
+    flex-direction: row;
+    gap: var(--ds-spacing);
+    inline-size: max-content;
+    min-inline-size: 100%;
+    border-block-end: 1px solid var(--hairline);
+  }
+  .ds-nav-list-section li {
+    flex-shrink: 0;
+  }
+  /* a 44px link sitting on the hairline: underlined in --primary and inked
+     accent-11 when current, the others gray-11, no hover fill */
+  .ds-nav-list-section .ds-nav-link {
+    align-items: safe center;
+    min-block-size: calc(var(--ds-spacing) * 11);
+    margin-block-end: -1px;
+    padding: calc(var(--ds-spacing) * 2) calc(var(--ds-spacing) * 4);
+    border-block-end-width: 2px;
+    border-color: transparent;
+    border-radius: var(--radius) var(--radius) 0 0;
+    color: var(--gray-11);
+    font-weight: var(--ds-font-weight-semibold);
+    white-space: nowrap;
+  }
+  .ds-nav-list-section .ds-nav-link[aria-current="page"] {
+    border-color: var(--primary);
+    background-color: transparent;
+    color: var(--accent-11);
+  }
+  .ds-nav-list-section .ds-nav-link[aria-current="page"] > svg {
+    color: var(--gray-11);
+  }
+}
+/* forced colors paint a transparent edge in a system color, which would
+   underline every link: there the others take Canvas and the current one
+   Highlight */
+@media (width < 48rem) and (forced-colors: active) {
+  .ds-nav-list-section .ds-nav-link {
+    border-color: Canvas;
+  }
+  .ds-nav-list-section .ds-nav-link[aria-current="page"] {
+    border-color: Highlight;
+  }
+}

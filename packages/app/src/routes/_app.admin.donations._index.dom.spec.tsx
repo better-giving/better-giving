@@ -152,38 +152,55 @@ it('shows the filter the list was read under, and says a filter matched nothing'
 	expect(root.textContent).toContain('No gifts match this filter.');
 });
 
-it('draws no heading of its own: the frame names the page in a hidden one', () => {
-	expect(screen([gift({})]).querySelector('h1')).toBe(null);
+it('names the page Gifts in its heading', () => {
+	expect(screen([gift({})]).querySelector('.ds-page-header h1')?.textContent).toBe('Gifts');
 });
 
-it('links to adding a donation that arrived in hand, on the line that counts them', () => {
-	const root = screen([gift()]);
-	const link = [...root.querySelectorAll('a')].find((a) => a.textContent === 'Add donation');
+/** the presses the page's heading holds, in the order it draws them. */
+const headingPresses = (root: HTMLElement) =>
+	[...root.querySelectorAll('.ds-page-header a')].map((a) => [
+		a.textContent,
+		a.getAttribute('href')
+	]);
 
-	expect(link?.getAttribute('href')).toBe('/admin/donations/new');
-	// the press is the table's, drawn on the line that counts the gifts rather than in a band of
-	// its own over the page.
-	expect(root.querySelector('.adm-tablelead')?.contains(link ?? null)).toBe(true);
+it('adds a donation from the heading, as its one primary action', () => {
+	const root = screen([gift()]);
+	const add = root.querySelector('.ds-page-header .ds-ph-primary a');
+
+	expect([add?.textContent, add?.getAttribute('href')]).toEqual([
+		'Add donation',
+		'/admin/donations/new'
+	]);
 });
 
-it('opens the accountant’s export, beside the press that adds a gift', () => {
-	const root = screen([gift()]);
-	const link = [...root.querySelectorAll('a')].find((a) => a.textContent === 'Export');
-
-	expect(link?.getAttribute('href')).toBe('/admin/donations/export');
-	// on the same line as the press that adds one: both act on the list, and the export is the only
-	// way out of what the list holds.
-	expect(root.querySelector('.adm-tablelead')?.contains(link ?? null)).toBe(true);
+it('opens the accountant’s export and Public messages from the heading, before Add donation', () => {
+	expect(headingPresses(screen([gift()]))).toEqual([
+		['Export', '/admin/donations/export'],
+		['Public messages', '/admin/donations/messages'],
+		['Add donation', '/admin/donations/new']
+	]);
 });
 
-it('leads to Public messages between Export and Add donation', () => {
+it('draws no press over the table but the filter', () => {
 	const root = screen([gift()]);
-	const presses = [
-		...(root.querySelector('.adm-tablelead .adm-actions')?.querySelectorAll('a') ?? [])
-	];
 
-	expect(presses.map((a) => a.textContent)).toEqual(['Export', 'Public messages', 'Add donation']);
-	expect(presses[1]?.getAttribute('href')).toBe('/admin/donations/messages');
+	expect(root.querySelector('.adm-tablelead a')).toBe(null);
+	expect(root.querySelector('.adm-tablelead select[name="match"]')).not.toBe(null);
+});
+
+it('says there are no gifts yet in the empty state, with no second Add donation', () => {
+	const root = screen([]);
+	const state = root.querySelector('.ds-page-state');
+
+	expect(state?.querySelector('h2')?.textContent).toBe('No gifts yet');
+	expect(state?.textContent).toContain(
+		'Gifts show up here as soon as a donor gives, or when you add one by hand.'
+	);
+	expect(state?.querySelector('a, button')).toBe(null);
+	expect(root.querySelector('table')).toBe(null);
+	expect(
+		[...root.querySelectorAll('a')].filter((a) => a.textContent === 'Add donation')
+	).toHaveLength(1);
 });
 
 it('says under a note where it stands on the donate page, and nothing under a private one', () => {
@@ -196,18 +213,9 @@ it('says under a note where it stands on the donate page, and nothing under a pr
 });
 
 it('keeps the press on a deployment that has taken no gifts', () => {
-	// the screen an operator is most likely to be pressing it on, and the one where the line it
-	// now sits on states no count.
+	// the screen an operator is most likely to be pressing it on.
 	const link = [...screen([]).querySelectorAll('a')].find((a) => a.textContent === 'Add donation');
 	expect(link?.getAttribute('href')).toBe('/admin/donations/new');
-});
-
-it('puts no press over the page, on either reading', () => {
-	// the header band is gone: a second copy of the press above the count would be two ways to the
-	// same screen a line apart.
-	for (const donations of [[], [gift()]]) {
-		expect(screen(donations).querySelector('.adm-pageheader')).toBe(null);
-	}
 });
 
 it('states the dedication as the sentence a fundraiser says', () => {

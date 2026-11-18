@@ -38,7 +38,7 @@ const NO_SUCH_GIFT =
 	'No gift here has that address. It may have been opened from an old link. Go back to Gifts and pick it from the list.';
 
 /** the section this screen sits under, named first in the trail and in the tab. */
-const SECTION = 'Donations';
+const SECTION = 'Gifts';
 
 export const handle = {
 	crumbs: ({ loaderData, pathname }) => [

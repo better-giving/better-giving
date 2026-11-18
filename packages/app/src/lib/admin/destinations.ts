@@ -3,8 +3,9 @@ import zapierImage from '@better-giving/operator/brand/zapier.png';
 /**
  * every destination the staff surface has, in the order an operator works: the state of giving in
  * one look, then the campaigns, the fundraisers supporters start beside them, and the forms that
- * take the money, the donors it came from, the gifts themselves, the ones that repeat, who may sign in, the organisation's settings and its payments,
- * the systems outside that read it, and the books all of it lands in. the dashboard is first
+ * take the money, the donors it came from, the gifts themselves, the ones that repeat, who may
+ * sign in, the organisation's settings and its payments, the systems outside that read it, and the
+ * books all of it lands in. the dashboard is first
  * because it is the surface's own address and what an operator opens on, and each record after it
  * is a step further from the page or form that produced it.
  *
@@ -18,28 +19,8 @@ import zapierImage from '@better-giving/operator/brand/zapier.png';
  * and the sign-in password is not.
  *
  * a `label` is the word a fundraiser says and a path is the word the domain uses, and the two need
- * not be one: `/admin/donations` is Gifts. CLAUDE.md → Product surface is the rule, and it is why a
+ * not be one: `/admin/donations` is Gifts. AGENTS.md → Product surface is the rule, and it is why a
  * section is never named after the table under it.
- *
- * two words per destination, because the rail is drawn twice. the bar at the foot of a phone is a
- * row of tabs across the width of the screen — an equal share each whatever the count, which
- * `packages/operator/src/styles/adm.css` sets — and `short` is a word that clears that share; the
- * column at the wide width has the room for `label`, which is the name the page itself carries and
- * is what a destination is called everywhere else. both words are in the markup and that sheet
- * chooses between them — a cell that swapped its own text would be a name changing under a reader
- * between two widths.
- *
- * the bar holds four destinations and a More tab, and `bar: true` marks the four. a tab for every
- * destination stops clearing `short` at the 375px floor with the integrations pages in the rail,
- * so the bar takes the destinations an operator opens most — the figures, the campaigns, the donors
- * and the gifts, in the rail's own order — and More opens a sheet holding every other one in the
- * column's order, under its rules and headings. a destination added here is on the sheet until it
- * is argued onto the bar, and one that joins it narrows every tab's share. More reads current while
- * the reader is in any of the sheet's destinations, so the bar never goes blank under them.
- *
- * `short` is one of `label`'s own words and never a synonym for it: a tab reading a word that
- * appears nowhere on the page it lands on is a second name for the same place, and the reader who
- * arrives has no way to tell they are where they meant to go.
  *
  * bare paths, as every address in this app is: nothing configures a base path, so a fork that ever
  * did would change every link and every server redirect at once rather than one call site at a
@@ -50,20 +31,23 @@ import zapierImage from '@better-giving/operator/brand/zapier.png';
  * sign in, what the organisation is and what it takes gifts through, none of them a record of a
  * gift; the integrations, the ways a system outside the deployment reaches it; and the books, which
  * everything above writes into. a rule is the whole of the separation between the other four. the
- * integrations carry the one heading, because their
- * entries are named after a mechanism rather than a record — API — and that word in a run of
- * records says nothing about what it holds. the groups are the shape `AppShell` takes as `groups`,
+ * integrations carry the one heading, because their entries are named after a mechanism rather
+ * than a record — API — and that word in a run of records says nothing about what it holds. the
+ * groups are the shape `Shell` takes as `groups`,
  * and `DESTINATIONS` is the same entries flat, which is what a match against an address walks.
  *
  * `deployer: true` marks a group, or one destination in a group, drawn for the deployer's session
- * alone: every page behind it answers a member with not-found, and a cell leading there would be a
- * way to a refusal. `destinationGroupsFor` picks the groups and cells for a session, and
+ * alone: every page behind it answers a member with not-found, and a row leading there would be a
+ * way to a refusal. `destinationGroupsFor` picks the groups and rows for a session, and
  * ../../routes/_app.tsx hands it the same predicate the pages behind them read.
  *
  * `mark` is the glyph the column draws beside a label — a name from
  * packages/operator/src/components/status/glyphs.js — or, for a destination named after another
- * company's product, that company's image as packages/operator publishes it, `{ src }`. the bar at
- * a phone's width draws neither, so a mark is never the only thing telling two destinations apart.
+ * company's product, that company's image as packages/operator publishes it, `{ src }`.
+ *
+ * `children` are the pages a destination is split into, drawn under it as its sections: Settings'
+ * three, one per form (../../routes/_app.admin.settings_.organisation.tsx and the two beside it).
+ * they share their parent's `deployer` mark, since a section is drawn only where its parent is.
  */
 export const DESTINATION_GROUPS = [
 	{
@@ -73,61 +57,63 @@ export const DESTINATION_GROUPS = [
 			{
 				href: '/admin',
 				label: 'Dashboard',
-				short: 'Dashboard',
-				mark: 'layout-dashboard',
-				bar: true
+				mark: 'layout-dashboard'
 			}
 		]
 	},
 	{
 		destinations: [
-			// first of the records of giving, and a tab on the phone's bar: a campaign is what an
-			// operator opens most weeks, and its page is where the gifts it raises come in.
+			// first of the records of giving: a campaign is what an operator opens most weeks, and its
+			// page is where the gifts it raises come in.
 			{
 				href: '/admin/campaigns',
 				label: 'Campaigns',
-				short: 'Campaigns',
-				mark: 'megaphone',
-				bar: true
+				mark: 'megaphone'
 			},
 			// directly after the campaigns: a supporter's page raises money the way a campaign does, and
 			// a supporter starts one from a campaign's card (./supporter-pages/supporter-pages.tsx).
 			{
 				href: '/admin/supporter-pages',
 				label: 'Supporter pages',
-				short: 'Supporter',
 				mark: 'user-plus'
 			},
-			{ href: '/admin/forms', label: 'Donation forms', short: 'Forms', mark: 'form' },
+			{ href: '/admin/forms', label: 'Donation forms', mark: 'form' },
 			// directly after the forms, because a program is what a form asks a donor about: it is named
 			// here and then pinned or offered there, and neither screen means anything without the other.
-			{ href: '/admin/programs', label: 'Programs', short: 'Programs', mark: 'folder-heart' },
-			{ href: '/admin/donors', label: 'Donors', short: 'Donors', mark: 'users', bar: true },
-			{ href: '/admin/donations', label: 'Gifts', short: 'Gifts', mark: 'hand-heart', bar: true },
-			{ href: '/admin/recurring', label: 'Recurring gifts', short: 'Recurring', mark: 'repeat' }
+			{ href: '/admin/programs', label: 'Programs', mark: 'folder-heart' },
+			{ href: '/admin/donors', label: 'Donors', mark: 'users' },
+			{ href: '/admin/donations', label: 'Gifts', mark: 'hand-heart' },
+			{ href: '/admin/recurring', label: 'Recurring gifts', mark: 'repeat' }
 		]
 	},
 	{
 		destinations: [
 			// who may sign in to this rail, which is no record of giving. a colleague is a row
 			// somebody adds and removes, which is what makes it a collection.
-			{ href: '/admin/members', label: 'Members', short: 'Members', mark: 'shield-check' },
+			{ href: '/admin/members', label: 'Members', mark: 'shield-check' },
 			// the organisation's own details and where this deployment reaches it, beside who may
-			// sign in: both are about the deployment rather than about a gift
-			// (../../routes/_app.admin.settings.tsx).
+			// sign in: both are about the deployment rather than about a gift. `/admin/settings` itself
+			// redirects to the first section (../../routes/_app.admin.settings.tsx).
 			{
 				href: '/admin/settings',
 				label: 'Settings',
-				short: 'Settings',
 				mark: 'settings',
-				deployer: true
+				deployer: true,
+				children: [
+					{
+						href: '/admin/settings/organisation',
+						label: 'Organisation details',
+						mark: 'building-2'
+					},
+					{ href: '/admin/settings/notifications', label: 'Notifications', mark: 'bell' },
+					{ href: '/admin/settings/mail', label: 'Mail', mark: 'mail' }
+				]
 			},
 			// where each payment processor the deployment holds keys for stands, and the two presses
 			// that act on its account (../../routes/_app.admin.payments.tsx).
 			{
 				href: '/admin/payments',
 				label: 'Payments',
-				short: 'Payments',
 				mark: 'credit-card',
 				deployer: true
 			}
@@ -140,14 +126,12 @@ export const DESTINATION_GROUPS = [
 			{
 				href: '/admin/integrations/zapier',
 				label: 'Zapier',
-				short: 'Zapier',
 				mark: { src: zapierImage }
 			},
-			{ href: '/admin/integrations/api', label: 'API', short: 'API', mark: 'key-round' },
+			{ href: '/admin/integrations/api', label: 'API', mark: 'key-round' },
 			{
 				href: '/admin/integrations/webhooks',
 				label: 'Webhooks',
-				short: 'Webhooks',
 				mark: 'webhook'
 			},
 			// the connections from Claude and ChatGPT through Better Giving's connector, each with
@@ -155,7 +139,6 @@ export const DESTINATION_GROUPS = [
 			{
 				href: '/admin/integrations/connector',
 				label: 'AI',
-				short: 'AI',
 				mark: 'sparkles'
 			}
 		]
@@ -164,7 +147,7 @@ export const DESTINATION_GROUPS = [
 		destinations: [
 			// last, in a group of its own: the journal entries every record above posts, and where a
 			// correction is posted against them. neither a record of giving nor a way in.
-			{ href: '/admin/books', label: 'Books', short: 'Books', mark: 'book-open' }
+			{ href: '/admin/books', label: 'Books', mark: 'book-open' }
 		]
 	}
 ] as const;
@@ -215,18 +198,28 @@ const SURFACE = '/admin';
  * things, and the prefix match is the only place the difference is known: at /admin/forms/new the
  * rail's Donation forms cell is the section the reader is in, not the page they are on. it is
  * stated here or nowhere — packages/operator is a leaf and names no surface's route table.
+ *
+ * `child` is the section of a destination with `children` the path is in, the one the shell marks
+ * as the page under its parent row; absent on a path under none of them.
  */
 export function currentDestination(
 	pathname: string
-): { label: string; kind: 'page' | 'section' } | undefined {
-	let best: { href: string; label: string } | undefined;
+): { label: string; kind: 'page' | 'section'; child?: string } | undefined {
+	let best: Destination | undefined;
 	for (const destination of DESTINATIONS) {
-		const at =
-			pathname === destination.href ||
-			(destination.href !== SURFACE && pathname.startsWith(`${destination.href}/`));
-		if (!at) continue;
+		if (!within(pathname, destination.href)) continue;
 		if (!best || destination.href.length > best.href.length) best = destination;
 	}
 	if (!best) return undefined;
-	return { label: best.label, kind: pathname === best.href ? 'page' : 'section' };
+	const kind = pathname === best.href ? 'page' : 'section';
+	const child =
+		'children' in best
+			? best.children.find((section) => within(pathname, section.href))?.href
+			: undefined;
+	return child === undefined ? { label: best.label, kind } : { label: best.label, kind, child };
+}
+
+/** whether `pathname` is `href` or a screen under it, a segment boundary apart. */
+function within(pathname: string, href: string): boolean {
+	return pathname === href || (href !== SURFACE && pathname.startsWith(`${href}/`));
 }

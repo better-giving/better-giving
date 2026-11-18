@@ -10,7 +10,12 @@ import type { SupporterAccount, SupporterOrg } from './shell';
 // react refuses to flush work inside `act` without this, and says so rather than hanging.
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-export const ORG: SupporterOrg = { name: 'Harbor Light', logo: null, brandColour: null };
+export const ORG: SupporterOrg = {
+	name: 'Harbor Light',
+	logo: null,
+	brandColour: null,
+	footer: { legalName: 'Harbor Light', ein: null, addressLines: [], email: null, socialLinks: [] }
+};
 
 export const ACCOUNT: SupporterAccount = {
 	email: 'maya@example.org',

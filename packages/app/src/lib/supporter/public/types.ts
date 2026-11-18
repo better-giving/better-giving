@@ -79,4 +79,6 @@ export type FundraiserEndedPageProps = {
 	readonly org: FundraiserOrg;
 	readonly look: PageLook;
 	readonly money: PageMoney;
+	/** the ways to reach the organisation, the footer's line. */
+	readonly contact: FundraiserPageProps['contact'];
 };

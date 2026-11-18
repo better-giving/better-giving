@@ -3,7 +3,7 @@ import { Photo } from './photo';
 
 // the campaign's cover: its own photo, or the organisation's logo on a ground of the brand colour
 // where it has none ($lib/page/shape.ts picks which). the logo stands for the organisation the
-// masthead already names, so it says nothing of its own.
+// site nav already names, so it says nothing of its own.
 
 export function Cover({
 	cover,

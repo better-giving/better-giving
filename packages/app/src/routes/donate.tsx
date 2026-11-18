@@ -2,7 +2,13 @@ import { RESUME_FORM_PARAM } from '@better-giving/form/embed/resume';
 import { data, type ShouldRevalidateFunctionArgs } from 'react-router';
 import { DonateNotice } from '$lib/donate/notice';
 import { PageWithCard, type PageWithCardProps } from '$lib/donate/page-with-card';
-import { donorPageLinks, FORM_LOOK, PlainDonationPage, PlainPage } from '$lib/donate/plain-page';
+import {
+	donorPageLinks,
+	FORM_LOOK,
+	PlainDonationPage,
+	PlainPage,
+	SITE_CHROME_SHEETS
+} from '$lib/donate/plain-page';
 import { useShowMoreMessages } from '$lib/donate/show-more';
 import { shareImage } from '$lib/page/image-src';
 import { meterDonorPage } from '$lib/server/api/meter';
@@ -127,7 +133,7 @@ export function meta({ loaderData }: Route.MetaArgs): Route.MetaDescriptors {
 }
 
 export function links(): Route.LinkDescriptors {
-	return donorPageLinks();
+	return donorPageLinks(SITE_CHROME_SHEETS);
 }
 
 export default function DonationPage({ loaderData }: Route.ComponentProps) {

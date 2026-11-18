@@ -26,6 +26,7 @@ Import `styles/variables.css` and `styles/field-css.css`:
 - `ds-field-err`: the message under the control, 4px below it, starting at the control's start edge (`text-align: start`). When it is empty it takes no room.
 - `ds-field-warn`: a message that does not block, in the same slot as the error: warning ink and a 12px mark, the edge unchanged, never `aria-invalid`. Show one message at a time; when there is an error, leave the warning out. When it is empty it takes no room but stays rendered, so it stays a live region.
 - `ds-field-help`: the hint under the control, 4px below the message (or the input), small and muted. When it is empty it takes no room.
+- `ds-block-note`, with `ds-block-note-error` for an error: a line for a whole block or card (see below).
 - `ds-field-input-mono`: with `ds-field-input`, for a key, secret or id: the mono face, no ligatures, an ellipsis when it overflows, the same size. Read-only keeps the muted fill and takes full ink.
 - `ds-sr-only`: text for assistive technology only, such as the "Warning: " before a warning.
 - The label, the hint and both error classes set their own margins, so a `<p>` or `<label>` renders the same with or without a CSS reset.
@@ -79,6 +80,24 @@ A `ds-field-input-container` holding a `ds-field-affix` becomes a flex row, cent
 ```
 
 The message comes first and the hint under it, in the markup, on screen and in `aria-describedby`. Keep the warning's paragraph in the page while it is empty and fill it when the warning applies, so the polite live region reads it out.
+
+## A note for a whole block
+
+`ds-block-note` is one plain line of help for a whole block or card rather than one field ("3 more settings can be changed in the chat"); `ds-block-note ds-block-note-error` is an error about the whole section. It is the field hint's styling used above field level, so it ships here beside `ds-field-help`, sharing its rule (size, ink, line height and wrapping follow the hint's); it sits in a card as well as in any other block. It carries no outer spacing; place it with your own class. The error takes the field error's `--destructive-subtle-fg` ink at the same size. When it is empty it stays in the page with no height and no margin, so an error note works as a live region; it takes no room in a block of its own, but inside a flex or grid container with a `gap` it is still an item, so its container draws a gap beside it: leave the gap off that container, or place the note where there is none. The React twin is `BlockNote` in the `input` item.
+
+```html
+<form id="alerts" aria-labelledby="alerts-title" aria-describedby="alerts-note">
+  <h2 id="alerts-title">Alerts</h2>
+  <!-- the block's fields -->
+  <p class="ds-block-note" id="alerts-note">3 more settings can be changed in the chat.</p>
+</form>
+<button type="submit" class="ds-btn ds-btn-primary" form="alerts" aria-describedby="alerts-error">Save changes</button>
+<p class="ds-block-note ds-block-note-error" id="alerts-error" role="status" aria-live="polite" aria-atomic="true"></p>
+```
+
+- Help is plain text: give it an `id` and name it from the block's root with `aria-describedby`.
+- An error is a polite live region kept in the page from the start, empty: `role="status"`, with `aria-live="polite"` and `aria-atomic="true"` beside it, which `role="status"` implies but older screen readers need written out. Write its text when the error happens (for an error known at load, write it after the page has loaded, a frame after the region is in the page), so it is announced; to say the same error again, empty it, then write it again. An error that is in the markup at load is not announced.
+- `aria-describedby` on the Save button names the error note, so the button carries the error with it.
 
 ## Errors stay with their input
 

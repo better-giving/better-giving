@@ -10,7 +10,7 @@ import {
 	readJournalProblem,
 	REFUSAL_ON_SCREEN
 } from '$lib/ledger/journal-range';
-import ExportEntries from './_app.admin.donations.export';
+import ExportEntries, { handle } from './_app.admin.donations.export';
 
 // the Export screen, drawn.
 //
@@ -121,6 +121,8 @@ function screen(options: { search?: string } = {}): { root: HTMLElement; visited
 				{
 					id: STUB_ROUTE,
 					index: true,
+					// the route's own trail: the nested heading, which draws the line under it.
+					handle,
 					loader: ({ request }: { request: Request }) => {
 						const asked = new URL(request.url).search;
 						visited.push(asked);
@@ -896,11 +898,10 @@ it('re-seeds the boxes from the range the address holds, however it was arrived 
 	expect(written(root, 'from')).toBe('2026-04-01');
 });
 
-it('names itself once, at the rank the frame leaves free', () => {
+it('names itself once, as the page’s one heading', () => {
 	const { root } = screen();
 
-	// the frame draws the trail in its top strip for a screen stating one and no heading at all
-	// (../routes/_app.tsx), so the page's own `h1` is this screen's to draw.
+	// the frame draws no heading (./_app.tsx), so the page's own `h1` is this screen's to draw.
 	expect(
 		[...root.querySelectorAll('h1, h2, h3')].map((held) => [held.tagName, held.textContent])
 	).toEqual([['H1', 'Export']]);
@@ -911,13 +912,13 @@ it('says the one thing about an export the screen cannot show', () => {
 
 	// what a second export of the same days does is not visible anywhere here: no file, no range
 	// and no press on this screen carries a trace of the one before it.
-	const standing = [...root.querySelectorAll('p.adm-standfirst')].map((words) => words.textContent);
+	const standing = [...root.querySelectorAll('p.ds-page-desc')].map((words) => words.textContent);
 	expect(standing).toHaveLength(1);
 	expect(standing[0]).toContain('the same entries twice');
 	// and nothing else stands: the only other `p` is the row of presses' own name, which is a
 	// label rather than a sentence about the screen.
 	expect([...root.querySelectorAll('p')].map((words) => words.className)).toEqual([
-		'adm-standfirst',
+		'ds-page-desc',
 		'adm-caption'
 	]);
 });

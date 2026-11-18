@@ -4,6 +4,7 @@ import { Column } from '@better-giving/operator/components/shell/Layout';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
 import { data, href, Link } from 'react-router';
 import { useAfterPaint } from '$lib/admin/after-paint';
+import { ScreenHeading } from '$lib/admin/crumbs';
 import { screenTitle } from '$lib/admin/screen-title';
 import { WEBHOOK_EVENT_TYPES } from '$lib/webhooks/catalog';
 import { STAFF_USER_ID } from '$lib/server/auth';
@@ -30,7 +31,7 @@ import type { Route } from './+types/_app.admin.integrations.webhooks._index';
 // ($lib/admin/after-paint.ts). the delete was pressed on another page, so this region arrives with
 // the landing, and one arriving already holding the words is an insertion nobody announces.
 
-/** the screen's name in the document title. ./_app.tsx names the page in a hidden `h1`. */
+/** the screen's name, in its heading and in the document title. */
 const SCREEN_TITLE = 'Webhooks';
 
 const NOT_HERE =
@@ -79,6 +80,7 @@ export default function Webhooks({ loaderData }: Route.ComponentProps) {
 
 	return (
 		<Column wide>
+			<ScreenHeading title={SCREEN_TITLE} />
 			<DataTable
 				// the count where there are rows, and the screen's own noun where there are none: an
 				// empty table draws no caption and is named from this string instead.

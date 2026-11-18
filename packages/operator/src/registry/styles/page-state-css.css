@@ -1,0 +1,141 @@
+/* the registry's page state as plain css, no tailwind: a centred column that
+   fills the content area, for an error (404, 403, 500), a list with nothing
+   in it yet or nothing matching, and content on its way. reads only the
+   variables the `variables` item declares; the loading ring is
+   spinner-css's ds-spinner. page-state-css.test.tsx renders the React
+   `PageState` beside it and asserts the same computed look in light and
+   dark, for the default and example themes, wide and at 375.
+
+   the spacing step, the type sizes, the weight, the tracking and the 28rem
+   measure live only in tailwind's theme; they are declared here under ds-
+   names with the same values, and the test holds them equal.
+
+   centred in what the user sees: the first child's top margin and the last
+   child's bottom margin are auto, so the block takes the free space on both
+   sides, and `safe` lets content taller than the view start at the top. the
+   view is the viewport below the bar. an app shell's flex <main> sets
+   --ds-page-min to 0, so the block takes the rest of main, and --ds-view-h
+   to 100dvh less the bar; on a bare page, where neither is set, both are
+   100svh less --ds-bar-h. the bottom padding is the top's 56px plus
+   --ds-view-lift (0.2) of the view's height, so the block's middle sits at
+   40% of the view. */
+.ds-page-state {
+  --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
+  --ds-text-xs: calc(0.75 * var(--ds-rem, 1rem));
+  --ds-text-xs-lh: calc(1 / 0.75);
+  --ds-text-sm: calc(0.875 * var(--ds-rem, 1rem));
+  --ds-text-sm-lh: calc(1.25 / 0.875);
+  --ds-text-base: calc(1 * var(--ds-rem, 1rem));
+  --ds-text-base-lh: calc(1.5 / 1);
+  --ds-text-2xl: calc(1.5 * var(--ds-rem, 1rem));
+  --ds-text-2xl-lh: calc(2 / 1.5);
+  --ds-font-weight-bold: 700;
+  --ds-tracking-tight: -0.025em;
+  box-sizing: border-box;
+  display: flex;
+  flex: 1 1 0%;
+  flex-direction: column;
+  align-items: safe center;
+  gap: calc(var(--ds-spacing) * 2);
+  inline-size: 100%;
+  min-block-size: var(--ds-page-min, calc(100svh - var(--ds-bar-h, 0px)));
+  padding: calc(var(--ds-spacing) * 14) calc(var(--ds-spacing) * 5)
+    calc(
+      var(--ds-spacing) *
+      14 +
+      var(--ds-view-h, calc(100svh - var(--ds-bar-h, 0px))) *
+      var(--ds-view-lift, 0.2)
+    );
+  color: var(--gray-11);
+  text-align: center;
+}
+
+.ds-page-state > :first-child {
+  margin-block-start: auto;
+}
+.ds-page-state > :last-child {
+  margin-block-end: auto;
+}
+
+/* the code, on error states only */
+.ds-page-state-code {
+  margin: 0;
+  color: var(--gray-11);
+  font-family: var(--font-mono);
+  font-size: var(--ds-text-xs);
+  line-height: var(--ds-text-xs-lh);
+}
+
+/* the title: an h1 (or an h2 under the page's own header), focusable from
+   script on a route change */
+.ds-page-state-title {
+  margin: 0;
+  color: var(--gray-12);
+  font-family: var(--font-display);
+  font-size: var(--ds-text-2xl);
+  line-height: var(--ds-text-2xl-lh);
+  font-weight: var(--ds-font-weight-bold);
+  letter-spacing: var(--ds-tracking-tight);
+  text-wrap: balance;
+  outline: none;
+}
+.ds-page-state-body {
+  margin: 0;
+  max-inline-size: calc(var(--ds-spacing) * 112);
+  font-size: var(--ds-text-base);
+  line-height: var(--ds-text-base-lh);
+  text-wrap: pretty;
+}
+
+/* the 500's alert: the title and the body alone, still 8px apart */
+.ds-page-state-message {
+  display: flex;
+  flex-direction: column;
+  align-items: safe center;
+  gap: calc(var(--ds-spacing) * 2);
+}
+
+/* the error: the title in the destructive ink, the body in gray-12 */
+.ds-page-state-error .ds-page-state-title {
+  color: var(--destructive-subtle-fg);
+}
+.ds-page-state-error .ds-page-state-body {
+  color: var(--gray-12);
+}
+
+/* the buttons, 16px under the body, wrapping */
+.ds-page-state-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: safe center;
+  justify-content: safe center;
+  gap: calc(var(--ds-spacing) * 3);
+  margin-block-start: calc(var(--ds-spacing) * 4);
+}
+/* one text button on its own row under them */
+.ds-page-state-aside {
+  margin: var(--ds-spacing) 0 0;
+  font-size: var(--ds-text-sm);
+  line-height: var(--ds-text-sm-lh);
+}
+
+/* the 500's reference, selected whole by one press, and its copy button */
+.ds-page-state-ref {
+  display: flex;
+  align-items: safe center;
+  gap: var(--ds-spacing);
+  margin: calc(var(--ds-spacing) * 2) 0 0;
+  color: var(--gray-11);
+  font-family: var(--font-mono);
+  font-size: var(--ds-text-xs);
+  line-height: var(--ds-text-xs-lh);
+}
+.ds-page-state-ref-value {
+  user-select: all;
+}
+
+/* content on its way: the spinner and its line, 14px */
+.ds-page-state-loading {
+  font-size: var(--ds-text-sm);
+  line-height: var(--ds-text-sm-lh);
+}

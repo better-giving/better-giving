@@ -35,7 +35,12 @@ vi.mock('@better-giving/form/embed/challenge', () => ({
 	}
 }));
 
-const ORG = { name: 'Harbor Light', logo: null, brandColour: null };
+const ORG = {
+	name: 'Harbor Light',
+	logo: null,
+	brandColour: null,
+	footer: { legalName: 'Harbor Light', ein: null, addressLines: [], email: null, socialLinks: [] }
+};
 const CHALLENGE = { altchaChallengeUrl: '/api/v1/forms/frm_donationpage/challenge' };
 
 function mount(tree: ReactNode): HTMLElement {

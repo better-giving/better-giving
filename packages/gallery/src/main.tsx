@@ -15,13 +15,18 @@ import './app.css';
  * builder opens to find out what exists. under the glob, adding a preview is one file and removing
  * one is a delete.
  *
- * the page wears two classes and writes no css: this package defines none of its own (./app.css
- * says so), so both come out of packages/operator/src/styles/adm.css and are what every operator
- * screen already stands in. `.adm-main` is the page's gutter, and it is load-bearing rather than
- * decoration — with no gutter a full-width specimen sits flush against the viewport edge, which is
- * a width no screen puts it at and a state the specimen is then wrong about. `.adm-section` on each
- * preview is the rule between one component's specimens and the next's, without which a page of
- * dozens runs together and a reader cannot tell whose state they are looking at.
+ * the page wears two classes and defines no css: this package has none of its own (./app.css says
+ * so), so both are what every operator screen already stands in. `ds-shell-main` is the registry
+ * shell's page (packages/operator/src/registry/styles/app-shell-css.css), which sizes a page state
+ * to its content rather than to the viewport. its gutter is not drawn here: the shell's spacing
+ * step is declared on `.ds-shell` alone, so outside one the padding computes to nothing, and the
+ * gutter is written beside it from the operator's spacing tokens, the registry shell's own narrow
+ * gutter (six and five of its quarter-rem steps). the gutter is load-bearing rather than
+ * decoration — with none a full-width specimen sits flush against the viewport edge, which is a
+ * width no screen puts it at and a state the specimen is then wrong about. `.adm-section`
+ * (packages/operator/src/styles/adm.css) on each preview is the rule between one component's
+ * specimens and the next's, without which a page of dozens runs together and a reader cannot tell
+ * whose state they are looking at.
  */
 
 const previews = import.meta.glob<{ default: () => ReactNode }>('./previews/*.tsx', {
@@ -31,8 +36,8 @@ const previews = import.meta.glob<{ default: () => ReactNode }>('./previews/*.ts
 function App() {
 	const entries = Object.entries(previews).sort(([a], [b]) => a.localeCompare(b));
 	return (
-		// no `main` here: the `AppShell` and `PanelRoute` previews each draw their own.
-		<div className="adm-main">
+		// no `main` here: the `Shell` and `PanelRoute` previews each draw their own.
+		<div className="ds-shell-main" style={{ padding: 'var(--admin-space-8) var(--admin-space-7)' }}>
 			<h1>component gallery</h1>
 			{entries.map(([path, mod]) => {
 				const label = path.replace('./previews/', '').replace(/\.tsx$/, '');

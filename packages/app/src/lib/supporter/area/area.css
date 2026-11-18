@@ -21,47 +21,30 @@
 	padding-block: var(--page-gap-lead) var(--page-gap-section);
 }
 
-/* ── the bar's end ── */
+/* ── the nav's actions ── */
 
-/* signed in, the bar wraps: on a phone the organisation keeps the first row and its name wraps
-   whole rather than being cut (`.page-mast-name` in $lib/donate/page.css cuts it to one line), and
-   the address and Sign out take a row of their own under it. from 48rem they share the one row,
-   at its end, where a donor page's Share stands. */
-.page-mast-in:has(> .sa-account) {
-	flex-wrap: wrap;
-}
-
-.page-mast-in:has(> .sa-account) > .page-mast-name {
-	flex: 1;
-	white-space: normal;
-}
-
+/* signed in, the address and Sign out on one row: the site nav's actions, at the bar's end from
+   40rem and under the menu's row below it ($lib/donate/site-nav.tsx). */
 .sa-account {
 	display: flex;
-	flex-basis: 100%;
 	align-items: center;
 	gap: var(--_sp2);
 	min-inline-size: 0;
 }
 
-/* an address breaks only where it cannot fit the row at all, and Sign out never does. */
+/* an address breaks only where it cannot fit the row at all, and Sign out never does. the nav
+   stands beside the page's ground, so the quiet ink is the form's slate 11 rather than
+   `--page-quiet`, which is declared on the ground alone. */
 .sa-account-email {
 	min-inline-size: 0;
 	overflow-wrap: break-word;
 	font-size: var(--_t-sm);
-	color: var(--page-quiet);
+	color: var(--_n11);
 }
 
 .sa-account > .ds-btn {
 	flex: none;
 	white-space: nowrap;
-}
-
-@container page (min-width: 48rem) {
-	.sa-account {
-		flex-basis: auto;
-		margin-inline-start: auto;
-	}
 }
 
 /* ── type ── */

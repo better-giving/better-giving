@@ -44,6 +44,11 @@ import type { Layout } from '../page/shape';
 // the single node inside is where the page's own tokens are declared and its ground is painted:
 // the form declares its ladder one node under `[data-donate-root]`, so a token reading a rung has to
 // be declared there too, and so does a ground drawn from one.
+//
+// the site nav and the site footer stand beside that node, not in it: they are the registry's and
+// read only its roles, which this root declares in the brand's steps, and so stay clear of the
+// page's own link and ring rules, which ./page.css keys to `.page-ground`. the ground grows to fill
+// the root, so on a short page the footer stands at the foot of the window.
 
 /** the campaign layouts, the Donation page's own, and `plain` for the donation box alone. */
 export type RootLayout = Layout | 'donation' | 'plain';
@@ -56,6 +61,10 @@ export type PageRootProps = {
 	readonly profile?: boolean | undefined;
 	/** the caller's placement; the root sets no outer spacing of its own. */
 	readonly className?: string;
+	/** the page's site nav (./site-nav.tsx), drawn ahead of the ground. */
+	readonly header?: ReactNode;
+	/** the page's site footer (./site-footer.tsx), drawn after the ground. */
+	readonly footer?: ReactNode;
 	readonly children: ReactNode;
 };
 
@@ -71,7 +80,15 @@ export function brandScopeSelector(scope: string): string {
 	return `[data-donate-root][data-brand-scope="${scope}"]`;
 }
 
-export function PageRoot({ brandColour, layout, profile, className, children }: PageRootProps) {
+export function PageRoot({
+	brandColour,
+	layout,
+	profile,
+	className,
+	header,
+	footer,
+	children
+}: PageRootProps) {
 	const scope = useId();
 	// a `PageWithCard` pick or lock report re-renders this root, and the colour has not moved.
 	const css = useMemo(() => {
@@ -98,7 +115,9 @@ export function PageRoot({ brandColour, layout, profile, className, children }: 
 			    breaks only a `</style` that would close it early. */}
 			{css === null ? null : <style>{css}</style>}
 			<BrandScope value={scope}>
+				{header}
 				<div className="page-ground">{children}</div>
+				{footer}
 			</BrandScope>
 		</div>
 	);

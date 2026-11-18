@@ -10,6 +10,18 @@
 @import '@better-giving/operator/registry/styles/switch-css.css' layer(registry);
 @import '@better-giving/operator/registry/styles/state-card-css.css' layer(registry);
 @import '@better-giving/operator/registry/styles/dialog-css.css' layer(registry);
+@import '@better-giving/operator/registry/styles/lead-css.css' layer(registry);
+@import '@better-giving/operator/registry/styles/spinner-css.css' layer(registry);
+@import '@better-giving/operator/registry/styles/avatar-css.css' layer(registry);
+@import '@better-giving/operator/registry/styles/menu-css.css' layer(registry);
+@import '@better-giving/operator/registry/styles/bare-icon-button-css.css' layer(registry);
+@import '@better-giving/operator/registry/styles/nav-list-css.css' layer(registry);
+@import '@better-giving/operator/registry/styles/top-bar-css.css' layer(registry);
+@import '@better-giving/operator/registry/styles/site-nav-css.css' layer(registry);
+@import '@better-giving/operator/registry/styles/page-header-css.css' layer(registry);
+@import '@better-giving/operator/registry/styles/page-state-css.css' layer(registry);
+@import '@better-giving/operator/registry/styles/settings-layout-css.css' layer(registry);
+@import '@better-giving/operator/registry/styles/app-shell-css.css' layer(registry);
 @import '@better-giving/operator/styles/tokens.css';
 @import '@better-giving/operator/styles/base.css';
 @import '@better-giving/operator/styles/adm.css';

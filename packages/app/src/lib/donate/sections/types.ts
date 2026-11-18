@@ -3,7 +3,7 @@ import type { SocialLink } from '@better-giving/operator/console/org';
 // what the page's sections are handed beside the page's own content: the organisation, its
 // sharing, the campaign's goal and the programs, each read by the route and passed down.
 
-/** the legal identity the organisation footer states, already worded for a donor to read. */
+/** the legal identity the site footer states (../site-footer.tsx), already worded for a donor to read. */
 export type OrgInfo = {
 	readonly legalName: string;
 	/** the EIN as printed, `12-3456789`; null draws no line for it. */
@@ -16,7 +16,7 @@ export type OrgInfo = {
 };
 
 export type PageOrg = {
-	/** the name the masthead and the Donation page's title greet a donor with, and the masthead's initials without a logo. */
+	/** the name the site nav's home link carries, and the title of a page stating neither heading nor name (`titleHeading` in ../page-view.tsx). */
 	readonly name: string;
 	/** plain text, a blank line between paragraphs; null where the organisation has written none. */
 	readonly mission: string | null;

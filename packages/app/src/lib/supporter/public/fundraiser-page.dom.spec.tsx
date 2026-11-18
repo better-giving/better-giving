@@ -175,14 +175,53 @@ describe('a live fundraiser, part way', () => {
 		expect(story?.querySelectorAll('.fundraiser-story > p')).toHaveLength(2);
 	});
 
-	it('closes on the share row and the footer, with the way to start one while the feature is on', () => {
+	it('stands the share row directly under what has been raised, named by its heading', () => {
 		const root = mount(<FundraiserPage {...props(PART_WAY)} />);
-		expect(root.querySelector('.page-share-heading')?.textContent).toBe('Share this page');
-		const foot = root.querySelector('footer');
-		expect(foot?.textContent).toContain('2200 Lake Avenue, Cleveland, Ohio');
-		expect(foot?.querySelector('a[href="mailto:hello@harborlight.example"]')).not.toBeNull();
-		const start = foot?.querySelector<HTMLAnchorElement>('a[href="/fundraise"]');
+		const raised = root.querySelector('[data-area="raised"]');
+		const share = raised?.nextElementSibling;
+		expect(share?.getAttribute('data-area')).toBe('share');
+		const heading = share?.querySelector('.page-share-heading');
+		expect(heading?.textContent).toBe('Share this page');
+		expect(share?.getAttribute('aria-labelledby')).toBe(heading?.id);
+		expect(root.querySelectorAll('[data-area="share"]')).toHaveLength(1);
+	});
+
+	it('shares ahead of the box and the story, in reading order', () => {
+		const root = mount(<FundraiserPage {...props(PART_WAY)} />);
+		const order = [
+			...root.querySelectorAll(
+				'[data-area="raised"], [data-area="share"], [data-area="box"], [data-area="story"]'
+			)
+		].map((node) => node.getAttribute('data-area'));
+		expect(order).toEqual(['raised', 'share', 'box', 'story']);
+	});
+
+	it('closes on the way to start one, past the story, while the feature is on', () => {
+		const root = mount(<FundraiserPage {...props(PART_WAY)} />);
+		const start = root.querySelector<HTMLAnchorElement>('main ~ .page-end a[href="/fundraise"]');
 		expect(start?.textContent).toBe('Start your own fundraiser');
+		expect(start?.closest('[data-area="share"]')).toBeNull();
+		expect(start?.closest('aside')).not.toBeNull();
+	});
+
+	it('heads the page with the site nav, Donate not marked current', () => {
+		const root = mount(<FundraiserPage {...props(PART_WAY)} />);
+		const nav = root.querySelector('.ds-site-nav');
+		expect(nav?.querySelector('.ds-site-nav-brand')?.textContent).toBe('Harbor Light');
+		expect(nav?.querySelector('.ds-site-nav-link')?.getAttribute('href')).toBe('/donate');
+		expect(root.querySelector('[aria-current]')).toBeNull();
+		expect(root.querySelector('main')?.id).toBe('main');
+	});
+
+	it('ends on the site footer: the legal line once, then the ways to reach the organisation', () => {
+		const root = mount(<FundraiserPage {...props(PART_WAY)} />);
+		const feet = root.querySelectorAll('footer');
+		expect(feet).toHaveLength(1);
+		expect(feet[0]?.querySelector('p')?.textContent).toBe(
+			'Harbor Light · EIN 84-1234567 · 2200 Lake Avenue, Cleveland, Ohio'
+		);
+		expect(feet[0]?.querySelector('a[href="mailto:hello@harborlight.example"]')).not.toBeNull();
+		expect(feet[0]?.querySelector('a[href="/fundraise"]')).toBeNull();
 	});
 
 	it('calls a supporter by the whole name where its first word is a title or an initial', () => {
@@ -212,6 +251,8 @@ describe('a live fundraiser, part way', () => {
 		const root = mount(<FundraiserPage {...props(PART_WAY, { fundraiserEntry: false })} />);
 		expect(root.querySelector('a[href="/fundraise"]')).toBeNull();
 		expect(text(root)).not.toContain('Start your own fundraiser');
+		expect(root.querySelector('.page-end')).toBeNull();
+		expect(root.querySelector('[data-area="share"]')).not.toBeNull();
 	});
 });
 
@@ -366,13 +407,14 @@ describe('an ended fundraiser', () => {
 				org={{ name: 'Harbor Light', taxId: '84-1234567', logo: null }}
 				look={{ brandColour: '#1d6b4f' }}
 				money={{ locale: 'en-US', currency: 'USD' }}
+				contact={{ addressLines: ['2 Pier Road', 'Halifax, NS'], email: null, socialLinks: [] }}
 			/>
 		);
 	}
 
 	it('names the organisation, says it ended, thanks, and states the final total', () => {
 		const root = ended();
-		expect(root.querySelector('.page-mast-name')?.textContent).toBe('Harbor Light');
+		expect(root.querySelector('.ds-site-nav-brand')?.textContent).toBe('Harbor Light');
 		expect(root.querySelector('h1')?.textContent).toBe(
 			'Ended: Keep the pantry trucks running this winter'
 		);
@@ -389,6 +431,13 @@ describe('an ended fundraiser', () => {
 		expect(on?.getAttribute('href')).toBe('/donate');
 		expect(root.querySelector('.page-box, [data-donate-root] [data-donate-root], form')).toBeNull();
 		expect(bar(root)).toBeNull();
+	});
+
+	it('closes on the site footer stating the organisation’s legal details, as the live page does', () => {
+		const footer = ended().querySelector('footer.ds-site-footer-compact');
+		expect(footer?.textContent).toContain(
+			'Harbor Light · EIN 84-1234567 · 2 Pier Road, Halifax, NS'
+		);
 	});
 });
 

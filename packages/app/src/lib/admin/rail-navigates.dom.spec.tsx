@@ -1,15 +1,14 @@
-import { AppShell } from '@better-giving/operator/components/shell/AppShell';
-import { type ReactNode, act } from 'react';
+import { Shell } from '@better-giving/operator/components/shell/Shell';
+import { act, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { openingLabel } from '@better-giving/operator/progress-bar';
-import { createRoutesStub, useLocation } from 'react-router';
+import { createRoutesStub } from 'react-router';
 import { expect, it, onTestFinished } from 'vitest';
 import { DESTINATION_GROUPS } from './destinations';
 import { RouterLink } from './router-link';
 
 // what a press on the rail has to do: hand the navigation to the router.
 //
-// the same argument as ./button-navigates.dom.spec.tsx, one seam along. the shell and its cells are
+// the same argument as ./button-navigates.dom.spec.tsx, one seam along. the shell and its rows are
 // packages/operator's and take the link as a prop; the dashboard is the surface that hands one
 // in, and a shell mounted without it draws plain anchors that carry every attribute the router's
 // link does. so the difference is only ever visible in what happens on a press, and a rail that
@@ -45,35 +44,36 @@ function stub() {
 		{
 			path: first.href,
 			Component: () => (
-				<AppShell
-					org="Riverside Shelter"
+				<Shell
+					orgName="Riverside Shelter"
+					home={{ href: '/admin', label: 'Dashboard' }}
 					groups={DESTINATION_GROUPS}
+					current={{ label: first.label, kind: 'page' }}
+					staff={{ name: 'Nadia Hart', email: 'nadia@riverside.example' }}
+					donationPage="/donate"
+					editDonationPage="/admin/donation-page"
+					onSignOut={() => {}}
 					link={RouterLink}
-					current={first.label}
-					wayOut={null}
 				>
 					<p>the screen</p>
-				</AppShell>
+				</Shell>
 			)
 		},
-		{
-			path: second.href,
-			// the words the bar over the move read, off the history state the cell's link carried.
-			Component: () => <p data-opening={openingLabel(useLocation().state)}>arrived</p>
-		}
+		{ path: second.href, Component: () => <p>arrived</p> },
+		{ path: '/admin/donation-page', Component: () => <p>the editor</p> }
 	]);
 	return mount(<Stub initialEntries={[first.href]} />);
 }
 
-/** the press a browser sends on the cell reading `label`, and the flush react router does for it. */
+/** the press a browser sends on the sidebar row reading `label`, and the flush the router does. */
 async function press(root: HTMLElement, label: string): Promise<boolean> {
-	const cell = [...root.querySelectorAll('.adm-rail__cells a')].find(
-		(a) => a.querySelector('.adm-dest__full')?.textContent === label
+	const row = [...root.querySelectorAll('.ds-shell-sidebar a.ds-nav-link')].find(
+		(a) => a.querySelector('.ds-nav-label')?.textContent === label
 	);
-	if (!cell) throw new Error(`the rail drew no cell reading ${label}`);
+	if (!row) throw new Error(`the rail drew no row reading ${label}`);
 	let claimed = false;
 	await act(async () => {
-		claimed = !cell.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+		claimed = !row.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
 	});
 	return claimed;
 }
@@ -84,18 +84,39 @@ it('takes the press itself rather than letting the document navigate', async () 
 	expect(await press(stub(), second.label)).toBe(true);
 });
 
-it('arrives at the destination the cell names', async () => {
+it('arrives at the destination the row names', async () => {
 	const root = stub();
 	await press(root, second.label);
 
 	expect(root.textContent).toBe('arrived');
 });
 
-it('names the destination to the bar over the move', async () => {
+it('routes Enter on the account menu’s Edit donation page as a press would', async () => {
+	// the menu follows a link row for Enter with a click of its own; ActionMenu.jsx makes it one the
+	// router's link hears, where the machine's default reached only the document.
 	const root = stub();
-	await press(root, second.label);
+	const account = root.querySelector<HTMLButtonElement>('.ds-shell-sidebar .ds-shell-account-btn');
+	const key = (name: string) =>
+		act(async () => {
+			document.activeElement?.dispatchEvent(
+				new KeyboardEvent('keydown', { key: name, bubbles: true })
+			);
+		});
+	let claimed: boolean | undefined;
+	const watch = (event: Event) => {
+		if ((event.target as Element).closest('a[href="/admin/donation-page"]'))
+			queueMicrotask(() => {
+				claimed = event.defaultPrevented;
+			});
+	};
+	document.addEventListener('click', watch, true);
+	onTestFinished(() => document.removeEventListener('click', watch, true));
 
-	expect(root.querySelector('[data-opening]')?.getAttribute('data-opening')).toBe(
-		`Opening ${second.label}`
-	);
+	act(() => account?.focus());
+	await key('ArrowDown');
+	await key('Enter');
+	await act(async () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
+
+	expect(claimed).toBe(true);
+	expect(root.textContent).toBe('the editor');
 });

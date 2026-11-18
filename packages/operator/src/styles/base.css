@@ -145,7 +145,7 @@
 	   selector this sheet and ./adm.css set the code face on, and
 	   packages/app/src/lib/donate/mono-weights.spec.ts fails when one is missing. */
 	:is(code, kbd, samp, pre) :is(b, strong),
-	:is(.adm-code, .adm-url, .adm-chip, .adm-braille-bar) :is(b, strong) {
+	:is(.adm-code, .adm-url, .adm-chip) :is(b, strong) {
 		/* type-ok: an emphasis inside a run, held to the code face's heaviest file. */
 		font-weight: var(--admin-weight-medium);
 	}
@@ -287,7 +287,8 @@
 	   two, because a band of the page laid inside the ring reads as the control sitting in a
 	   box that arrived with the keyboard. ./adm.css takes the shadow back off the two
 	   controls that draw theirs inset, and ./tokens.css holds the arithmetic that makes them
-	   the two. */
+	   the two. it takes it off a page state's title too, which script focuses and which is no
+	   control. */
 	:focus-visible,
 	.is-focus {
 		outline: var(--admin-focus-width) solid transparent;
@@ -344,13 +345,6 @@
 
 	.adm-prose p + p {
 		margin-block-start: var(--admin-space-5);
-	}
-
-	.adm-standfirst {
-		font-size: var(--admin-standfirst-size);
-		line-height: var(--admin-standfirst-lh);
-		color: var(--admin-ink-2);
-		max-inline-size: var(--admin-measure-prose);
 	}
 
 	.adm-hint {

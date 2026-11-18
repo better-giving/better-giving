@@ -14,7 +14,6 @@ import { Cover } from './sections/cover';
 import { Faq } from './sections/faq';
 import { GoalBar } from './sections/goal-bar';
 import { DonorMessages, type DonorMessagesWiring, MESSAGES_AREA } from './sections/messages';
-import { hasContact, OrgContact, OrgInfo } from './sections/org-info';
 import { Photos } from './sections/photos';
 import { ProfileBanner, ProfileCover, ProfileMark, ProfileName } from './sections/profile';
 import { ProgramChooser } from './sections/program-chooser';
@@ -23,6 +22,8 @@ import { Story } from './sections/story';
 import { Tiers } from './sections/tiers';
 import { Videos } from './sections/videos';
 import type { PageGoal, PageMoney, PageOrg, PageProgram, PageSharing } from './sections/types';
+import { SiteFooter } from './site-footer';
+import { isWordmark, MAIN_ID, SiteNav } from './site-nav';
 
 // a donor page drawn from its stored content: the Donation page at /donate, a campaign at its
 // address, and either one as the editor's preview. one renderer for all three, so the preview is
@@ -49,7 +50,7 @@ import type { PageGoal, PageMoney, PageOrg, PageProgram, PageSharing } from './s
 // - the Donation page: the title, the program chooser, then the box; About us. wide, the box stands
 //   beside the title and the chooser.
 // - the Donation page at /donate, and its preview, handed its profile head (`DonateProfile` in
-//   ./profile.ts): in place of the masthead, the card, the letter or the feature, picked from the
+//   ./profile.ts): in place of its own layout, the card, the letter or the feature, picked from the
 //   profile's content as a campaign's is ($lib/page/profile-shape.ts).
 //   - card: the banner, the logo with the name and the EIN, About us, then the box, one column at
 //     every width.
@@ -60,13 +61,13 @@ import type { PageGoal, PageMoney, PageOrg, PageProgram, PageSharing } from './s
 //     words over its lower left and the box over its right side.
 //   a heading saved for the page heads the box there: over the program chooser where donors choose
 //   a program, over the card where they don't. the name is always drawn there, so the logo beside
-//   it says nothing of its own, and a logo the masthead would let stand in for the name is drawn
+//   it says nothing of its own, and a logo the site nav would let stand in for the name is drawn
 //   whole at its own shape rather than in the square.
 //
 // while Supporter fundraisers is on (`fundraiserEntry`), the entry card that starts one stands after
 // the whole layout, on a campaign, the Donation page and under the profile head alike.
 //
-// every page closes on its share buttons and the organisation's footer. on a phone ./page.css stands
+// every page closes on its share buttons, then the site footer (./site-footer.tsx). on a phone ./page.css stands
 // the letter's and the feature's box straight after the cover and the title, the goal and the lede
 // after it, so all of their box is on the first screen; the card's box begins on it, under the
 // plane, and ./page.css's header sums what stands ahead of it. a campaign's source order keeps the
@@ -75,15 +76,10 @@ import type { PageGoal, PageMoney, PageOrg, PageProgram, PageSharing } from './s
 // draws About us ahead of it.
 // the box is drawn exactly once, and no ancestor of it clips or transforms it.
 //
-// the masthead is the top bar over every page but the Donation page under its profile head: it
-// names the organisation at its start and, on a page with a share section, ends on a Share link to
-// it. with a logo, a logo at least
-// twice as wide as it is tall stands in for the name and carries it as its alt, and a narrower one
-// stands beside the name and says nothing of its own; the stored image's width and height decide.
-// with none, a badge of the name's initials stands beside the name, in the page's brand fill and
-// corner (./page.css), and like a narrower logo says nothing of its own. a program's photo stands on
-// its chooser option. every image arrives by stored image id, drawn from the deployment's own image
-// route and never from an address a page carries.
+// the site nav (./site-nav.tsx) stands over every page, the Donation page under its profile head
+// included, and marks Donate as the current page on the Donation page alone. a program's photo
+// stands on its chooser option. every image arrives by stored image id, drawn from the deployment's
+// own image route and never from an address a page carries.
 
 export type PageLook = {
 	/** lowercase `#rrggbb`, the page's only accent, or null for the registry's default accent. */
@@ -125,7 +121,7 @@ export type PageViewProps = {
 	readonly chooserLocked?: boolean;
 	/**
 	 * the Donation page's profile head, which the route reads for the Donation page alone; null or
-	 * absent draws the masthead and the Donation page's own layout.
+	 * absent draws the Donation page's own layout.
 	 */
 	readonly profile?: DonateProfile | null | undefined;
 	/**
@@ -160,27 +156,22 @@ export function PageView(props: PageViewProps) {
 			: null;
 	const profile = props.type === 'donation_page' ? (props.profile ?? null) : null;
 	const head = profile === null ? null : { profile, shape: profileShape(profile) };
-	// under the profile head the footer is the ways to reach the organisation alone, which the head
-	// has named already, and none where it states none.
-	const foot =
-		profile === null ? (
-			<OrgInfo info={org.info} />
-		) : hasContact(profile.footer) ? (
-			<div className="page-org">
-				<OrgContact contact={profile.footer} />
-			</div>
-		) : null;
 	return (
 		<PageRoot
 			brandColour={look.brandColour}
 			layout={shape?.layout ?? head?.shape.layout ?? 'donation'}
 			profile={profile !== null}
 			{...(className === undefined ? {} : { className })}
+			header={
+				<SiteNav
+					name={org.name}
+					logo={props.logo ?? null}
+					current={props.type === 'donation_page'}
+				/>
+			}
+			footer={<SiteFooter info={org.info} />}
 		>
-			{profile === null ? (
-				<Masthead name={org.name} logo={props.logo ?? null} shareTarget={SHARE_ID} />
-			) : null}
-			<main className="page-body">
+			<main className="page-body" id={MAIN_ID} tabIndex={-1}>
 				{shape !== null ? (
 					<CampaignLayout {...props} shape={shape} />
 				) : head === null ? (
@@ -194,7 +185,7 @@ export function PageView(props: PageViewProps) {
 					</div>
 				) : null}
 			</main>
-			<section className="page-end" id={SHARE_ID} aria-labelledby={shareHeading} {...area('share')}>
+			<section className="page-end" aria-labelledby={shareHeading} {...area('share')}>
 				<div className="page-in">
 					<Share
 						headingId={shareHeading}
@@ -203,17 +194,9 @@ export function PageView(props: PageViewProps) {
 					/>
 				</div>
 			</section>
-			{foot === null ? null : (
-				<footer className="page-foot">
-					<div className="page-in">{foot}</div>
-				</footer>
-			)}
 		</PageRoot>
 	);
 }
-
-/** the share section's id, which the top bar's Share link jumps to. */
-const SHARE_ID = 'page-share';
 
 /**
  * the donation box, inert in the preview, where a click on it opens the settings it draws. a
@@ -504,72 +487,6 @@ function DonationLayout(props: PageViewProps) {
 				</section>
 			)}
 		</>
-	);
-}
-
-/** a logo at least twice as wide as it is tall, by the stored image's width and height. */
-export const isWordmark = (logo: Pick<PageLogo, 'width' | 'height'>): boolean =>
-	logo.width >= 2 * logo.height;
-
-export function Masthead({
-	name,
-	logo,
-	shareTarget
-}: {
-	readonly name: string;
-	readonly logo: PageLogo | null;
-	/** the id of the page's share section, which a Share link at the bar's end jumps to; absent where none. */
-	readonly shareTarget?: string | undefined;
-}) {
-	const share =
-		shareTarget === undefined ? null : (
-			<a className="page-mast-share" href={`#${shareTarget}`}>
-				Share
-			</a>
-		);
-	if (logo === null) {
-		const letters = initials(name);
-		return (
-			<header className="page-mast">
-				<div className="page-in page-mast-in">
-					{letters === '' ? null : (
-						<span className="page-mast-badge" aria-hidden="true">
-							{letters}
-						</span>
-					)}
-					<p className="page-mast-name" title={name}>
-						{name}
-					</p>
-					{share}
-				</div>
-			</header>
-		);
-	}
-	const art = (alt: string) => (
-		<img
-			className="page-mast-logo"
-			src={imageSrc(logo.imageId)}
-			alt={alt}
-			width={logo.width}
-			height={logo.height}
-		/>
-	);
-	return (
-		<header className="page-mast">
-			<div className="page-in page-mast-in">
-				{isWordmark(logo) ? (
-					<p className="page-mast-name">{art(name)}</p>
-				) : (
-					<>
-						{art('')}
-						<p className="page-mast-name" title={name}>
-							{name}
-						</p>
-					</>
-				)}
-				{share}
-			</div>
-		</header>
 	);
 }
 

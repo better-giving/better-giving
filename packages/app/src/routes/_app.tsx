@@ -1,20 +1,30 @@
 import { Button } from '@better-giving/operator/components/controls/Button';
-import { AppShell } from '@better-giving/operator/components/shell/AppShell';
-import { MoveStatus, ProgressBar } from '@better-giving/operator/components/status/ProgressBar';
-import { holdBar, movesPage, openingLabel, pageDrawn } from '@better-giving/operator/progress-bar';
-import { useEffect } from 'react';
-import { Form, Outlet, useLocation, useNavigation } from 'react-router';
-import { ScreenCrumbs, useCrumbs } from '$lib/admin/crumbs';
+import { Shell } from '@better-giving/operator/components/shell/Shell';
+import { parseRail } from '@better-giving/operator/rail-preference';
+import type { ReactNode } from 'react';
+import {
+	isRouteErrorResponse,
+	Link,
+	Outlet,
+	useLocation,
+	useNavigation,
+	useRouteError,
+	useRouteLoaderData,
+	useSubmit
+} from 'react-router';
 import { currentDestination, destinationGroupsFor } from '$lib/admin/destinations';
 import { operatorLinks } from '$lib/admin/operator-links';
 import { RouterLink } from '$lib/admin/router-link';
 import { APP_NAME } from '$lib/admin/screen-title';
 import { parseViewerZone, VIEWER_ZONE_COOKIE } from '$lib/admin/viewer-time';
 import { ViewerZoneProvider } from '$lib/admin/viewer-time.react';
+import { ErrorState, errorTitle } from '$lib/error-state';
+import { imageSrc } from '$lib/page/image-src';
 import { STAFF_USER_ID } from '$lib/server/auth';
 import { staffGate } from '$lib/server/auth/gate';
 import { readSetupState } from '$lib/server/config/setup-state';
 import { database, platform, staff } from '../context';
+import { UnframedError } from '../unframed-error';
 import type { Route } from './+types/_app';
 
 // the layout every screen behind the login sits under, and where the session gate is mounted for
@@ -32,43 +42,24 @@ import type { Route } from './+types/_app';
 // that owns it (CLAUDE.md). see $lib/server/auth/gate.ts for what the gate resolves and where the
 // signing key read now falls.
 //
-// it is also the frame: the shell, the rail and the way out are drawn once here rather than by
-// each screen, so a screen under this route is a screen and nothing else. every part of that frame
-// is `@better-giving/operator`'s and is dressed by packages/operator/src/styles/adm.css — this
-// file states no arrangement, no breakpoint and no count.
-//
-// and it draws the bar over a move to another screen, held by `clientMiddleware` below. the rule
-// that bar keeps is packages/operator/src/progress-bar.ts's header.
+// it is also the frame: the operator shell (`Shell` in @better-giving/operator) is drawn once here
+// rather than by each screen, so a screen under this route draws its own heading and content and
+// nothing else. a screen that fails is drawn inside the same frame by `ErrorBoundary` below, so the
+// rail stays.
 
 export const middleware: Route.MiddlewareFunction[] = [staffGate];
 
 /** the way out, a route of its own (./_app.admin.sign-out.ts). */
 const SIGN_OUT_PATH = '/admin/sign-out';
 
-/** whether the frame, and with it the bar over a move, is on the screen. */
-let framed = false;
+/** where the mark at the head of the rail goes. */
+const HOME = { href: '/admin', label: 'Dashboard' } as const;
 
-// the hold on that bar. middleware rather than this route's loader, because it wraps the reading
-// of whichever child is being entered, and this loader does not run again on a move between two of
-// them; the router commits the new page only once this resolves.
-//
-// **a move from outside the frame holds nothing** — the sign-in screen's redirect in: no bar is
-// drawn there, and a hold would wait out the bar's cap for a rush nobody can see
-// (packages/operator/src/motion-end.ts).
-export const clientMiddleware: Route.ClientMiddlewareFunction[] = [
-	async ({ request }, next) => {
-		if (!framed) return;
-		const bar = holdBar(new URL(request.url).pathname);
-		await next();
-		await bar.finish();
-	}
-];
+/** the Donation page's editor, in the account menu. */
+const DONATION_PAGE_EDITOR = '/admin/donation-page';
 
-/** where the globe beside the organisation's name goes: the Donation page's edit page. */
-const DONATION_PAGE_EDITOR = { href: '/admin/donation-page', label: 'Donation page' } as const;
-
-/** the top bar's way to the published Donation page (./donate.tsx), drawn for every operator. */
-const DONATION_PAGE = { href: '/donate', label: 'Open donation page' } as const;
+/** the published Donation page (./donate.tsx), in the top bar and the account menu. */
+const DONATION_PAGE = '/donate';
 
 // the sheet every screen beneath this layout wears, linked once here rather than by each of them.
 export const links = operatorLinks;
@@ -78,17 +69,21 @@ export const links = operatorLinks;
 // here with no loader of its own would be entered without the gate having run for it. one loader
 // on this route makes every navigation into the protected surface a request the gate sees.
 export async function loader({ request, context }: Route.LoaderArgs) {
-	// the top bar names the organisation: `null` where there is no row or the read did not
-	// land, and the bar then says what the software is instead. a read that throws is swallowed
-	// ($lib/server/config/setup-state.ts), because this layout covers the screens that explain a
-	// database which is not answering, on exactly the deployment that needs them.
+	// the top bar names the organisation and the rail's head draws its logo: `null` where there is
+	// no row or the read did not land, and the bar then says what the software is instead. a read
+	// that throws is swallowed ($lib/server/config/setup-state.ts), because this layout covers the
+	// screens that explain a database which is not answering, on exactly the deployment that needs
+	// them.
 	const state = await readSetupState(context.get(database), context.get(platform).env);
+	const logo = state?.profile?.logoImageId ?? null;
+	const user = context.get(staff);
 
 	// an explicit projection, because everything returned here is serialized into the page: a
-	// column a later better-auth or a wider org profile adds is not published by accident.
+	// column a later better-auth or a wider org profile adds is not published by accident. the
+	// session's user crosses as the two words the account block draws and nothing else of it.
 	//
-	// `deployer` is the predicate the pages in the rail's Integrations group read, read again here
-	// so a member is drawn no cell leading to their not-found ($lib/admin/destinations.ts).
+	// `deployer` is the predicate the pages behind the rail's deployer rows read, read again here
+	// so a member is drawn no row leading to their not-found ($lib/admin/destinations.ts).
 	//
 	// `viewerZone` is the zone the `admin_zone` cookie names, so an instant on any screen beneath
 	// renders on the server in the viewer's own day ($lib/admin/viewer-time.react.tsx). the cookie is
@@ -96,10 +91,17 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 	// browser has written one, and for a value that is no zone, this is null, and `useViewerZone` falls
 	// back to the browser's own zone, or to UTC where this runtime cannot write in that one
 	// (`LocalTime`).
+	//
+	// `railCollapsed` is the rail as the shell's own cookie left it (@better-giving/operator's
+	// rail-preference.ts), so the server draws it that way and the first client render matches.
 	return {
 		orgName: state?.profile?.legalName ?? null,
-		deployer: context.get(staff).id === STAFF_USER_ID,
-		viewerZone: parseViewerZone(cookieValue(request.headers, VIEWER_ZONE_COOKIE))
+		// the logo at the address the app serves every image from (./image.$id.ts).
+		orgLogo: logo === null ? null : imageSrc(logo),
+		staff: { name: user.name, email: user.email },
+		deployer: user.id === STAFF_USER_ID,
+		viewerZone: parseViewerZone(cookieValue(request.headers, VIEWER_ZONE_COOKIE)),
+		railCollapsed: parseRail(request.headers.get('cookie'))
 	};
 }
 
@@ -115,87 +117,85 @@ function cookieValue(headers: Headers, name: string): string | null {
 	return null;
 }
 
-export default function ProtectedLayout({ loaderData }: Route.ComponentProps) {
+type LayoutData = Route.ComponentProps['loaderData'];
+
+/** the shell around `children`, drawn from the layout's own reading. */
+function Frame({ data, children }: { readonly data: LayoutData; readonly children: ReactNode }) {
 	// the destination is decided from the address rather than from a route id, because what marks
-	// a cell is which section the reader is in and a section is several routes deep
+	// a row is which section the reader is in and a section is several routes deep
 	// ($lib/admin/destinations.ts).
 	const { pathname } = useLocation();
-	const at = currentDestination(pathname);
-	const crumbs = useCrumbs();
 	const navigation = useNavigation();
-	useEffect(() => pageDrawn(pathname), [pathname]);
-	useEffect(() => {
-		framed = true;
-		return () => {
-			framed = false;
-		};
-	}, []);
-	const moving =
-		navigation.location !== undefined && movesPage(navigation.location.pathname, pathname);
-
-	// the words stand for the whole life of the document and the line only for the move: a region
-	// that arrived with the move is one a reader has not registered by the time its words land
-	// (`MoveStatus` in packages/operator/src/components/status/ProgressBar.jsx).
-	const progress = (
-		<>
-			<MoveStatus label={moving ? openingLabel(navigation.location?.state) : ''} />
-			{moving ? <ProgressBar overMove /> : null}
-		</>
-	);
+	const submit = useSubmit();
 
 	return (
-		<>
-			{progress}
-			<AppShell
-				// before anyone has saved the organisation's details in Settings there is no name to
-				// show, so it says what the software is rather than printing an empty bar. the word is
-				// shared with every screen's tab title, which falls back to the same one
-				// ($lib/admin/screen-title.ts).
-				org={loaderData.orgName ?? APP_NAME}
-				site={DONATION_PAGE_EDITOR}
-				pageLink={DONATION_PAGE}
-				groups={destinationGroupsFor(loaderData.deployer)}
-				link={RouterLink}
-				current={at}
-				head={
-					// the strip is drawn only for a trail, the section's name being its first crumb. every
-					// other screen is named by its tab title and the marked rail cell, so no strip repeats it.
-					crumbs.length >= 2 ? <ScreenCrumbs /> : undefined
+		<Shell
+			initialCollapsed={data.railCollapsed}
+			// before anyone has saved the organisation's details there is no name to show, so it says
+			// what the software is rather than printing an empty bar. the word is shared with every
+			// screen's tab title, which falls back to the same one ($lib/admin/screen-title.ts).
+			orgName={data.orgName ?? APP_NAME}
+			orgLogo={data.orgLogo ?? undefined}
+			home={HOME}
+			groups={destinationGroupsFor(data.deployer)}
+			current={currentDestination(pathname)}
+			staff={data.staff}
+			donationPage={DONATION_PAGE}
+			editDonationPage={DONATION_PAGE_EDITOR}
+			// a form post and not a call: writes are actions in this app (AGENTS.md → Boundaries). the
+			// action is a route of its own (./_app.admin.sign-out.ts) because the way out is on every
+			// screen and only one of them would have it.
+			onSignOut={() => submit(null, { method: 'post', action: SIGN_OUT_PATH })}
+			// the line runs over a move to another page. the pathname and never the whole address: a
+			// search parameter changes what is over the page it is on, and a press on the page reports
+			// at its own control.
+			navigating={navigation.location !== undefined && navigation.location.pathname !== pathname}
+			link={RouterLink}
+		>
+			<ViewerZoneProvider serverZone={data.viewerZone}>{children}</ViewerZoneProvider>
+		</Shell>
+	);
+}
+
+export default function ProtectedLayout({ loaderData }: Route.ComponentProps) {
+	return (
+		<Frame data={loaderData}>
+			<Outlet />
+		</Frame>
+	);
+}
+
+/**
+ * a screen beneath that failed, drawn inside the frame so the rail stays: a 404 for a record that
+ * is not there or a page a member may not open, and the 500 for a read that did not land.
+ *
+ * where the layout has no reading — its own loader failed, or the gate threw before it ran, which
+ * react router hands to this boundary (react-router/docs/how-to/middleware.md, "next() and Error
+ * Handling") — there is no frame to draw, and it is the root's unframed page instead. never a
+ * rethrow: react's server render has no boundary to catch one, so the document request fails its
+ * render and leaves the page to react router's retry.
+ */
+export function ErrorBoundary() {
+	const error = useRouteError();
+	const data = useRouteLoaderData<LayoutData>('routes/_app');
+	const arrival = useLocation().key;
+	if (data === undefined) return <UnframedError />;
+
+	const status = isRouteErrorResponse(error) ? error.status : 500;
+	const message = isRouteErrorResponse(error) && typeof error.data === 'string' ? error.data : '';
+	return (
+		<Frame data={data}>
+			<title>{`${errorTitle(status, false)} · ${data.orgName ?? APP_NAME}`}</title>
+			<ErrorState
+				status={status}
+				message={message}
+				arrival={arrival}
+				way={
+					<Button as={Link} to={HOME.href} variant="primary">
+						Go to dashboard
+					</Button>
 				}
-				wayOut={
-					// a form and not a button that calls something: writes are form actions in this app
-					// and there are no client-side mutation paths in /admin (CLAUDE.md). the action is
-					// a route of its own (./_app.admin.sign-out.ts) rather than a named action on
-					// whichever screen is mounted, because the way out is on every screen and only one
-					// of them would have it.
-					//
-					// `.adm-signout` is what keeps two words from breaking across two lines when an
-					// organisation's long name contests the top bar's row, and what stands the control at
-					// the bar's far end; `.adm-signout__word` is the word the bar shows in place of the
-					// mark.
-					<Form method="post" action={SIGN_OUT_PATH} className="adm-signout">
-						<Button variant="quiet" size="sm" mark="log-out">
-							<span className="adm-signout__word">Sign out</span>
-						</Button>
-					</Form>
-				}
-			>
-				{
-					// a screen that is its destination's own page draws no title, and the tab title and the
-					// marked rail cell name it to the eye; this is the in-document name a screen reader
-					// jumps to. a screen under a section draws its own `h1`, so it gets none here.
-					// `tabIndex` -1 so a screen can land focus on it when a press removed the control
-					// that held it (./_app.admin.campaigns._index.tsx).
-					at?.kind === 'page' ? (
-						<h1 className="adm-vh" tabIndex={-1}>
-							{at.label}
-						</h1>
-					) : null
-				}
-				<ViewerZoneProvider serverZone={loaderData.viewerZone}>
-					<Outlet />
-				</ViewerZoneProvider>
-			</AppShell>
-		</>
+			/>
+		</Frame>
 	);
 }

@@ -2,13 +2,13 @@ import { MIN_ADMIN_PASSWORD_LENGTH } from '@better-giving/operator/admin-passwor
 import { SaveButton } from '@better-giving/operator/components/controls/SaveButton';
 import { Field } from '@better-giving/operator/components/forms/Field';
 import { Column, Stack } from '@better-giving/operator/components/shell/Layout';
-import { PageHeader } from '@better-giving/operator/components/shell/PageHeader';
 import { Banner } from '@better-giving/operator/components/status/Banner';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
 import { useSaveState } from '@better-giving/operator/save-state.react';
 import { getFormProps } from '@conform-to/react';
 import { data, Form, redirect, useNavigation } from 'react-router';
 import { z } from 'zod';
+import { type CrumbHandle, ScreenHeading } from '$lib/admin/crumbs';
 import { buttonState } from '$lib/admin/save-button-state';
 import { savedSection } from '$lib/admin/saved-section';
 import { LOGS_SAY_WHY } from '$lib/deployment-logs';
@@ -68,6 +68,13 @@ const SCREEN = '/admin/members/password';
 
 /** where a session with nothing to change here is sent. */
 const MEMBERS = '/admin/members';
+
+export const handle = {
+	crumbs: () => [
+		{ href: MEMBERS, label: 'Members' },
+		{ href: SCREEN, label: SCREEN_TITLE }
+	]
+} satisfies CrumbHandle;
 
 /** what an empty box and a box the request did not carry are both told. */
 const MISSING = 'required';
@@ -278,7 +285,7 @@ export default function YourPassword({ loaderData, actionData }: Route.Component
 
 	return (
 		<Column>
-			<PageHeader title={SCREEN_TITLE} />
+			<ScreenHeading title={SCREEN_TITLE} />
 			{refusal ? (
 				<Banner tone="blocker" word="Not changed">
 					<MarkedText text={refusal} />

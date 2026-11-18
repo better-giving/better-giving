@@ -69,7 +69,7 @@
  *
  * the first screen. the donation box is the page's purpose. on a 1280 × 800 laptop every layout
  * stands all of it on the first screen, and on a 390 × 844 phone the letter and the feature do too:
- * ahead of it stand only the top bar, the cover and the title, and on a laptop the goal and the lede
+ * ahead of it stand only the site nav, the cover and the title, and on a laptop the goal and the lede
  * beside them. on a phone the card stands its whole plane ahead of the box, the cover, the title,
  * the lede and the goal, so there the box begins on the first screen and runs on past it. the
  * cover's heights and the title's sizes on a phone, `--page-display` and the smaller
@@ -77,13 +77,13 @@
  * `--page-cover-letter` above the box on a phone, `--page-hero-narrow` the feature's cover on a
  * phone and `--page-hero` on a laptop, where the box stands over the cover's right side
  * `--page-gap-lead` off its top. the feature's cover is at least `--page-hero` and grows with the
- * words on it, and a cover the words have grown carries the box down with it. at the card's 16px
- * root the top bar is a 44px row, its inset over and under it and its 1px rule, 61px on a phone and
- * 69px from 60rem, and `--page-gap-lead` under it 20px, so 81px and 89px stand ahead of the first
- * section. the organisation's name is cut to one line, so no name, however long, adds to that. the
+ * words on it, and a cover the words have grown carries the box down with it. at a 16px root the
+ * site nav is the registry's 64px bar and its 1px rule, 65px at every width, and `--page-gap-lead`
+ * under it 20px, so 85px stand ahead of the first section. the nav's home link is one line, so no
+ * name, however long, adds to that. the
  * card's plane on a 390px phone, a cover, a two-line title, a two-line lede and the goal's figure
  * and track, is 136 + 16 + 62 + 20 + 51 + 20 + 52 + 16 = 373px, and `--page-gap-group` under it
- * 32px, so the box's top edge stands 486px down and 358px of it are on the first screen. its top
+ * 32px, so the box's top edge stands 490px down and 354px of it are on the first screen. its top
  * edge stays on the first screen under a title of two lines and a lede of any length up to its 400
  * characters ($lib/page/catalog.ts); a longer title takes that room from the lede's.
  *
@@ -95,7 +95,7 @@
  * it binds tighter than `--page-gap-item`, 20px, which stands items of one group apart (held by
  * ./page.spec.ts). `--page-gap-group`, 32px, is one group of a
  * column to the next; `--page-gap-section`, 40px on a phone and growing with the container, is
- * section to section down the page. `--page-gap-lead` is the top bar to the first section;
+ * section to section down the page. `--page-gap-lead` is the site nav to the first section;
  * `--page-band-inset` is the inset of a section drawn on a ground of its own, and
  * `--page-card-inset` the inset of the card layout's panel, 16px on a phone and 28px from 60rem;
  * `--page-col-gap` is between two columns and `--page-gutter` the page's side margin.
@@ -115,15 +115,15 @@
  * nothing casts a shadow: a `box-shadow` here is a spread with no offset and no blur, a focus
  * ring or the `--page-plane` ring a profile mark lifted onto a banner stands inside.
  *
- * the page ground, `--page-ground`, is slate 2 under a wash. a plane — the top bar, the card's
+ * the page ground, `--page-ground`, is slate 2 under a wash. a plane — the card's
  * panel, which on a phone holds the cover, the title, the lede and the goal, the letter's cover
  * frame, a tier card, a share press, and the donation box, which the form draws — is
  * `--page-plane`, slate 1, inside a `--_border` edge of `--page-plane-edge`, slate 6, at the corner
  * `--page-plane-radius`, and flat: its face and its edge are what set it apart from the wash. no
  * plane stands in another: the one that could, the box on the card's panel from 60rem, draws no fill,
  * edge, corner or inset of its own there and reads as part of the panel, which already groups it; on
- * a phone, under the panel rather than in it, it is a plane again. the top bar runs the page's full
- * width with no corner and draws its edge along its foot alone, the one side the page meets it on.
+ * a phone, under the panel rather than in it, it is a plane again. the site nav and the site footer
+ * stand off the ground and paint the registry's own `--background` and `--hairline`.
  *
  * the wash. `--page-wash` is two soft radial tints laid over the solid ground, brand step 2,
  * `--accent-2`, at the first screen's start and brand step 3, `--accent-3`, at the page's far
@@ -137,7 +137,7 @@
  * About us stands on `--page-band`, slate 1, a band across the page's width; it is a band rather than
  * a plane, so it draws no corner and no edge. a cover before its photo arrives is slate 3, the
  * operator surfaces' sunken well (`--admin-surface-sunken`). a rule between rows of one list is a
- * separator, slate 6, and the one rule between sections is the same separator over the footer.
+ * separator, slate 6.
  *
  * a program option is the operator surfaces' neutral button: it rests on slate 3, answers a pointer
  * on 4 and a press on 5, and its edge is `--_edge-control`, slate 7, stepping to 8 under the pointer
@@ -267,9 +267,6 @@ body {
 	--page-band-inset: clamp(2.25rem, 1.5rem + 3cqi, 4rem);
 	--page-col-gap: clamp(2rem, 1rem + 4cqi, 4rem);
 
-	/* the drawn height of a social mark in the footer: 1.4 × the card's clamped root, whose 15px
-	   floor makes it 21px. */
-	--page-brand-mark: calc(var(--_root-size) * 1.4);
 	/* a share press's mark, glyph or network file alike. */
 	--page-share-icon: 1.25rem;
 	/* the height the registry's text box draws on the card (`.ds-field-input` in
@@ -394,7 +391,7 @@ body {
 /* an ended campaign's address (`EndedCampaignPage` in ./plain-page.tsx): its name, one line, and
    the way on to /donate drawn as the card's own action, at its label's width rather than the card's.
    there is no box on it to hold the column to the box's width, so it takes the page's reading
-   measure, the column the masthead over it is laid in. */
+   measure. */
 .stage.ended {
 	max-inline-size: calc(var(--page-measure) + 2 * var(--page-gutter));
 }
@@ -629,8 +626,8 @@ body {
 /*
  * ── the donor page's sections ─────────────────────────────────────────────────────────────────
  *
- * ./page-view.tsx draws a page as a masthead, a body, the share section and a footer under the
- * root. a page's sections stand in `.page-layout`, each carrying `data-area` for the rules below to
+ * ./page-view.tsx draws a page as the site nav, a body, the share section and the site footer
+ * under the root. a page's sections stand in `.page-layout`, each carrying `data-area` for the rules below to
  * place it by; on a phone the card's grid areas and the letter's and the feature's `order` stand
  * them in the order a phone reads them, and from `@container page (min-width: 60rem)` each layout
  * moves them into its columns. under the profile head the parts stand in `.page-profile` instead,
@@ -674,91 +671,42 @@ body {
 	max-inline-size: var(--page-narrow);
 }
 
-/* the top bar: a plane's face across the page's full width with a separator under it, the
-   organisation at its start and, where the page has a share section, a Share link at its end. it is
-   one row, `--_row-min`, with an `--_sp2` inset over and under it, `--_sp3` from 60rem. */
-.page-mast {
-	background: var(--page-plane);
-	border-block-end: var(--_border) solid var(--page-plane-edge);
+/* the site nav and the site footer are the registry's, drawn by its site-nav-css and
+   site-footer-css (./site-nav.tsx, ./site-footer.tsx). they stand beside the ground rather than in
+   it (./page-root.tsx), so they take the page's text face here and nothing else from this sheet. */
+.page > :is(.ds-site-nav-skip, .ds-site-nav, .ds-site-footer-compact) {
+	font-family: var(--font-body);
 }
 
-.page-mast-in {
-	padding-block: var(--_sp2);
+/* the organisation's logo in the nav's home link, which site-nav-css has no slot for: eight of the
+   nav's own spacing steps tall, as the design draws it, drawn whole and never cropped, two steps
+   off the name beside it. a wordmark stands alone, in place of the name. */
+.ds-site-nav-brand:has(> .page-site-logo) {
+	gap: calc(var(--ds-spacing) * 2);
 }
 
-@container page (min-width: 60rem) {
-	.page-mast-in {
-		padding-block: var(--_sp3);
-	}
-}
-
-/* an in-page link to the share section, a row tall so a thumb finds it. */
-.page-mast-share {
-	display: inline-flex;
-	flex: none;
-	align-items: center;
-	min-block-size: var(--_row-min);
-	margin-inline-start: auto;
-	font-weight: var(--_w-medium);
-	text-decoration: none;
-}
-
-.page-mast-share:hover {
-	color: var(--_a12);
-	text-decoration: underline;
-}
-
-/* one line, cut with an ellipsis and carried whole in its `title` (./page-view.tsx): a name that
-   wrapped would stand the bar taller and push the box down off the first screen the header's sum
-   counts. it is a flex item at zero rather than the default minimum, so a long name gives up its
-   width to Share rather than widening the document past a 375px viewport. */
-.page-mast-name {
-	margin: 0;
-	min-inline-size: 0;
-	overflow: hidden;
-	white-space: nowrap;
-	text-overflow: ellipsis;
-	font-weight: var(--_w-bold);
-	color: var(--_n12);
-}
-
-/* the organisation's logo, the masthead's one row. a logo at least twice as wide as it is tall
-   stands in for the name and carries it as its alt; a narrower one stands beside the name and says
-   nothing of its own (./page-view.tsx decides which, off the stored image's width and height). it
-   is one row tall, `--_row-min`, the height of the card's own rows, and it is drawn whole, never
-   cropped. with no logo, the badge of the name's initials stands where a narrower one would, a
-   circle a row across: the brand's step 9 under the one ink the form draws on it, `--_on-p` on
-   `--_p`, from the scale ./page-root.tsx renders. a page with no brand colour fills it with the
-   registry's default accent. */
-.page-mast-in {
-	display: flex;
-	align-items: center;
-	gap: var(--_sp3);
-}
-
-.page-mast-logo {
+.page-site-logo {
 	display: block;
 	flex: none;
-	block-size: var(--_row-min);
+	block-size: calc(var(--ds-spacing) * 8);
 	inline-size: auto;
 	max-inline-size: 100%;
 	object-fit: contain;
 }
 
-.page-mast-badge {
-	display: grid;
-	flex: none;
-	place-items: center;
-	inline-size: var(--_row-min);
-	block-size: var(--_row-min);
-	background: var(--_p);
-	color: var(--_on-p);
-	border-radius: 50%;
-	font-weight: var(--_w-bold);
+/* site-nav-css sets the home link `white-space: nowrap` and gives it no rule to shrink by, so a long
+   name would widen the bar past a 375px viewport and push the menu button, the only way to Donate
+   under the fold, off the screen. the link is a flex item at zero rather than the default minimum,
+   and the name inside it is cut to one line with an ellipsis, carried whole in its `title`
+   (./site-nav.tsx). */
+.ds-site-nav-brand {
+	min-inline-size: 0;
 }
 
-.page-mast-name:has(> .page-mast-logo) {
-	display: flex;
+.page-site-name {
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
 }
 
 .page-body {
@@ -893,8 +841,8 @@ body {
 		content: none;
 	}
 
-	/* the panel keeps the page's gutter until the container is wider than the panel, and the masthead
-	   and footer, gutter and all, stand in the panel's width. */
+	/* the panel keeps the page's gutter until the container is wider than the panel, and the share
+	   row, gutter and all, stands in the panel's width. */
 	.page[data-layout='card'] .page-in:not(.page-layout) {
 		max-inline-size: calc(var(--page-narrow) + 2 * var(--page-gutter));
 	}
@@ -1214,7 +1162,7 @@ body {
 }
 
 /* the Donation page under its profile head (./page-view.tsx, ./sections/profile.tsx), drawn under
-   no masthead in the card, the letter or the feature its content picks
+   the site nav in the card, the letter or the feature its content picks
    ($lib/page/profile-shape.ts), from parts of its own in `.page-profile`. the root carries
    `data-profile` beside `data-layout`. its name and its box carry the campaign's `title` and `box`
    areas, which the campaign card's rules above give a margin, so the rule after the column's takes
@@ -1222,11 +1170,11 @@ body {
    it; in the letter and the feature the card is held to `--page-box` below 60rem, as a campaign's
    is, and fills the `--page-box` rail from 60rem.
 
-   the card is one column `--page-profile-box` wide at every width, centred, the share row and the
-   footer in it: the banner, the name, About us, then the box, `--page-gap-group` apart. the logo
+   the card is one column `--page-profile-box` wide at every width, centred, the share row in it:
+   the banner, the name, About us, then the box, `--page-gap-group` apart. the logo
    stands over the banner's foot by `--page-profile-logo-lift`, inset `--page-profile-logo-inset`,
    so its block-start margin takes back the gap above it too; with no banner it stands beside the
-   name. a wordmark, a logo the masthead would let stand in for the name (`data-wide`,
+   name. a wordmark, a logo the site nav would let stand in for the name (`data-wide`,
    ./page-view.tsx), keeps the square's height, is drawn whole at its own width, and stands over the
    name rather than beside it. the EIN is the quiet ink on the wash. */
 .page[data-profile][data-layout='card'] .page-in {
@@ -1986,16 +1934,9 @@ body {
 }
 
 /* the share row stands a group's step under the body's last section, on the wash with no plane of
-   its own, and a section's step over the footer. */
+   its own, and a section's step over the site footer. */
 .page-end {
 	padding-block: var(--page-gap-group) var(--page-gap-section);
-}
-
-/* the footer is one line on the wash under a separator, the one rule between two sections: below
-   it the page holds no content, only who the gift is made to. */
-.page-foot {
-	padding-block: var(--page-gap-item) var(--page-gap-group);
-	border-block-start: var(--_border) solid var(--_n6);
 }
 
 /* ── the sections ── */
@@ -2341,62 +2282,6 @@ body {
 .page-goal-meta {
 	font-size: var(--_t-sm);
 	color: var(--page-quiet);
-}
-
-/* org footer: the name, the EIN, the address on one line, the email and the social marks, in
-   that order, one line that wraps on a narrow screen, the name and EIN first and then the contact
-   details, each list item by item. a long email or address line breaks where it must rather than
-   run the page sideways, as the about band's words do. an `address` sets italic by default; this
-   one is set upright. */
-.page-org {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: center;
-	gap: var(--_sp1) var(--_sp4);
-	font-size: var(--_t-sm);
-	color: var(--page-quiet);
-	overflow-wrap: anywhere;
-}
-
-.page-org-list {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: center;
-	gap: var(--_sp1) var(--_sp4);
-	margin: 0;
-	padding: 0;
-	list-style: none;
-}
-
-.page-org-contact {
-	font-style: normal;
-}
-
-.page-org-name {
-	font-weight: var(--_w-bold);
-	color: var(--_n11);
-}
-
-/* a platform's mark alone, centred in a `--_row-min` square, and the row pulled back by the slack
-   between the square and a square mark, so a square mark stands its gap from the words beside it.
-   the mark is the network's own file and is sized by its height alone. the square is drawn round,
-   so the focus ring around a mark is a circle. */
-.page-org-links {
-	display: flex;
-	flex-wrap: wrap;
-	margin-inline: calc((var(--page-brand-mark) - var(--_row-min)) / 2);
-}
-
-.page-org-social {
-	display: inline-grid;
-	place-items: center;
-	min-inline-size: var(--_row-min);
-	min-block-size: var(--_row-min);
-	border-radius: 50%;
-}
-
-.page-org-mark {
-	block-size: var(--page-brand-mark);
 }
 
 /* share: a label and the channels' presses in one row, the label over them where the row is too

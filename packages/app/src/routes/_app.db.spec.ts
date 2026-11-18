@@ -6,13 +6,15 @@ import {
 	type StaticHandlerContext
 } from 'react-router';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { STAFF_USER_EMAIL } from '$lib/server/auth';
 import { createDb, type Db } from '$lib/server/db/client';
+import { putLogo } from '$lib/server/org/logo.testing';
 import { createDeferredWork } from '$lib/server/runtime/deferred';
 import { readEnv } from '$lib/server/runtime/env';
 import { specRateLimiters } from '$lib/server/runtime/rate-limiter.testing';
 import { requestContext } from '../request-context';
 import { mountRoutes, queryDocument, type RouteRequester } from '../route-request.testing';
-import { deployedBindings, signInAsDeployer } from '../staff-session.testing';
+import { deployedBindings, signInAsDeployer, signInAsMember } from '../staff-session.testing';
 import * as layout from './_app';
 import { client, run, stmt } from '$lib/server/db/database.testing';
 
@@ -139,7 +141,7 @@ describe('on a deployment nobody has set up', () => {
 		const page = await drawn(cookie);
 
 		expect(page.statusCode).toBe(200);
-		expect(page.loaderData.app).toEqual({ orgName: null, deployer: true, viewerZone: null });
+		expect(page.loaderData.app).toMatchObject({ orgName: null, orgLogo: null, deployer: true });
 	});
 });
 
@@ -153,11 +155,20 @@ describe('the identity band', () => {
 
 		const page = await drawn(cookie);
 
-		expect(page.loaderData.app).toEqual({
-			orgName: 'Riverbank Trust',
-			deployer: true,
-			viewerZone: null
-		});
+		expect(page.loaderData.app).toMatchObject({ orgName: 'Riverbank Trust', orgLogo: null });
+	});
+
+	it('draws the organisation’s logo from the address its image is served at', async () => {
+		await run(
+			stmt(`insert into org_profile (id, legal_name, created_at, updated_at)
+			 values ('default', 'Riverbank Trust', 0, 0)`)
+		);
+		const logo = await putLogo(db, { contentType: 'image/png', width: 256, height: 256 });
+		const cookie = await signInAsDeployer(db, DEPLOYMENT);
+
+		const page = await drawn(cookie);
+
+		expect(page.loaderData.app).toMatchObject({ orgLogo: `/image/${logo}` });
 	});
 
 	it('loses the name and not the page when the row cannot be read', async () => {
@@ -167,8 +178,35 @@ describe('the identity band', () => {
 		const page = await drawn(cookie, profileUnreadable());
 
 		expect(page.statusCode).toBe(200);
-		expect(page.loaderData.app).toEqual({ orgName: null, deployer: true, viewerZone: null });
+		expect(page.loaderData.app).toMatchObject({ orgName: null, orgLogo: null, deployer: true });
 		expect(errors).toHaveBeenCalledOnce();
+	});
+});
+
+describe('who is signed in', () => {
+	it('names the member and their address, and nothing else of the session’s user', async () => {
+		await signInAsDeployer(db, DEPLOYMENT);
+		const member = await signInAsMember(db, DEPLOYMENT);
+
+		const page = await drawn(member);
+
+		expect(page.loaderData.app).toEqual({
+			orgName: null,
+			orgLogo: null,
+			staff: { name: 'Nadia Hart', email: 'nadia@riverbanktrust.org' },
+			deployer: false,
+			viewerZone: null,
+			railCollapsed: false
+		});
+	});
+
+	it('names the deployer by the staff user’s address', async () => {
+		const page = await drawn(await signInAsDeployer(db, DEPLOYMENT));
+
+		expect(page.loaderData.app).toMatchObject({
+			staff: { email: STAFF_USER_EMAIL },
+			deployer: true
+		});
 	});
 });
 
@@ -234,5 +272,23 @@ describe('the viewer’s time zone', () => {
 		const cookie = await signInAsDeployer(db, DEPLOYMENT);
 		const page = await drawn(cookie);
 		expect((page.loaderData.app as { viewerZone: string | null }).viewerZone).toBeNull();
+	});
+});
+
+describe('the rail', () => {
+	// the `bg_operator_rail` cookie the shell writes (@better-giving/operator/rail-preference), read so
+	// the first render draws the rail the way the reader left it.
+	const railRead = async (extra: string) => {
+		const session = await signInAsDeployer(db, DEPLOYMENT);
+		const page = await drawn(`${session}${extra}`);
+		return (page.loaderData.app as { railCollapsed: boolean }).railCollapsed;
+	};
+
+	it('hands over the rail collapsed when the cookie says so', async () => {
+		expect(await railRead('; bg_operator_rail=collapsed')).toBe(true);
+	});
+
+	it('hands over the rail open when the browser has written no cookie', async () => {
+		expect(await railRead('')).toBe(false);
 	});
 });

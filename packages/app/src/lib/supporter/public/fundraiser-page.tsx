@@ -9,10 +9,17 @@ import { DonateCard } from '../../donate/card';
 import { DonateNotice } from '../../donate/notice';
 import { PageRoot } from '../../donate/page-root';
 import { initials } from '../../donate/page-view';
-import { donorPageLinks, EndedCampaignPage, FORM_LOOK, PlainPage } from '../../donate/plain-page';
+import {
+	donorPageLinks,
+	EndedCampaignPage,
+	FORM_LOOK,
+	PlainPage,
+	SITE_CHROME_SHEETS
+} from '../../donate/plain-page';
 import { DonorMessages, type DonorMessagesWiring } from '../../donate/sections/messages';
-import { OrgContact } from '../../donate/sections/org-info';
 import { Share } from '../../donate/sections/share';
+import { SiteFooter } from '../../donate/site-footer';
+import { MAIN_ID, SiteNav } from '../../donate/site-nav';
 import { imageSrc } from '../../page/image-src';
 import areaSheet from '../area/area.css?url';
 import { NoticeCard } from '../area/cards';
@@ -32,19 +39,23 @@ import type {
 //
 // live, it is drawn on the `plain` root ($lib/donate/page-root.tsx), which arranges nothing, and in
 // the layout ./fundraiser.css gives it: who it is for, the title, the supporter's byline,
-// the photo where there is one, and what has been raised, then the donation box and who the gift
-// goes to, then the story and the messages from donors. on a phone they stand in that order; from
-// 60rem the box and who it goes to are a column beside the rest. the donation box is the page's one
-// primary. the share row and the footer close it as they close every donor page.
+// the photo where there is one, what has been raised and the share row directly under it, then the
+// donation box and who the gift goes to, then the story and the messages from donors. on a phone
+// they stand in that order; from 60rem the box and who it goes to are a column beside the rest. the
+// donation box is the page's one primary. the site nav heads it and the site footer closes it, as on
+// every donor page; "Start your own fundraiser", where the setting is on, stands over the footer.
 //
 // ended, it is an ended campaign's screen with the final total under the thanks and no box. hidden,
 // pending and unknown alike are the plain notice an unknown campaign address gets, so a visitor
 // learns nothing of a page that is not public.
 
-/** a donor page's sheets, then the registry's avatar, badge and goal bar, then this page's own. */
+/**
+ * a donor page's sheets with the site nav's and footer's, then the registry's avatar, badge and goal
+ * bar, then this page's own.
+ */
 export function fundraiserPageLinks() {
 	return [
-		...donorPageLinks(),
+		...donorPageLinks(SITE_CHROME_SHEETS),
 		...[registryAvatar, registryBadge, registryProgress, fundraiserSheet].map((href) => ({
 			rel: 'stylesheet' as const,
 			href
@@ -110,8 +121,10 @@ export function FundraiserPage(props: FundraiserPageViewProps) {
 			brandColour={look.brandColour}
 			layout="plain"
 			className={className === undefined ? 'fundraiser-page' : `fundraiser-page ${className}`}
+			header={<SiteNav name={org.name} logo={org.logo ?? null} current={false} />}
+			footer={<SiteFooter info={{ ...props.contact, legalName: org.name, ein: org.taxId }} />}
 		>
-			<main className="page-body">
+			<main className="page-body" id={MAIN_ID} tabIndex={-1}>
 				<div className="page-in page-layout fundraiser-layout">
 					<div className="fundraiser-who" data-area="who">
 						{props.staffNotice?.hidden ? (
@@ -144,6 +157,13 @@ export function FundraiserPage(props: FundraiserPageViewProps) {
 							goalReached={fundraiser.goalReached}
 							money={money}
 						/>
+						<section aria-labelledby={shareHeading} data-area="share">
+							<Share
+								headingId={shareHeading}
+								sharing={props.sharing}
+								heading={copy.SHARE_HEADING}
+							/>
+						</section>
 					</div>
 					<div className="fundraiser-side" data-area="side">
 						{props.donationBox === null ? null : (
@@ -175,21 +195,15 @@ export function FundraiserPage(props: FundraiserPageViewProps) {
 					</div>
 				</div>
 			</main>
-			<section className="page-end" aria-labelledby={shareHeading} data-area="share">
-				<div className="page-in">
-					<Share headingId={shareHeading} sharing={props.sharing} heading={copy.SHARE_HEADING} />
-				</div>
-			</section>
-			<footer className="page-foot">
-				<div className="page-in page-org">
-					<OrgContact contact={props.contact} />
-					{props.fundraiserEntry ? (
+			{props.fundraiserEntry ? (
+				<aside className="page-end">
+					<div className="page-in">
 						<p>
 							<a href={copy.START_HREF}>{copy.START_YOUR_OWN}</a>
 						</p>
-					) : null}
-				</div>
-			</footer>
+					</div>
+				</aside>
+			) : null}
 		</PageRoot>
 	);
 }
@@ -314,7 +328,13 @@ export function FundraiserPageWithCard({
 }
 
 /** an ended fundraiser: an ended campaign's screen, its total under the thanks, and no box. */
-export function FundraiserEndedPage({ fundraiser, org, look, money }: FundraiserEndedPageProps) {
+export function FundraiserEndedPage({
+	fundraiser,
+	org,
+	look,
+	money,
+	contact
+}: FundraiserEndedPageProps) {
 	const raised = formatOffer(fundraiser.raisedMinor, money.locale, money.currency);
 	const total = copy.endedTotal(
 		fundraiser.name,
@@ -328,6 +348,7 @@ export function FundraiserEndedPage({ fundraiser, org, look, money }: Fundraiser
 			orgName={org.name}
 			logo={org.logo ?? null}
 			look={look}
+			footer={{ ...contact, legalName: org.name, ein: org.taxId }}
 		>
 			<p className="fundraiser-ended-total">
 				{total.before}

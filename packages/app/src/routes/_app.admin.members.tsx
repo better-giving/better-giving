@@ -12,6 +12,7 @@ import { getFormProps } from '@conform-to/react';
 import { data, Form, Link, redirect, useNavigate, useNavigation } from 'react-router';
 import { z } from 'zod';
 import { buttonState } from '$lib/admin/save-button-state';
+import { ScreenHeading } from '$lib/admin/crumbs';
 import { APP_NAME, screenTitle } from '$lib/admin/screen-title';
 import { type AdminActionData, boxProps, useAdminForm, whichForm } from '$lib/admin/use-admin-form';
 import { defineForm, WHICH_FORM } from '$lib/forms/definition';
@@ -50,7 +51,7 @@ import type { Route } from './+types/_app.admin.members';
 // address ($lib/server/flash.ts), which the loader matches against the rows it has already read —
 // the same shape ./_app.admin.forms._index.tsx uses for the form a create just made.
 
-/** the screen's name in the document title. ./_app.tsx names the page in a hidden `h1`. */
+/** the screen's name, in its heading and in the document title. */
 const SCREEN_TITLE = 'Members';
 
 /** the address this screen answers on, and the one a write redirects back to. */
@@ -352,6 +353,7 @@ export default function Members({ loaderData, actionData }: Route.ComponentProps
 		// never make narrower than the whole table, so the page scrolls sideways instead of the
 		// plane and the pinned column goes with it.
 		<Column wide>
+			<ScreenHeading title={SCREEN_TITLE} />
 			{loaderData.mayManage ? (
 				<InviteSection sentTo={loaderData.sentTo} actionData={actionData} />
 			) : (

@@ -18,7 +18,7 @@ import { FormOriginsFields } from '$lib/admin/forms/origins-fields';
 import { FormProgramFields } from '$lib/admin/forms/program-fields';
 import { FormsReadiness } from '$lib/admin/forms/readiness';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
-import type { CrumbHandle } from '$lib/admin/crumbs';
+import { type CrumbHandle, ScreenHeading } from '$lib/admin/crumbs';
 import { buttonState } from '$lib/admin/save-button-state';
 import { savedSection } from '$lib/admin/saved-section';
 import { screenTitle } from '$lib/admin/screen-title';
@@ -1030,23 +1030,17 @@ export default function DonationForm({ loaderData, actionData }: Route.Component
 			    to be: the card is a modal, so a banner up here is behind an inert page. */}
 			{asking ? null : notArchived}
 
-			{/* the status qualifies the form this whole page is about, so it stands on the heading's
-			    own row rather than in the page under it. the header is written out of the classes
-			    packages/operator/src/styles/adm.css already draws rather than mounted from the
-			    library's `PageHeader`, which is the gap this route was reported against: that
-			    component has one trailing slot and it is documented as the page's own action.
-			    nothing new is drawn and no value is stated.
+			{/* the status qualifies the form this whole page is about, so it stands on the title's
+			    first line however a long name wraps.
 
 			    an archived form's word is the hueless one: the `note` tone is for a status that has
 			    run its course, which is exactly what archived is. a form stored live while this
 			    deployment has a blocker says Not taking gifts (`formStatusWord` in
 			    $lib/admin/status-tones.ts). */}
-			<header className="adm-pageheader">
-				<div className="adm-pageheader__row">
-					<h1>{name}</h1>
-					<StatusWord tone={standing.tone}>{standing.word}</StatusWord>
-				</div>
-			</header>
+			<ScreenHeading
+				title={name}
+				status={<StatusWord tone={standing.tone}>{standing.word}</StatusWord>}
+			/>
 
 			{/* what stands between this form and a donor giving through it, and it is here because
 			    this is the screen that sets one live: the status box below would take Live and save

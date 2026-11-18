@@ -37,7 +37,7 @@ import { Dialog, type DialogProps } from '../components/shell/Dialog.jsx';
 // **what the reader was on counts as the opener only when it is a control.** safari, and firefox on
 // macos, do not focus a button or a link a pointer presses: focus goes to the nearest focusable
 // thing around it instead, which under the shell is `main` — focusable as the skip link's landing
-// (../components/shell/AppShell.jsx). a press on Revoke would then record the whole page as what
+// (../components/shell/Shell.jsx). a press on Revoke would then record the whole page as what
 // put the card up, and focus would go back to it rather than to the target the screen named. the
 // box is still where the reader was, so it is the last place focus goes back to: the opener
 // control, then the target the screen named, then that box while it is on the page, then the card

@@ -19,7 +19,6 @@ const PROFILE: DonateProfile = {
 	logo: null,
 	mission: 'We keep families housed and fed through the winter.',
 	vision: null,
-	footer: { addressLines: ['2200 Lake Avenue'], email: null, socialLinks: [] },
 	messages: {
 		messages: [
 			{ name: 'Maya R.', note: 'Paying it forward.', receivedAt: '2026-11-07T10:00:00.000Z' }

@@ -246,7 +246,7 @@ it('puts nothing over the list and no labelled value inside a card, on either re
 		// the page's one press is the card that leads the list, so a header holding a second copy of
 		// it would be two ways to the same screen a card apart. nothing stands over the records
 		// either: a draft's own pill says the state, and the screen that publishes says the rest.
-		expect(root.querySelector('.adm-pageheader')).toBe(null);
+		expect(root.querySelector('.ds-page-header .ds-page-actions')).toBe(null);
 		expect(list(root).querySelector('.adm-hint')).toBe(null);
 		// the sites are presses at the foot of the record rather than a value read beside a label.
 		expect(list(root).textContent).not.toContain('Sites');

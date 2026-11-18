@@ -29,7 +29,7 @@ import {
 
 // Settings' "Find your charity": one box over the IRS list by name or EIN, a Search press beside
 // it, and the matches under it, inside the Organisation details card above its boxes. the screen
-// (packages/app/src/routes/_app.admin.settings.tsx) makes the calls and fills the boxes from a
+// (packages/app/src/routes/_app.admin.settings_.organisation.tsx) makes the calls and fills the boxes from a
 // picked match and from a found lookup; this draws the box, the list and what the last press came
 // to. what a press asks is ./nonprofit-finder.ts's.
 //

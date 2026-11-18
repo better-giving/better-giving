@@ -11,7 +11,7 @@ import {
 } from './nonprofit-finder';
 
 // what a press on "Find your charity" asks, and the words its answers are said in. the screen that
-// makes the calls is ../../../routes/_app.admin.settings.dom.spec.tsx's.
+// makes the calls is ../../../routes/_app.admin.settings_.organisation.dom.spec.tsx's.
 
 describe('what a press asks', () => {
 	it('looks a whole EIN up in its stored spelling, however it was typed', () => {

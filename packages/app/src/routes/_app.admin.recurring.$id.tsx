@@ -9,7 +9,7 @@ import { RECURRING_STATUS_TONES } from '$lib/admin/status-tones';
 import { useEffect, useRef } from 'react';
 import { data, Form, href, Link, useFormAction, useNavigate, useNavigation } from 'react-router';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
-import type { CrumbHandle } from '$lib/admin/crumbs';
+import { type CrumbHandle, ScreenHeading } from '$lib/admin/crumbs';
 import { screenTitle } from '$lib/admin/screen-title';
 import { LocalTime } from '$lib/admin/viewer-time.react';
 import { formatMinor } from '$lib/donations/money';
@@ -525,25 +525,21 @@ export default function RecurringGift({ loaderData, actionData }: Route.Componen
 			{asking ? null : refusal}
 
 			{/* the record is a person, and the person is who the staff member is holding an email
-			    from — so the heading is their name and the status qualifies it on its own baseline.
-			    the header is written out of the classes packages/operator/src/styles/adm.css already
-			    draws rather than mounted from the library's `PageHeader`, which has no slot for a
-			    word qualifying the title — the gap /admin/forms/[id] was reported against. nothing
-			    new is drawn and no value is stated.
+			    from — so the heading is their name and the status qualifies it on its first line.
 
 			    the `note` tone on a stopped commitment for the reason an archived form takes it: a
 			    status that has run its course. `Payment failed` takes `blocker` — it has not run its
 			    course, it is the state most worth reading, and it is the one a donor is most likely
 			    to be writing about. the red is what finds it down a list of a hundred, and the
 			    sentence below is what says what to do about it. */}
-			<header className="adm-pageheader">
-				<div className="adm-pageheader__row">
-					<h1>{donorName}</h1>
+			<ScreenHeading
+				title={donorName}
+				status={
 					<StatusWord tone={RECURRING_STATUS_TONES[status]}>
 						{RECURRING_STATUS_LABELS[status]}
 					</StatusWord>
-				</div>
-			</header>
+				}
+			/>
 
 			{/* what the status word on the heading's row costs, where the word alone does not say it —
 			    `active` carries no note, so this is drawn only when there is one. the payment-failed

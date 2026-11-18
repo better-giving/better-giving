@@ -182,24 +182,13 @@ describe('the modifiers the operator components assemble', () => {
 
 describe('the states the operator components assemble', () => {
 	it('reach a sheet', () => {
-		expect(statesDefinedIn(SHEETS).size).toBeGreaterThan(4);
+		expect(statesDefinedIn(SHEETS).size).toBeGreaterThan(2);
 	});
 
 	it('are the `is-` names the sheets draw', () => {
 		expect(
 			sorted([
 				...POINTER_STATES,
-				// the twin `:active` takes beside it, which packages/app/src/lib/admin/styles/conformance.spec.ts
-				// requires of every state rule. no component pins it, and ../styles/adm.css says so in a
-				// `carried-ok:` note.
-				'active',
-				// the destination a reader is on. it is a boolean on ./shell/DestinationCell.jsx rather
-				// than a member of a state union, because a cell can be current and hovered at once.
-				'current',
-				// the progress bar's done state. ./status/ProgressBar.jsx writes it off a boolean rather
-				// than off a state union, so there is no union for it to be a member of and the sheet's
-				// own `carried-ok:` note is what stands for its call site.
-				'finishing',
 				// a card part a file is dragged over. the media card in
 				// packages/app/src/lib/admin/page-edit/campaign-cards.tsx writes it off a boolean.
 				'drop'

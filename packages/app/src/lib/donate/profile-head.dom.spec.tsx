@@ -8,7 +8,7 @@ import type { DonateProfile } from './profile';
 // the Donation page under its profile head, mounted: the layout its content picks — the card, the
 // letter or the feature ($lib/page/profile-shape.ts) — and each part on its own condition in each:
 // the banner, the logo or its initials, the name and the EIN, About us, the videos, the messages
-// from donors, the page's heading over the box, and the footer. how any of it looks, and where
+// from donors, the page's heading over the box, and the site footer. how any of it looks, and where
 // ./page.css stands it at 60rem, is the stylesheet's and a person's looking at it.
 
 // react refuses to flush work inside `act` without this, and says so rather than hanging.
@@ -22,7 +22,6 @@ const BARE: DonateProfile = {
 	logo: null,
 	mission: null,
 	vision: null,
-	footer: { addressLines: [], email: null, socialLinks: [] },
 	messages: { messages: [], total: 0, next: null },
 	videos: []
 };
@@ -34,12 +33,7 @@ const FULL: DonateProfile = {
 	banner: { src: '/image/banner-1' },
 	logo: { src: '/image/logo-1', width: 400, height: 400 },
 	mission: 'We keep families housed and fed through the winter.',
-	vision: 'A county where nobody loses their home over a single bad month.',
-	footer: {
-		addressLines: ['2200 Lake Avenue', 'Cleveland, Ohio', 'United States'],
-		email: null,
-		socialLinks: [{ platform: 'instagram', href: 'https://instagram.com/harborlight' }]
-	}
+	vision: 'A county where nobody loses their home over a single bad month.'
 };
 
 const video = (n: number): DonateProfile['videos'][number] => ({
@@ -85,9 +79,9 @@ function props(profile: DonateProfile | null, over: Partial<PageViewProps> = {})
 			info: {
 				legalName: profile?.name ?? 'Harbor Light',
 				ein: profile?.taxId ?? null,
-				addressLines: profile?.footer.addressLines ?? [],
+				addressLines: ['2200 Lake Avenue', 'Cleveland, Ohio', 'United States'],
 				email: null,
-				socialLinks: profile?.footer.socialLinks ?? []
+				socialLinks: [{ platform: 'instagram', href: 'https://instagram.com/harborlight' }]
 			}
 		},
 		look: { brandColour: '#1d6b4f' },
@@ -139,9 +133,9 @@ describe('the layout the Donation page’s content picks', () => {
 		expect(layoutOf(draw(profile))).toBe(layout);
 	});
 
-	it('marks the root as the profile head’s, in place of the masthead', () => {
+	it('marks the root as the profile head’s, under the site nav', () => {
 		const root = draw(FULL);
-		expect(root.querySelector('.page-mast')).toBeNull();
+		expect(root.querySelector('.ds-site-nav')).not.toBeNull();
 		expect(root.querySelector('[data-donate-root]')?.hasAttribute('data-profile')).toBe(true);
 	});
 
@@ -153,16 +147,14 @@ describe('the layout the Donation page’s content picks', () => {
 		expect(layoutOf(host)).toBe('letter');
 	});
 
-	it('draws the masthead and the Donation page’s own layout where no profile is handed', () => {
+	it('draws the Donation page’s own layout where no profile is handed', () => {
 		const root = draw(null);
-		expect(root.querySelector('.page-mast')).not.toBeNull();
 		expect(layoutOf(root)).toBe('donation');
 		expect(root.querySelector('[data-donate-root]')?.hasAttribute('data-profile')).toBe(false);
 	});
 
 	it('leaves a campaign in its own layout, whatever it is handed', () => {
 		const root = draw(FULL, { type: 'campaign', page: defaultCampaign(), pageName: 'Coats' });
-		expect(root.querySelector('.page-mast')).not.toBeNull();
 		expect(root.querySelector('[data-donate-root]')?.hasAttribute('data-profile')).toBe(false);
 		expect(root.querySelector('.page-profile-name')).toBeNull();
 	});
@@ -362,7 +354,7 @@ describe('the logo', () => {
 		['a wordmark', 1200, 300, true],
 		['a little under twice as wide', 799, 400, false]
 	])(
-		'draws a logo %s whole at its own shape where the masthead counts it wide',
+		'draws a logo %s whole at its own shape where the site nav counts it wide',
 		(_, width, height, wide) => {
 			const logo = draw({ ...FULL, logo: { src: '/image/logo-1', width, height } }).querySelector(
 				'.page-profile-logo'
@@ -461,16 +453,17 @@ describe('the page’s own heading', () => {
 });
 
 describe('the footer', () => {
-	it('draws the ways to reach the organisation, which the head has already named', () => {
-		const footer = draw(FULL).querySelector('footer');
-		expect(footer?.textContent).toContain('2200 Lake Avenue, Cleveland, Ohio, United States');
-		expect(footer?.querySelector('a[aria-label="Instagram, opens in a new tab"]')).not.toBeNull();
-		expect(footer?.querySelector('.page-org-name')).toBeNull();
-		expect(footer?.querySelector('a[href^="mailto:"]')).toBeNull();
-	});
-
-	it('is left off where the organisation states no way to reach it', () => {
-		expect(draw(BARE).querySelector('footer')).toBeNull();
+	it('states the legal block under the head as on every donor page, once', () => {
+		const root = draw(FULL);
+		const footers = root.querySelectorAll('footer');
+		expect(footers).toHaveLength(1);
+		expect(footers[0]?.querySelector('p')?.textContent).toBe(
+			'Harbor Light · EIN 13-2468101 · 2200 Lake Avenue, Cleveland, Ohio, United States'
+		);
+		expect(
+			footers[0]?.querySelector('a[aria-label="Instagram, opens in a new tab"]')
+		).not.toBeNull();
+		expect(footers[0]?.querySelector('a[href^="mailto:"]')).toBeNull();
 	});
 });
 
@@ -528,15 +521,16 @@ describe('the preview’s stillness', () => {
 	});
 
 	it('takes a stop a later render adds out of the tab order too, and leaves Show more its own', async () => {
-		const view = mount(<PageView {...props(FEATURE, { preview: true })} />);
-		const footer = {
-			...FEATURE.footer,
+		const base = props(FEATURE, { preview: true });
+		const view = mount(<PageView {...base} />);
+		const info = {
+			...base.org.info,
 			socialLinks: [
-				...FEATURE.footer.socialLinks,
+				...base.org.info.socialLinks,
 				{ platform: 'facebook', href: 'https://facebook.com/harborlight' }
 			]
 		} as const;
-		view.render(<PageView {...props({ ...FEATURE, footer }, { preview: true })} />);
+		view.render(<PageView {...base} org={{ ...base.org, info }} />);
 		// a mutation observer's callback runs as a microtask, after the synchronous render returns.
 		await act(async () => {});
 

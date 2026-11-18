@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { createRoutesStub, redirect } from 'react-router';
 import { expect, it, onTestFinished } from 'vitest';
 import { browserIn } from '$lib/admin/viewer-time.testing';
-import RecurringGift from './_app.admin.recurring.$id';
+import RecurringGift, { handle } from './_app.admin.recurring.$id';
 
 // every sentence on this screen that names a processor, drawn, and the card they are read in.
 //
@@ -96,6 +96,8 @@ function screen(loaded: Loaded = commitment(), refused: Refused = undefined): HT
 	const Stub = createRoutesStub([
 		{
 			path: '/admin/recurring/:id',
+			// the route's own trail, which makes the heading the nested shape the status is drawn in.
+			handle,
 			Component: () =>
 				createElement(RecurringGift as never, {
 					loaderData: loaded,
@@ -310,7 +312,7 @@ it('reads a refusal on the page where there is no card left to read it in', () =
 
 /** the status word on the heading's row, which is the one the lifecycle tone is drawn on. */
 function statusWord(root: HTMLElement): Element | null {
-	return root.querySelector('.adm-pageheader .ds-badge');
+	return root.querySelector('.ds-page-title-row .ds-badge');
 }
 
 it.each([

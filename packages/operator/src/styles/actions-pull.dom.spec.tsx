@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { stripComments } from './raw-values';
 import { ruleOf, rulesIn, sheet } from './sheet-rule.testing';
 
-// a quiet small control at the start of any line of a page header's or a group's actions row
+// a quiet small control at the start of any line of a group's actions row
 // aligns by its word, which ./adm.css does by pulling the row or its first control out by the
 // padding the registry's small ghost press keeps and the transparent edge every registry rank draws
 // (../registry/styles/button-css.css). the edge is declared on the press, so a pulled row takes the
@@ -40,9 +40,9 @@ function quiet(tag: 'a' | 'button') {
 }
 
 /** a row standing where the pull applies, holding the items handed in. */
-function row(where: 'grouped' | 'header', items: readonly Element[]) {
+function row(items: readonly Element[]) {
 	const outer = document.createElement('div');
-	outer.className = where === 'grouped' ? 'adm-grouped' : 'adm-pageheader__row';
+	outer.className = 'adm-grouped';
 	const actions = document.createElement('div');
 	actions.className = 'adm-actions';
 	actions.append(...items);
@@ -105,30 +105,24 @@ describe("an actions row's lines start on the column's edge by their word", () =
 		]);
 	});
 
-	it.each(['grouped', 'header'] as const)(
-		'pulls a %s row of quiet small controls as one, beside a live region',
-		(where) => {
-			const live = document.createElement('span');
-			live.className = 'adm-vh';
-			const items = [quiet('a'), quiet('button'), live, quiet('a')];
-			const actions = row(where, items);
+	it('pulls a row of quiet small controls as one, beside a live region', () => {
+		const live = document.createElement('span');
+		live.className = 'adm-vh';
+		const items = [quiet('a'), quiet('button'), live, quiet('a')];
+		const actions = row(items);
 
-			expect(moved(actions)).toBe('padding');
-			expect(items.map(moved)).toEqual(['edge', 'edge', '', 'edge']);
-		}
-	);
+		expect(moved(actions)).toBe('padding');
+		expect(items.map(moved)).toEqual(['edge', 'edge', '', 'edge']);
+	});
 
-	it.each(['grouped', 'header'] as const)(
-		'pulls the first control of a %s row that holds a control with a ground',
-		(where) => {
-			const first = quiet('a');
-			const grounded = document.createElement('button');
-			grounded.className = 'ds-btn ds-btn-secondary adm-btn';
-			const last = quiet('a');
-			const actions = row(where, [first, grounded, last]);
+	it('pulls the first control of a row that holds a control with a ground', () => {
+		const first = quiet('a');
+		const grounded = document.createElement('button');
+		grounded.className = 'ds-btn ds-btn-secondary adm-btn';
+		const last = quiet('a');
+		const actions = row([first, grounded, last]);
 
-			expect(moved(actions)).toBe('');
-			expect([first, grounded, last].map(moved)).toEqual(['padding and edge', '', '']);
-		}
-	);
+		expect(moved(actions)).toBe('');
+		expect([first, grounded, last].map(moved)).toEqual(['padding and edge', '', '']);
+	});
 });

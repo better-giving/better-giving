@@ -1,20 +1,12 @@
-import { opening } from '@better-giving/operator/progress-bar';
 import { act, createElement, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { createRoutesStub, Link } from 'react-router';
+import { createRoutesStub, data, Link, useLoaderData } from 'react-router';
 import { expect, it, onTestFinished } from 'vitest';
-import ProtectedLayout, { clientMiddleware } from './_app';
-import { handle as formHandle } from './_app.admin.forms.$id';
+import ProtectedLayout, { ErrorBoundary } from './_app';
 
-// what the layout frames: the panel's top strip over each screen, the rail each viewer gets, the
-// bar over a move, and the words the frame says over one (the last, below).
-//
-// what the panel's top strip holds over each screen the layout frames.
-//
-// the strip is the layout's, and it is drawn only for a trail: the deepest matched route's `handle`
-// ($lib/admin/crumbs.tsx). a screen standing under a section names the trail; every other screen is
-// named by its tab title and the marked rail cell, and draws no strip. a destination's own page
-// carries its name in a visually hidden `h1` instead.
+// what the layout frames: the shell each viewer gets, the line over a move, the way out, and the
+// state a failed screen is drawn as inside the frame. a screen's own heading and trail are the
+// screen's (each route's `PageHeading`), so the layout draws neither.
 
 // react refuses to flush work inside `act` without this, and says so rather than hanging.
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -35,87 +27,90 @@ async function mount(tree: ReactNode): Promise<HTMLElement> {
 	return root;
 }
 
-/** the layout, set up and named, over a list screen and a detail screen beneath it. */
+/** what the layout's loader answers, for the deployer or a member, with the rail as the cookie left it. */
+const drawnFor = (deployer: boolean, railCollapsed = false) => ({
+	orgName: 'Riverbank Trust',
+	orgLogo: null,
+	staff: { name: 'Nadia Hart', email: 'nadia@riverbanktrust.org' },
+	deployer,
+	viewerZone: null,
+	railCollapsed
+});
+
+/** the layout as the app routes it, its loader answering `drawn`, over `children`. */
+function layoutRoute(drawn: ReturnType<typeof drawnFor>, children: object[]) {
+	return {
+		id: 'routes/_app',
+		loader: () => drawn,
+		HydrateFallback: () => null,
+		Component: () =>
+			createElement(ProtectedLayout as never, {
+				loaderData: useLoaderData(),
+				params: {},
+				matches: []
+			}),
+		ErrorBoundary,
+		children
+	};
+}
+
+/** the layout, set up and named, over a list screen and a screen under it. */
 function frameAt(at: string, deployer = true): Promise<HTMLElement> {
 	const Stub = createRoutesStub([
-		{
-			id: 'app',
-			Component: () =>
-				createElement(ProtectedLayout as never, {
-					loaderData: { orgName: 'Riverbank Trust', deployer, viewerZone: null },
-					params: {},
-					matches: []
-				}),
-			children: [
-				{ path: '/admin/forms', Component: () => <p>the list</p> },
-				{
-					path: '/admin/forms/:id',
-					handle: formHandle,
-					loader: () => ({ name: 'Spring appeal' }),
-					Component: () => <p>the form</p>
+		layoutRoute(drawnFor(deployer), [
+			{ path: '/admin/forms', Component: () => <p>the list</p> },
+			{ path: '/admin/members/password', Component: () => <h1>Your password</h1> },
+			{ path: '/admin/donation-page', Component: () => <p>the Donation page</p> },
+			{
+				path: '/admin/forms/:id',
+				loader: ({ params }: { params: { id?: string } }) => {
+					if (params.id === 'gone') throw data('No form here.', { status: 404 });
+					if (params.id === 'broken') throw new Error('the read did not land');
+					if (params.id === 'refused') throw data('Not yours to open.', { status: 403 });
+					return null;
 				},
-				{ path: '/admin/members/password', Component: () => <h1>Your password</h1> },
-				{ path: '/admin/donation-page', Component: () => <p>the Donation page</p> },
-				{ path: '/admin/elsewhere', Component: () => <p>nowhere</p> }
-			]
-		}
+				Component: () => <p>the form</p>
+			}
+		]) as never
 	]);
 	return mount(<Stub initialEntries={[at]} />);
 }
 
-function strip(root: HTMLElement): Element | null {
-	return root.querySelector('.adm-headstrip');
-}
-
-it('draws no strip over a screen that is its own page', async () => {
-	const root = await frameAt('/admin/forms');
-
-	expect(strip(root)).toBeNull();
-});
-
-it('draws no strip over a screen under a section with no trail', async () => {
+it('adds no heading and no trail of its own over a screen', async () => {
 	const root = await frameAt('/admin/members/password');
 
-	expect(strip(root)).toBeNull();
 	expect([...root.querySelectorAll('h1')].map((h1) => h1.textContent)).toEqual(['Your password']);
+	expect(root.querySelector('nav[aria-label="Breadcrumb"]')).toBeNull();
 });
 
-it('carries the trail over a screen standing under a section', async () => {
-	const root = await frameAt('/admin/forms/1');
-	const items = [...(strip(root)?.querySelectorAll('nav[aria-label="Breadcrumb"] li') ?? [])];
+it('draws the screen inside the shell’s main region, under the organisation’s name', async () => {
+	const root = await frameAt('/admin/donation-page');
 
-	expect(items.map((li) => li.textContent)).toEqual(['Donation forms', 'Spring appeal']);
+	expect(root.querySelector('main')?.textContent).toBe('the Donation page');
+	expect(root.querySelector('.ds-topbar-title')?.textContent).toBe('Riverbank Trust');
 });
 
-it('names a screen that is its own page with a heading only a screen reader gets', async () => {
+it('names who is signed in at the foot of the rail', async () => {
 	const root = await frameAt('/admin/forms');
-	const headings = [...root.querySelectorAll('h1')];
 
-	expect(headings.map((h1) => h1.textContent)).toEqual(['Donation forms']);
-	expect(headings[0]?.classList.contains('adm-vh')).toBe(true);
-});
-
-it('adds no heading over a screen that carries a trail', async () => {
-	const root = await frameAt('/admin/forms/1');
-
-	expect(root.querySelectorAll('h1')).toHaveLength(0);
-});
-
-it('draws no strip under no destination', async () => {
-	const root = await frameAt('/admin/elsewhere');
-
-	expect(strip(root)).toBeNull();
-});
-
-it('opens the Donation page from the globe beside the organisation’s name', async () => {
-	const root = await frameAt('/admin/forms');
-	const globes = [...root.querySelectorAll('a[aria-label="Donation page"]')];
-
-	expect(globes.length).toBeGreaterThan(0);
-	expect(globes.map((a) => a.getAttribute('href'))).toEqual(
-		globes.map(() => '/admin/donation-page')
+	expect(root.querySelector('.ds-shell-sidebar .ds-shell-account-name')?.textContent).toBe(
+		'Nadia Hart'
 	);
-	expect(globes.map((a) => a.getAttribute('target'))).toEqual(globes.map(() => null));
+});
+
+// the rail as the loader read it from the `bg_operator_rail` cookie, on the shell's first render.
+it.each([
+	['collapsed', true, ''],
+	['open', false, null]
+])('draws the rail %s on the first render as the loader read it', async (_, collapsed, marked) => {
+	const Stub = createRoutesStub([
+		layoutRoute(drawnFor(true, collapsed), [
+			{ path: '/admin/forms', Component: () => <p>the list</p> }
+		]) as never
+	]);
+	const root = await mount(<Stub initialEntries={['/admin/forms']} />);
+
+	expect(root.querySelector('.ds-shell')?.getAttribute('data-collapsed')).toBe(marked);
 });
 
 // /donate is public, so the link to it is every operator's and not one of the deployer's
@@ -125,29 +120,24 @@ it.each([
 	['a member', false]
 ])('gives %s the top bar link to the published donation page', async (_, deployer) => {
 	const root = await frameAt('/admin/forms', deployer);
-	const links = [...root.querySelectorAll('.adm-pagelink > a')];
+	const links = [...root.querySelectorAll('.ds-topbar-secondary a')];
 
-	expect(links.map((a) => [a.getAttribute('href'), a.getAttribute('aria-label')])).toEqual([
+	expect(links.map((a) => [a.getAttribute('href'), a.textContent])).toEqual([
 		['/donate', 'Open donation page']
 	]);
 });
 
-it('draws the Donation page inside the frame, as every screen is', async () => {
-	const root = await frameAt('/admin/donation-page');
+// the rail's deployer rows: every page behind them answers a member with not-found, and
+// ./_app.admin.integrations.api.db.spec.ts and ./_app.admin.integrations.zapier.db.spec.ts hold
+// the loaders' half.
 
-	expect(root.textContent).toContain('the Donation page');
-	expect(root.textContent).toContain('Riverbank Trust');
-});
-
-// the rail's Integrations group is the deployer's alone: every page in it answers a member with
-// not-found, and ./_app.admin.integrations.api.db.spec.ts and
-// ./_app.admin.integrations.zapier.db.spec.ts hold the loaders' half.
-
-/** the column's headings and the destinations it offers, in the order it draws them. */
+/** the sidebar's group titles and top-level rows, in the order it draws them. */
 function rail(root: HTMLElement): string[] {
-	return [...root.querySelectorAll('.adm-rail__heading, .adm-rail__cells a .adm-dest__full')].map(
-		(node) => node.textContent ?? ''
-	);
+	return [
+		...root.querySelectorAll(
+			'.ds-shell-sidebar .ds-nav-title, .ds-shell-sidebar a.ds-nav-link:not(.ds-nav-sublink):not(.ds-shell-rail-parent) .ds-nav-label'
+		)
+	].map((node) => node.textContent ?? '');
 }
 
 it('draws the deployer Settings and Payments beside Members, and the Integrations group, headed, before Books', async () => {
@@ -165,22 +155,76 @@ it('draws the deployer Settings and Payments beside Members, and the Integration
 		'AI',
 		'Books'
 	]);
-	// the one cell marked with a company's own image rather than a glyph.
-	expect(root.querySelector('a[href="/admin/integrations/zapier"] img')).not.toBeNull();
+	// the one row marked with a company's own image rather than a glyph.
+	expect(
+		root.querySelector('.ds-shell-sidebar a[href="/admin/integrations/zapier"] img')
+	).not.toBeNull();
 });
 
-it('draws a member no Settings or Payments cell and no Integrations group, and the rest of the rail as it is', async () => {
-	const drawn = rail(await frameAt('/admin/forms', false));
+it('draws Settings’ three sections under it for the deployer', async () => {
+	const root = await frameAt('/admin/forms');
+	const sections = [...root.querySelectorAll('.ds-shell-sidebar .ds-nav-sub a.ds-nav-sublink')].map(
+		(a) => [a.getAttribute('href'), a.textContent]
+	);
+
+	expect(sections).toEqual([
+		['/admin/settings/organisation', 'Organisation details'],
+		['/admin/settings/notifications', 'Notifications'],
+		['/admin/settings/mail', 'Mail']
+	]);
+});
+
+it('draws a member no Settings or Payments row and no Integrations group, and the rest of the rail as it is', async () => {
+	const root = await frameAt('/admin/forms', false);
+	const drawn = rail(root);
 
 	expect(drawn).not.toContain('Settings');
 	expect(drawn).not.toContain('Payments');
 	expect(drawn).not.toContain('Integrations');
 	expect(drawn).not.toContain('Zapier');
-	expect(drawn).not.toContain('API');
 	expect(drawn.slice(drawn.indexOf('Members'))).toEqual(['Members', 'Books']);
+	expect(root.querySelector('.ds-nav-sublink')).toBeNull();
 });
 
-// the bar over a move, drawn by the layout while the router reads the next page. the stub's loaders
+// a screen that fails is drawn inside the frame, so the rail stays.
+
+it('draws a record that is not there as the 404 inside the shell, with the way to the dashboard', async () => {
+	const root = await frameAt('/admin/forms/gone');
+	const state = root.querySelector('main .ds-page-state');
+
+	expect(root.querySelector('.ds-shell-sidebar')).not.toBeNull();
+	expect(state?.querySelector('.ds-page-state-code')?.textContent).toBe('404');
+	expect(state?.querySelector('h1')?.textContent).toBe('No such page');
+	expect(state?.textContent).toContain('It may have been deleted, or the address may be wrong.');
+	const way = state?.querySelector('.ds-page-state-actions a');
+	expect([way?.getAttribute('href'), way?.textContent]).toEqual(['/admin', 'Go to dashboard']);
+});
+
+it('draws a read that did not land as the 500 inside the shell, naming the log, with no retry', async () => {
+	const root = await frameAt('/admin/forms/broken');
+	const state = root.querySelector('main .ds-page-state-error');
+
+	expect(root.querySelector('.ds-shell-sidebar')).not.toBeNull();
+	expect(state?.querySelector('.ds-page-state-code')?.textContent).toBe('500');
+	expect(state?.querySelector('h1')?.textContent).toBe('This deployment could not answer');
+	expect(state?.querySelector('[role="alert"]')?.textContent).toContain(
+		'Nothing more is known here. The app’s log has the cause:'
+	);
+	expect(state?.querySelector('code')?.textContent).toBe('docker compose logs app');
+	expect(state?.querySelector('button, a')).toBeNull();
+});
+
+it('draws another refusal under its own status, with the answer’s sentence and no action', async () => {
+	const root = await frameAt('/admin/forms/refused');
+	const state = root.querySelector('main .ds-page-state-error');
+
+	expect(state?.querySelector('.ds-page-state-code')?.textContent).toBe('403');
+	expect(state?.querySelector('h1')?.textContent).toBe('This request was refused');
+	expect(state?.querySelector('[role="alert"]')?.textContent).toContain('Not yours to open.');
+	expect(state?.querySelector('button, a')).toBeNull();
+});
+
+// the line over a move, drawn by the layout while the router reads the next page. the stub's loaders
 // never settle for `?wait`, so the navigation a press starts stays pending for the whole case.
 
 /** the layout at the list, with a link on it to `to` whose reading never lands. */
@@ -188,23 +232,10 @@ function frameWithLinkTo(to: string): Promise<HTMLElement> {
 	const waits = ({ request }: { request: Request }) =>
 		new URL(request.url).searchParams.has('wait') ? new Promise<never>(() => {}) : null;
 	const Stub = createRoutesStub([
-		{
-			id: 'app',
-			Component: () =>
-				createElement(ProtectedLayout as never, {
-					loaderData: { orgName: 'Riverbank Trust' },
-					params: {},
-					matches: []
-				}),
-			children: [
-				{
-					path: '/admin/forms',
-					loader: waits,
-					Component: () => <Link to={to}>go</Link>
-				},
-				{ path: '/admin/donors', loader: waits, Component: () => <p>donors</p> }
-			]
-		}
+		layoutRoute(drawnFor(true), [
+			{ path: '/admin/forms', loader: waits, Component: () => <Link to={to}>go</Link> },
+			{ path: '/admin/donors', loader: waits, Component: () => <p>donors</p> }
+		]) as never
 	]);
 	return mount(<Stub initialEntries={['/admin/forms']} />);
 }
@@ -217,147 +248,55 @@ async function follow(root: HTMLElement, text: string): Promise<void> {
 	});
 }
 
-const bar = (root: HTMLElement) => root.querySelector('.adm-navigation-bar');
+const line = (root: HTMLElement) => root.querySelector('.ds-route-progress');
 
-it('draws no bar at rest', async () => {
+it('draws no line at rest', async () => {
 	const root = await frameWithLinkTo('/admin/donors?wait');
 
-	expect(bar(root)).toBeNull();
+	expect(line(root)).toBeNull();
 });
 
-it('draws the bar while a move to another page is read', async () => {
+it('draws the line across the top bar while a move to another page is read', async () => {
 	const root = await frameWithLinkTo('/admin/donors?wait');
 	await follow(root, 'go');
 
-	expect(bar(root)).not.toBeNull();
+	expect(line(root)?.closest('.ds-topbar')).not.toBeNull();
 });
 
-it('keeps the page being left until the bar has been seen full', async () => {
-	// packages/operator/src/progress-bar.ts keeps the drawn page in module state across cases, so
-	// this one moves to a pathname no other case draws.
-	const Stub = createRoutesStub([
-		{
-			id: 'app',
-			middleware: clientMiddleware as never,
-			Component: () =>
-				createElement(ProtectedLayout as never, {
-					loaderData: { orgName: 'Riverbank Trust' },
-					params: {},
-					matches: []
-				}),
-			children: [
-				{ path: '/admin/forms', Component: () => <Link to="/admin/recurring">go</Link> },
-				{ path: '/admin/recurring', Component: () => <p>arrived</p> }
-			]
-		}
-	]);
-	const root = await mount(<Stub initialEntries={['/admin/forms']} />);
-	await follow(root, 'go');
-
-	expect(root.textContent).not.toContain('arrived');
-
-	// the dwell's end is what ProgressBar.jsx reads as the bar having been seen full.
-	const dwellEnded = Object.assign(new Event('animationend'), { animationName: 'adm-dwell' });
-	await act(async () => {
-		root.querySelector('.adm-navigation-bar__line')?.dispatchEvent(dwellEnded);
-	});
-
-	expect(root.textContent).toContain('arrived');
-});
-
-it('enters from a page outside the layout without holding for a bar nobody drew', async () => {
-	// the sign-in screen's redirect into /admin is this move: no layout is on the screen, so no bar
-	// is either, and a hold would wait out the bar's whole cap before the dashboard appeared.
-	const Stub = createRoutesStub([
-		{ path: '/login', Component: () => <Link to="/admin/donors">in</Link> },
-		{
-			id: 'app',
-			middleware: clientMiddleware as never,
-			Component: () =>
-				createElement(ProtectedLayout as never, {
-					loaderData: { orgName: 'Riverbank Trust' },
-					params: {},
-					matches: []
-				}),
-			children: [{ path: '/admin/donors', Component: () => <p>donors</p> }]
-		}
-	]);
-	const root = await mount(<Stub initialEntries={['/login']} />);
-	await follow(root, 'in');
-
-	expect(root.textContent).toContain('donors');
-});
-
-it('draws no bar over a reading of the page already drawn', async () => {
+it('draws no line over a reading of the page already drawn', async () => {
 	const root = await frameWithLinkTo('/admin/forms?wait');
 	await follow(root, 'go');
 
-	expect(bar(root)).toBeNull();
+	expect(line(root)).toBeNull();
 });
 
-// what the frame says out loud over a move to another screen.
-//
-// the words are `MoveStatus`'s (packages/operator/src/components/status/ProgressBar.jsx), whose own
-// spec holds that one region keeps its node while its words change. what only this layout can get
-// wrong is the mount: that the region stands before the move, that the line drawn over the move
-// brings no second one, and that the label it reads is the one the pressed link carried. so the
-// layout is mounted under a stub whose destination's reading has not landed, which is the move in
-// flight rather than a stand-in for it.
+// the way out, which is a form post to its own route (./_app.admin.sign-out.ts).
 
-/** the frame standing on the dashboard's first screen, with a link to a screen still being read. */
-async function frameOverReading() {
-	let land: (value: null) => void = () => {};
-	const reading = new Promise<null>((resolve) => {
-		land = resolve;
-	});
+it('signs out through a post to the sign-out route', async () => {
+	const posts: string[] = [];
 	const Stub = createRoutesStub([
-		{
-			id: 'routes/_app',
-			Component: () =>
-				createElement(ProtectedLayout as never, {
-					loaderData: { orgName: 'Riverbank Trust', deployer: true, viewerZone: null },
-					params: {},
-					matches: []
-				}),
-			children: [
-				{
-					path: '/admin',
-					Component: () => (
-						<Link to="/admin/donations" state={opening('Opening Donations')}>
-							to donations
-						</Link>
-					)
-				},
-				{ path: '/admin/donations', loader: () => reading, Component: () => <p>arrived</p> }
-			]
-		}
+		layoutRoute(drawnFor(true), [
+			{ path: '/admin/forms', Component: () => <p>the list</p> },
+			{
+				path: '/admin/sign-out',
+				action: ({ request }: { request: Request }) => {
+					posts.push(request.method);
+					return null;
+				}
+			}
+		]) as never
 	]);
-	return { root: await mount(<Stub initialEntries={['/admin']} />), land: () => land(null) };
-}
+	const root = await mount(<Stub initialEntries={['/admin/forms']} />);
+	const account = root.querySelector<HTMLButtonElement>('.ds-shell-sidebar .ds-shell-account-btn');
+	// the keyboard's way through the menu, as packages/operator's Shell.dom.spec.tsx presses it:
+	// open on the first row, to the last, which is Sign out, and choose it.
+	act(() => account?.focus());
+	for (const key of ['ArrowDown', 'End', 'Enter']) {
+		await act(async () => {
+			document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+		});
+	}
+	await act(async () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
 
-function regions(root: HTMLElement): HTMLElement[] {
-	return [...root.querySelectorAll<HTMLElement>('[role="status"]')];
-}
-
-it('says the opening label on one region over a move, and empties it when the move ends', async () => {
-	const { root, land } = await frameOverReading();
-	const [standing, ...others] = regions(root);
-	expect(others).toHaveLength(0);
-	expect(standing?.textContent).toBe('');
-
-	await follow(root, 'to donations');
-
-	// the line over the move is drawn, and it brings no region of its own.
-	expect(bar(root)).not.toBe(null);
-	expect(regions(root)).toEqual([standing]);
-	expect(standing?.textContent).toBe('Opening Donations');
-
-	await act(async () => {
-		land();
-	});
-
-	expect(root.textContent).toContain('arrived');
-	expect(bar(root)).toBe(null);
-	expect(regions(root)).toEqual([standing]);
-	expect(standing?.textContent).toBe('');
+	expect(posts).toEqual(['POST']);
 });

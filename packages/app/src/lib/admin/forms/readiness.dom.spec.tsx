@@ -80,7 +80,7 @@ it('tells the deployer what to fix and where, under one blocker band', () => {
 			text: undefined
 		}
 	]);
-	expect(links(root)).toEqual(['/admin/settings', '/admin/payments']);
+	expect(links(root)).toEqual(['/admin/settings/organisation', '/admin/payments']);
 });
 
 it('tells a member who to ask, and links nowhere', () => {

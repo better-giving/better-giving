@@ -1,7 +1,6 @@
 import { useCallback, useLayoutEffect, useMemo, useState } from 'react';
 import { href, useFetcher, useSubmit } from 'react-router';
 import { z } from 'zod';
-import type { CrumbHandle } from '$lib/admin/crumbs';
 import { APP_NAME, screenTitle } from '$lib/admin/screen-title';
 import {
 	PAGE_ID_FIELD,
@@ -45,10 +44,6 @@ import type { Route } from './+types/_app.admin.supporter-pages';
 // cannot see: hidden, or never published by its confirm link, ended since or not.
 
 const SCREEN_TITLE = 'Supporter pages';
-
-export const handle = {
-	crumbs: ({ pathname }) => [{ href: pathname, label: SCREEN_TITLE }]
-} satisfies CrumbHandle;
 
 export function meta({ matches }: Route.MetaArgs): Route.MetaDescriptors {
 	return [{ title: screenTitle(SCREEN_TITLE, matches) }];

@@ -1,0 +1,283 @@
+/* the registry's site footer as plain css, no tailwind: the full footer on
+   the --primary fill (the mark, the link columns, the newsletter and socials,
+   the art and the legal row) and the compact one-row footer on the page fill.
+   reads only the variables the `variables` item declares; the newsletter's
+   button is a button-css button. site-footer-css.test.tsx renders the React
+   `SiteFooter` beside it and asserts the same computed look in light and
+   dark, for the default and the example themes, at a desktop and a phone
+   width.
+
+   the spacing step, the type sizes, the weights, the leading, the control
+   height and the page widths live only in tailwind's theme; they are declared
+   here under ds- names with the same values, and the test holds them equal. a
+   media query cannot read a variable, so its widths are written out: 40rem is
+   tailwind's sm, 48rem md, 64rem lg, 80rem xl, 96rem 2xl. */
+.ds-site-footer,
+.ds-site-footer-compact {
+  --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
+  --ds-text-xs: calc(0.75 * var(--ds-rem, 1rem));
+  --ds-text-xs-lh: calc(1 / 0.75);
+  --ds-text-sm: calc(0.875 * var(--ds-rem, 1rem));
+  --ds-text-sm-lh: calc(1.25 / 0.875);
+  --ds-leading-normal: 1.5;
+  --ds-font-weight-medium: 500;
+  --ds-font-weight-semibold: 600;
+  --ds-font-weight-bold: 700;
+  --ds-field-size: calc(var(--ds-spacing) * 12 + 2px);
+  --ds-breakpoint-xl: calc(80 * var(--ds-rem, 1rem));
+  --ds-breakpoint-2xl: calc(96 * var(--ds-rem, 1rem));
+  box-sizing: border-box;
+}
+.ds-site-footer p,
+.ds-site-footer-compact p {
+  margin: 0;
+}
+.ds-site-footer ul,
+.ds-site-footer-compact ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* the full footer: the --primary fill with its ink at full strength. inside
+   it the ring and the edge are the fill's own, as tailwind's surface-primary
+   rebinds them */
+.ds-site-footer {
+  --ring: var(--primary-ring);
+  --border: var(--primary-border);
+  background-color: var(--primary);
+  color: var(--primary-fg);
+}
+
+/* the page shape: full-bleed with a 20px gutter, 40px from md, capped at
+   80rem from xl and 96rem from 2xl */
+.ds-site-footer-inner,
+.ds-site-footer-compact-row {
+  box-sizing: border-box;
+  inline-size: 100%;
+  margin-inline: auto;
+  padding-inline: calc(var(--ds-spacing) * 5);
+}
+@media (width >= 48rem) {
+  .ds-site-footer-inner,
+  .ds-site-footer-compact-row {
+    padding-inline: calc(var(--ds-spacing) * 10);
+  }
+}
+@media (width >= 80rem) {
+  .ds-site-footer-inner,
+  .ds-site-footer-compact-row {
+    max-inline-size: var(--ds-breakpoint-xl);
+  }
+}
+@media (width >= 96rem) {
+  .ds-site-footer-inner,
+  .ds-site-footer-compact-row {
+    max-inline-size: var(--ds-breakpoint-2xl);
+  }
+}
+.ds-site-footer-inner {
+  padding-block-start: calc(var(--ds-spacing) * 12);
+  padding-block-end: calc(var(--ds-spacing) * 8);
+}
+
+/* one column, two from 640px, four from 1024px */
+.ds-site-footer-grid {
+  display: grid;
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+  gap: calc(var(--ds-spacing) * 10);
+}
+@media (width >= 40rem) {
+  .ds-site-footer-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (width >= 64rem) {
+  .ds-site-footer-grid {
+    grid-template-columns: 1.4fr 1fr 1fr 1.3fr;
+  }
+}
+
+.ds-site-footer-about {
+  display: grid;
+  gap: calc(var(--ds-spacing) * 3);
+  margin-block-start: calc(var(--ds-spacing) * 4);
+  font-size: var(--ds-text-sm);
+  line-height: var(--ds-leading-normal);
+}
+
+.ds-site-footer-title {
+  margin: 0 0 calc(var(--ds-spacing) * 3);
+  font-family: var(--font-body);
+  font-size: var(--ds-text-sm);
+  line-height: var(--ds-text-sm-lh);
+  font-weight: var(--ds-font-weight-bold);
+}
+.ds-site-footer-list {
+  display: grid;
+  gap: calc(var(--ds-spacing) * 2);
+}
+
+/* every link in the band: its ink, no underline until hovered, the ring 2px
+   outside on the control corner */
+.ds-site-footer a {
+  border-radius: var(--radius);
+  color: inherit;
+  text-decoration: none;
+}
+.ds-site-footer-list a {
+  font-size: var(--ds-text-sm);
+  line-height: var(--ds-text-sm-lh);
+}
+@media (hover: hover) and (pointer: fine) {
+  .ds-site-footer a:hover {
+    text-decoration-line: underline;
+  }
+}
+.ds-site-footer a:focus-visible,
+.ds-site-footer-compact a:focus-visible,
+.ds-site-footer-input:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+/* the newsletter: the field and its button on one row, the button wrapping
+   under the field's column when the column is narrow */
+.ds-site-footer-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: calc(var(--ds-spacing) * 2);
+  margin: 0;
+}
+.ds-site-footer-field {
+  flex: 1 1 calc(12 * var(--ds-rem, 1rem));
+  min-inline-size: 0;
+}
+.ds-site-footer-label {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border-width: 0;
+}
+.ds-site-footer-input {
+  box-sizing: border-box;
+  display: block;
+  inline-size: 100%;
+  block-size: var(--ds-field-size);
+  margin: 0;
+  padding: 0 calc(var(--ds-spacing) * 4);
+  border: 1px solid var(--primary-border);
+  border-radius: var(--radius);
+  background-color: var(--surface);
+  color: var(--gray-12);
+  font-family: inherit;
+  font-size: var(--ds-text-sm);
+  line-height: var(--ds-text-sm-lh);
+}
+.ds-site-footer-input::placeholder {
+  color: var(--gray-11);
+  opacity: 1;
+}
+.ds-site-footer-input[aria-invalid="true"] {
+  border-width: 2px;
+}
+/* both lines are live regions: rendered while empty, taking no room */
+.ds-site-footer-alert,
+.ds-site-footer-status {
+  font-size: var(--ds-text-sm);
+  line-height: var(--ds-text-sm-lh);
+}
+.ds-site-footer-alert {
+  color: var(--destructive-subtle-fg);
+}
+.ds-site-footer-status {
+  color: var(--success-subtle-fg);
+}
+.ds-site-footer-alert:not(:empty),
+.ds-site-footer-status:not(:empty) {
+  margin-block-start: calc(var(--ds-spacing) * 2);
+  padding: calc(var(--ds-spacing) * 2) calc(var(--ds-spacing) * 3);
+  border-radius: var(--radius);
+}
+.ds-site-footer-alert:not(:empty) {
+  background-color: var(--destructive-subtle);
+}
+.ds-site-footer-status:not(:empty) {
+  background-color: var(--success-subtle);
+}
+
+.ds-site-footer-social {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(var(--ds-spacing) * 2) calc(var(--ds-spacing) * 4);
+}
+.ds-site-footer-form + .ds-site-footer-social {
+  margin-block-start: calc(var(--ds-spacing) * 4);
+}
+.ds-site-footer-social a {
+  font-size: var(--ds-text-xs);
+  line-height: var(--ds-text-xs-lh);
+  font-weight: var(--ds-font-weight-medium);
+}
+
+.ds-site-footer-art {
+  margin-block-start: calc(var(--ds-spacing) * 10);
+}
+
+/* the legal row, under a --primary-border rule */
+.ds-site-footer-legal {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: calc(var(--ds-spacing) * 3) calc(var(--ds-spacing) * 6);
+  margin-block-start: calc(var(--ds-spacing) * 10);
+  padding-block-start: calc(var(--ds-spacing) * 6);
+  border-block-start: 1px solid var(--primary-border);
+  font-size: var(--ds-text-xs);
+  line-height: var(--ds-leading-normal);
+}
+.ds-site-footer-legal ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(var(--ds-spacing) * 2) calc(var(--ds-spacing) * 5);
+}
+
+/* the compact footer: one row on the page fill, a hairline over it */
+.ds-site-footer-compact {
+  border-block-start: 1px solid var(--hairline);
+  background-color: var(--background);
+  color: var(--gray-11);
+}
+.ds-site-footer-compact-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: safe center;
+  justify-content: space-between;
+  gap: calc(var(--ds-spacing) * 2) calc(var(--ds-spacing) * 6);
+  padding-block: calc(var(--ds-spacing) * 5);
+  font-size: var(--ds-text-sm);
+  line-height: var(--ds-text-sm-lh);
+}
+.ds-site-footer-compact-row ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ds-spacing) calc(var(--ds-spacing) * 5);
+}
+.ds-site-footer-compact a {
+  border-radius: var(--radius);
+  color: var(--link);
+  font-weight: var(--ds-font-weight-semibold);
+  text-decoration: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  .ds-site-footer-compact a:hover {
+    color: var(--link-hover);
+    text-decoration-line: underline;
+  }
+}

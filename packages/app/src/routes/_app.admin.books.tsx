@@ -33,6 +33,7 @@ import {
 } from 'react-router';
 import { uuidv7 } from 'uuidv7';
 import { z } from 'zod';
+import { ScreenHeading } from '$lib/admin/crumbs';
 import { screenTitle } from '$lib/admin/screen-title';
 import { buttonState } from '$lib/admin/save-button-state';
 import { formPress } from '$lib/admin/unreached';
@@ -238,7 +239,7 @@ const misfitSays = (role: AccountRole): string =>
 		? 'pick another account from this list'
 		: 'pick an Other Current Asset account, never a bank account';
 
-/** the screen's name in the document title. ./_app.tsx names the page in a hidden `h1`. */
+/** the screen's name, in its heading and in the document title. */
 const SCREEN_TITLE = 'Books';
 
 /** the blank a picker opens on, so no account is chosen by the picker falling to the first one. */
@@ -887,6 +888,7 @@ export default function Books({ loaderData, actionData }: Route.ComponentProps) 
 		// under it has four columns and its own scroll box, so it reads at this width where a form
 		// stretched to a table's measure does not.
 		<Column>
+			<ScreenHeading title={SCREEN_TITLE} />
 			{/* no `action` attribute, so this posts to the current url. conform's `getFormProps` puts
 			    the form's own id on the element, which is what its focus move looks the form up by
 			    — see the header of `$lib/admin/use-admin-form.ts`. `preventScrollReset` because the
@@ -1038,8 +1040,8 @@ export default function Books({ loaderData, actionData }: Route.ComponentProps) 
 				</Form>
 			</Section>
 
-			{/* the list's own heading, beside the form's: the frame draws this page's one `h1`,
-			    visually hidden (./_app.tsx), so both halves of the screen stand under it at this rank.
+			{/* the list's own heading, beside the form's: the page's heading is its one `h1`, so
+			    both halves of the screen stand under it at this rank.
 			    without it the table falls under the heading about the form above it, and a reader
 			    moving by heading reaches the form half and never the list.
 

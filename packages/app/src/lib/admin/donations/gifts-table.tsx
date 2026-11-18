@@ -1,5 +1,4 @@
 import { TRIBUTE_KIND_LABELS, type TributeKind } from '@better-giving/form/v1';
-import { Button } from '@better-giving/operator/components/controls/Button';
 import { DataTable } from '@better-giving/operator/components/data/DataTable';
 import { Mark } from '@better-giving/operator/components/status/Mark';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
@@ -12,8 +11,8 @@ import {
 	useRef,
 	useState
 } from 'react';
-import { Form, href, Link, useNavigation, useSubmit } from 'react-router';
-import { GiftNote, PublicMessagesLink } from '$lib/admin/messages/gift-note';
+import { Form, Link, useNavigation, useSubmit } from 'react-router';
+import { GiftNote } from '$lib/admin/messages/gift-note';
 import { byDayShown, type Received } from '$lib/admin/received-order';
 import { DONATION_STATUS_TONES, MATCH_STATUS_TONES } from '$lib/admin/status-tones';
 import { LocalTime, useViewerZone } from '$lib/admin/viewer-time.react';
@@ -129,22 +128,9 @@ export function GiftsTable({ donations, limit, hasMore, match }: GiftsTableProps
 	return (
 		<DataTable
 			captionId={CAPTION_ID}
-			// the page's presses, drawn at the trailing edge of the caption's line. the filter leads,
-			// because it acts on the rows under it; then the way out of the list, quieter; then adding a
-			// gift, which is what an operator is most often here to do. wrapped in a row of their own:
-			// `.adm-tablelead` spreads its own children apart.
-			press={
-				<div className="adm-actions">
-					<MatchFilterSelect value={match} />
-					<Button as={Link} to={href('/admin/donations/export')} variant="quiet">
-						Export
-					</Button>
-					<PublicMessagesLink />
-					<Button as={Link} to={href('/admin/donations/new')}>
-						Add donation
-					</Button>
-				</div>
-			}
+			// the filter, at the trailing edge of the caption's line, because it acts on the rows under
+			// it. the page's own presses are its heading's (../../../routes/_app.admin.donations._index.tsx).
+			press={<MatchFilterSelect value={match} />}
 			// with rows, the sentence that says what the table holds and is what names it. with none
 			// the word is the screen's own noun, which `DataTable` gives the plane as its name.
 			caption={count > 0 ? `${count} ${count === 1 ? 'gift' : 'gifts'}, newest first.` : 'Gifts'}

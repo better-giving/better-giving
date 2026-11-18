@@ -15,7 +15,7 @@ import { z } from 'zod';
 // about what an org profile may be — which fields the row cannot exist without, what counts
 // as an email, what a blank means — is decidable from the submitted values alone. keeping
 // the parse here means it is testable with no database and no browser, and it means the action
-// that takes a profile over the wire (../../../routes/_app.admin.settings.tsx) stays a translation
+// that takes a profile over the wire (../../../routes/_app.admin.settings_.organisation.tsx) stays a translation
 // layer rather than the place the rules live.
 //
 // how the rules are stated. every rule an org profile has is a property of a single value —
@@ -139,7 +139,7 @@ export type OrgProfileParseResult =
  * `parseOrgProfile` takes this rather than `FormData` so a test states its input as an
  * object literal — `{ legal_name: 'Hope Foundation' }` is the case being made, where the
  * `FormData` that builds it is four lines of noise around it. it is also what keeps a wire format
- * off this parser entirely: `orgProfileValues` in ../../../routes/_app.admin.settings.tsx reads
+ * off this parser entirely: `orgProfileValues` in ../../../routes/_app.admin.settings_.organisation.tsx reads
  * the posted body onto this shape and `toFormValues` in ./form-values.ts projects a stored row back
  * onto the same one to seed the boxes, so what reaches here is never a body.
  */

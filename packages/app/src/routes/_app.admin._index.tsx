@@ -4,6 +4,7 @@ import { Column } from '@better-giving/operator/components/shell/Layout';
 import { Banner } from '@better-giving/operator/components/status/Banner';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
 import { href, Link } from 'react-router';
+import { ScreenHeading } from '$lib/admin/crumbs';
 import { screenTitle } from '$lib/admin/screen-title';
 import { formatMinor } from '$lib/donations/money';
 import { FORM_CURRENCY } from '$lib/forms/amounts';
@@ -38,7 +39,7 @@ import type { Route } from './+types/_app.admin._index';
 // read failing costs one figure, and the screen says which rather than drawing a nought in its
 // place.
 
-/** the screen's name in the document title. ./_app.tsx names the page in a hidden `h1`. */
+/** the screen's name, in its heading and in the document title. */
 const SCREEN_TITLE = 'Dashboard';
 
 /**
@@ -155,6 +156,7 @@ export default function Dashboard({ loaderData }: Route.ComponentProps) {
 		// one column and the column is what spaces it: every block below carries no margin of its
 		// own. the narrow measure, because nothing here is a table plane.
 		<Column>
+			<ScreenHeading title={SCREEN_TITLE} />
 			{/* attention and not blocker: one figure is missing and nothing on this deployment is
 			    stopped by it. the word, and nothing under it — what is said is which figure could
 			    not be read, and the errand for fixing it is not on this screen. */}

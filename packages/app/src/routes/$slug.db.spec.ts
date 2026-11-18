@@ -314,9 +314,14 @@ describe('the colour a campaign page is drawn in', () => {
 	});
 });
 
-/** the masthead the page opens with. */
+/** the site nav the page opens with. */
 function masthead(html: string): string {
-	return /<header class="page-mast"[\s\S]*?<\/header>/.exec(html)?.[0] ?? '';
+	return /<header class="ds-site-nav"[\s\S]*?<\/header>/.exec(html)?.[0] ?? '';
+}
+
+/** the compact site footer the page closes on. */
+function siteFooter(html: string): string {
+	return /<footer class="ds-site-footer-compact"[\s\S]*?<\/footer>/.exec(html)?.[0] ?? '';
 }
 
 describe('the organisation’s logo atop a published campaign', () => {
@@ -430,8 +435,8 @@ describe('an ended campaign at its address', () => {
 		expect(answered.headers.get('cache-control')).toBe('no-store');
 		const html = markup(answered.data);
 		expect(element(html, 'h1', '')).toContain('Ended: Winter coat drive');
-		const link = element(html, 'a', 'href="/donate"');
-		expect(link).toContain('part="action"');
+		const link = element(html, 'a', 'part="action"');
+		expect(link).toContain('href="/donate"');
 		expect(link).toContain('Donate to Hope Foundation');
 		expect(html).toMatch(/^<div[^>]*data-donate-root/);
 		expect(html).not.toContain('data-area="title"');
@@ -464,6 +469,14 @@ describe('an ended campaign at its address', () => {
 		expect(mast).toContain(`src="/image/${id}"`);
 		expect(mast).toContain('width="200"');
 		expect(mast).toContain('Hope Foundation');
+	});
+
+	it('closes on the site footer stating the organisation’s legal details, as a live campaign does', async () => {
+		await endedCampaign();
+		await saveProfile(db);
+
+		const foot = siteFooter(markup((await visit()).data));
+		expect(foot).toContain('Hope Foundation · EIN 12-3456789 · 12 Kigali Road, Kigali, Rwanda');
 	});
 
 	it('says in the tab that it has ended', async () => {

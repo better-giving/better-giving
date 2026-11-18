@@ -1,7 +1,7 @@
 import { Button } from '@better-giving/operator/components/controls/Button';
 import { Column, Section } from '@better-giving/operator/components/shell/Layout';
 import { href, Link } from 'react-router';
-import type { CrumbHandle } from '$lib/admin/crumbs';
+import { type CrumbHandle, ScreenHeading } from '$lib/admin/crumbs';
 import {
 	GeneralCard,
 	GoalCard,
@@ -136,11 +136,7 @@ export default function CampaignEditPage({ loaderData }: Route.ComponentProps) {
 	const { id, name, host, version, banner } = loaderData;
 	return (
 		<Column>
-			<header className="adm-pageheader">
-				<div className="adm-pageheader__row">
-					<h1>{name}</h1>
-				</div>
-			</header>
+			<ScreenHeading title={name} />
 			<PublishBanner
 				state={banner.state}
 				version={version}
