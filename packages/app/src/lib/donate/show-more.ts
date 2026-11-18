@@ -3,8 +3,8 @@ import { href } from 'react-router';
 import type { DonorMessages } from './messages';
 import type { DonorMessagesWiring, ShowMoreStatus } from './sections/messages';
 
-// Show more messages as /donate and the preview both wire it: a `fetch` of
-// ../../routes/donate.messages.ts, which reads only the messages /donate shows, so the preview pages
+// Show more messages as `/` and the preview both wire it: a `fetch` of
+// ../../routes/donate_.messages.ts, which reads only the messages `/` shows, so the preview pages
 // through the same list. a supporter's fundraiser wires it to its own,
 // ../../routes/f.$slug.messages.ts. a plain `fetch` rather than a fetcher: a fetcher's load that fails to reach
 // the server is drawn by the page's error boundary in place of the whole page, a gift in progress

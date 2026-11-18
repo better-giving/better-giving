@@ -5,10 +5,10 @@ import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import type { DonorMessagesWiring } from '$lib/donate/sections/messages';
 import PagePreview from './preview.$pageId';
 
-// the preview's Show more messages as the route wires it: the same read /donate asks
-// (./donate.messages.ts), so the preview pages through exactly the messages the page shows. the page
+// the preview's Show more messages as the route wires it: the same read / asks
+// (./donate_.messages.ts), so the preview pages through exactly the messages the page shows. the page
 // is a stand-in that draws the wiring it was handed; how that wiring follows the read is
-// ./donate.dom.spec.tsx's.
+// ./_index.dom.spec.tsx's.
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -104,7 +104,7 @@ async function preview() {
 }
 
 describe('Show more messages in the preview', () => {
-	it('asks the read /donate asks, and hands its page to the section', async () => {
+	it('asks the read / asks, and hands its page to the section', async () => {
 		const { press } = await preview();
 		answers.push('page');
 

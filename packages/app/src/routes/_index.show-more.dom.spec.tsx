@@ -2,12 +2,12 @@ import { act, createElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createRoutesStub, useLoaderData } from 'react-router';
 import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
-import Route from './donate';
+import Route from './_index';
 import { CURSOR, NEXT_SIX, PAGE_LOADED } from '$lib/donate/show-more-page.testing';
 
-// Show more messages through the real page, nothing stood in for it: /donate hands the section its
-// wiring (`donorMessages`, ./donate.tsx), so a dropped or renamed prop there is red here.
-// what the wiring does with each answer is ./donate.dom.spec.tsx's.
+// Show more messages through the real page, nothing stood in for it: / hands the section its
+// wiring (`donorMessages`, ./_index.tsx), so a dropped or renamed prop there is red here.
+// what the wiring does with each answer is ./_index.dom.spec.tsx's.
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -45,11 +45,11 @@ function Page() {
 
 const settle = () => act(() => new Promise((resolve) => setTimeout(resolve, 0)));
 
-describe('Show more messages through the real /donate page', () => {
+describe('Show more messages through the real / page', () => {
 	it('draws the six handed, asks for the next six and draws them', async () => {
 		const Stub = createRoutesStub([
 			{
-				path: 'donate',
+				path: '/',
 				loader: () => PAGE_LOADED,
 				HydrateFallback: () => null,
 				Component: Page
@@ -58,7 +58,7 @@ describe('Show more messages through the real /donate page', () => {
 		const host = document.createElement('div');
 		document.body.appendChild(host);
 		const root = createRoot(host);
-		act(() => root.render(createElement(Stub, { initialEntries: ['/donate'] })));
+		act(() => root.render(createElement(Stub, { initialEntries: ['/'] })));
 		onTestFinished(() => {
 			act(() => root.unmount());
 			host.remove();

@@ -20,7 +20,7 @@ Seven packages under `packages/*`, and the graph is `app → operator`, with `ga
 
 | path | what it is |
 | --- | --- |
-| `packages/app` | The deployed server. React Router, `ssr: true`: `/admin`, `/donate`, `/{slug}`, `/api/v1`, sign-in. Database, ledger, payments, mail send, scheduled runs. |
+| `packages/app` | The deployed server. React Router, `ssr: true`: `/`, `/admin`, `/{slug}`, `/api/v1`, sign-in. Database, ledger, payments, mail send, scheduled runs. |
 | `packages/operator` | Shared operator components and tokens, for `/admin` and the gallery. |
 | `packages/form` | The embeddable donation element. A permanent public contract. |
 | `packages/emails` | Mail templates, rendered to strings by the app. |
@@ -121,7 +121,7 @@ A contract below is permanent by decision. Weigh a fix on its own merits.
 
 ## Product surface
 
-- Donor-facing pages are `/donate` and each live campaign at its own address. A donor page is on no `site` row and on no form's `allowed_origins` (`packages/app/src/lib/server/pages/view.ts`). A gift there is a real gift on whatever keys the deployment holds. A form is pageless. A campaign address never shadows a route (`packages/app/src/lib/page/slug.ts`).
+- Donor-facing pages are `/`, the deployment's public home page, and each live campaign at its own address. A donor page is on no `site` row and on no form's `allowed_origins` (`packages/app/src/lib/server/pages/view.ts`). A gift there is a real gift on whatever keys the deployment holds. A form is pageless. A campaign address never shadows a route (`packages/app/src/lib/page/slug.ts`).
 - A page holds content only. A campaign is drawn in the one layout its content picks: card, letter or feature (`packages/app/src/lib/page/shape.ts`), and the Donation page in one fixed layout. No screen or connector action sets a layout. `packages/app/src/lib/page/catalog.ts`'s `parsePage` is the only parser of a stored page.
 - A deployment calls no AI model and binds no AI service.
 - The repo contains no org-editable files.

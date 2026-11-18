@@ -3284,7 +3284,7 @@ const noCampaignSettings = (doc: SQLiteColumn) =>
 	sql`json_extract(${doc}, ${jsonPath(PAGE_KEYS.goalMinor)}) is null and json_extract(${doc}, ${jsonPath(PAGE_KEYS.endsAt)}) is null`;
 
 /**
- * a donor page served on this deployment's own address: the donation page at `/donate`, or a
+ * a donor page served on this deployment's own address: the donation page at `/`, or a
  * campaign at `/<slug>`. there is no third kind.
  *
  * **a page owns one `form` row** — `form_id`, unique, so no two pages share one — and that row is

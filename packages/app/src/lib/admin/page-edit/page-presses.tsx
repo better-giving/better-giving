@@ -80,7 +80,7 @@ export function ResetCard({ version }: { readonly version: number }) {
 	return (
 		<Section card>
 			<h2>Reset to default</h2>
-			<p className="adm-prose">Resets the draft and the live page at /donate to the default.</p>
+			<p className="adm-prose">Resets the draft and the live page to the default.</p>
 			<div className="adm-actions">
 				<Button type="button" variant="danger" onClick={() => setAsking(true)}>
 					Reset to default

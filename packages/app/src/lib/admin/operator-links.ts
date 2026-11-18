@@ -4,7 +4,7 @@ import href from '../../app.css?url';
 // the operator stylesheet, and how a screen wears it.
 //
 // **the document carries no sheet.** src/root.tsx renders every screen this app serves, the donation
-// page at `/donate` included, and that page draws the donation form's own card from the form's
+// page at `/` included, and that page draws the donation form's own card from the form's
 // sheets (`donorPageLinks` in src/lib/donate/plain-page.tsx) — which are unlayered, while every
 // sheet reaching /admin but the registry's variables.css sits in one of the layers src/app.css
 // declares. a document holding both would let one side outrank the other on every property only

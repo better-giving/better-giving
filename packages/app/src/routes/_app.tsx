@@ -58,8 +58,8 @@ const HOME = { href: '/admin', label: 'Dashboard' } as const;
 /** the Donation page's editor, in the account menu. */
 const DONATION_PAGE_EDITOR = '/admin/donation-page';
 
-/** the published Donation page (./donate.tsx), in the top bar and the account menu. */
-const DONATION_PAGE = '/donate';
+/** the published Donation page (./_index.tsx), in the top bar and the account menu. */
+const DONATION_PAGE = '/';
 
 // the sheet every screen beneath this layout wears, linked once here rather than by each of them.
 export const links = operatorLinks;

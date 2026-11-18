@@ -50,7 +50,7 @@ function railAt(pathname: string): HTMLElement {
 			groups={DESTINATION_GROUPS}
 			current={currentDestination(pathname)}
 			staff={{ name: 'Nadia Hart', email: 'nadia@riverside.example' }}
-			donationPage="/donate"
+			donationPage="/"
 			editDonationPage="/admin/donation-page"
 			onSignOut={() => {}}
 		>

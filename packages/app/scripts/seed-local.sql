@@ -21,7 +21,7 @@
 -- that is the whole of what is left.
 --
 -- **no `site` row is seeded and none is needed.** a checkout serves its own donation page on the
--- app's own route at `/donate` (src/routes/donate.tsx), which takes gifts without being ticked
+-- app's own route at `/` (src/routes/_index.tsx), which takes gifts without being ticked
 -- onto any site.
 --
 -- **three campaigns, one in each layout** the page picks from its content (src/lib/page/shape.ts):

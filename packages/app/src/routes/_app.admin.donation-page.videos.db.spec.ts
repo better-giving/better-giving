@@ -14,10 +14,10 @@ import { finishedDeployment } from '../page-routes.testing';
 import { ORIGIN, signIn } from '../program-routes.testing';
 import { requestContext } from '../request-context';
 import { mountRoutes, queryDocument, type RouteRequester } from '../route-request.testing';
-import type { Route as DonateRoute } from './+types/donate';
+import type { Route as DonateRoute } from './+types/_index';
 import * as layout from './_app';
 import * as editor from './_app.admin.donation-page';
-import * as donatePage from './donate';
+import * as donatePage from './_index';
 
 // the Videos card on the Donation page's edit page: Add video, Move up, Move down and Remove,
 // through the protected layout, against a real database, with `fetch` to YouTube stubbed — no case
@@ -525,26 +525,26 @@ describe('what the editor is handed', () => {
 const donate = createStaticHandler([
 	{
 		id: 'donate',
-		path: 'donate',
+		path: '/',
 		middleware: donatePage.middleware as unknown as MiddlewareFunction[],
 		loader: donatePage.loader as unknown as LoaderFunction
 	}
 ]);
 
-/** what /donate's loader hands its page, as a donor opens it. */
+/** what /'s loader hands its page, as a donor opens it. */
 async function visitDonate() {
 	const answered = await queryDocument(
 		donate,
-		new Request(`${ORIGIN}/donate`),
+		new Request(`${ORIGIN}/`),
 		requestContext({ env: bindings, deferred: createDeferredWork(), client })
 	);
 	expect(answered.statusCode).toBe(200);
 	const data = answered.loaderData.donate as DonateRoute.ComponentProps['loaderData'];
-	if (data.kind !== 'page' || data.profile === null) throw new Error(`/donate drew ${data.kind}`);
+	if (data.kind !== 'page' || data.profile === null) throw new Error(`/ drew ${data.kind}`);
 	return { data, videos: data.profile.videos };
 }
 
-describe('videos on /donate', () => {
+describe('videos on /', () => {
 	it('shows a video only once it is published, in the published order', async () => {
 		const [rent, food] = await added(RENT, FOOD);
 		expect((await visitDonate()).videos).toEqual([]);

@@ -32,11 +32,12 @@ describe('the supporter area’s site footer', () => {
 		);
 	});
 
-	it('draws no links where the organisation has set none', () => {
+	it('draws only the staff link where the organisation has set no links', () => {
 		const { root } = frame();
-		const footer = one(root, 'footer');
-		expect(footer.querySelector('nav')).toBeNull();
-		expect(footer.querySelectorAll('a')).toHaveLength(0);
+		const links = [...one(root, 'footer').querySelectorAll('a')];
+		expect(links.map((link) => [link.textContent, link.getAttribute('href')])).toEqual([
+			['Staff sign in', '/admin']
+		]);
 	});
 
 	it('links the email, then each social link, where they are set', () => {
@@ -47,12 +48,13 @@ describe('the supporter area’s site footer', () => {
 		const links = [...one(root, 'footer nav[aria-label="Footer"]').querySelectorAll('a')];
 		expect(links.map((link) => link.getAttribute('href'))).toEqual([
 			'mailto:hello@harborlight.org',
-			'https://instagram.com/harborlight'
+			'https://instagram.com/harborlight',
+			'/admin'
 		]);
 	});
 
-	it('draws no footer where nothing is set', () => {
+	it('still draws the footer, with the staff link, where nothing is set', () => {
 		const { root } = frame({ legalName: null });
-		expect(root.querySelector('footer')).toBeNull();
+		expect(root.querySelector('footer a')?.getAttribute('href')).toBe('/admin');
 	});
 });

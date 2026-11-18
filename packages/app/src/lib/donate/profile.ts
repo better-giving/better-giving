@@ -6,7 +6,7 @@ import type { DonorMessages } from './messages';
 import type { PageLogo } from './page-view';
 import type { PageOrg } from './sections/types';
 
-// what the Donation page's profile head draws at /donate: who the organisation is and how to reach
+// what the Donation page's profile head draws at `/`: who the organisation is and how to reach
 // it, and never what it has raised: a campaign's goal bar alone draws progress. the loader reads it
 // with the rest of the page (`loadPageView` in ../server/pages/view.ts); a campaign at its own
 // address is handed none.

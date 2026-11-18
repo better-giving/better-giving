@@ -26,7 +26,7 @@ import { checkSupporterPhoto } from './photo';
 // the settings row is the Donation page's live row copied, as a campaign's is
 // (`createCampaign` in ../pages/campaign.ts), and made live: whether the page takes a gift is the
 // page's own state, read by the donation path (./gifts.ts), never the row's status. a gift through
-// it is a gift to the organisation like one on /donate, the Donation page's cause included.
+// it is a gift to the organisation like one on `/`, the Donation page's cause included.
 
 export type StartDeps = {
 	readonly db: Db;

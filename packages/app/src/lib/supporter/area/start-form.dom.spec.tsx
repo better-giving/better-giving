@@ -32,7 +32,7 @@ vi.mock(import('$lib/admin/settings/crop-image'), async (original) => ({
 const BASE: StartFundraiserProps = {
 	org: ORG,
 	open: true,
-	donateHref: '/donate',
+	donateHref: '/',
 	signInHref: '/fundraise/sign-in',
 	sending: false
 };
@@ -470,7 +470,7 @@ describe('fundraisers switched off', () => {
 		expect(one(root, '.ds-state-card-title').textContent).toBe('Fundraisers aren’t open right now');
 		const give = one<HTMLAnchorElement>(root, '.ds-state-card a');
 		expect(give.textContent).toBe('Donate to Harbor Light');
-		expect(give.getAttribute('href')).toBe('/donate');
+		expect(give.getAttribute('href')).toBe('/');
 		expect(give.className).toBe('ds-btn ds-btn-primary');
 	});
 });

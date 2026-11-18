@@ -617,7 +617,7 @@ export function confirming(method: PaymentMethod | undefined): string {
 // ── the page ─────────────────────────────────────────────────────────────────────────────────
 
 /**
- * what a donor gets where /donate or a campaign's address takes no gift: an address no published
+ * what a donor gets where `/` or a campaign's address takes no gift: an address no published
  * campaign answers, or a page whose served config refuses.
  *
  * a sentence rather than a bare status, because the reader is a person holding a link that did not

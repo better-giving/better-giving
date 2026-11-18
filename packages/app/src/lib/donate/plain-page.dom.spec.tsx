@@ -51,8 +51,12 @@ describe('an ended campaign’s screen', () => {
 		expect(main?.compareDocumentPosition(footer as Node)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
 	});
 
-	it('draws no footer where the organisation has set no details', () => {
+	it('draws the footer with only the staff link where the organisation has set no details', () => {
 		const none = { legalName: null, ein: null, addressLines: [], email: null, socialLinks: [] };
-		expect(ended(none).querySelector('footer')).toBeNull();
+		const footer = ended(none).querySelector('footer.ds-site-footer-compact');
+		expect(footer?.querySelector('p')).toBeNull();
+		expect([...(footer?.querySelectorAll('a') ?? [])].map((a) => a.getAttribute('href'))).toEqual([
+			'/admin'
+		]);
 	});
 });

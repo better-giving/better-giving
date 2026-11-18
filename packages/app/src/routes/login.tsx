@@ -388,7 +388,7 @@ export async function action({ context, request, url }: Route.ActionArgs) {
 	return signedInAt(url, cookies);
 
 	/**
-	 * back to the page the gate turned them away from, and the app's entrance at `/` when there is
+	 * back to the page the gate turned them away from, and the dashboard at `/admin` when there is
 	 * nowhere to go back to. what may be returned to, and what stands in when nothing may, is
 	 * `signInDestination` in $lib/server/auth/next.ts — an open-redirect control and the whole of
 	 * one, so a candidate it refuses is replaced in silence and never quoted into a message.

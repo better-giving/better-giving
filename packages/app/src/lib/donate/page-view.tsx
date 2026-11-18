@@ -25,7 +25,7 @@ import type { PageGoal, PageMoney, PageOrg, PageProgram, PageSharing } from './s
 import { SiteFooter } from './site-footer';
 import { isWordmark, MAIN_ID, SiteNav } from './site-nav';
 
-// a donor page drawn from its stored content: the Donation page at /donate, a campaign at its
+// a donor page drawn from its stored content: the Donation page at `/`, a campaign at its
 // address, and either one as the editor's preview. one renderer for all three, so the preview is
 // what a donor sees.
 //
@@ -49,7 +49,7 @@ import { isWordmark, MAIN_ID, SiteNav } from './site-nav';
 //   width with the title, lede and goal over it and the box over its right side.
 // - the Donation page: the title, the program chooser, then the box; About us. wide, the box stands
 //   beside the title and the chooser.
-// - the Donation page at /donate, and its preview, handed its profile head (`DonateProfile` in
+// - the Donation page at `/`, and its preview, handed its profile head (`DonateProfile` in
 //   ./profile.ts): in place of its own layout, the card, the letter or the feature, picked from the
 //   profile's content as a campaign's is ($lib/page/profile-shape.ts).
 //   - card: the banner, the logo with the name and the EIN, About us, then the box, one column at
@@ -561,7 +561,7 @@ const TAB_STOPS =
 
 /**
  * the one part of the preview a press still reaches: messages from donors, whose Show more is a read
- * of what /donate shows (../../routes/preview.$pageId.tsx), not an act on the draft.
+ * of what `/` shows (../../routes/preview.$pageId.tsx), not an act on the draft.
  */
 const PREVIEW_LIVE = `[data-area='${MESSAGES_AREA}']`;
 

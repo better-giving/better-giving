@@ -77,7 +77,7 @@ type SitesCard = {
 
 /** the deployer's card over two sites, with nothing just saved. */
 const DEPLOYER_SITES: SitesCard = {
-	donatePage: 'https://give.riverbanktrust.org/donate',
+	donatePage: 'https://give.riverbanktrust.org/',
 	listed: ['https://riverbanktrust.org', 'https://give.riverbanktrust.org'],
 	mayEdit: true,
 	saved: null
@@ -360,7 +360,7 @@ it('gives the deployer the donation page first and read-only, then a box per sit
 	const boxes = [...card.querySelectorAll<HTMLInputElement>('input:not([type="hidden"])')];
 
 	expect(boxes.map((box) => box.value)).toEqual([
-		'https://give.riverbanktrust.org/donate',
+		'https://give.riverbanktrust.org/',
 		'https://riverbanktrust.org',
 		'https://give.riverbanktrust.org'
 	]);
@@ -381,13 +381,13 @@ it('shows a member the same sites with no box and no press, and says who can cha
 
 	expect(card.querySelector('input, button, form')).toBe(null);
 	expect([...card.querySelectorAll('li')].map((row) => row.textContent)).toEqual([
-		'https://give.riverbanktrust.org/donate Default',
+		'https://give.riverbanktrust.org/ Default',
 		'https://riverbanktrust.org',
 		'https://give.riverbanktrust.org'
 	]);
 	// each row's address is the literal alone, and the donation page's word stands outside it.
 	expect([...card.querySelectorAll('li code')].map((literal) => literal.textContent)).toEqual([
-		'https://give.riverbanktrust.org/donate',
+		'https://give.riverbanktrust.org/',
 		'https://riverbanktrust.org',
 		'https://give.riverbanktrust.org'
 	]);

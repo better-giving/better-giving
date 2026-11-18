@@ -1,4 +1,4 @@
-// which whole layout the Donation page at /donate is drawn in, picked from what the organisation has
+// which whole layout the Donation page at `/` is drawn in, picked from what the organisation has
 // put on it and never by a setting: the campaign's rule (./shape.ts) over the profile's content.
 //
 // `storyLength` is the mission and the vision, each trimmed, joined by one blank line, in

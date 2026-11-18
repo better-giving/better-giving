@@ -135,7 +135,7 @@ export function FundraiserPage(props: FundraiserPageViewProps) {
 							</NoticeCard>
 						) : null}
 						{org.name === null ? null : (
-							<a className="fundraiser-for" href="/donate">
+							<a className="fundraiser-for" href="/">
 								<OrgLogo org={org} className="fundraiser-for-logo" />
 								<span>
 									{copy.FOR_LEAD}
@@ -301,7 +301,7 @@ function Recipient({
 			</div>
 			<p className="fundraiser-recipient-note">{copy.goesToNotTo(name, first)}</p>
 			<p>
-				<a href="/donate">{copy.about(name)}</a>
+				<a href="/">{copy.about(name)}</a>
 			</p>
 		</section>
 	);

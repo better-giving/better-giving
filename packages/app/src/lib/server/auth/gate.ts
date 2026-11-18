@@ -94,7 +94,7 @@ export async function staffGate(
 		// query. what may be returned to is `safeNext`'s decision at the other end (./next.ts),
 		// because the parameter that arrives at the login is whatever a caller put in a url and
 		// never only what was minted here. no destination is no parameter, and the login lands on
-		// `/`, the app's entrance.
+		// `/admin`, the dashboard.
 		const destination = returnTo(request, url);
 		throw redirect(
 			destination === null
@@ -120,7 +120,7 @@ function isRead(request: Request): boolean {
 
 /**
  * where a request turned away for want of a session returns once the operator has signed in, or
- * `null` for the app's entrance.
+ * `null` for the dashboard, which the login lands on.
  *
  * a read returns to its own address: the whole request target and not just its path, because a
  * deep link into /admin names a tab or a filter in its query as often as not. `url` and never
@@ -134,7 +134,7 @@ function isRead(request: Request): boolean {
  * an error page where the operator's screen was. it returns to the page the press was made from,
  * read off `Referer`, which the dashboard's documents send whole to their own origin
  * (`Referrer-Policy: same-origin`, src/document-policy.ts). that page is honoured only when it is
- * on this deployment's origin and passes `safeNext`; anything else is the entrance. `Referer` picks
+ * on this deployment's origin and passes `safeNext`; anything else is the dashboard. `Referer` picks
  * where to land and authorizes nothing (CLAUDE.md → Bans → Boundaries).
  */
 function returnTo(request: Request, url: URL): string | null {

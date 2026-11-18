@@ -2,7 +2,7 @@
 
 Self-hosted donation platform for nonprofits. Your own processor, receipts and books, no platform fee.
 
-Donors give on a form on the organisation's site, or on the page the deployment serves at `/donate`. Staff use the dashboard at `/admin` for campaigns, forms, gifts, donors, and the books. Charges land in the organisation's own Stripe, PayPal, Chariot, or NOWPayments account.
+Donors give on a form on the organisation's site, or on the page the deployment serves at its own address, `/`, which is also its public home page. A link to `/admin` in that page's footer is how staff find the dashboard. Staff use the dashboard at `/admin` for campaigns, forms, gifts, donors, and the books. Charges land in the organisation's own Stripe, PayPal, Chariot, or NOWPayments account.
 
 ## Run it
 

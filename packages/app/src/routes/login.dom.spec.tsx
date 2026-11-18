@@ -67,10 +67,10 @@ function screen(
 		},
 		// the two places this screen sends somebody who cannot use it. they are stubbed rather than
 		// rendered: what is asserted is that the press has somewhere to land, not what is there. the
-		// entrance's loader never settles, so a sign-in redirected there is held in the `loading`
+		// dashboard's loader never settles, so a sign-in redirected there is held in the `loading`
 		// phase the landing is read in.
 		{ path: '/forgot', Component: () => null },
-		{ path: '/', loader: () => new Promise<never>(() => {}), Component: () => null }
+		{ path: '/admin', loader: () => new Promise<never>(() => {}), Component: () => null }
 	]);
 	return { root: mount(createElement(Stub, { initialEntries: ['/login'] })), posted };
 }
@@ -197,14 +197,14 @@ it('stays reachable while it is busy, so the press that started it keeps its foc
 });
 
 it('ignores a second press while the sign-in redirect is loading', async () => {
-	const { root, posted } = screen(false, () => redirect('/', 303));
+	const { root, posted } = screen(false, () => redirect('/admin', 303));
 	await signIn(root);
 	await act(async () => {
 		await new Promise((resolve) => setTimeout(resolve, 0));
 	});
 	expect(posted).toEqual(['sign-in']);
 
-	// signed in and the entrance is being read: a second post would spend the sign-in bucket again
+	// signed in and the dashboard is being read: a second post would spend the sign-in bucket again
 	// and mint a second session.
 	expect(submit(root).getAttribute('aria-disabled')).toBe('true');
 	await act(async () => submit(root).click());

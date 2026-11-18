@@ -152,16 +152,16 @@ describe('GET /login — a visitor who is already signed in', () => {
 		expect((answer as Response).headers.get('location')).toBe('/admin/donors');
 	});
 
-	it("is sent to the app's entrance when there is no destination, or it does not validate", async () => {
+	it('is sent to the dashboard when there is no destination, or it does not validate', async () => {
 		const cookie = await signIn();
 
 		const bare = await visit('', cookie);
 		const hostile = await visit('?next=%2F%2Fevil.example', cookie);
 
-		expect((bare as Response).headers.get('location')).toBe('/');
+		expect((bare as Response).headers.get('location')).toBe('/admin');
 		// silently. an attacker composes the url this parameter arrives on, so a message quoting
 		// the value it refused would be their page, one click further away ($lib/server/auth/next.ts).
-		expect((hostile as Response).headers.get('location')).toBe('/');
+		expect((hostile as Response).headers.get('location')).toBe('/admin');
 	});
 
 	/** and an anonymous visitor is left to sign in, which is what the page is for. */
@@ -378,11 +378,11 @@ describe('POST /login — where a sign-in ends up', () => {
 		expect((answer as Response).headers.get('location')).toBe('/admin/forms/abc/settings?tab=x');
 	});
 
-	/** the ordinary sign-in, which nobody was redirected into: the app's entrance at `/`. */
-	it("lands on the app's entrance when there is no destination", async () => {
+	/** the ordinary sign-in, which nobody was redirected into: the dashboard at `/admin`. */
+	it('lands on the dashboard when there is no destination', async () => {
 		const answer = await post(typed(PASSWORD));
 
-		expect((answer as Response).headers.get('location')).toBe('/');
+		expect((answer as Response).headers.get('location')).toBe('/admin');
 	});
 
 	/**
@@ -394,13 +394,13 @@ describe('POST /login — where a sign-in ends up', () => {
 	 * `safeNext` in $lib/server/auth/next.ts is where the rule lives and where its spellings are
 	 * enumerated; what is asserted here is that this route spends it at all.
 	 */
-	it("lands on the app's entrance when the destination names another origin", async () => {
+	it('lands on the dashboard when the destination names another origin', async () => {
 		for (const hostile of ['https://evil.example', '//evil.example', '/\\evil.example']) {
 			const answer = await post(typed(PASSWORD), {
 				search: `?next=${encodeURIComponent(hostile)}`
 			});
 
-			expect((answer as Response).headers.get('location')).toBe('/');
+			expect((answer as Response).headers.get('location')).toBe('/admin');
 		}
 	});
 

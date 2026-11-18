@@ -113,7 +113,7 @@ it.each([
 	expect(root.querySelector('.ds-shell')?.getAttribute('data-collapsed')).toBe(marked);
 });
 
-// /donate is public, so the link to it is every operator's and not one of the deployer's
+// / is public, so the link to it is every operator's and not one of the deployer's
 // destinations ($lib/admin/destinations.ts).
 it.each([
 	['the deployer', true],
@@ -123,7 +123,7 @@ it.each([
 	const links = [...root.querySelectorAll('.ds-topbar-secondary a')];
 
 	expect(links.map((a) => [a.getAttribute('href'), a.textContent])).toEqual([
-		['/donate', 'Open donation page']
+		['/', 'Open donation page']
 	]);
 });
 

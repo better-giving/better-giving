@@ -3,15 +3,16 @@ import { donorPageRateLimitRefusal } from '$lib/server/api/rate-limit';
 import { parseMessageCursor } from '$lib/server/pages/messages';
 import { readTarget } from '$lib/server/pages/queries';
 import { readDonationPageMessages } from '$lib/server/pages/view';
+import { meterDonorPage } from '$lib/server/api/meter';
 import { database, overDonorPageLimit, platform } from '../context';
-import type { Route } from './+types/donate.messages';
+import type { Route } from './+types/donate_.messages';
 
-// Show more messages on /donate: the next six donors' messages after `?after=`, the `next` the page
+// Show more messages on the donation page (`/`): the next six donors' messages after `?after=`, the `next` the page
 // or the last press was handed (`DonateProfile.messages` in $lib/donate/profile.ts). a `loader` and
 // no component, asked by a plain `fetch` ($lib/donate/show-more.ts), which reads its JSON.
 //
-// nested under ./donate.tsx by its name, so that page's `meterDonorPage` charges every press to the
-// same bucket a view of the page spends. `no-store` like the page: a list a hide or a refund changes
+// it is `donate_` rather than nested under ./donate.tsx, which only redirects: it mounts the page's
+// own `meterDonorPage` so every press is charged to the same bucket a view of ./_index.tsx spends. `no-store` like the page: a list a hide or a refund changes
 // is no capability and no immutable bytes ($lib/server/runtime/response-cache.ts).
 //
 // it lists nothing where the page lists nothing: a page drawn as the donation box alone, or refused,
@@ -20,6 +21,8 @@ import type { Route } from './+types/donate.messages';
 // reads its first six there too, so its Show more continues the list it drew. it reads the page's
 // row and never makes it: a page never made lists nothing (AGENTS.md → Runtime names the loaders
 // that write).
+
+export const middleware: Route.MiddlewareFunction[] = [meterDonorPage];
 
 const NO_STORE = { 'cache-control': 'no-store' };
 const NOTHING_LISTED = { messages: [], total: 0, next: null };

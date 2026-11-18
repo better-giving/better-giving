@@ -33,9 +33,10 @@ import * as layout from './_app';
 import * as editor from './_app.admin.donation-page';
 import * as surface from './api.v1';
 import * as gifts from './api.v1.forms.$id.donations';
-import type { Route } from './+types/donate';
-import * as donatePage from './donate';
-import * as donateMessages from './donate.messages';
+import type { Route } from './+types/_index';
+import * as donatePage from './_index';
+import * as oldAddress from './donate';
+import * as donateMessages from './donate_.messages';
 import type { Route as PreviewRoute } from './+types/preview.$pageId';
 import * as preview from './preview.$pageId';
 import { client, first, run, stmt } from '$lib/server/db/database.testing';
@@ -46,7 +47,7 @@ import { specRateLimiters } from '$lib/server/runtime/rate-limiter.testing';
 /** the deploy-time values a request reads, with none set and the spec limiters. */
 const env = readEnv({}, specRateLimiters());
 
-// the donation page at /donate, against a real database.
+// the donation page at /, against a real database.
 //
 // a db spec because every answer here is decided from rows — the page, its owned settings row,
 // the organisation's profile and story, the programs — and standing in for the database would only prove the
@@ -98,11 +99,11 @@ function envWith(values: Record<string, string>): Env {
 	return { ...env, ...values } as Env;
 }
 
-const ROUTE_ID = 'donate';
+const ROUTE_ID = 'index';
 const handler = createStaticHandler([
 	{
 		id: ROUTE_ID,
-		path: 'donate',
+		path: '/',
 		middleware: donatePage.middleware as unknown as MiddlewareFunction[],
 		loader: donatePage.loader as unknown as LoaderFunction
 	}
@@ -117,7 +118,7 @@ async function visit(
 ): Promise<{ status: number; data: LoaderData; headers: Headers }> {
 	const answered = await queryDocument(
 		handler,
-		new Request(`${OWN}/donate${search}`, { headers }),
+		new Request(`${OWN}/${search}`, { headers }),
 		requestContext({ env: envWith(vars), deferred: createDeferredWork(), client })
 	);
 	return {
@@ -132,7 +133,7 @@ async function visit(
  * router, since its Show more messages is a fetcher. the cast is the props react router adds.
  */
 function markup(loaderData: LoaderData): string {
-	return inRouter('/donate', () =>
+	return inRouter('/', () =>
 		createElement(donatePage.default, { loaderData } as unknown as Route.ComponentProps)
 	);
 }
@@ -162,7 +163,7 @@ async function donationPageRows(): Promise<number> {
 	return row?.n ?? 0;
 }
 
-describe('GET /donate on a fresh deployment', () => {
+describe('GET / on a fresh deployment', () => {
 	it('draws the default page, the mission in About us and the active programs in the chooser', async () => {
 		await saveProfile(db, { mission: MISSION });
 		await activePrograms('Food bank', 'Winter shelter');
@@ -178,6 +179,18 @@ describe('GET /donate on a fresh deployment', () => {
 		expect(await donationPageRows()).toBe(1);
 	});
 
+	// the page is public and reads no session: a browser holding the staff cookie is drawn the page a
+	// donor is, which is what keeps the footer's staff link the same for everyone.
+	it('draws the same page for a caller with no session and for one holding a staff cookie', async () => {
+		const anonymous = await visit();
+		const staff = await visit(STRIPE, { cookie: 'better-auth.session_token=signed-in-staff' });
+
+		expect(anonymous.status).toBe(200);
+		expect(staff.status).toBe(200);
+		expect(markup(staff.data)).toBe(markup(anonymous.data));
+		expect(staff.headers.get('cache-control')).toBe('no-store');
+	});
+
 	it('draws the chooser once two programs are active, on a page made before any was', async () => {
 		expect(area(markup((await visit()).data), 'chooser')).toBe('');
 
@@ -189,7 +202,7 @@ describe('GET /donate on a fresh deployment', () => {
 	});
 });
 
-describe('the organisation’s mission and vision on /donate', () => {
+describe('the organisation’s mission and vision on /', () => {
 	it('are the profile’s, drawn in About us', async () => {
 		await saveProfile(db, { mission: MISSION, vision: 'No family on Elm Street goes hungry.' });
 
@@ -234,7 +247,7 @@ describe('the organisation’s mission and vision on /donate', () => {
 	});
 });
 
-describe('the page /donate draws', () => {
+describe('the page / draws', () => {
 	// the profile head's title is the organisation's name on the day it is drawn.
 	it('greets donors by the organisation’s name as it stands, after a rename', async () => {
 		await visit();
@@ -248,7 +261,7 @@ describe('the page /donate draws', () => {
 		if (answered.data.kind !== 'page') throw new Error(`drew ${answered.data.kind}`);
 		expect(answered.data.view.sharing).toEqual({
 			message: 'Donate to Hope Foundation',
-			url: `${OWN}/donate`
+			url: `${OWN}/`
 		});
 	});
 
@@ -271,7 +284,7 @@ describe('the page /donate draws', () => {
 	});
 });
 
-describe('the organisation’s logo on /donate', () => {
+describe('the organisation’s logo on /', () => {
 	it('stands in the profile head by its id, at its stored size, once one is set', async () => {
 		const id = await putLogo(db, { contentType: 'image/png', width: 640, height: 160 });
 
@@ -298,7 +311,7 @@ describe('the organisation’s logo on /donate', () => {
 	});
 });
 
-describe('the profile head /donate is handed', () => {
+describe('the profile head / is handed', () => {
 	afterEach(async () => {
 		for (const table of [
 			'dispute',
@@ -348,7 +361,7 @@ describe('the profile head /donate is handed', () => {
 	});
 });
 
-describe('messages from donors on /donate', () => {
+describe('messages from donors on /', () => {
 	afterEach(async () => {
 		for (const table of [
 			'dispute',
@@ -384,11 +397,8 @@ describe('messages from donors on /donate', () => {
 		return ids;
 	}
 
-	/** the show-more read, under the donor page it nests in and so under that page's meter. */
-	const showMore = mountRoutes([
-		{ path: 'donate', module: donatePage },
-		{ path: 'messages', module: donateMessages }
-	]);
+	/** the show-more read, mounting the donor page's own meter, so a press spends a view's bucket. */
+	const showMore = mountRoutes([{ path: 'donate/messages', module: donateMessages }]);
 	let showMoreCallers = 0;
 	function more(search: string, ip?: string): Promise<Response> {
 		showMoreCallers += 1;
@@ -472,7 +482,7 @@ describe('messages from donors on /donate', () => {
 			why: 'the served config refuses',
 			breakPage: () => run(stmt('delete from org_profile')).then(() => undefined)
 		}
-	])('lists nothing where /donate draws no messages because $why', async ({ breakPage }) => {
+	])('lists nothing where / draws no messages because $why', async ({ breakPage }) => {
 		await notes(8);
 		const { next } = await handed();
 		await breakPage();
@@ -568,7 +578,7 @@ describe('messages from donors on /donate', () => {
 	});
 });
 
-describe('program photos on the /donate chooser', () => {
+describe('program photos on the / chooser', () => {
 	it('are handed by program id for the programs that have one, and drawn by the photo’s id', async () => {
 		const photo = await createImage(
 			db,
@@ -612,7 +622,7 @@ describe('program photos on the /donate chooser', () => {
 	});
 });
 
-describe('the organisation’s social links on /donate', () => {
+describe('the organisation’s social links on /', () => {
 	it('are the profile’s, in its order, in the org info block', async () => {
 		await saveProfile(db, {}, [
 			'https://instagram.com/hopefoundation',
@@ -639,7 +649,7 @@ describe('the organisation’s social links on /donate', () => {
 	});
 });
 
-describe('the share message /donate sends', () => {
+describe('the share message / sends', () => {
 	it('is the page’s own where it holds one', async () => {
 		await visit();
 		const row = await first<{ published: string }>(
@@ -665,7 +675,7 @@ function brandColour(html: string): string | null {
 	return /--donate-primary:([^;"]*)/.exec(root)?.[1] ?? null;
 }
 
-describe('the colour /donate is drawn in', () => {
+describe('the colour / is drawn in', () => {
 	it('is the form’s own where the profile holds none', async () => {
 		expect(brandColour(markup((await visit()).data))).toBeNull();
 	});
@@ -718,7 +728,7 @@ describe('a published Donation page the read rule refuses', () => {
 	});
 });
 
-describe('/donate where the served config refuses', () => {
+describe('/ where the served config refuses', () => {
 	// the deployment is unfinished rather than the link wrong, and the donor is told the same thing
 	// either way: there is nothing they can do about which of the two it is.
 	it('draws the notice with a 404 nothing keeps, and names nobody in the tab', async () => {
@@ -734,14 +744,14 @@ describe('/donate where the served config refuses', () => {
 });
 
 describe('a deployment with no website', () => {
-	it('answers /donate with no site row', async () => {
+	it('answers / with no site row', async () => {
 		await run(stmt('delete from site'));
 
 		expect((await visit()).status).toBe(200);
 	});
 });
 
-describe('/donate after the editor’s presses', () => {
+describe('/ after the editor’s presses', () => {
 	const editorRoute = mountRoutes([
 		{ path: undefined, module: layout },
 		{ path: 'admin/donation-page', module: editor }
@@ -881,7 +891,7 @@ describe('/donate after the editor’s presses', () => {
 		);
 	}
 
-	it('shows the draft’s heading in the preview, and on /donate only once published', async () => {
+	it('shows the draft’s heading in the preview, and on / only once published', async () => {
 		await visit();
 		const [row] = await db.select().from(page);
 		if (!row) throw new Error('there is no Donation page to write');
@@ -1001,7 +1011,7 @@ describe('/donate after the editor’s presses', () => {
 	});
 });
 
-describe('the limit on GET /donate', () => {
+describe('the limit on GET /', () => {
 	/** views the page from `ip` until refused, or fails loudly rather than asserting nothing. */
 	async function untilRefused(ip: string) {
 		for (let i = 0; i < 50; i++) {
@@ -1042,14 +1052,14 @@ async function donationFormId(): Promise<string> {
 	return row.form_id;
 }
 
-/** publishes a document the read rule refuses, so /donate draws the donation box alone. */
+/** publishes a document the read rule refuses, so / draws the donation box alone. */
 async function publishUnreadable(): Promise<void> {
 	await visit();
 	await run(stmt(`update page set published = '{}' where type = 'donation_page'`));
 	vi.spyOn(console, 'error').mockImplementation(() => {});
 }
 
-describe('what /donate lets be kept', () => {
+describe('what / lets be kept', () => {
 	// the amounts and settings drawn here are the page as it is now, and a kept copy would show a
 	// donor figures the operator has since changed.
 	it('lets nothing keep the drawn page', async () => {
@@ -1066,7 +1076,7 @@ describe('what /donate lets be kept', () => {
 	});
 });
 
-describe('a donor back on /donate from authorizing their gift', () => {
+describe('a donor back on / from authorizing their gift', () => {
 	// the stamp is all the server can see of a return — the token is the card's to claim once the
 	// flow starts — and it is what keeps the first paint from showing an empty donation form to a
 	// donor who may already have paid.
@@ -1077,6 +1087,23 @@ describe('a donor back on /donate from authorizing their gift', () => {
 		const shown = shownStep(markup(answered.data));
 		expect(shown).toContain(RESUMING_HEADING);
 		expect(shown).not.toContain(STEP_HEADINGS[0]);
+	});
+
+	// a return address saved before the page moved to `/` still completes: /donate forwards with its
+	// query string, and the page reads the stamp off the address it lands on.
+	it('draws the takeover for a return through the old /donate address', async () => {
+		const formId = await donationFormId();
+		const forwarded = oldAddress.loader({
+			request: new Request(`${OWN}/donate?${RESUME_FORM_PARAM}=${formId}&token=abc`)
+		} as Parameters<typeof oldAddress.loader>[0]);
+		expect(forwarded.status).toBe(308);
+		const landed = new URL(forwarded.headers.get('location') ?? '', OWN);
+		expect(landed.pathname).toBe('/');
+
+		const answered = await visit(STRIPE, {}, landed.search);
+
+		expect(answered.data).toMatchObject({ resuming: true });
+		expect(shownStep(markup(answered.data))).toContain(RESUMING_HEADING);
 	});
 
 	it('draws the takeover on the donation box drawn alone', async () => {
@@ -1105,14 +1132,14 @@ describe('a donor back on /donate from authorizing their gift', () => {
 	});
 });
 
-describe('what re-reads /donate under a gift in progress', () => {
-	/** react router's question about this route, for a move from /donate to `next`. */
+describe('what re-reads / under a gift in progress', () => {
+	/** react router's question about this route, for a move from / to `next`. */
 	function asked(
 		next: string,
 		extra: Partial<ShouldRevalidateFunctionArgs> = {}
 	): ShouldRevalidateFunctionArgs {
 		return {
-			currentUrl: new URL('/donate', OWN),
+			currentUrl: new URL('/', OWN),
 			currentParams: {},
 			nextUrl: new URL(next, OWN),
 			nextParams: {},
@@ -1124,13 +1151,13 @@ describe('what re-reads /donate under a gift in progress', () => {
 	// the card builds its checkout from the config the loader returns and stops it when a new one
 	// arrives, and this route draws one page whose settings row never changes under it.
 	it('keeps the config for a navigation that stays on the page', () => {
-		expect(donatePage.shouldRevalidate(asked('/donate?utm_source=mail'))).toBe(false);
+		expect(donatePage.shouldRevalidate(asked('/?utm_source=mail'))).toBe(false);
 	});
 
 	it('keeps the config for a submission on the page', () => {
-		const posted = asked('/donate', {
+		const posted = asked('/', {
 			formMethod: 'POST',
-			formAction: '/donate',
+			formAction: '/',
 			formData: new FormData(),
 			actionStatus: 200
 		});
@@ -1140,13 +1167,13 @@ describe('what re-reads /donate under a gift in progress', () => {
 	// a navigation after the card claimed a return leaves a stamped address behind, and a re-read
 	// there would answer `resuming: false` under the takeover the flow is showing.
 	it('keeps the config when the resume stamp leaves the address', () => {
-		const stamped = asked('/donate', {
-			currentUrl: new URL(`/donate?${RESUME_FORM_PARAM}=frm_donorpage000001`, OWN)
+		const stamped = asked('/', {
+			currentUrl: new URL(`/?${RESUME_FORM_PARAM}=frm_donorpage000001`, OWN)
 		});
 		expect(donatePage.shouldRevalidate(stamped)).toBe(false);
 	});
 
 	it('keeps the config for a revalidate on the same address', () => {
-		expect(donatePage.shouldRevalidate(asked('/donate'))).toBe(false);
+		expect(donatePage.shouldRevalidate(asked('/'))).toBe(false);
 	});
 });

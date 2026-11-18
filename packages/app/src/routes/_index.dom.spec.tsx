@@ -3,10 +3,10 @@ import { createRoot } from 'react-dom/client';
 import { createRoutesStub, useLoaderData } from 'react-router';
 import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import type { DonorMessagesWiring } from '$lib/donate/sections/messages';
-import DonationPage from './donate';
+import DonationPage from './_index';
 
-// /donate's Show more messages as the route wires it: the cursor a press asks
-// ./donate.messages.ts for, and how that request's state and answer reach the section as `status`
+// /'s Show more messages as the route wires it: the cursor a press asks
+// ./donate_.messages.ts for, and how that request's state and answer reach the section as `status`
 // and `arrived`, a failure among them, which stays on the section and never reaches the page's
 // error boundary. the page itself is a stand-in that draws the wiring it was handed, so the card and
 // its checkout stay out of it; what the section does with the wiring is
@@ -56,7 +56,7 @@ let answers: Answer[];
 
 const never = () => new Promise<never>(() => {});
 
-/** `fetch` as the browser runs it against ./donate.messages.ts, a resource route answering JSON. */
+/** `fetch` as the browser runs it against ./donate_.messages.ts, a resource route answering JSON. */
 async function showMore(input: RequestInfo | URL): Promise<Response> {
 	const url = new URL(String(input), 'http://localhost');
 	asked.push(`${url.pathname}${url.search}`);
@@ -92,7 +92,7 @@ const settle = () => act(() => new Promise((resolve) => setTimeout(resolve, 0)))
 async function screen() {
 	const Stub = createRoutesStub([
 		{
-			path: '/donate',
+			path: '/',
 			loader: () => LOADED,
 			HydrateFallback: () => null,
 			Component: Page,
@@ -102,7 +102,7 @@ async function screen() {
 	const host = document.createElement('div');
 	document.body.appendChild(host);
 	const root = createRoot(host);
-	act(() => root.render(createElement(Stub, { initialEntries: ['/donate'] })));
+	act(() => root.render(createElement(Stub, { initialEntries: ['/'] })));
 	onTestFinished(() => {
 		act(() => root.unmount());
 		host.remove();
@@ -122,7 +122,7 @@ const current = () => {
 	return wired;
 };
 
-describe('Show more messages on /donate', () => {
+describe('Show more messages on /', () => {
 	it('counts ages from the loader’s read time, idle with nothing arrived', async () => {
 		await screen();
 		expect(current()).toMatchObject({ now: NOW, status: 'idle', arrived: null });

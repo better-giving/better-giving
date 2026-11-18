@@ -13,7 +13,7 @@ import type { PageLogo } from './page-view';
 
 // the top of every donor page, and of the supporter's own screens: the registry's site-nav
 // (packages/operator/src/registry/styles/site-nav-css.usage.md), its skip link first in the tab
-// order, the organisation's logo and name as the home link, and one link, Donate, to /donate. the
+// order, the organisation's logo and name as the home link, and one link, Donate, to `/`. the
 // registry hides the bar's links under 40rem and offers no rule that keeps a single one drawn, so
 // there the link folds behind the registry's menu button and its panel.
 //
@@ -33,7 +33,7 @@ export type SiteNavProps = {
 	readonly name: string | null;
 	/** the organisation's logo, beside its name; null where it has none. */
 	readonly logo: PageLogo | null;
-	/** whether this page is /donate, which marks the Donate link as the current page. */
+	/** whether this page is `/`, which marks the Donate link as the current page. */
 	readonly current: boolean;
 	/**
 	 * the bar's actions, a signed-in supporter's account on their own screens: drawn at the bar's end
@@ -63,7 +63,7 @@ function Brand({ name, logo }: { readonly name: string; readonly logo: PageLogo 
 			/>
 		);
 	return (
-		<a className="ds-site-nav-brand" href="/donate">
+		<a className="ds-site-nav-brand" href="/">
 			{logo !== null && isWordmark(logo) ? (
 				art(name)
 			) : (
@@ -136,7 +136,7 @@ export function SiteNav({ name, logo, current, actions }: SiteNavProps) {
 					<nav className="ds-site-nav-links" aria-label="Main">
 						<ul>
 							<li>
-								<a className="ds-site-nav-link" href="/donate" aria-current={currentPage}>
+								<a className="ds-site-nav-link" href="/" aria-current={currentPage}>
 									Donate
 								</a>
 							</li>
@@ -164,7 +164,7 @@ export function SiteNav({ name, logo, current, actions }: SiteNavProps) {
 						<li>
 							<a
 								className="ds-site-nav-menu-link"
-								href="/donate"
+								href="/"
 								aria-current={currentPage}
 								onClick={() => setOpen(false)}
 							>

@@ -264,7 +264,7 @@ export async function loader({ context, request, url }: Route.LoaderArgs) {
 			sites: {
 				// the donation page this deployment serves at its own address, which is on no `site`
 				// row and which no save can take away (AGENTS.md → Product surface).
-				donatePage: new URL(href('/donate'), request.url).href,
+				donatePage: new URL(href('/'), request.url).href,
 				listed: sites,
 				mayEdit: context.get(staff).id === STAFF_USER_ID,
 				saved

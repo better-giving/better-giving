@@ -19,7 +19,7 @@ import type { Route } from './+types/_app.admin.sign-out';
  *
  * no component and no `loader`, so nothing of this module reaches a browser bundle and there is
  * nothing at this address to read. a bare path in the redirect, as every server redirect in this
- * app is — ./_app._index.tsx says what a fork configuring a base path would change at once.
+ * app is — ./donate.tsx says what a fork configuring a base path would change at once.
  */
 export async function action({ context, request }: Route.ActionArgs) {
 	// `returnHeaders` because the clearing cookie is on the response better-auth builds for its own

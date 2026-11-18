@@ -22,8 +22,8 @@ import { NEW_FORM } from '$lib/forms/new-form';
 import { defaultCampaign, defaultDonationPage } from '$lib/page/defaults';
 import { mountRoutes } from '../route-request.testing';
 import type { Route } from './+types/preview.$pageId';
-import * as donatePage from './donate';
-import * as donateMessagesRoute from './donate.messages';
+import * as donatePage from './_index';
+import * as donateMessagesRoute from './donate_.messages';
 import * as preview from './preview.$pageId';
 import { client, run, stmt } from '$lib/server/db/database.testing';
 import { readEnv } from '$lib/server/runtime/env';
@@ -260,7 +260,7 @@ describe('a photo the draft places', () => {
 });
 
 describe('the organisation’s logo and the program photos in a preview', () => {
-	it('are the live ones /donate draws, by id', async () => {
+	it('are the live ones / draws, by id', async () => {
 		const stored = (width: number, height: number) =>
 			createImage(
 				db,
@@ -302,24 +302,21 @@ describe('donors’ messages in the preview of the Donation page', () => {
 		}
 	});
 
-	/** /donate's Show more read, nested under the page whose meter charges it. */
-	const donateMessages = mountRoutes([
-		{ path: 'donate', module: donatePage },
-		{ path: 'messages', module: donateMessagesRoute }
-	]);
-	const donateDocument = mountRoutes([{ path: 'donate', module: donatePage }]);
+	/** the donation page's Show more read, mounting the meter that charges the page's views. */
+	const donateMessages = mountRoutes([{ path: 'donate/messages', module: donateMessagesRoute }]);
+	const donateDocument = mountRoutes([{ path: '/', module: donatePage }]);
 	let askers = 0;
 
-	/** the messages the profile head /donate itself is handed, or null where it draws no profile. */
+	/** the messages the profile head / itself is handed, or null where it draws no profile. */
 	async function donateProfileMessages(): Promise<unknown> {
 		askers += 1;
 		const answered = await donateDocument(
-			new Request(`${ORIGIN}/donate`, {
+			new Request(`${ORIGIN}/`, {
 				headers: { [CLIENT_IP_HEADER]: `2001:db8:${4000 + askers}::1` }
 			}),
 			{ env: DEPLOYED }
 		);
-		// a settings row not yet live is /donate's 404: it lists nothing
+		// a settings row not yet live is /'s 404: it lists nothing
 		if (answered.status === 404) return null;
 		expect(answered.status).toBe(200);
 		const data = (await answered.json()) as {
@@ -329,7 +326,7 @@ describe('donors’ messages in the preview of the Donation page', () => {
 		return data.kind === 'page' ? (data.profile?.messages ?? null) : null;
 	}
 
-	/** what /donate's Show more answers for `after`, or for the newest six where it is null. */
+	/** what /'s Show more answers for `after`, or for the newest six where it is null. */
 	async function donateAnswers(after: string | null): Promise<unknown> {
 		askers += 1;
 		const search = after === null ? '' : `?${new URLSearchParams({ after })}`;
@@ -378,7 +375,7 @@ describe('donors’ messages in the preview of the Donation page', () => {
 				).then(() => undefined)
 		}
 	])(
-		'lists what /donate lists ($listed messages), and Show more the same next six, where $why',
+		'lists what / lists ($listed messages), and Show more the same next six, where $why',
 		async ({ breakPage, listed }) => {
 			await notes();
 			await breakPage();
@@ -392,7 +389,7 @@ describe('donors’ messages in the preview of the Donation page', () => {
 			const donateShown = await donateAnswers(null);
 			expect(shown.messages).toHaveLength(listed);
 			expect(shown).toEqual(donateShown);
-			// /donate's own loader gates the page itself; Show more and the preview share one read past
+			// /'s own loader gates the page itself; Show more and the preview share one read past
 			// that gate.
 			const onDonate = await donateProfileMessages();
 			if (listed === 0) {

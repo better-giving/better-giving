@@ -44,7 +44,7 @@ type CardProps<Seed> = { readonly seed: Seed; readonly version: number };
 const firstError = (errors: Record<string, string[] | undefined> | undefined, name: string) =>
 	errors?.[name]?.[0];
 
-/** General: the page's title, which stands over the donation box at /donate; blank for none. */
+/** General: the page's title, which stands over the donation box at `/`; blank for none. */
 export function DonationPageGeneralCard({ seed, version }: CardProps<DonationPageGeneralSeed>) {
 	const answer = useScreenAnswer();
 	const [form, fields] = useAdminForm(GENERAL, answer, { defaultValue: { ...seed.boxes } });

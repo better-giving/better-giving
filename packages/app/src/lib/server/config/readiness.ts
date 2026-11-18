@@ -17,7 +17,7 @@ import { MAIL_SMTP_VARS } from './env';
 // whether they are two jobs or one.
 //
 // **the site list is no job here.** this deployment takes gifts on the donation page it serves at
-// `/donate` on its own address whether or not an organisation has a website of its own, so a line
+// `/` on its own address whether or not an organisation has a website of its own, so a line
 // waiting on a typed site would call a deployment that is taking gifts unfinished. an operator who
 // does have a website lists it under Donation forms; nothing on this side reads it.
 //

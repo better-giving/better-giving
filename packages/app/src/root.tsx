@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { Links, Meta, Outlet, Scripts, ScrollRestoration } from 'react-router';
 import type { Route } from './+types/root';
 // the operator stylesheet is not linked here, and that absence is the mechanism: the document
-// below renders the donor pages, `/donate` and each campaign's address, as well as every operator
+// below renders the donor pages, `/` and each campaign's address, as well as every operator
 // screen, and the donation form's sheets are unlayered while every operator declaration is
 // layered (./app.css) — so a document that carried both would let one side outrank the other on
 // every property only one of them sets. each surface links its own chain from its own `links`;

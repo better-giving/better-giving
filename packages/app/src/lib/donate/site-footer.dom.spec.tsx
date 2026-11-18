@@ -4,8 +4,8 @@ import { createRoot } from 'react-dom/client';
 import { describe, expect, it, onTestFinished } from 'vitest';
 import { SiteFooter, type SiteFooterInfo } from './site-footer';
 
-// the site footer, mounted: the legal line once, and each way to reach the organisation only where
-// it has set one.
+// the site footer, mounted: the legal line once, each way to reach the organisation only where it
+// has set one, and the staff link at the end of the list everywhere.
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -61,9 +61,10 @@ describe('the ways to reach the organisation', () => {
 		expect(links.map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
 			['hello@greenfieldfoodbank.org', 'mailto:hello@greenfieldfoodbank.org'],
 			['Instagram', 'https://instagram.com/greenfieldfoodbank'],
-			['Facebook', 'https://facebook.com/greenfieldfoodbank']
+			['Facebook', 'https://facebook.com/greenfieldfoodbank'],
+			['Staff sign in', '/admin']
 		]);
-		const social = links.slice(1);
+		const social = links.slice(1, 3);
 		expect(social.map((a) => a.getAttribute('target'))).toEqual(['_blank', '_blank']);
 		expect(social.map((a) => a.getAttribute('rel'))).toEqual([
 			'noopener noreferrer',
@@ -74,11 +75,32 @@ describe('the ways to reach the organisation', () => {
 
 	it('draws a link only where the organisation has one', () => {
 		const root = footer({ email: null, socialLinks: [{ platform: 'x', href: 'https://x.com/g' }] });
-		expect([...(root?.querySelectorAll('a') ?? [])].map((a) => a.textContent)).toEqual(['X']);
+		expect([...(root?.querySelectorAll('a') ?? [])].map((a) => a.textContent)).toEqual([
+			'X',
+			'Staff sign in'
+		]);
+	});
+});
+
+describe('the staff link', () => {
+	const NOTHING = { legalName: null, ein: null, addressLines: [], email: null, socialLinks: [] };
+
+	it('ends the list, a plain link to the dashboard', () => {
+		const links = [...(footer()?.querySelectorAll('nav[aria-label="Footer"] li a') ?? [])];
+		const last = links.at(-1);
+		expect(last?.textContent).toBe('Staff sign in');
+		expect(last?.getAttribute('href')).toBe('/admin');
+		expect(last?.hasAttribute('target')).toBe(false);
+		expect(last?.closest('li')?.nextElementSibling).toBeNull();
 	});
 
-	it('draws no list where there are none', () => {
-		expect(footer({ email: null, socialLinks: [] })?.querySelector('nav')).toBeNull();
+	it('is drawn where the organisation has set nothing at all', () => {
+		const root = footer(NOTHING);
+		expect(root?.className).toBe('ds-site-footer-compact');
+		expect(root?.querySelector('p')).toBeNull();
+		expect([...(root?.querySelectorAll('a') ?? [])].map((a) => a.getAttribute('href'))).toEqual([
+			'/admin'
+		]);
 	});
 });
 
@@ -106,10 +128,4 @@ describe('every social platform', () => {
 		expect(link?.getAttribute('rel')).toBe('noopener noreferrer');
 		expect(link?.getAttribute('aria-label')).toBe(`${NAMES[platform]}, opens in a new tab`);
 	});
-});
-
-it('draws no footer where the organisation has set nothing at all', () => {
-	expect(
-		footer({ legalName: null, ein: null, addressLines: [], email: null, socialLinks: [] })
-	).toBeNull();
 });

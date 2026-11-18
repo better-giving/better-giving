@@ -10,7 +10,7 @@ The database is one SQLite file, opened with `@libsql/client` on a `file:` URL. 
 
 | path | what it is |
 | --- | --- |
-| `packages/app` | The server: `/admin`, `/donate`, `/{slug}`, `/api/v1`, sign-in, the database, the ledger, payments, mail, scheduled runs |
+| `packages/app` | The server: `/`, `/admin`, `/{slug}`, `/api/v1`, sign-in, the database, the ledger, payments, mail, scheduled runs |
 | `packages/form` | The embeddable donation element. A permanent public contract |
 | `packages/operator` | Shared components and tokens for `/admin` and the gallery |
 | `packages/emails` | Mail templates, rendered to strings by the app |
@@ -30,6 +30,6 @@ A receipt is the email in `packages/emails/src/templates/receipt.tsx`. What a re
 
 ## Routes
 
-`/admin` is the dashboard. `/donate` and each live campaign are donor pages. `/api/v1` is the public form API. `/integrations/v1` is the key-authenticated read API. `/connector/v1` is the connector Better Giving's central Claude and ChatGPT clients call. What each of those owes (CORS, spam check, auth) is `AGENTS.md` → Routes.
+`/admin` is the dashboard. `/` and each live campaign are donor pages, and `/donate` forwards to `/`. `/api/v1` is the public form API. `/integrations/v1` is the key-authenticated read API. `/connector/v1` is the connector Better Giving's central Claude and ChatGPT clients call. What each of those owes (CORS, spam check, auth) is `AGENTS.md` → Routes.
 
 Configuration values are environment variables (`docs/configuration.md`, `.env.example`). The rules for changing this system are `AGENTS.md` and [`CONTRIBUTING.md`](../CONTRIBUTING.md).

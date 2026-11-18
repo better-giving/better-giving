@@ -16,7 +16,7 @@ const videos = (count: number) => Array.from({ length: count }, (_, n) => video(
 /** a mission and a vision that read 332 characters joined by one blank line: 200 + 2 + 130. */
 const MISSION_AND_VISION = { mission: 'm'.repeat(200), vision: 'v'.repeat(130) };
 
-describe('the layout /donate is drawn in, by the worked cases', () => {
+describe('the layout / is drawn in, by the worked cases', () => {
 	it.each([
 		['Demo, nothing written', {}, 0, 0, 'card', false],
 		['Mission of 200 characters, nothing else', { mission: 'm'.repeat(200) }, 200, 0, 'card', true],

@@ -112,9 +112,9 @@ export function PlainDonationPage({
 }
 
 /**
- * an ended campaign's address, and an ended supporter fundraiser's: the site nav as /donate draws
+ * an ended campaign's address, and an ended supporter fundraiser's: the site nav as `/` draws
  * it, then the campaign's name, that it has ended, what the caller states under that, and the way
- * on to /donate — at the page's reading measure, in the campaign's own published look (`donorLook`
+ * on to `/` — at the page's reading measure, in the campaign's own published look (`donorLook`
  * in $lib/server/pages/view.ts), with no donation box — and the compact site footer under it. a
  * deployment with no organisation name yet draws no home link in the nav, logo or not.
  */
@@ -147,7 +147,7 @@ export function EndedCampaignPage({
 				<h1>{copy.campaignEnded(name)}</h1>
 				<p>{copy.CAMPAIGN_ENDED_THANKS}</p>
 				{children}
-				<a part={part('action')} href="/donate">
+				<a part={part('action')} href="/">
 					{copy.donateTo(orgName)}
 				</a>
 			</main>

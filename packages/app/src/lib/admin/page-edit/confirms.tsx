@@ -61,7 +61,7 @@ export function ResetConfirm({ resetting, onReset, onCancel, refusal }: ResetCon
 		>
 			<div>
 				<SettingRow label="Your draft" value="Replaced" />
-				<SettingRow label="The published page at /donate" value="Replaced" />
+				<SettingRow label="The published page" value="Replaced" />
 			</div>
 			<p className="adm-prose">This can’t be undone.</p>
 			<Refusal id={refusalId} text={refusal} />

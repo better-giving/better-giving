@@ -33,7 +33,7 @@ const rows = (root: HTMLElement) =>
 describe('what Reset and Discard replace', () => {
 	it('Reset lists the draft and the published page, and nothing else', () => {
 		const root = mount(<ResetConfirm resetting={false} onReset={() => {}} onCancel={() => {}} />);
-		expect(rows(root)).toEqual(['Your draft', 'The published page at /donate']);
+		expect(rows(root)).toEqual(['Your draft', 'The published page']);
 		expect(card(root).textContent).not.toMatch(/chat/i);
 	});
 

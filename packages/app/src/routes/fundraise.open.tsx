@@ -107,7 +107,7 @@ export default function OpenRoute({ loaderData }: Route.ComponentProps) {
 			<StartFundraiser
 				org={loaderData.org}
 				open={false}
-				donateHref={href('/donate')}
+				donateHref={href('/')}
 				signInHref={href('/fundraise/sign-in')}
 				sending={false}
 			/>

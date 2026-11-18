@@ -352,14 +352,14 @@ describe('where a lapsed session returns once the operator signs in', () => {
 		expect(afterSignIn(redirect)).toBe('/admin/campaigns/abc?tab=photos');
 	});
 
-	// `/` is the app's entrance, which forwards to the dashboard home (src/routes/_app._index.tsx).
+	// `/admin` is the dashboard home, and `/` is the public donation page (src/routes/_index.tsx).
 	it('returns to the dashboard home when the browser named no page', async () => {
 		const redirect = await refusal(
 			staffGate(args(`${ORIGIN}/admin/images`, { method: 'POST' }), screen().next)
 		);
 
 		expect(redirect.status).toBe(303);
-		expect(afterSignIn(redirect)).toBe('/');
+		expect(afterSignIn(redirect)).toBe('/admin');
 	});
 
 	// the page a browser names is a convenience for where to land, and only a page of this
@@ -376,7 +376,7 @@ describe('where a lapsed session returns once the operator signs in', () => {
 			)
 		);
 
-		expect(afterSignIn(redirect)).toBe('/');
+		expect(afterSignIn(redirect)).toBe('/admin');
 	});
 
 	// returning to the sign-in page would put the operator back at the form they just cleared. the
