@@ -14,8 +14,8 @@ import { Mark } from '../status/Mark.jsx';
  */
 
 /**
- * one row. `onSelect` is a press; `href` is a link, followed the way any link is (the machine
- * clicks it for Enter). `internal` draws the link through the menu's `link`, for an address on
+ * one row. `onSelect` is a press; `href` is a link, followed the way any link is (Enter and Space
+ * click it, as a press does). `internal` draws the link through the menu's `link`, for an address on
  * this surface; without it the row is a plain anchor, for a page outside it.
  *
  * the label is text: it is the row's accessible name, what typeahead matches, and the row's
@@ -64,6 +64,7 @@ export function ActionMenu({ trigger, runs, header, placement, link, open }) {
 	return (
 		<ArkMenu.Root
 			open={open}
+			navigate={followLink}
 			positioning={{
 				placement: placement === 'below-end' ? 'bottom-end' : 'top-start',
 				// menu-css: the panel stands 4px from its press.
@@ -90,6 +91,16 @@ export function ActionMenu({ trigger, runs, header, placement, link, open }) {
 			</ArkMenu.Positioner>
 		</ArkMenu.Root>
 	);
+}
+
+/* Enter or Space on a link row follows it with the row's own `click()`, which bubbles and can be
+   cancelled as a press's click is: an internal row's router link hears it and routes, a plain
+   anchor follows as a link, and the row's handler closes the menu. the machine's default
+   (`clickIfLink` in @zag-js/dom-query) dispatches a click that does not bubble, which react's
+   handlers never see, so a routed row loaded the whole document. */
+/** @param {{ node: HTMLAnchorElement }} details */
+function followLink({ node }) {
+	queueMicrotask(() => node.click());
 }
 
 /**

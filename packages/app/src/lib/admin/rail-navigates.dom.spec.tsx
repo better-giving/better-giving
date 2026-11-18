@@ -59,7 +59,8 @@ function stub() {
 				</Shell>
 			)
 		},
-		{ path: second.href, Component: () => <p>arrived</p> }
+		{ path: second.href, Component: () => <p>arrived</p> },
+		{ path: '/admin/donation-page', Component: () => <p>the editor</p> }
 	]);
 	return mount(<Stub initialEntries={[first.href]} />);
 }
@@ -88,4 +89,34 @@ it('arrives at the destination the row names', async () => {
 	await press(root, second.label);
 
 	expect(root.textContent).toBe('arrived');
+});
+
+it('routes Enter on the account menu’s Edit donation page as a press would', async () => {
+	// the menu follows a link row for Enter with a click of its own; ActionMenu.jsx makes it one the
+	// router's link hears, where the machine's default reached only the document.
+	const root = stub();
+	const account = root.querySelector<HTMLButtonElement>('.ds-shell-sidebar .ds-shell-account-btn');
+	const key = (name: string) =>
+		act(async () => {
+			document.activeElement?.dispatchEvent(
+				new KeyboardEvent('keydown', { key: name, bubbles: true })
+			);
+		});
+	let claimed: boolean | undefined;
+	const watch = (event: Event) => {
+		if ((event.target as Element).closest('a[href="/admin/donation-page"]'))
+			queueMicrotask(() => {
+				claimed = event.defaultPrevented;
+			});
+	};
+	document.addEventListener('click', watch, true);
+	onTestFinished(() => document.removeEventListener('click', watch, true));
+
+	act(() => account?.focus());
+	await key('ArrowDown');
+	await key('Enter');
+	await act(async () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
+
+	expect(claimed).toBe(true);
+	expect(root.textContent).toBe('the editor');
 });

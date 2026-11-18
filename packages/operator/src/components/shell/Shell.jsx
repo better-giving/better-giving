@@ -279,9 +279,9 @@ export function Shell({
 				}}
 				onClickCapture={(event) => {
 					// any link in it, a row or the account menu's, closes it as it is followed
-					// (app-shell-css's note). heard in capture because ark's menu clicks a link row
-					// for Enter with a click that does not bubble; a click that opens a new tab
-					// leaves the page, and the drawer, where they are.
+					// (app-shell-css's note). heard in capture, ahead of a router link that claims
+					// the click; a click that opens a new tab leaves the page, and the drawer, where
+					// they are.
 					if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
 					if (/** @type {HTMLElement} */ (event.target).closest('a[href]')) closeDrawer();
 				}}
