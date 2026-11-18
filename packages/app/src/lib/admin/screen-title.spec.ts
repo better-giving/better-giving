@@ -18,7 +18,8 @@ const layout = (orgName: string | null): LayoutMatch => ({
 		orgLogo: null,
 		staff: { name: 'Nadia Hart', email: 'nadia@hope.example' },
 		deployer: true,
-		viewerZone: null
+		viewerZone: null,
+		railCollapsed: false
 	}
 });
 

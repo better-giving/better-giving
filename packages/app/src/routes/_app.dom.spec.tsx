@@ -27,13 +27,14 @@ async function mount(tree: ReactNode): Promise<HTMLElement> {
 	return root;
 }
 
-/** what the layout's loader answers, for the deployer or a member. */
-const drawnFor = (deployer: boolean) => ({
+/** what the layout's loader answers, for the deployer or a member, with the rail as the cookie left it. */
+const drawnFor = (deployer: boolean, railCollapsed = false) => ({
 	orgName: 'Riverbank Trust',
 	orgLogo: null,
 	staff: { name: 'Nadia Hart', email: 'nadia@riverbanktrust.org' },
 	deployer,
-	viewerZone: null
+	viewerZone: null,
+	railCollapsed
 });
 
 /** the layout as the app routes it, its loader answering `drawn`, over `children`. */
@@ -95,6 +96,21 @@ it('names who is signed in at the foot of the rail', async () => {
 	expect(root.querySelector('.ds-shell-sidebar .ds-shell-account-name')?.textContent).toBe(
 		'Nadia Hart'
 	);
+});
+
+// the rail as the loader read it from the `bg_operator_rail` cookie, on the shell's first render.
+it.each([
+	['collapsed', true, ''],
+	['open', false, null]
+])('draws the rail %s on the first render as the loader read it', async (_, collapsed, marked) => {
+	const Stub = createRoutesStub([
+		layoutRoute(drawnFor(true, collapsed), [
+			{ path: '/admin/forms', Component: () => <p>the list</p> }
+		]) as never
+	]);
+	const root = await mount(<Stub initialEntries={['/admin/forms']} />);
+
+	expect(root.querySelector('.ds-shell')?.getAttribute('data-collapsed')).toBe(marked);
 });
 
 // /donate is public, so the link to it is every operator's and not one of the deployer's

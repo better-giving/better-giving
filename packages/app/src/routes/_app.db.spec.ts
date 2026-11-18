@@ -195,7 +195,8 @@ describe('who is signed in', () => {
 			orgLogo: null,
 			staff: { name: 'Nadia Hart', email: 'nadia@riverbanktrust.org' },
 			deployer: false,
-			viewerZone: null
+			viewerZone: null,
+			railCollapsed: false
 		});
 	});
 
@@ -271,5 +272,23 @@ describe('the viewer’s time zone', () => {
 		const cookie = await signInAsDeployer(db, DEPLOYMENT);
 		const page = await drawn(cookie);
 		expect((page.loaderData.app as { viewerZone: string | null }).viewerZone).toBeNull();
+	});
+});
+
+describe('the rail', () => {
+	// the `bg_operator_rail` cookie the shell writes (@better-giving/operator/rail-preference), read so
+	// the first render draws the rail the way the reader left it.
+	const railRead = async (extra: string) => {
+		const session = await signInAsDeployer(db, DEPLOYMENT);
+		const page = await drawn(`${session}${extra}`);
+		return (page.loaderData.app as { railCollapsed: boolean }).railCollapsed;
+	};
+
+	it('hands over the rail collapsed when the cookie says so', async () => {
+		expect(await railRead('; bg_operator_rail=collapsed')).toBe(true);
+	});
+
+	it('hands over the rail open when the browser has written no cookie', async () => {
+		expect(await railRead('')).toBe(false);
 	});
 });

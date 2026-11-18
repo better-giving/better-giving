@@ -1,5 +1,6 @@
 import { Button } from '@better-giving/operator/components/controls/Button';
 import { Shell } from '@better-giving/operator/components/shell/Shell';
+import { parseRail } from '@better-giving/operator/rail-preference';
 import type { ReactNode } from 'react';
 import {
 	isRouteErrorResponse,
@@ -90,13 +91,17 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 	// browser has written one, and for a value that is no zone, this is null, and `useViewerZone` falls
 	// back to the browser's own zone, or to UTC where this runtime cannot write in that one
 	// (`LocalTime`).
+	//
+	// `railCollapsed` is the rail as the shell's own cookie left it (@better-giving/operator's
+	// rail-preference.ts), so the server draws it that way and the first client render matches.
 	return {
 		orgName: state?.profile?.legalName ?? null,
 		// the logo at the address the app serves every image from (./image.$id.ts).
 		orgLogo: logo === null ? null : imageSrc(logo),
 		staff: { name: user.name, email: user.email },
 		deployer: user.id === STAFF_USER_ID,
-		viewerZone: parseViewerZone(cookieValue(request.headers, VIEWER_ZONE_COOKIE))
+		viewerZone: parseViewerZone(cookieValue(request.headers, VIEWER_ZONE_COOKIE)),
+		railCollapsed: parseRail(request.headers.get('cookie'))
 	};
 }
 
@@ -125,6 +130,7 @@ function Frame({ data, children }: { readonly data: LayoutData; readonly childre
 
 	return (
 		<Shell
+			initialCollapsed={data.railCollapsed}
 			// before anyone has saved the organisation's details there is no name to show, so it says
 			// what the software is rather than printing an empty bar. the word is shared with every
 			// screen's tab title, which falls back to the same one ($lib/admin/screen-title.ts).
