@@ -383,7 +383,7 @@ export const FIXTURES: Readonly<Record<FixtureName, Fixture>> = {
 	},
 	crypto: {
 		formId: CRYPTO.formId,
-		note: 'Card and crypto, five coins on the amount step’s unit list. ?deposit= picks the ending: received (default), expired or late. The coin named fail is refused as under its minimum.',
+		note: 'Card and crypto, five coins on the amount step’s unit list. ?deposit= picks the ending: received (default), expired or late. The coin named fail is refused as under its minimum. ?challenge=interactive asks for a solve on every press.',
 		load: async () => CRYPTO
 	},
 	one: {
@@ -442,6 +442,18 @@ export type DepositEnding = (typeof DEPOSIT_ENDINGS)[number];
  */
 export const EMPLOYER_ANSWERS = ['saved', 'refused', 'absent'] as const;
 export type EmployerAnswer = (typeof EMPLOYER_ANSWERS)[number];
+
+/**
+ * how the anti-abuse widget treats a visitor, which `?challenge=` on the page picks (./main.ts).
+ *
+ * `invisible` passes every visitor at once, so a press waiting on its token (`holding` in
+ * ../src/checkout.machine.ts) is answered rather than timed out. `interactive` asks every visitor to
+ * solve something, every time a token is wanted: a button standing in for Turnstile's managed
+ * challenge, reported through the same interactive callbacks ../src/embed/turnstile.ts reports, and
+ * moved by `redraw` the way that adapter moves its widget.
+ */
+export const CHALLENGE_MODES = ['invisible', 'interactive'] as const;
+export type ChallengeMode = (typeof CHALLENGE_MODES)[number];
 
 const EMPLOYER_WRITE_MS = 600;
 
@@ -557,11 +569,10 @@ function ports(config: FormConfig, ending: DepositEnding, employer: EmployerAnsw
 /**
  * the three functions the element is registered with.
  *
- * `checkout` and `challenge` are the stubs ../src/element.browser.spec.ts registers, and they are
- * why this page loads no third-party script: the payment surface and the anti-abuse widget are the
- * two things that would, and neither is built. nothing is painted into either mount, so the payment
- * box stays closed and no challenge token is ever minted — which the quote above is untroubled by,
- * the token being optional on the request.
+ * `checkout` is the stub ../src/element.browser.spec.ts registers and `challenge` is `devChallenge`
+ * above, and they are why this page loads no third-party script: the payment surface and the
+ * anti-abuse widget are the two things that would, and neither is built. nothing is painted into the
+ * payment mount, so the payment box stays closed.
  *
  * the one thing added to those stubs is the rail report. a payment surface tells the card which
  * rail the donor's own fields are showing, and with no fields there is nobody to say — so the
@@ -576,7 +587,46 @@ function ports(config: FormConfig, ending: DepositEnding, employer: EmployerAnsw
  * ../src/embed/surface.ts withholds, since the crypto half never reports the same — so the card row
  * is counted in the box's header and never drawn.
  */
-export function devRuntime(ending: DepositEnding, employer: EmployerAnswer): FormRuntime {
+/** the dev page's widget, in the mode `CHALLENGE_MODES` names. */
+function devChallenge(mode: ChallengeMode): FormRuntime['challenge'] {
+	return (_config, node, onToken, _onUnavailable, onInteractive) => {
+		let minted = 0;
+		const mint = () => onToken(`tk_dev_${(minted += 1)}`);
+		if (mode === 'invisible') {
+			const pass = () => queueMicrotask(mint);
+			pass();
+			return { reset: pass, stop: () => {} };
+		}
+		const solve = node.ownerDocument.createElement('button');
+		solve.type = 'button';
+		solve.textContent = 'Solve the dev check';
+		solve.addEventListener('click', () => {
+			solve.remove();
+			onInteractive(false);
+			mint();
+		});
+		let at = node;
+		const ask = () => {
+			at.append(solve);
+			queueMicrotask(() => onInteractive(true));
+		};
+		ask();
+		return {
+			reset: ask,
+			stop: () => solve.remove(),
+			redraw: (mount) => {
+				at = mount;
+				if (solve.isConnected) mount.append(solve);
+			}
+		};
+	};
+}
+
+export function devRuntime(
+	ending: DepositEnding,
+	employer: EmployerAnswer,
+	challenge: ChallengeMode
+): FormRuntime {
 	return {
 		loadConfig: async (formId) => {
 			const fixture = Object.values(FIXTURES).find((one) => one.formId === formId);
@@ -628,13 +678,6 @@ export function devRuntime(ending: DepositEnding, employer: EmployerAnswer): For
 				stop: () => {}
 			};
 		},
-		// a widget that passes every visitor at once, the way an invisible one does, so a press waiting
-		// on its token (`holding` in ../src/checkout.machine.ts) is answered rather than timed out.
-		challenge: (_config, _node, onToken) => {
-			let minted = 0;
-			const mint = () => queueMicrotask(() => onToken(`tk_dev_${(minted += 1)}`));
-			mint();
-			return { reset: mint, stop: () => {} };
-		}
+		challenge: devChallenge(challenge)
 	};
 }

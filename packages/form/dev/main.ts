@@ -1,5 +1,7 @@
 import { defineDonateForm, DONATE_FORM_TAG } from '../src/element';
 import {
+	CHALLENGE_MODES,
+	type ChallengeMode,
 	DEPOSIT_ENDINGS,
 	devRuntime,
 	EMPLOYER_ANSWERS,
@@ -38,14 +40,18 @@ function need<T extends HTMLElement>(id: string, kind: new () => T): T {
 
 const stage = need('stage', HTMLElement);
 
-// `?deposit=` and `?employer=` have no control on the panel: each is read once, at registration,
-// because the runtime is.
+// `?deposit=`, `?employer=` and `?challenge=` have no control on the panel: each is read once, at
+// registration, because the runtime is.
 const wantedEnding = remembered('deposit');
 const ending: DepositEnding = DEPOSIT_ENDINGS.find((one) => one === wantedEnding) ?? 'received';
 const wantedAnswer = remembered('employer');
 const employer: EmployerAnswer = EMPLOYER_ANSWERS.find((one) => one === wantedAnswer) ?? 'saved';
 
-defineDonateForm(devRuntime(ending, employer));
+const wantedChallenge = remembered('challenge');
+const challenge: ChallengeMode =
+	CHALLENGE_MODES.find((one) => one === wantedChallenge) ?? 'invisible';
+
+defineDonateForm(devRuntime(ending, employer, challenge));
 const element = document.createElement(DONATE_FORM_TAG);
 
 // --- the seed ---

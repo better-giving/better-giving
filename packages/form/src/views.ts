@@ -964,6 +964,12 @@ function takeoverFor(state: State, config: FormConfig, money: (minor: number) =>
 	}
 }
 
+/** whether the gift is given in a coin picked on the amount step, as the unit list projects it. */
+function givenInCoin(api: DomApi): boolean {
+	const units = api.unitSelect.options as readonly UnitOption[];
+	return units.find((option) => option.value === api.unitSelect.value)?.kind === 'coin';
+}
+
 /**
  * the decisions the amount step is still missing, once a press has asked for them.
  *
@@ -1374,6 +1380,17 @@ export function createCard(
 	const stepMarks: { readonly at: number; readonly node: HTMLElement }[] = [];
 
 	/**
+	 * the words on the first two heads that state how many steps there are, and the mark for the
+	 * third step on each of those heads.
+	 *
+	 * a coin gift has two steps a donor fills in — its details step's Continue mints the address — so
+	 * the patch says two and takes the third mark off those heads (`countSteps` below). the review
+	 * step's own head is never on screen for a coin gift and is left as it is.
+	 */
+	const stepTotals: { readonly node: Text; readonly words: (total: number) => string }[] = [];
+	const reviewMarks: HTMLElement[] = [];
+
+	/**
 	 * the three marks a head carries: where the donor is, and the way to every other step.
 	 *
 	 * one head per step rather than one set of marks moved between them: the heads live in different
@@ -1428,12 +1445,16 @@ export function createCard(
 						[mark]
 					);
 				}
-				const label = make(doc, 'span', { class: 'vh' }, [
-					`${heading}, step ${at + 1} of ${STEP_COUNT}`
-				]);
+				const words = (total: number) => `${heading}, step ${at + 1} of ${total}`;
+				const text = doc.createTextNode(words(STEP_COUNT));
+				const label = make(doc, 'span', { class: 'vh' }, [text]);
 				const node = make(doc, 'button', { class: 'step-dot', type: 'button' }, [mark, label]);
 				node.addEventListener('click', () => now().stepButtons[at]?.onClick());
 				stepMarks.push({ at, node });
+				if (index < STEP_COUNT) {
+					stepTotals.push({ node: text, words });
+					if (at === STEP_COUNT - 1) reviewMarks.push(node);
+				}
 				return node;
 			})
 		);
@@ -1450,8 +1471,11 @@ export function createCard(
 		//
 		// `step-count` is the name ./element.dom.spec.ts collects the three of them by, and no
 		// stylesheet selects it.
+		const counted = (total: number) => `Step ${index} of ${total}`;
+		const countText = doc.createTextNode(counted(STEP_COUNT));
+		if (index < STEP_COUNT) stepTotals.push({ node: countText, words: counted });
 		const count = make(doc, 'span', { class: 'step-count', id: countId, hidden: true }, [
-			`Step ${index} of ${STEP_COUNT}`
+			countText
 		]);
 		const node = make(
 			doc,
@@ -2407,8 +2431,10 @@ export function createCard(
 		now().continueButton.onClick();
 		const after = now().state;
 		// the same rule the amount step's own Continue keeps: the flow refuses a press it has no
-		// field for, and refusing silently is a button that does nothing.
-		if (pressedOn !== 'details' || after.step !== 'details') return;
+		// field for, and refusing silently is a button that does nothing. a coin gift's press the
+		// flow took and holds here for the challenge token reports itself busy, and is no refusal.
+		if (pressedOn !== 'details' || after.step !== 'details' || now().continueButton['aria-busy'])
+			return;
 		attempted = true;
 		const target = firstDetailsProblem(after.missing);
 		// which channel this refusal has, asked before the caret is moved rather than after. where
@@ -2995,6 +3021,12 @@ export function createCard(
 	};
 	view?.addEventListener('resize', rewrapped);
 
+	/** the first two heads saying `total` steps, the third mark on each drawn only where it is one. */
+	function countSteps(total: number): void {
+		for (const { node, words } of stepTotals) setText(node, words(total));
+		for (const mark of reviewMarks) setHidden(mark, total < STEP_COUNT);
+	}
+
 	function updateOptions(
 		nodes: readonly { label: HTMLElement; input: HTMLInputElement }[],
 		props: GroupProps,
@@ -3097,6 +3129,7 @@ export function createCard(
 				api.stepButtons[mark.at]?.available === true ? null : 'true'
 			);
 		}
+		countSteps(givenInCoin(api) ? STEP_COUNT - 1 : STEP_COUNT);
 		// on the interior rather than on the card, and the live region is why: `aria-busy` over a
 		// region is an instruction to hold its changes back until the flag clears, and the words for
 		// the wait are written into that region in this same patch. marked on the card, which is the
@@ -3107,7 +3140,8 @@ export function createCard(
 		// except while a held press waits on the donor solving the challenge drawn beside it: that
 		// puzzle is in the interior and is what they must act on now, so the flag stays on the press
 		// alone, which is what is waiting.
-		const solving = api.state.step === 'give' && api.state.solving;
+		const solving =
+			(api.state.step === 'give' || api.state.step === 'details') && api.state.solving;
 		toggleAttribute(body, 'aria-busy', busy && !solving ? 'true' : null);
 
 		paintTakeover(screen, busy);
@@ -3375,10 +3409,7 @@ export function createCard(
 			api.state.step === 'give' &&
 			api.state.method === 'crypto' &&
 			((advanced && shownBefore === 'takeover') || (coinRefused && stepBefore === 'working'));
-		const unitIsCoin =
-			(api.unitSelect.options as readonly UnitOption[]).find(
-				(option) => option.value === api.unitSelect.value
-			)?.kind === 'coin';
+		const unitIsCoin = givenInCoin(api);
 		const backToUnit =
 			api.state.step === 'amount' &&
 			unitIsCoin &&

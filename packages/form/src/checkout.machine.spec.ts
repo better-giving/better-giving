@@ -3059,6 +3059,35 @@ describe('a coin picked on the amount step', () => {
 		expect(actor.getSnapshot().context.draft.coin).toBe('btc');
 	});
 
+	// the served list alone is not the offer: a coin needs the crypto rail and a one-time cadence the
+	// deployment takes, or the quote would be minted on a rail it does not offer.
+	it.each([
+		['no crypto rail', { paymentMethods: ['card'] }],
+		['no one-time cadence', { frequencies: ['monthly'] }]
+	] as const)('takes no coin on a deployment with %s', (_, overrides) => {
+		const { actor } = harness({ config: { ...COIN_CONFIG, ...overrides } });
+		actor.send({ type: 'SET_UNIT', coin: 'btc' });
+
+		expect(actor.getSnapshot().context.draft.coin).toBeUndefined();
+	});
+
+	it.each([
+		['below_minimum', { minAmountMinor: 1200 }],
+		['above_maximum', {}]
+	] as const)(
+		'lands a %s refusal on the amount step, the coin still picked',
+		async (code, extra) => {
+			const { actor } = await pressedOnDetails({
+				quote: () => Promise.reject({ code, message: 'refused', ...extra })
+			});
+
+			expect(actor.getSnapshot().value).toBe('amount');
+			expect(actor.getSnapshot().context.coinRefusal).toEqual({ code, coin: 'btc', ...extra });
+			expect(actor.getSnapshot().context.draft.coin).toBe('btc');
+			expect(actor.getSnapshot().context.refusedCoins).toEqual([]);
+		}
+	);
+
 	it('mints the address from the details step’s press, with no rail chosen on a review step', async () => {
 		const { actor, calls } = await pressedOnDetails();
 

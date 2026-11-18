@@ -386,6 +386,20 @@ export function createUnitPicker(
 	panel.addEventListener('pointerdown', (event) => {
 		if (event.target !== input) event.preventDefault();
 	});
+	// Tab out of the box closes the list, and the caret goes on where Tab sent it. the machine hears
+	// focus leave on the document, where a control elsewhere on the card is retargeted to the card's
+	// own host — a node that holds this root — so it never reads that as leaving; the box's own
+	// `focusout` sees the real control. a caret that left the page (`relatedTarget` null) is no leave.
+	input.addEventListener('focusout', (event) => {
+		const next = event.relatedTarget;
+		if (!(next instanceof Node) || panel.contains(next) || next === pill) return;
+		if (connected()?.open !== true) return;
+		machine?.service.send({
+			type: 'LAYER.INTERACT_OUTSIDE',
+			src: 'focus-outside',
+			restoreFocus: false
+		});
+	});
 
 	return {
 		host,

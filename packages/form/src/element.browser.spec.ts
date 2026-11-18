@@ -1519,37 +1519,43 @@ describe('the unit list on the amount step', () => {
 		return { root, legend, unit, pill };
 	}
 
-	/** the machine's open lands a frame on: its focus and its placement both wait for one. */
-	const opened = () => new Promise((resolve) => setTimeout(resolve, 50));
+	/** the panel open, waited on the machine's own word for it rather than on a clock. */
+	const opens = (pill: HTMLElement) =>
+		vi.waitFor(() => expect(pill.getAttribute('aria-expanded')).toBe('true'));
+	const shuts = (pill: HTMLElement) =>
+		vi.waitFor(() => expect(pill.getAttribute('aria-expanded')).toBe('false'));
+	const panelOf = (unit: ShadowRoot) => unit.querySelector('.unit-panel') as HTMLElement;
 
 	it.each([480, 375])(
 		'covers the How much line from the pill’s top right, at the card’s content width: %ipx',
 		async (width) => {
 			const { legend, unit, pill } = await amountStep(width);
 			await userEvent.click(pill);
-			await opened();
+			await opens(pill);
 
-			const panel = (unit.querySelector('.unit-panel') as HTMLElement).getBoundingClientRect();
-			const line = legend.getBoundingClientRect();
-			const own = pill.getBoundingClientRect();
 			const edges = (box: { top: number; right: number; left: number; width: number }) =>
 				[box.top, box.right, box.left, box.width].map(Math.round);
-			expect(edges(panel)).toEqual([
-				Math.round(Math.min(line.top, own.top)),
-				Math.round(own.right),
-				Math.round(line.left),
-				Math.round(line.width)
-			]);
+			// placement lands a frame after the open, so the edges are what is waited on.
+			await vi.waitFor(() => {
+				const line = legend.getBoundingClientRect();
+				const own = pill.getBoundingClientRect();
+				expect(edges(panelOf(unit).getBoundingClientRect())).toEqual([
+					Math.round(Math.min(line.top, own.top)),
+					Math.round(own.right),
+					Math.round(line.left),
+					Math.round(line.width)
+				]);
+			});
 		}
 	);
 
 	it('scrolls the rows inside the panel, never the box above them', async () => {
 		const { unit, pill } = await amountStep(375);
 		await userEvent.click(pill);
-		await opened();
+		await opens(pill);
 
 		const list = unit.querySelector('#unit-list') as HTMLElement;
-		expect(list.scrollHeight).toBeGreaterThan(list.clientHeight);
+		await vi.waitFor(() => expect(list.scrollHeight).toBeGreaterThan(list.clientHeight));
 		expect(getComputedStyle(list).overflowY).toBe('auto');
 	});
 
@@ -1559,15 +1565,78 @@ describe('the unit list on the amount step', () => {
 			const { unit, pill } = await amountStep(480);
 			pill.focus();
 			await userEvent.keyboard(key);
-			await opened();
-			expect(unit.activeElement?.getAttribute('role')).toBe('combobox');
+			await vi.waitFor(() => expect(unit.activeElement?.getAttribute('role')).toBe('combobox'));
 
 			await userEvent.keyboard('{Escape}');
-			await opened();
-			expect(unit.activeElement).toBe(pill);
+			await vi.waitFor(() => expect(unit.activeElement).toBe(pill));
 			expect(pill.getAttribute('aria-expanded')).toBe('false');
 		}
 	);
+
+	it('closes on a press outside it', async () => {
+		const { root, pill } = await amountStep(480);
+		await userEvent.click(pill);
+		await opens(pill);
+
+		await userEvent.click(
+			root.querySelector('.step:not([hidden]) [part~="heading"]') as HTMLElement
+		);
+		await shuts(pill);
+	});
+
+	it('closes on Tab out of its search', async () => {
+		const { unit, pill } = await amountStep(480);
+		await userEvent.click(pill);
+		await opens(pill);
+		await vi.waitFor(() => expect(unit.activeElement?.getAttribute('role')).toBe('combobox'));
+
+		await userEvent.tab();
+		await shuts(pill);
+		// the caret goes on where Tab sent it — the first tile — and is not handed back to the pill.
+		const root = shadow(planted.at(-1) as HTMLElement);
+		expect(root.activeElement?.closest('[part~="amount-option"]')).not.toBeNull();
+	});
+
+	// the hint and the no-match sentence are the panel's own surface, not somewhere outside it.
+	it('stays open on a press on its hint or its no-match sentence', async () => {
+		const { unit, pill } = await amountStep(480);
+		await userEvent.click(pill);
+		await opens(pill);
+
+		await userEvent.click(unit.querySelector('.unit-hint') as HTMLElement);
+		await userEvent.keyboard('zzz');
+		const noMatch = unit.querySelector('.no-match') as HTMLElement;
+		await vi.waitFor(() => expect(noMatch.hidden).toBe(false));
+		await userEvent.click(noMatch);
+		await new Promise((resolve) => requestAnimationFrame(resolve));
+
+		expect(pill.getAttribute('aria-expanded')).toBe('true');
+		expect(unit.activeElement?.getAttribute('role')).toBe('combobox');
+	});
+
+	// a move is a disconnect and a connect, and the removal hides an open popover under the machine.
+	it('closes the list a move took off the screen', async () => {
+		const { unit, pill } = await amountStep(480);
+		const host = planted.at(-1) as HTMLElement;
+		await userEvent.click(pill);
+		await opens(pill);
+
+		host.parentElement?.appendChild(host);
+
+		await shuts(pill);
+		expect(unit.querySelector('#unit-positioner')?.matches(':popover-open')).toBe(false);
+	});
+
+	it('takes an open list down with the card that leaves the page', async () => {
+		const { unit, pill } = await amountStep(480);
+		await userEvent.click(pill);
+		await opens(pill);
+		const positioner = unit.querySelector('#unit-positioner') as HTMLElement;
+
+		(planted.at(-1) as HTMLElement).remove();
+
+		await vi.waitFor(() => expect(positioner.matches(':popover-open')).toBe(false));
+	});
 
 	it('keeps a host page’s label rule out of the pill and the list it opens', async () => {
 		const { unit, pill } = await amountStep(480);
@@ -1578,7 +1647,7 @@ describe('the unit list on the amount step', () => {
 		document.head.appendChild(rule);
 		planted.push(rule);
 		await userEvent.click(pill);
-		await opened();
+		await opens(pill);
 
 		const row = unit.querySelector('[role="option"] .coin-ticker') as HTMLElement;
 		const search = unit.querySelector('input') as HTMLElement;
@@ -1598,15 +1667,49 @@ describe('the unit list on the amount step', () => {
 		const { root, unit, pill } = await amountStep(480);
 		pill.focus();
 		await userEvent.keyboard('{Enter}');
-		await opened();
+		await vi.waitFor(() => expect(unit.activeElement?.getAttribute('role')).toBe('combobox'));
 		await userEvent.keyboard('btc');
 		await userEvent.keyboard('{Enter}');
-		await opened();
+		await vi.waitFor(() =>
+			expect(root.activeElement?.closest('[part~="amount-option"]')).not.toBeNull()
+		);
 
 		expect(pill.textContent).toBe('BTC');
 		expect(unit.activeElement).toBeNull();
-		expect(root.activeElement?.closest('[part~="amount-option"]')).not.toBeNull();
 		const monthly = root.querySelectorAll('[part~="frequency-option"] input')[1];
 		expect(monthly?.getAttribute('aria-disabled')).toBe('true');
+	});
+
+	// muted is drawn, not only announced: the word takes the quiet ink, the pointer is told no, and a
+	// pointer resting on it lights nothing, as it would on a cadence a donor can choose.
+	it('draws a muted cadence quieter than the one chosen, answering no pointer', async () => {
+		const { root, unit, pill } = await amountStep(480);
+		const options = () => [...root.querySelectorAll<HTMLElement>('[part~="frequency-option"]')];
+		const monthly = () => options()[1] as HTMLElement;
+		// read once the motion sheet's transitions have run, so a reading is a state and not a frame.
+		const still = () => vi.waitFor(() => expect(monthly().getAnimations()).toEqual([]));
+		const restingGround = getComputedStyle(monthly()).backgroundColor;
+		await userEvent.hover(monthly());
+		await still();
+		const liveInk = getComputedStyle(monthly()).color;
+		expect(getComputedStyle(monthly()).backgroundColor).not.toBe(restingGround);
+		await userEvent.unhover(monthly());
+		await still();
+
+		pill.focus();
+		await userEvent.keyboard('{Enter}');
+		await vi.waitFor(() => expect(unit.activeElement?.getAttribute('role')).toBe('combobox'));
+		await userEvent.keyboard('btc');
+		await userEvent.keyboard('{Enter}');
+		await shuts(pill);
+		await vi.waitFor(() => expect(monthly().getAttribute('part')).toContain('unavailable'));
+
+		await userEvent.hover(monthly());
+		await still();
+		const muted = getComputedStyle(monthly());
+		expect(muted.color).not.toBe(liveInk);
+		expect(muted.color).not.toBe(getComputedStyle(options()[0] as HTMLElement).color);
+		expect(muted.cursor).toBe('not-allowed');
+		expect(muted.backgroundColor).toBe(restingGround);
 	});
 });

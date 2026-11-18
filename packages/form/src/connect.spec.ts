@@ -912,8 +912,8 @@ describe('the unit projection', () => {
 	});
 
 	// a press waiting on the challenge token is the details step's on a coin gift, which has no
-	// review step to stand on while it waits.
-	it('projects a coin gift waiting on its token as the wait, not as a review step', () => {
+	// review step to stand on while it waits: it stays on that step, where the challenge is drawn.
+	it('keeps a coin gift waiting on its token on the details step, solving while the widget asks', () => {
 		const { get, actor } = api(
 			(send) => {
 				send({ type: 'SET_AMOUNT', amountMinor: 2500 } as never);
@@ -931,7 +931,13 @@ describe('the unit projection', () => {
 		);
 
 		expect(actor.getSnapshot().value).toBe('holding');
-		expect(get().state).toMatchObject({ step: 'working', phase: 'quoting' });
+		expect(get().state).toMatchObject({ step: 'details', solving: false });
+		expect(get().continueButton['aria-busy']).toBe(true);
+
+		actor.send({ type: 'SET_CHALLENGE_INTERACTIVE', interactive: true });
+
+		expect(actor.getSnapshot().value).toBe('holding');
+		expect(get().state).toMatchObject({ step: 'details', solving: true });
 	});
 });
 

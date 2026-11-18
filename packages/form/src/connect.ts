@@ -205,6 +205,12 @@ export type State =
 			 * nothing else.
 			 */
 			readonly missing: readonly PayerField[];
+			/**
+			 * whether a coin gift's press is held on this step while the challenge asks the donor to
+			 * solve something — the review step's `solving`, on the step whose press mints a coin
+			 * gift's address.
+			 */
+			readonly solving: boolean;
 	  }
 	| {
 			readonly step: 'give';
@@ -555,6 +561,19 @@ export function toState(snapshot: CheckoutSnapshot): State {
 	/** the shape every collapsed arm below returns, so the phase cannot be forgotten on one of them. */
 	const working = (phase: WorkingPhase): State =>
 		fv === null ? { step: 'working', phase, ...rail } : { step: 'working', fv, phase, ...rail };
+	/** the review step, with its press busy while `holding` waits on the challenge token. */
+	const review = (): State =>
+		fv === null
+			? working('quoting')
+			: {
+					step: 'give',
+					fv,
+					payable: methodIsChargeable(context.payerDraft, context.config),
+					payerComplete: payerIsComplete(context),
+					oneTimeInstead: oneTimeIsOfferedInstead(snapshot),
+					solving: step === 'holding' && context.challengeInteractive,
+					...(context.payerDraft.method === undefined ? {} : { method: context.payerDraft.method })
+				};
 
 	switch (step) {
 		case 'amount': {
@@ -621,27 +640,23 @@ export function toState(snapshot: CheckoutSnapshot): State {
 			return { step: 'awaitingVerification', deadline: context.verificationDeadline };
 		case 'failed':
 			return failedState(context.failure);
+		// a press held for the challenge token is still the step it was made on, with its press busy:
+		// the review step's, or on a coin gift, which has no review step, the details step's.
 		case 'details':
-			return fv === null
-				? working('quoting')
-				: { step: 'details', fv, missing: missingPayerFields(context.payerDraft) };
-		case 'give':
-		// a press held for the challenge token is still the review step, with its press busy — except a
-		// coin gift's, which is the details step's press and has no review step to stand on.
 		case 'holding':
-			return fv === null || (step === 'holding' && givesCoin(context))
-				? working('quoting')
-				: {
-						step: 'give',
-						fv,
-						payable: methodIsChargeable(context.payerDraft, context.config),
-						payerComplete: payerIsComplete(context),
-						oneTimeInstead: oneTimeIsOfferedInstead(snapshot),
-						solving: step === 'holding' && context.challengeInteractive,
-						...(context.payerDraft.method === undefined
-							? {}
-							: { method: context.payerDraft.method })
-					};
+			if (step === 'details' || givesCoin(context)) {
+				return fv === null
+					? working('quoting')
+					: {
+							step: 'details',
+							fv,
+							missing: missingPayerFields(context.payerDraft),
+							solving: step === 'holding' && context.challengeInteractive
+						};
+			}
+			return review();
+		case 'give':
+			return review();
 		case 'mandate':
 			return fv === null || context.quote === null
 				? working('confirming')

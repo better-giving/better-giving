@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createUnitPicker, type UnitChoice, type UnitOption, type UnitPicker } from './unit-picker';
 import { unitWords } from './unit';
 
@@ -13,9 +13,15 @@ if (!('showPopover' in HTMLElement.prototype)) {
 	Object.assign(HTMLElement.prototype, { showPopover() {}, hidePopover() {} });
 }
 
-/** lets the machine's deferred work land: its focus moves on a frame, its listeners a tick on. */
-function settle(): Promise<void> {
-	return new Promise((resolve) => setTimeout(resolve, 40));
+/** one frame: the machine moves focus, the highlight and its outside-press listeners on frames. */
+function frame(): Promise<void> {
+	return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+}
+
+/** the frames the machine's deferred work lands on, waited out rather than timed. */
+async function settle(): Promise<void> {
+	await frame();
+	await frame();
 }
 
 const USD: UnitOption = {
@@ -97,6 +103,7 @@ function mounted(options: readonly UnitOption[] = [USD, ...COINS]) {
 	const open = async () => {
 		pill.focus();
 		pill.click();
+		await vi.waitFor(() => expect(root.activeElement).toBe(input));
 		await settle();
 	};
 	/** each drawn group's heading, with the codes of its drawn rows. */
@@ -208,15 +215,6 @@ describe('the list', () => {
 		expect(usd.textContent).toContain('US Dollar');
 	});
 
-	it('draws no crypto group and no hint where currencies stand alone', async () => {
-		const { root, input, open, groups } = mounted([USD]);
-		await open();
-
-		expect(groups()).toEqual([['Currencies', 'USD']]);
-		expect(input.hasAttribute('aria-describedby')).toBe(false);
-		expect(root.querySelector<HTMLElement>('.unit-hint')?.hidden).toBe(true);
-	});
-
 	it('narrows each group to a search, drops a group left empty, and highlights the first row', async () => {
 		const { open, typed, groups, active } = mounted();
 		await open();
@@ -238,6 +236,10 @@ describe('the list', () => {
 		expect(groups()).toEqual([]);
 
 		await typed('usd');
+		expect(groups()).toEqual([['Currencies', 'USD']]);
+
+		// a currency by its name, which leaves the crypto group with nothing to draw.
+		await typed('dollar');
 		expect(groups()).toEqual([['Currencies', 'USD']]);
 	});
 
@@ -293,12 +295,29 @@ describe('the list', () => {
 	it('says how many rows a search finds, and says it only when it changes', async () => {
 		const { root, open, typed } = mounted();
 		const status = root.querySelector('[role="status"]') as HTMLElement;
+		// every write to the region, so a rewrite of the same words is seen as well as new ones: a live
+		// region rewritten with what it already holds may read it out again.
+		let writes = 0;
+		const watching = new MutationObserver((records) => {
+			writes += records.length;
+		});
+		watching.observe(status, { childList: true, characterData: true, subtree: true });
 		await open();
 		await typed('bt');
 		expect(status.textContent).toBe('2 results');
 
 		await typed('btc');
 		expect(status.textContent).toBe('1 result');
+		await Promise.resolve();
+		const said = writes;
+
+		// another search finding one row, and a keystroke that finds the same: nothing new to say.
+		await typed('eth');
+		await typed('et');
+		await Promise.resolve();
+		expect(status.textContent).toBe('1 result');
+		expect(writes).toBe(said);
+		watching.disconnect();
 
 		await typed('zzz');
 		expect(status.textContent).toBe('No currency or coin matches.');
@@ -308,7 +327,9 @@ describe('the list', () => {
 		);
 	});
 
-	it('draws the stocks group last where its rail stands, saying what to type', async () => {
+	// pre-wired for the stock rail, which `unitRails` holds off in this build (./unit.ts): the group's
+	// render rule, so turning the rail on is the change that draws it.
+	it('pre-wired: draws the stocks group last once its rail stands, saying what to type', async () => {
 		const picker = createUnitPicker(document, unitWords({ coins: false, stocks: true }), {
 			picked: () => {},
 			stocks: true
@@ -331,10 +352,29 @@ describe('the list', () => {
 		);
 	});
 
-	it('renders no control disabled', async () => {
-		const { root, open } = mounted();
+	// the coin a donor just had refused is the usual one to come back to: it stays listed, says why,
+	// and takes no pick, while nothing is rendered `disabled`.
+	it('lists a coin the account no longer takes, says so, and picks nothing for it', async () => {
+		const refused = COINS.map((coin) => (coin.code === 'btc' ? { ...coin, refused: true } : coin));
+		const { root, input, picked, key, open, typed, pill } = mounted([USD, ...refused]);
 		await open();
+		const row = root.getElementById('unit-option-coin:btc') as HTMLElement;
 
+		expect(row.getAttribute('aria-disabled')).toBe('true');
+		expect(row.querySelector<HTMLElement>('.message')?.hidden).toBe(false);
+		expect(row.querySelector('.message')?.textContent).toBe('no longer accepted');
+		expect(root.querySelector('#unit-option-coin\\:eth .message')?.hasAttribute('hidden')).toBe(
+			true
+		);
 		expect(root.querySelectorAll('[disabled]')).toHaveLength(0);
+
+		row.click();
+		await settle();
+		expect(picked).toEqual([]);
+
+		await typed('btc');
+		await key(input, 'Enter');
+		expect(picked).toEqual([]);
+		expect(pill.textContent).toBe('USD');
 	});
 });

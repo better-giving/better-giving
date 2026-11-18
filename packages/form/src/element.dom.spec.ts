@@ -6886,6 +6886,40 @@ describe('a crypto gift', () => {
 		expect(quotes[0]).toMatchObject({ method: 'crypto', coin: 'usdttrc20', frequency: 'one_time' });
 	});
 
+	// a coin gift has no review step, so a press held for the challenge token stays on the details
+	// step that made it, where the widget is drawn: a puzzle it asks for is one the donor can see.
+	it('holds a press waiting on the challenge on the details step, with the widget asking in view', async () => {
+		const challenged: HTMLElement[] = [];
+		const drawn: HTMLElement[] = [];
+		const { card, quotes } = await atAddress(USDT, 'USDT', {
+			mints: false,
+			challenged: (node) => void challenged.push(node),
+			redraws: (node) => void drawn.push(node)
+		});
+		const press = card.find('.step-details [part~="action"]');
+
+		expect(quotes).toEqual([]);
+		expect(card.find('.step-details').hidden).toBe(false);
+		expect(press.getAttribute('aria-busy')).toBe('true');
+		// a held press is no refusal, so the caret is not sent to a field.
+		expect(card.shadow.activeElement).not.toBe(card.find('#email'));
+		expect(card.find('#email').hasAttribute('aria-invalid')).toBe(false);
+
+		card.interactive(true);
+		await settle();
+
+		const box = drawn.at(-1) ?? challenged[0];
+		expect(box).toBe(challenged[0]);
+		expect(box?.closest('[hidden]')).toBeNull();
+		expect(card.find('.card-body').hasAttribute('aria-busy')).toBe(false);
+		expect(press.getAttribute('aria-busy')).toBe('true');
+
+		card.token('tk_solved');
+		await settle();
+
+		expect(quotes[0]?.turnstileToken).toBe('tk_solved');
+	});
+
 	// the coin is chosen on the amount step and the address minted from the details step's press, so
 	// the review step's payment box never lists a crypto option on this card.
 	it('lists no crypto option in the payment box', async () => {
@@ -7517,6 +7551,34 @@ describe('a crypto gift', () => {
 				.all('[part~="amount-option"] input')
 				.find((input) => (input as HTMLInputElement).checked);
 			expect(card.shadow.activeElement).toBe(chosen);
+		});
+
+		// a coin gift has no review step: the details step's Continue mints the address, so the head
+		// counts two steps and draws no third mark a donor could take for a review still to come.
+		it('counts two steps on a coin gift, and three again once the currency is picked', async () => {
+			const card = await mount({ config: CRYPTO });
+			const thirds = () =>
+				card.all('.step-dots').map((dots) => (dots.children[2] as HTMLElement).hidden);
+			await pick(card, 'BTC');
+
+			expect(card.all('.step-count').map((count) => count.textContent)).toEqual([
+				'Step 1 of 2',
+				'Step 2 of 2',
+				// the review step's own head, which a coin gift never stands on.
+				'Step 3 of 3'
+			]);
+			expect(thirds()).toEqual([true, true, false]);
+			expect(dot(card, 2).textContent).toBe('Your details, step 2 of 2');
+
+			await pick(card, 'USD');
+
+			expect(card.all('.step-count').map((count) => count.textContent)).toEqual([
+				'Step 1 of 3',
+				'Step 2 of 3',
+				'Step 3 of 3'
+			]);
+			expect(thirds()).toEqual([false, false, false]);
+			expect(dot(card, 2).textContent).toBe('Your details, step 2 of 3');
 		});
 
 		it('renders no control on the step disabled', async () => {

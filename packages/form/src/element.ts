@@ -1300,12 +1300,15 @@ export function donateFormClass(runtime: FormRuntime): CustomElementConstructor 
 					);
 				}
 
-				// a press held for a token while the widget asks the donor to solve something. the
-				// widget is in the details step's box, which is hidden here, so it is drawn afresh in
-				// the review step's, beside the press. a redraw into the box it is already in does
-				// nothing, so this is said on every reading of that state.
+				// a press held for a token while the widget asks the donor to solve something, drawn
+				// in the box on the step that press stands on: the review step's, beside the press, or
+				// a coin gift's details step's, which is the box the widget was first drawn in. a
+				// redraw into the box it is already in does nothing, so this is said on every reading
+				// of that state.
 				if (snapshot.value === 'holding' && snapshot.context.challengeInteractive) {
-					this.#challenge?.redraw?.(view.heldChallenge);
+					this.#challenge?.redraw?.(
+						api.state.step === 'details' ? view.challenge : view.heldChallenge
+					);
 				}
 
 				// the token is spent by the press that leaves `working`, and spent is spent: it is
