@@ -1569,6 +1569,31 @@ describe('the unit list on the amount step', () => {
 		}
 	);
 
+	it('keeps a host page’s label rule out of the pill and the list it opens', async () => {
+		const { unit, pill } = await amountStep(480);
+		const rule = document.createElement('style');
+		rule.textContent = `${planted.at(-1)?.localName}::part(label) {
+			text-transform: uppercase; letter-spacing: 0.08em; font-style: italic; text-align: center;
+		}`;
+		document.head.appendChild(rule);
+		planted.push(rule);
+		await userEvent.click(pill);
+		await opened();
+
+		const row = unit.querySelector('[role="option"] .coin-ticker') as HTMLElement;
+		const search = unit.querySelector('input') as HTMLElement;
+		for (const drawn of [pill, row, search]) {
+			const style = getComputedStyle(drawn);
+			expect([style.textTransform, style.letterSpacing, style.fontStyle]).toEqual([
+				'none',
+				'normal',
+				'normal'
+			]);
+		}
+		// a button centres its own words; the rows take the alignment the host sets back.
+		expect(getComputedStyle(row).textAlign).toBe('start');
+	});
+
 	it('hands the caret to the figure once a coin is picked, and mutes the repeating cadence', async () => {
 		const { root, unit, pill } = await amountStep(480);
 		pill.focus();

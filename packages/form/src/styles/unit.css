@@ -12,13 +12,19 @@
 /*
  * the host stands inside the "How much" legend and inherits its small bold quiet type, and the
  * panel, shown in the top layer, still inherits from here: so the card's own base is set back on
- * the host, off the clamped root, and every size below is a step of it.
+ * the host, off the clamped root, and every size below is a step of it. the legend is `part="label"`,
+ * so the inherited text properties a host page's `::part(label)` rule commonly sets are set back
+ * here too, and that rule stops at the pill.
  */
 :host {
 	display: inline-flex;
 	font-size: var(--_root-size);
 	font-weight: var(--_w-normal);
+	font-style: normal;
 	line-height: var(--_lh-body);
+	letter-spacing: normal;
+	text-transform: none;
+	text-align: start;
 	color: var(--_n12);
 }
 
