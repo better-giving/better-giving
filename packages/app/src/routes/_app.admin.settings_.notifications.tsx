@@ -167,7 +167,7 @@ export default function Notifications({ loaderData, actionData }: Route.Componen
 					</header>
 					{hasProfile ? (
 						<>
-							<Form method="post" className="ds-card-body" {...getFormProps(form)}>
+							<Form method="post" className="ds-card-body adm-stack" {...getFormProps(form)}>
 								<input {...whichForm(NOTIFICATIONS_FORM.id)} />
 								<input {...recordVersion(version)} />
 								{/* read off the stored row rather than the box: what is dropped is decided by what is
@@ -198,7 +198,7 @@ export default function Notifications({ loaderData, actionData }: Route.Componen
 							</footer>
 						</>
 					) : (
-						<div className="ds-card-body">
+						<div className="ds-card-body adm-stack">
 							<Banner
 								tone="attention"
 								word="Save the organisation’s details first"

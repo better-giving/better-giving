@@ -128,7 +128,7 @@ export default function Mail({ loaderData }: Route.ComponentProps) {
 					<header className="ds-card-header">
 						<h2 id="settings-mail-title">Mail</h2>
 					</header>
-					<div className="ds-card-body">
+					<div className="ds-card-body adm-stack">
 						{mail === null ? (
 							<MailUnset />
 						) : (

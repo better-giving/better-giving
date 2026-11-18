@@ -119,6 +119,15 @@ describe('the mail card', () => {
 		expect(banner?.nextElementSibling).toBeNull();
 	});
 
+	it.each([
+		['with no mail set', null],
+		['with mail set', SET]
+	])('stands the card’s rows one step apart, its body being a stack, %s', (_, mail) => {
+		const body = mailCard({ notificationEmail: null, mail }).querySelector('.ds-card-body');
+
+		expect(body?.classList.contains('adm-stack')).toBe(true);
+	});
+
 	it('states the sender and the host, and offers the test send, with mail set', () => {
 		const mail = mailCard({ notificationEmail: 'ops@riverbanktrust.org', mail: SET });
 

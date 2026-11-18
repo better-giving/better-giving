@@ -344,7 +344,7 @@ function DetailsCard({
 			<header className="ds-card-header">
 				<h2 id={`${form.id}-title`}>Organisation details</h2>
 			</header>
-			<Form method="post" className="ds-card-body" {...getFormProps(form)}>
+			<Form method="post" className="ds-card-body adm-stack" {...getFormProps(form)}>
 				<input {...whichForm(DETAILS_FORM.id)} />
 				<input {...recordVersion(version)} />
 				<p className="adm-hint">

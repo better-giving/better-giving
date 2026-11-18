@@ -253,6 +253,12 @@ describe('the organisation details page', () => {
 		);
 	});
 
+	it('stands the card’s rows one step apart, its body being a stack', () => {
+		const body = card(screen({}).root, 'Organisation details').querySelector('.ds-card-body');
+
+		expect(body?.classList.contains('adm-stack')).toBe(true);
+	});
+
 	it('saves from the card’s foot, through the form it names, with nothing to save at first', () => {
 		const details = card(screen({}).root, 'Organisation details');
 		const save = details.querySelector<HTMLButtonElement>('.ds-card-footer button[type="submit"]');

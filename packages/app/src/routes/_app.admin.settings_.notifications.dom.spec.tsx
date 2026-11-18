@@ -74,6 +74,15 @@ describe('the notifications card', () => {
 		).toBe('ops@riverbanktrust.org');
 	});
 
+	it.each([
+		['with the details saved', true],
+		['with no details saved', false]
+	])('stands the card’s rows one step apart, its body being a stack, %s', (_, hasProfile) => {
+		const body = notificationsCard(null, hasProfile).querySelector('.ds-card-body');
+
+		expect(body?.classList.contains('adm-stack')).toBe(true);
+	});
+
 	it('saves from the card’s foot, through the form it names, with nothing to save at first', () => {
 		const notifications = notificationsCard('ops@riverbanktrust.org');
 		const form = notifications.querySelector('form');
