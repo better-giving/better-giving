@@ -97,7 +97,7 @@ export function ActionMenu({ trigger, runs, header, placement, link, open }) {
    cancelled as a press's click is: an internal row's router link hears it and routes, a plain
    anchor follows as a link, and the row's handler closes the menu. the machine's default
    (`clickIfLink` in @zag-js/dom-query) dispatches a click that does not bubble, which react's
-   handlers never see, so a routed row loaded the whole document. */
+   handlers never hear, so a routed row would load the whole document. */
 /** @param {{ node: HTMLAnchorElement }} details */
 function followLink({ node }) {
 	queueMicrotask(() => node.click());

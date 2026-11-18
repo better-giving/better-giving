@@ -527,7 +527,6 @@ describe('share', () => {
 		const root = mount(<PageView {...props(type, page)} />);
 		const section = root.querySelector('[data-area="share"]');
 		expect(section?.tagName.toLowerCase()).toBe('section');
-		expect(section?.id).toBe('page-share');
 		const name = section?.getAttribute('aria-labelledby') ?? '';
 		expect(name).not.toBe('');
 		const label = root.ownerDocument.getElementById(name);

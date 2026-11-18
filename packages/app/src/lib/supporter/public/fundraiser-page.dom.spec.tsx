@@ -201,6 +201,7 @@ describe('a live fundraiser, part way', () => {
 		const start = root.querySelector<HTMLAnchorElement>('main ~ .page-end a[href="/fundraise"]');
 		expect(start?.textContent).toBe('Start your own fundraiser');
 		expect(start?.closest('[data-area="share"]')).toBeNull();
+		expect(start?.closest('aside')).not.toBeNull();
 	});
 
 	it('heads the page with the site nav, Donate not marked current', () => {

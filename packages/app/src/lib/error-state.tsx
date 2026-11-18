@@ -90,10 +90,10 @@ function Refused({
 		heading.current?.focus();
 	}, [arrival]);
 	return (
-		<div className="ds-page-state ds-page-state-error">
+		<div className="ds-page-state ds-page-state-error adm-pagestate">
 			<p className="ds-page-state-code">{status}</p>
 			<div className="ds-page-state-message" role="alert">
-				<h1 ref={heading} className="ds-page-state-title" tabIndex={-1}>
+				<h1 ref={heading} className="ds-page-state-title adm-pagestate__title" tabIndex={-1}>
 					{title}
 				</h1>
 				<p className="ds-page-state-body">

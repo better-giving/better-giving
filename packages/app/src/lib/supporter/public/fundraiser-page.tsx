@@ -196,13 +196,13 @@ export function FundraiserPage(props: FundraiserPageViewProps) {
 				</div>
 			</main>
 			{props.fundraiserEntry ? (
-				<div className="page-end">
+				<aside className="page-end">
 					<div className="page-in">
 						<p>
 							<a href={copy.START_HREF}>{copy.START_YOUR_OWN}</a>
 						</p>
 					</div>
-				</div>
+				</aside>
 			) : null}
 		</PageRoot>
 	);

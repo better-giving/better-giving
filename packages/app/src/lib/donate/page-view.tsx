@@ -185,7 +185,7 @@ export function PageView(props: PageViewProps) {
 					</div>
 				) : null}
 			</main>
-			<section className="page-end" id={SHARE_ID} aria-labelledby={shareHeading} {...area('share')}>
+			<section className="page-end" aria-labelledby={shareHeading} {...area('share')}>
 				<div className="page-in">
 					<Share
 						headingId={shareHeading}
@@ -197,9 +197,6 @@ export function PageView(props: PageViewProps) {
 		</PageRoot>
 	);
 }
-
-/** the share section's id. */
-const SHARE_ID = 'page-share';
 
 /**
  * the donation box, inert in the preview, where a click on it opens the settings it draws. a

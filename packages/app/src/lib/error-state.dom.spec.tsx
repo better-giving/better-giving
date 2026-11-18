@@ -40,6 +40,15 @@ describe('ErrorState', () => {
 		expect(active?.textContent).toBe(title);
 	});
 
+	it.each([404, 403, 500])(
+		'marks the %s as the operator page state, so adm.css centres it and keeps its title ringless',
+		(status) => {
+			const { host } = mount(status);
+			expect(host.firstElementChild?.classList.contains('adm-pagestate')).toBe(true);
+			expect(host.querySelector('h1')?.classList.contains('adm-pagestate__title')).toBe(true);
+		}
+	);
+
 	/** focus moved off the drawn state, as a press on the page does before the next navigation. */
 	function pressElsewhere() {
 		const other = document.createElement('button');

@@ -70,8 +70,8 @@ import { RouteProgress } from './RouteProgress.jsx';
  *   `parseRail` read it off the request's cookie (../../rail-preference.ts). unstated, open.
  */
 
-/* the rail preference's older copy, per browser: `collapsed` or `expanded`. still written, and read
-   only to seed the cookie where the cookie is absent. */
+/* the rail preference in this browser's storage: `collapsed` or `expanded`. each toggle writes it
+   beside the cookie, and it is read only to seed the cookie where the cookie is absent. */
 const RAIL_STORAGE_KEY = 'bg-operator-rail';
 
 /** @param {boolean} collapsed */
@@ -116,8 +116,8 @@ export function Shell({
 	const mainId = useId();
 
 	const [collapsed, setCollapsed] = useState(initialCollapsed);
-	/* a choice kept only in storage, from before the cookie, becomes the cookie for the next page's
-	   server render; this page keeps what the server drew, since flipping it now is the jump. */
+	/* a choice in storage with no cookie beside it becomes the cookie for the next page's server
+	   render; this page keeps what the server drew, since flipping it now is the jump. */
 	useEffect(() => {
 		const hasCookie = document.cookie
 			.split(';')
