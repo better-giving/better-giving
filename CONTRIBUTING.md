@@ -25,7 +25,7 @@ pnpm dev              # http://localhost:5321
 
 | command            | what                                    | port        |
 | ------------------ | --------------------------------------- | ----------- |
-| `pnpm dev`         | the app: `/admin`, `/api/v1`, and the Donation page at `/donate`    | 5321        |
+| `pnpm dev`         | the app: `/admin`, `/api/v1`, and the Donation page at `/`          | 5321        |
 | `pnpm run gallery` | every `packages/operator` component     | 5323        |
 | `pnpm run form`    | the donation form against fixtures      | 5324        |
 | `pnpm run emails`  | the mail templates                      | 5327        |
@@ -70,7 +70,7 @@ A migration reaches a database through `pnpm db:migrate` or Compose's `migrate` 
 
 ## Troubleshooting
 
-**Pages that read a table 500.** A database the migrations never reached fails every loader that reads a table, `/admin` and `/donate` included, typically after pulling a branch with a new migration, or when `DATABASE_URL` names a different file from the one you migrated. Fix:
+**Pages that read a table 500.** A database the migrations never reached fails every loader that reads a table, `/admin` and `/` included, typically after pulling a branch with a new migration, or when `DATABASE_URL` names a different file from the one you migrated. Fix:
 
 ```sh
 pnpm db:migrate

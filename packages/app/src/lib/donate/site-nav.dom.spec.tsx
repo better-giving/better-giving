@@ -4,7 +4,7 @@ import { describe, expect, it, onTestFinished } from 'vitest';
 import { MAIN_ID, SiteNav, type SiteNavProps } from './site-nav';
 
 // the site nav, mounted: the skip link first, the organisation as the home link, the one Donate
-// link marked current on /donate alone, and the folded menu's disclosure. whether the bar's links or
+// link marked current on / alone, and the folded menu's disclosure. whether the bar's links or
 // the menu button show at a width is the registry's sheet's, which happy-dom does not lay out.
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -51,7 +51,7 @@ describe('the links', () => {
 			(a) => a.textContent === 'Donate'
 		);
 
-	it('marks Donate as the current page on /donate, in the bar and in the menu', () => {
+	it('marks Donate as the current page on /, in the bar and in the menu', () => {
 		const links = donateLinks(nav({ current: true }));
 		expect(links).toHaveLength(2);
 		expect(links.map((a) => a.getAttribute('aria-current'))).toEqual(['page', 'page']);
@@ -67,16 +67,14 @@ describe('the links', () => {
 		const lists = [...nav().querySelectorAll('nav')];
 		expect(lists.map((list) => list.getAttribute('aria-label'))).toEqual(['Main', 'Main']);
 		for (const list of lists) {
-			expect([...list.querySelectorAll('a')].map((a) => a.getAttribute('href'))).toEqual([
-				'/donate'
-			]);
+			expect([...list.querySelectorAll('a')].map((a) => a.getAttribute('href'))).toEqual(['/']);
 		}
 	});
 
 	it('draws the organisation as the home link, its logo beside the name saying nothing', () => {
 		const root = nav({ logo: { imageId: 'logo-1', width: 400, height: 400 } });
 		const brand = root.querySelector<HTMLAnchorElement>('.ds-site-nav-brand');
-		expect(brand?.getAttribute('href')).toBe('/donate');
+		expect(brand?.getAttribute('href')).toBe('/');
 		expect(brand?.textContent).toBe('Greenfield Food Bank');
 		expect(brand?.querySelector('img')?.getAttribute('alt')).toBe('');
 	});

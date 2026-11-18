@@ -23,7 +23,7 @@ const DASHBOARD: Screen = {
  * fundraiser, and the supporter's own screens under /fundraise.
  */
 const DONOR_PAGES: readonly Screen[] = [
-	{ id: 'routes/donate', path: '/donate', at: '/donate' },
+	{ id: 'routes/_index', path: '/', at: '/' },
 	{ id: 'routes/$slug', path: '/:slug', at: '/spring-appeal' },
 	{ id: 'routes/f.$slug', path: '/f/:slug', at: '/f/sams-run' },
 	{ id: 'routes/fundraise.pages._index', path: '/fundraise/pages', at: '/fundraise/pages' }

@@ -2,7 +2,7 @@ import type { FormInputValues } from './fields';
 
 // what a form opens on: the new-form screen's boxes (src/routes/_app.admin.forms.new.tsx), and the
 // settings row the donation page owns, made the first time anything asks for that page
-// ($lib/server/pages/donation-page.ts). one set of figures for both, so a first gift on /donate and
+// ($lib/server/pages/donation-page.ts). one set of figures for both, so a first gift on `/` and
 // a first form offer the same amounts.
 
 /**

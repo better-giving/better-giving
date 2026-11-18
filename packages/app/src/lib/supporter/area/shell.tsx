@@ -8,7 +8,7 @@ import { INTENT, INTENTS } from './forms';
 import { Mark } from './glyph';
 
 // every supporter screen's frame: the donor page's root in the organisation's brand colour, the
-// site nav as /donate draws it ($lib/donate/site-nav.tsx), the screen under it at the page's
+// site nav as `/` draws it ($lib/donate/site-nav.tsx), the screen under it at the page's
 // width, and the compact site footer ($lib/donate/site-footer.tsx) closing it, as on every donor
 // page. signed in, the nav's actions are the address the supporter signed in with and Sign out:
 // at the bar's end from 40rem, and under the menu's row below it, where the registry folds actions.

@@ -29,7 +29,7 @@ export const PAGE_KEYS = {
 	endsZone: 'endsZone'
 } as const;
 
-/** a donor page's kind: the one donation page at `/donate`, or a campaign at its own address. */
+/** a donor page's kind: the one donation page at `/`, or a campaign at its own address. */
 export const PAGE_TYPES = ['donation_page', 'campaign'] as const;
 export type PageType = (typeof PAGE_TYPES)[number];
 

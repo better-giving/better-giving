@@ -27,7 +27,7 @@ import { formBody, page, signInAsDeployer, signInAsMember } from '../webhook-rou
 import * as admin from './_app.admin.supporter-pages';
 import * as surface from './api.v1';
 import * as servedConfig from './api.v1.forms.$id.config';
-import * as donate from './donate';
+import * as donate from './_index';
 import * as start from './fundraise._index';
 import * as edit from './fundraise.pages.$id.edit';
 import * as open from './fundraise.open';
@@ -366,8 +366,8 @@ describe('a fundraiser’s life, from its first edit to its end', () => {
 	});
 });
 
-/** whether /donate draws the card that starts a fundraiser. */
+/** whether / draws the card that starts a fundraiser. */
 async function entryCardOnDonate(): Promise<boolean> {
-	const drawn = await visitDonorPage(donate, 'donate', '/donate');
+	const drawn = await visitDonorPage(donate, '/', '/');
 	return (drawn.data as { view?: { fundraiserEntry?: boolean } }).view?.fundraiserEntry === true;
 }

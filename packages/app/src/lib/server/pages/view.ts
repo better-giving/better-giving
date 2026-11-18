@@ -26,7 +26,7 @@ import { pageGoal } from './goal';
 import { type MessageCursor, readShownMessages } from './messages';
 
 // everything a donor page draws beyond its own stored document, read for one page: the donation
-// page at /donate, a campaign at its address, and either one in the editor's preview. a supporter's
+// page at `/`, a campaign at its address, and either one in the editor's preview. a supporter's
 // fundraiser has no document, and `loadFundraiserFrame` reads what its page draws beside its row.
 //
 // the card's configuration is the owned settings row's served config, read exactly as
@@ -57,7 +57,7 @@ import { type MessageCursor, readShownMessages } from './messages';
 // books that is never cached. the Donation page alone is handed its profile head beside the view
 // (`DonateProfile` in ../../donate/profile.ts) from those same reads, with its donors' newest
 // messages (`readShownMessages` in ./messages.ts), likewise never cached; its preview lists the
-// messages /donate lists, gated on the published page (`readDonationPageMessages`). the only
+// messages `/` lists, gated on the published page (`readDonationPageMessages`). the only
 // raised figure a page is handed is its own campaign's, for its goal bar.
 
 /** a page as its loader holds it: its row's facts, the document to draw, and its public address. */
@@ -70,7 +70,7 @@ export type PageSource = {
 	readonly name: string | null;
 	/** the stored document's text — `published` for a donor, the draft for the preview. */
 	readonly document: string | null;
-	/** the path the page is public at, `/donate` or a campaign's, which the share buttons send. */
+	/** the path the page is public at, `/` or a campaign's, which the share buttons send. */
 	readonly address: string;
 };
 
@@ -102,7 +102,7 @@ export async function loadPageView(
 		readonly now: number;
 		/**
 		 * set for the editor's preview of `source.document`, the draft: the page's published
-		 * document, which the Donation page's donors' messages are listed against as /donate lists
+		 * document, which the Donation page's donors' messages are listed against as `/` lists
 		 * them.
 		 */
 		readonly preview?: { readonly published: string | null };
@@ -146,7 +146,7 @@ export async function loadPageView(
 		!isDonationPage
 			? null
 			: preview === undefined
-				? // /donate's own read (routes/donate.tsx), past both of its gates on its messages.
+				? // the donation page's own read (routes/_index.tsx), past both of its gates on its messages.
 					readShownMessages(db, null)
 				: readDonationPageMessages(
 						db,
@@ -206,9 +206,9 @@ export async function loadPageView(
 const NOTHING_LISTED: DonorMessages = { messages: [], total: 0, next: null };
 
 /**
- * the Donation page's donors' messages after `after`, or its newest six, as /donate lists them: none
- * where /donate draws none. Show more (routes/donate.messages.ts) and the preview's first six read
- * here, so the preview lists, and pages through, only what /donate does.
+ * the Donation page's donors' messages after `after`, or its newest six, as `/` lists them: none
+ * where `/` draws none. Show more (routes/donate_.messages.ts) and the preview's first six read
+ * here, so the preview lists, and pages through, only what `/` does.
  */
 export async function readDonationPageMessages(
 	db: Db,

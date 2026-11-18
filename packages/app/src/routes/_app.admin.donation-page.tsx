@@ -36,11 +36,12 @@ import type { Route } from './+types/_app.admin.donation-page';
 // the Donation page's edit page, reached from the globe beside the organisation's name: a plain
 // form of section cards — General, Videos, Donation settings, Settings — under the banner that says
 // whether donors see the draft, and Reset to default at the foot while there is something to reset.
-// the page is always at /donate and always public, so it has no name, no link and no Unpublish.
+// the page is always at the deployment's own address (`/`) and always public, so it has no name,
+// no link and no Unpublish.
 //
 // **the loader makes the page on first need** (`ensureDonationPage` in
 // $lib/server/pages/donation-page.ts), so on a fresh deployment the globe opens this page rather
-// than a 404, as /donate answers before anyone has opened it.
+// than a 404, as `/` answers before anyone has opened it.
 //
 // **every Save writes the draft**, a card at a time ($lib/server/pages/section-saves.ts, and the
 // Videos card's presses in $lib/server/pages/videos.ts), and donors see it only at Publish changes
@@ -147,15 +148,15 @@ export default function DonationPageEditPage({ loaderData }: Route.ComponentProp
 				state={banner.state}
 				version={version}
 				noun="Donation page"
-				address={`${host}donate`}
-				livePath="/donate"
+				address={host}
+				livePath="/"
 				preview={banner.preview}
 				unpublishable={false}
 				undoable={banner.undoable}
 			/>
 			{takingGifts ? null : (
 				<Banner tone="attention" word="Not taking gifts">
-					Donors who open /donate are told it can’t take a gift right now.
+					Donors who open the page are told it can’t take a gift right now.
 				</Banner>
 			)}
 			{loaderData.unreadable ? (

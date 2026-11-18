@@ -3,9 +3,11 @@ import { act, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { describe, expect, it, onTestFinished } from 'vitest';
 import { SiteFooter, type SiteFooterInfo } from './site-footer';
+import { StaffMarkerContext } from './staff-marker-context';
 
-// the site footer, mounted: the legal line once, and each way to reach the organisation only where
-// it has set one.
+// the site footer, mounted: the legal line once, each way to reach the organisation only where it
+// has set one, and the console link at the end of the list only for a browser carrying the
+// returning-staff marker.
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -82,6 +84,45 @@ describe('the ways to reach the organisation', () => {
 	});
 });
 
+describe('the console link', () => {
+	const NOTHING = { legalName: null, ein: null, addressLines: [], email: null, socialLinks: [] };
+	const asStaff = (over: Partial<SiteFooterInfo> = {}) =>
+		mount(
+			<StaffMarkerContext value={true}>
+				<SiteFooter info={{ ...INFO, ...over }} />
+			</StaffMarkerContext>
+		).querySelector('footer');
+
+	it('is not drawn for a donor, who carries no marker', () => {
+		const text = footer()?.textContent ?? '';
+		expect(text).not.toContain('Console');
+		expect(text).not.toContain('Staff');
+		expect(footer()?.querySelector('a[href="/admin"]')).toBeNull();
+	});
+
+	it('ends the list, a plain link to the dashboard, where the marker is present', () => {
+		const links = [...(asStaff()?.querySelectorAll('nav[aria-label="Footer"] li a') ?? [])];
+		const last = links.at(-1);
+		expect(last?.textContent).toBe('Console');
+		expect(last?.getAttribute('href')).toBe('/admin');
+		expect(last?.hasAttribute('target')).toBe(false);
+		expect(last?.closest('li')?.nextElementSibling).toBeNull();
+	});
+
+	it('draws nothing at all with no organisation details and no marker', () => {
+		expect(footer(NOTHING)).toBeNull();
+	});
+
+	it('is drawn alone where the marker is present and the organisation has set nothing', () => {
+		const root = asStaff(NOTHING);
+		expect(root?.className).toBe('ds-site-footer-compact');
+		expect(root?.querySelector('p')).toBeNull();
+		expect([...(root?.querySelectorAll('a') ?? [])].map((a) => a.getAttribute('href'))).toEqual([
+			'/admin'
+		]);
+	});
+});
+
 describe('every social platform', () => {
 	// literal names, not SOCIAL_PLATFORM_NAMES: a blank or wrong entry there must fail here
 	const NAMES = {
@@ -106,10 +147,4 @@ describe('every social platform', () => {
 		expect(link?.getAttribute('rel')).toBe('noopener noreferrer');
 		expect(link?.getAttribute('aria-label')).toBe(`${NAMES[platform]}, opens in a new tab`);
 	});
-});
-
-it('draws no footer where the organisation has set nothing at all', () => {
-	expect(
-		footer({ legalName: null, ein: null, addressLines: [], email: null, socialLinks: [] })
-	).toBeNull();
 });

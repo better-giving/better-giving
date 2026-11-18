@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import type { DonorMessage, DonorMessages as DonorMessagesPage } from '../messages';
 import { messageAge } from '../message-age';
 
-// "Messages from donors" on /donate: the notes donors asked to show, six at a time, newest first,
+// "Messages from donors" on `/`: the notes donors asked to show, six at a time, newest first,
 // in a plane that clips a list, with a band under it counting what is shown and asking for six more.
 // with no message the section is not drawn at all: nothing stands where it would.
 //

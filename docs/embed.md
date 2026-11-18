@@ -1,6 +1,6 @@
 # Embed a form
 
-Every deployment serves a donation page at `/donate`. To put the form on your own site as well:
+Every deployment serves a donation page at its own address, `/` (`/donate` forwards there). To put the form on your own site as well:
 
 ```html
 <script src="https://donate.your-org.org/embed.js" async></script>

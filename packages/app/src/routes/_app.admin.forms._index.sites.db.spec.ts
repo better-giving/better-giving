@@ -245,7 +245,7 @@ describe('who may save the site list', () => {
 		const member = await signInAsMember(db);
 
 		expect(await card(member)).toEqual({
-			donatePage: `${ORIGIN}/donate`,
+			donatePage: `${ORIGIN}/`,
 			listed: ['https://acme.org'],
 			mayEdit: false,
 			saved: null

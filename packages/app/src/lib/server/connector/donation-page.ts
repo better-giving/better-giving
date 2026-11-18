@@ -72,7 +72,7 @@ function pageOf(row: PageRow, origin: string, now: Date): DonationPage {
 	const status = statusOf(stateAt(row, now.getTime()));
 	return {
 		status,
-		public_url: status === 'published' ? `${origin}/donate` : null,
+		public_url: status === 'published' ? `${origin}/` : null,
 		has_unpublished_changes: row.published !== null && row.published !== row.draft,
 		sharing: { message: draft.page.shareMessage ?? null },
 		content: contentOf(draft.page, 'donation_page'),

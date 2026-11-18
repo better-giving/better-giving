@@ -389,7 +389,7 @@ body {
 }
 
 /* an ended campaign's address (`EndedCampaignPage` in ./plain-page.tsx): its name, one line, and
-   the way on to /donate drawn as the card's own action, at its label's width rather than the card's.
+   the way on to `/` drawn as the card's own action, at its label's width rather than the card's.
    there is no box on it to hold the column to the box's width, so it takes the page's reading
    measure. */
 .stage.ended {
@@ -575,7 +575,7 @@ body {
 	color: var(--_ok-ink);
 }
 
-/* the /donate card's thank-you employer ask (`.employer-actions` in ./takeover.tsx): its two presses
+/* the `/` card's thank-you employer ask (`.employer-actions` in ./takeover.tsx): its two presses
    are the registry's md press, a row tall while they stack below 30rem, and their own height side by
    side from it (below). */
 .page .employer-actions > .ds-btn {

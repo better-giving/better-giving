@@ -106,10 +106,10 @@ const bar = (root: HTMLElement) => root.querySelector<HTMLElement>('[role="progr
 const text = (root: HTMLElement) => root.textContent ?? '';
 
 describe('a live fundraiser, part way', () => {
-	it('names who it is for, linking to /donate, over the title and the supporter’s byline', () => {
+	it('names who it is for, linking to /, over the title and the supporter’s byline', () => {
 		const root = mount(<FundraiserPage {...props(PART_WAY)} />);
 		const forLine = root.querySelector<HTMLAnchorElement>('.fundraiser-for');
-		expect(forLine?.getAttribute('href')).toBe('/donate');
+		expect(forLine?.getAttribute('href')).toBe('/');
 		expect(forLine?.textContent).toBe('A fundraiser for Harbor Light');
 		expect(forLine?.querySelector('img')?.getAttribute('alt')).toBe('');
 		expect(root.querySelector('h1')?.textContent).toBe(PART_WAY.title);
@@ -165,7 +165,7 @@ describe('a live fundraiser, part way', () => {
 		);
 		const about = recipient?.querySelector('a');
 		expect(about?.textContent).toBe('About Harbor Light');
-		expect(about?.getAttribute('href')).toBe('/donate');
+		expect(about?.getAttribute('href')).toBe('/');
 	});
 
 	it('tells the story under the supporter’s first name, a paragraph per blank line', () => {
@@ -208,7 +208,7 @@ describe('a live fundraiser, part way', () => {
 		const root = mount(<FundraiserPage {...props(PART_WAY)} />);
 		const nav = root.querySelector('.ds-site-nav');
 		expect(nav?.querySelector('.ds-site-nav-brand')?.textContent).toBe('Harbor Light');
-		expect(nav?.querySelector('.ds-site-nav-link')?.getAttribute('href')).toBe('/donate');
+		expect(nav?.querySelector('.ds-site-nav-link')?.getAttribute('href')).toBe('/');
 		expect(root.querySelector('[aria-current]')).toBeNull();
 		expect(root.querySelector('main')?.id).toBe('main');
 	});
@@ -428,7 +428,7 @@ describe('an ended fundraiser', () => {
 		const root = ended();
 		const on = root.querySelector('main a');
 		expect(on?.textContent).toBe('Donate to Harbor Light');
-		expect(on?.getAttribute('href')).toBe('/donate');
+		expect(on?.getAttribute('href')).toBe('/');
 		expect(root.querySelector('.page-box, [data-donate-root] [data-donate-root], form')).toBeNull();
 		expect(bar(root)).toBeNull();
 	});

@@ -227,7 +227,7 @@ export function createAuth(db: Db, env: AuthEnv, runtime: AuthRuntime) {
 	 * victim, so the cookie attribute does not reach it: a browser that omits both `Origin` and
 	 * `Sec-Fetch-Site` is accepted.
 	 *
-	 * none of it bounds a script on this origin, and the donor pages, `/donate` and each campaign's
+	 * none of it bounds a script on this origin, and the donor pages, `/` and each campaign's
 	 * address, are served on it (CLAUDE.md → Product surface) and run vendor scripts. what bounds
 	 * that is argued in ../../../document-policy.ts's header.
 	 *

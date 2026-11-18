@@ -65,7 +65,7 @@ export async function meterPublicApi(
 }
 
 /**
- * the bound on a donor page — `/donate` and each campaign's address — as a `middleware` on each
+ * the bound on a donor page — `/` and each campaign's address — as a `middleware` on each
  * of the two routes.
  *
  * the page is the same served-config ladder `/api/v1` bounds and more — the organisation's rows,

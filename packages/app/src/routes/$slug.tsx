@@ -29,26 +29,26 @@ import type { Route } from './+types/$slug';
 
 // a campaign at its own address: `/{slug}` on the deployment, one top-level segment.
 //
-// a donor screen, dressed and served as ./donate.tsx is — the form's sheets, the donor
+// a donor screen, dressed and served as ./_index.tsx is — the form's sheets, the donor
 // document policy, no operator component — and everything that route's header says of the reader,
 // the origin and the gift holds here unchanged. the gift goes through the card to
 // `/api/v1/forms/:id/donations` against the campaign's owned settings row; there is no action.
 //
-// every static top-level route outranks this one in react router's matcher, so `/donate`,
-// `/admin` and the rest never arrive here (../routes.spec.ts holds it), and $lib/page/slug.ts
-// refuses a campaign the address of any of them. what does arrive is every other single segment
-// anyone types or scans for, so an address no campaign could hold is refused before the database
-// is read. the matcher ignores case and a slug is lowercase, so a capital is one of those: the
-// refusal, never a redirect to the other spelling.
+// `/` has no segment for `:slug` to bind, and every static top-level route outranks this one in
+// react router's matcher, so `/`, `/donate`, `/admin` and the rest never arrive here
+// (../routes.spec.ts holds it), and $lib/page/slug.ts refuses a campaign the address of any of
+// them. what does arrive is every other single segment anyone types or scans for, so an address no
+// campaign could hold is refused before the database is read. the matcher ignores case and a slug
+// is lowercase, so a capital is one of those: the refusal, never a redirect to the other spelling.
 //
 // a `live` campaign draws its published page, read through the rule $lib/server/pages/view.ts
 // applies; where that rule refuses the document, the plain page of its donation settings is drawn
-// instead and the refusal is logged. either is `no-store`, for the reason ./donate.tsx gives.
+// instead and the refusal is logged. either is `no-store`, for the reason ./_index.tsx gives.
 //
 // an `ended` campaign — ended by End, or live and past its published end date, which reads the same
 // ($lib/page/ended.ts) — still holds its address, so the address answers 200 with the ended screen:
 // the organisation's name and logo atop it, the campaign's name, that it has ended, the way on to
-// /donate, and the site footer's legal details at the foot, in the organisation's brand colour,
+// `/`, and the site footer's legal details at the foot, in the organisation's brand colour,
 // with none of its content and no donation box,
 // since its owned settings row is out of service (`endCampaign` in $lib/server/pages/queries.ts,
 // and read so past the end date by `readPublishedConfig`).
@@ -101,7 +101,7 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 	);
 	if (loaded.kind === 'refused') return refusedPage();
 	const drawn = await withFundraiserEntry(db, loaded);
-	// a donor's return from authorizing their gift, read as ./donate.tsx reads it: the stamp naming
+	// a donor's return from authorizing their gift, read as ./_index.tsx reads it: the stamp naming
 	// this campaign's own settings row, and nothing else.
 	const { formId } = drawn.kind === 'page' ? drawn.view.config : drawn.config;
 	const resuming = new URL(request.url).searchParams.get(RESUME_FORM_PARAM) === formId;
@@ -112,13 +112,13 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
  * the loader runs again only for an address naming another campaign, which owns another settings
  * row and so serves another config. on the same address a re-read could only swap the config under
  * a gift in progress and end it, and would answer `resuming: false` under a claimed return — the
- * argument is `shouldRevalidate` in ./donate.tsx.
+ * argument is `shouldRevalidate` in ./_index.tsx.
  */
 export function shouldRevalidate({ currentParams, nextParams }: ShouldRevalidateFunctionArgs) {
 	return currentParams.slug !== nextParams.slug;
 }
 
-/** every answer's `cache-control`, carried out of the loader as ./donate.tsx carries it. */
+/** every answer's `cache-control`, carried out of the loader as ./_index.tsx carries it. */
 export function headers({ loaderHeaders }: Route.HeadersArgs) {
 	return loaderHeaders;
 }

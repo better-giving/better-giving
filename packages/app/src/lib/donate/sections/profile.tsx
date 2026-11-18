@@ -1,6 +1,6 @@
 import type { DonateProfile } from '../profile';
 
-// the Donation page's profile head at /donate: the banner, the logo or a badge of the name's
+// the Donation page's profile head at `/`: the banner, the logo or a badge of the name's
 // initials, and the name and the EIN. each part draws only where the organisation has what it
 // shows; ../page-view.tsx picks the layout the parts stand in ($lib/page/profile-shape.ts) and works
 // out the initials and the name's length, which it shares with the title.

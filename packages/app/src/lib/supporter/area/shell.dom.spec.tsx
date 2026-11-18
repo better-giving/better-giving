@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { StaffMarkerContext } from '../../donate/staff-marker-context';
 import { ACCOUNT, mountScreen, ORG, one } from './area.testing';
 import { SupporterShell, type SupporterOrg } from './shell';
 
@@ -32,7 +33,7 @@ describe('the supporter area’s site footer', () => {
 		);
 	});
 
-	it('draws no links where the organisation has set none', () => {
+	it('draws no links where the organisation has set none, and a donor is shown no staff link', () => {
 		const { root } = frame();
 		const footer = one(root, 'footer');
 		expect(footer.querySelector('nav')).toBeNull();
@@ -51,8 +52,21 @@ describe('the supporter area’s site footer', () => {
 		]);
 	});
 
-	it('draws no footer where nothing is set', () => {
+	it('draws no footer where nothing is set and no marker is present', () => {
 		const { root } = frame({ legalName: null });
 		expect(root.querySelector('footer')).toBeNull();
+	});
+
+	it('ends with the console link on a browser carrying the returning-staff marker', () => {
+		const { root } = mountScreen(() => (
+			<StaffMarkerContext value={true}>
+				<SupporterShell org={ORG} account={ACCOUNT}>
+					<h1>Your fundraisers</h1>
+				</SupporterShell>
+			</StaffMarkerContext>
+		));
+		const links = [...one(root, 'footer nav[aria-label="Footer"]').querySelectorAll('a')];
+		expect(links.at(-1)?.textContent).toBe('Console');
+		expect(links.at(-1)?.getAttribute('href')).toBe('/admin');
 	});
 });

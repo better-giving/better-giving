@@ -23,7 +23,7 @@ function fixture(state: BannerState = 'public', hasEdits = false): Loaded {
 		takingGifts: true,
 		banner: {
 			state,
-			address: '/donate',
+			address: '/',
 			preview: '/preview/d1',
 			unpublishable: false,
 			endable: false,

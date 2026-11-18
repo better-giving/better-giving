@@ -33,8 +33,8 @@ import { renderSubjects } from '$lib/server/webhooks/payload';
 import { donorEventOf, readGiftEvents } from '$lib/server/zapier/payload';
 import { requestContext } from '../request-context';
 import { mountRoutes, queryDocument } from '../route-request.testing';
-import * as donatePage from './donate';
-import * as donateMessages from './donate.messages';
+import * as donatePage from './_index';
+import * as donateMessages from './donate_.messages';
 import * as integrations from './integrations.v1';
 import * as integrationGifts from './integrations.v1.gifts';
 import * as integrationDonors from './integrations.v1.donors';
@@ -203,14 +203,14 @@ describe('the employer is absent from', () => {
 		const handler = createStaticHandler([
 			{
 				id: 'donate',
-				path: 'donate',
+				path: '/',
 				middleware: donatePage.middleware as unknown as MiddlewareFunction[],
 				loader: donatePage.loader as unknown as LoaderFunction
 			}
 		]);
 		const answered = await queryDocument(
 			handler,
-			new Request(`${OWN}/donate`),
+			new Request(`${OWN}/`),
 			requestContext({ env, deferred: createDeferredWork(), client })
 		);
 		expect(JSON.stringify(answered.loaderData.donate)).toContain('For the winter pantry');
@@ -218,10 +218,7 @@ describe('the employer is absent from', () => {
 	});
 
 	it('the donation page’s message list, and the reader every fundraiser’s list shares', async () => {
-		const more = mountRoutes([
-			{ path: 'donate', module: donatePage },
-			{ path: 'messages', module: donateMessages }
-		]);
+		const more = mountRoutes([{ path: 'donate/messages', module: donateMessages }]);
 		const answer = await more(
 			new Request(`${OWN}/donate/messages`, {
 				headers: { [CLIENT_IP_HEADER]: '2001:db8:7731::1' }

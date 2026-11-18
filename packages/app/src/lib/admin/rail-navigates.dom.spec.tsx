@@ -50,7 +50,7 @@ function stub() {
 					groups={DESTINATION_GROUPS}
 					current={{ label: first.label, kind: 'page' }}
 					staff={{ name: 'Nadia Hart', email: 'nadia@riverside.example' }}
-					donationPage="/donate"
+					donationPage="/"
 					editDonationPage="/admin/donation-page"
 					onSignOut={() => {}}
 					link={RouterLink}

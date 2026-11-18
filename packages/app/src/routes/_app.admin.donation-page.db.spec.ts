@@ -147,7 +147,7 @@ describe('the Donation page edit page', () => {
 			unreadable: false,
 			banner: {
 				state: 'public',
-				address: '/donate',
+				address: '/',
 				preview: `/preview/${made?.id}`,
 				unpublishable: false
 			},

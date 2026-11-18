@@ -14,6 +14,8 @@ import { operatorLinks } from '$lib/admin/operator-links';
 import { LOGS_SAY_WHY } from '$lib/deployment-logs';
 import { useAdminForm } from '$lib/admin/use-admin-form';
 import { defineForm } from '$lib/forms/definition';
+import { cookiesSecure } from '$lib/server/runtime/cookie-scheme';
+import { staffMarkerCookie } from '$lib/staff-marker';
 import {
 	isRateLimited,
 	signInRateLimitKey,
@@ -388,7 +390,7 @@ export async function action({ context, request, url }: Route.ActionArgs) {
 	return signedInAt(url, cookies);
 
 	/**
-	 * back to the page the gate turned them away from, and the app's entrance at `/` when there is
+	 * back to the page the gate turned them away from, and the dashboard at `/admin` when there is
 	 * nowhere to go back to. what may be returned to, and what stands in when nothing may, is
 	 * `signInDestination` in $lib/server/auth/next.ts — an open-redirect control and the whole of
 	 * one, so a candidate it refuses is replaced in silence and never quoted into a message.
@@ -401,6 +403,9 @@ export async function action({ context, request, url }: Route.ActionArgs) {
 	function signedInAt(destination: URL, minted: readonly string[]): Response {
 		const response = redirect(signInDestination(destination), 303);
 		for (const cookie of minted) response.headers.append('set-cookie', cookie);
+		// the returning-staff marker, which the donor pages' footer reads to draw its Console link
+		// ($lib/staff-marker.ts). set on a successful sign-in only and never cleared on sign-out.
+		response.headers.append('set-cookie', staffMarkerCookie(cookiesSecure(request)));
 		return response;
 	}
 }

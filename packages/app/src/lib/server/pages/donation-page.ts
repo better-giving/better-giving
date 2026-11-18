@@ -10,8 +10,8 @@ import { type ProgramOption, readActivePrograms } from '../programs/queries';
 import { readDocument } from './document';
 import { type DraftSettings, settingsOfRow } from './queries';
 
-// the donation page, made the first time anything needs it: /donate, its editor, or a new campaign
-// copying its donation settings. no migration seeds it, so a fresh deployment answers /donate before
+// the donation page, made the first time anything needs it: `/`, its editor, or a new campaign
+// copying its donation settings. no migration seeds it, so a fresh deployment answers `/` before
 // anyone has opened the editor.
 //
 // the race between two first needs is settled by the table, not by a read: the page and its owned
@@ -20,7 +20,7 @@ import { type DraftSettings, settingsOfRow } from './queries';
 // insert would let the losing batch commit its settings row with no page naming it.
 //
 // **the program follows the active programs until the operator chooses.** the page is made on a
-// fresh deployment's first /donate, before any program exists, so a mode fixed then would ask
+// fresh deployment's first `/`, before any program exists, so a mode fixed then would ask
 // nothing for good. while the live page carries no donation settings of its own, its settings row
 // asks donors to choose with two programs or more active, pins the one with exactly one, and asks
 // nothing with none (`followedProgram`), brought up to date by every read through

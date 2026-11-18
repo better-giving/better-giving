@@ -3,10 +3,16 @@
  * request to. the screen it names is `src/routes/login.tsx`.
  *
  * a bare path, as every server redirect in this app is — see the note on the redirect in
- * `src/routes/_app._index.tsx` for why, and for what a fork that ever configured a base path would
+ * `src/routes/donate.tsx` for why, and for what a fork that ever configured a base path would
  * have to change all at once.
  */
 export const LOGIN_PATH = '/login';
+
+/**
+ * where a sign-in with nothing to return to ends up: the dashboard, the staff surface's own
+ * address.
+ */
+const DASHBOARD_PATH = '/admin';
 
 /** the query parameter the gate mints and the sign-in page reads back. */
 export const NEXT_PARAM = 'next';
@@ -34,9 +40,9 @@ function isPathOnly(value: string): boolean {
  * this is an open-redirect control and it is the whole of one. the parameter it validates arrives
  * on a url an attacker composes: a link to this deployment's own `/login`, carrying a destination
  * of their choosing, which the operator signs in at and is then sent to. so a candidate is honoured
- * only when it is a path inside this deployment, and anything else is replaced by `/` in silence —
- * never echoed into a message, because a message quoting the rejected value hands the attacker the
- * page they wanted the operator to read.
+ * only when it is a path inside this deployment, and anything else is replaced by the dashboard in
+ * silence — never echoed into a message, because a message quoting the rejected value hands the
+ * attacker the page they wanted the operator to read.
  *
  * a path is not decided by its first character alone. the candidate is resolved against an origin
  * that cannot be reached, and the result is honoured only if it still names that origin — which is
@@ -71,21 +77,21 @@ export function safeNext(raw: string | null | undefined): string | null {
 }
 
 /**
- * where a sign-in ends up: the destination the gate turned away, or `/` when there is none.
+ * where a sign-in ends up: the destination the gate turned away, or the dashboard when there is
+ * none.
  *
  * the candidate arrives on the sign-in page's own url, because the gate redirects there with it
  * (`?next=…`) and a `<Form method="post">` with no `action` posts to the current url, query string
  * included — so `src/routes/login.tsx` reads it off `url` in its `loader` and again in its
  * `action`, and neither the page nor the browser has to carry it in a field.
  *
- * the default is `/`, which is the app's entrance rather than a screen: it forwards to the home
- * screen, so what home is stays decided in one place (`src/routes/_app._index.tsx`) rather than in
- * every module that has to send somebody there. naming a section here instead would be a second
- * answer to keep in step with that one.
+ * the default is `/admin`, never `/`: `/` is the organisation's public donation page
+ * (`src/routes/_index.tsx`), so a staff member who signs in with nothing to return to lands on
+ * the dashboard rather than on the page donors see.
  *
  * it sits beside `safeNext` rather than on the screen because both halves of one rule belong
  * together: what may be returned to, and what stands in when nothing may.
  */
 export function signInDestination(url: URL): string {
-	return safeNext(url.searchParams.get(NEXT_PARAM)) ?? '/';
+	return safeNext(url.searchParams.get(NEXT_PARAM)) ?? DASHBOARD_PATH;
 }

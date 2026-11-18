@@ -31,7 +31,7 @@ import { readEditorSettings } from './editor';
 
 const BLANK_STORY: RichTextDocument = { type: 'doc', content: [{ type: 'paragraph' }] };
 
-const DONATION_PAGE_ADDRESS = '/donate';
+const DONATION_PAGE_ADDRESS = '/';
 
 const placed = (photo: PageDocument['hero']): PlacedPhoto | null =>
 	photo === undefined ? null : { imageId: photo.imageId, src: imageSrc(photo.imageId) };

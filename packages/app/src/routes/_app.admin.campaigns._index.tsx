@@ -448,8 +448,8 @@ export default function Campaigns({ loaderData, actionData }: Route.ComponentPro
 				>
 					<p className="adm-prose">
 						<code className="adm-chip">{ending.address}</code> will say the campaign has ended and
-						link to <code className="adm-chip">/donate</code>. Monthly gifts started on it keep
-						charging until they’re stopped.
+						link to <code className="adm-chip">/</code>. Monthly gifts started on it keep charging
+						until they’re stopped.
 					</p>
 				</RowConfirm>
 			) : null}

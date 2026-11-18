@@ -306,7 +306,7 @@ export function imageRateLimitKey(request: Request): string | null {
 }
 
 /**
- * what one view of a donor page — `/donate` or a campaign's address — counts against, and `null`
+ * what one view of a donor page — `/` or a campaign's address — counts against, and `null`
  * for a caller with no bucket at all: charged against the surface limiter by
  * `meterDonorPage` in ./meter.ts, under a prefix of its own for the reason `imageRateLimitKey`
  * above has one, and unattributed callers uncounted for the same reason.

@@ -338,7 +338,7 @@ export type BannerState = 'not_public' | 'ended' | 'public' | 'changed';
 
 export type EditBanner = {
 	readonly state: BannerState;
-	/** where donors reach the page — `/winter-coats`, `/donate` — or null where it holds no address. */
+	/** where donors reach the page — `/winter-coats`, `/` — or null where it holds no address. */
 	readonly address: string | null;
 	/** the preview route framing the draft. */
 	readonly preview: string;

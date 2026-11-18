@@ -1,5 +1,6 @@
 import type { Client } from '@libsql/client';
 import { ADMIN_USERNAME } from '@better-giving/operator/admin-password';
+import { COOKIE_SCHEME_HEADER } from '$lib/server/runtime/cookie-scheme';
 import { CLIENT_IP_HEADER } from '$lib/server/runtime/client-ip';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { signInRateLimitMessage } from '$lib/server/api/rate-limit';
@@ -152,16 +153,16 @@ describe('GET /login — a visitor who is already signed in', () => {
 		expect((answer as Response).headers.get('location')).toBe('/admin/donors');
 	});
 
-	it("is sent to the app's entrance when there is no destination, or it does not validate", async () => {
+	it('is sent to the dashboard when there is no destination, or it does not validate', async () => {
 		const cookie = await signIn();
 
 		const bare = await visit('', cookie);
 		const hostile = await visit('?next=%2F%2Fevil.example', cookie);
 
-		expect((bare as Response).headers.get('location')).toBe('/');
+		expect((bare as Response).headers.get('location')).toBe('/admin');
 		// silently. an attacker composes the url this parameter arrives on, so a message quoting
 		// the value it refused would be their page, one click further away ($lib/server/auth/next.ts).
-		expect((hostile as Response).headers.get('location')).toBe('/');
+		expect((hostile as Response).headers.get('location')).toBe('/admin');
 	});
 
 	/** and an anonymous visitor is left to sign in, which is what the page is for. */
@@ -327,10 +328,18 @@ function post(
 		search = '',
 		ip = `2001:db8:${(0x1000 + callersMinted++).toString(16)}::1`,
 		site,
+		scheme,
 		deployed = DEPLOYED
-	}: { search?: string; ip?: string | null; site?: string; deployed?: typeof DEPLOYED } = {}
+	}: {
+		search?: string;
+		ip?: string | null;
+		site?: string;
+		scheme?: string;
+		deployed?: typeof DEPLOYED;
+	} = {}
 ) {
 	const headers = new Headers({ origin: ORIGIN });
+	if (scheme) headers.set(COOKIE_SCHEME_HEADER, scheme);
 	if (ip !== null) headers.set(CLIENT_IP_HEADER, ip);
 	if (site) headers.set('sec-fetch-site', site);
 	return action(
@@ -378,11 +387,11 @@ describe('POST /login — where a sign-in ends up', () => {
 		expect((answer as Response).headers.get('location')).toBe('/admin/forms/abc/settings?tab=x');
 	});
 
-	/** the ordinary sign-in, which nobody was redirected into: the app's entrance at `/`. */
-	it("lands on the app's entrance when there is no destination", async () => {
+	/** the ordinary sign-in, which nobody was redirected into: the dashboard at `/admin`. */
+	it('lands on the dashboard when there is no destination', async () => {
 		const answer = await post(typed(PASSWORD));
 
-		expect((answer as Response).headers.get('location')).toBe('/');
+		expect((answer as Response).headers.get('location')).toBe('/admin');
 	});
 
 	/**
@@ -394,13 +403,13 @@ describe('POST /login — where a sign-in ends up', () => {
 	 * `safeNext` in $lib/server/auth/next.ts is where the rule lives and where its spellings are
 	 * enumerated; what is asserted here is that this route spends it at all.
 	 */
-	it("lands on the app's entrance when the destination names another origin", async () => {
+	it('lands on the dashboard when the destination names another origin', async () => {
 		for (const hostile of ['https://evil.example', '//evil.example', '/\\evil.example']) {
 			const answer = await post(typed(PASSWORD), {
 				search: `?next=${encodeURIComponent(hostile)}`
 			});
 
-			expect((answer as Response).headers.get('location')).toBe('/');
+			expect((answer as Response).headers.get('location')).toBe('/admin');
 		}
 	});
 
@@ -415,6 +424,41 @@ describe('POST /login — where a sign-in ends up', () => {
 
 		expect(await sessions()).toBe(1);
 		expect(answer.headers.getSetCookie().some((value) => value.includes('session'))).toBe(true);
+	});
+
+	/**
+	 * and the returning-staff marker beside it ($lib/staff-marker.ts): the fixed value and no
+	 * session data, scoped to the whole site, kept about a year, and not readable by a script.
+	 */
+	it('sets the returning-staff marker, and nothing of the session in it', async () => {
+		const answer = (await post(typed(PASSWORD))) as Response;
+
+		const marker = answer.headers
+			.getSetCookie()
+			.find((value) => value.startsWith('bg_staff_seen='));
+		expect(marker).toBeDefined();
+		expect(marker).toContain('bg_staff_seen=1;');
+		expect(marker).toContain('Path=/');
+		expect(marker).toContain('Max-Age=31536000');
+		expect(marker).toContain('HttpOnly');
+		expect(marker).toContain('SameSite=Lax');
+		// the spec's origin is https, so the marker is Secure (plain http is ../lib/staff-marker.spec.ts).
+		expect(marker).toContain('; Secure');
+		expect(marker).not.toContain('session');
+	});
+
+	// behind a TLS proxy the request's own scheme reads `http:`, and the entry stamps the pinned
+	// scheme instead ($lib/server/runtime/cookie-scheme.ts): the marker follows that, not the url.
+	it.each([
+		['https:', true],
+		['http:', false]
+	])('takes Secure for the marker from the pinned scheme %s', async (scheme, secure) => {
+		const answer = (await post(typed(PASSWORD), { scheme })) as Response;
+
+		const marker = answer.headers
+			.getSetCookie()
+			.find((value) => value.startsWith('bg_staff_seen='));
+		expect(marker?.includes('; Secure')).toBe(secure);
 	});
 });
 

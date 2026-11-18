@@ -231,7 +231,7 @@ describe('the donation page', () => {
 		expect(await h.db.select().from(page)).toEqual([]);
 	});
 
-	it('reads the live donation page at /donate as its heading, with no blocks and no share buttons', async () => {
+	it('reads the live donation page at / as its heading, with no blocks and no share buttons', async () => {
 		const key = await connect();
 		await ensureDonationPage(h.db);
 
@@ -241,7 +241,7 @@ describe('the donation page', () => {
 		const read = (await response.json()) as Record<string, unknown>;
 		expect(read).toMatchObject({
 			status: 'published',
-			public_url: `${ORIGIN}/donate`,
+			public_url: `${ORIGIN}/`,
 			has_unpublished_changes: false,
 			sharing: { message: null },
 			content: { heading: expect.any(String) },

@@ -76,7 +76,9 @@ async function signIn(): Promise<string> {
 
 	const cookies = headers.getSetCookie().map((value) => value.split(';', 1)[0]);
 	expect(cookies.length).toBeGreaterThan(0);
-	return cookies.join('; ');
+	// a browser that signed in holds the returning-staff marker as well, so the gate has none to add
+	// beside the cookie this case is about ($lib/staff-marker.ts).
+	return [...cookies, 'bg_staff_seen=1'].join('; ');
 }
 
 /**

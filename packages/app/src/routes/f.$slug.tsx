@@ -36,7 +36,7 @@ import type { Route } from './+types/f.$slug';
 // its card; ended answers 200 with the ended screen and its final total, since the address still
 // holds; hidden, pending and an address nobody holds are the same 404 an unknown campaign address
 // gets, with the same body. a live page whose served config refuses is that 404 too, as a refused
-// campaign is. every answer is `no-store`, for ./donate.tsx's reason. live alone carries share tags
+// campaign is. every answer is `no-store`, for ./_index.tsx's reason. live alone carries share tags
 // in its head ($lib/server/supporters/share.ts); ended keeps its title and nothing more.
 
 export const middleware: Route.MiddlewareFunction[] = [meterDonorPage];
@@ -94,7 +94,7 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 						frame.org.logo ?? null
 					),
 					fundraiserEntry,
-					// a donor's return from authorizing their gift, read as ./donate.tsx reads it.
+					// a donor's return from authorizing their gift, read as ./_index.tsx reads it.
 					resuming: url.searchParams.get(RESUME_FORM_PARAM) === formId,
 					now: new Date(now).toISOString()
 				},
@@ -111,7 +111,7 @@ export function shouldRevalidate({ currentParams, nextParams }: ShouldRevalidate
 	return currentParams.slug !== nextParams.slug;
 }
 
-/** every answer's `cache-control`, carried out of the loader as ./donate.tsx carries it. */
+/** every answer's `cache-control`, carried out of the loader as ./_index.tsx carries it. */
 export function headers({ loaderHeaders }: Route.HeadersArgs) {
 	return loaderHeaders;
 }

@@ -164,6 +164,8 @@ const CAMPAIGN_GENERAL = defineForm({
 	schema: CAMPAIGN_GENERAL_INPUT
 });
 
+// the address ../../../routes/donate.tsx reserves by redirecting it to the donation page, which is
+// drawn at `/`: a slug of `donate` clashes with that redirect, so the refusal names the page.
 const DONATION_PAGE_PATH = '/donate';
 
 /** the address rule's refusal as the predicate under the link's box. */

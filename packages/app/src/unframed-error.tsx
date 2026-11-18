@@ -7,12 +7,12 @@ import { ErrorState, errorTitle } from '$lib/error-state';
 import operatorSheet from './app.css?url';
 
 /**
- * the ids react router gives the donor pages: ./routes/donate.tsx, ./routes/$slug.tsx and a
+ * the ids react router gives the donor pages: ./routes/_index.tsx, ./routes/$slug.tsx and a
  * supporter's fundraiser, ./routes/f.$slug.tsx. the routes' `donor` handle is not the test, since
  * the staff previews carry it too.
  */
 const DONOR_PAGE_ROUTE_IDS: ReadonlySet<string> = new Set([
-	'routes/donate',
+	'routes/_index',
 	'routes/$slug',
 	'routes/f.$slug'
 ]);
@@ -58,7 +58,7 @@ export function UnframedError() {
 	// boundary, and neither ./root.tsx nor ./routes/_app.tsx exports `meta`.
 	//
 	// a donor page is the organisation's and not the project's, so there the second half is the
-	// word its own tab falls back to (`meta` in ./routes/donate.tsx). which page this is comes off
+	// word its own tab falls back to (`meta` in ./routes/_index.tsx). which page this is comes off
 	// the matched route's id and never its data, for the same reason the name does.
 	const onDonorPage = useMatches().some((match) => isDonorPage(match.id));
 	const tab = (face: string) => <title>{`${face} · ${onDonorPage ? 'Donate' : APP_NAME}`}</title>;

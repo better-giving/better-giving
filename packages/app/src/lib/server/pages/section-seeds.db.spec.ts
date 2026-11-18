@@ -188,7 +188,7 @@ describe('the banner', () => {
 
 		expect(editBanner(await row(pageId), NOW)).toEqual({
 			state: 'public',
-			address: '/donate',
+			address: '/',
 			preview: `/preview/${pageId}`,
 			unpublishable: false,
 			endable: false,

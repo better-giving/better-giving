@@ -113,8 +113,14 @@ const PROCESSOR_CALLBACKS: Readonly<Record<string, string>> = {
 	'routes/api.nowpayments.webhook.ts': NOWPAYMENTS_IPN_PATH
 };
 
-/** the donation page, at `/donate`. */
-const DONOR_PAGE = 'routes/donate.tsx';
+/** the donation page, at `/`. */
+const DONOR_PAGE = 'routes/_index.tsx';
+
+/** the donation page's old address, `/donate`, which answers a permanent redirect to `/`. */
+const DONOR_PAGE_REDIRECT = 'routes/donate.tsx';
+
+/** Show more messages on the donation page, at `/donate/messages`. */
+const DONOR_MESSAGES = 'routes/donate_.messages.ts';
 
 /** a campaign, at its own top-level address. */
 const CAMPAIGN_PAGE = 'routes/$slug.tsx';
@@ -239,13 +245,21 @@ const PUBLIC_ROUTE_FILES: readonly string[] = [
 	// stands in for a session is the `state` that went out with it, in a cookie on that same browser
 	// and cleared on every arm — so the round trip cannot be made twice.
 	'routes/quickbooks.callback.tsx',
-	// the donation page, opened from a link the organisation published. it is unauthenticated
+	// the donation page's old address, which holds a permanent redirect to `/` and nothing else: it
+	// is unauthenticated for the donation page's reason and reads and writes nothing, and what
+	// follows the redirect is metered on the page it lands on.
+	DONOR_PAGE_REDIRECT,
+	// the donation page, at the deployment's own address and its public home page, opened from a
+	// link the organisation published or by typing the address. it is unauthenticated
 	// because a donor holds no session and never could — there is nobody for a gate here to ask
 	// about. it initiates no payment itself and takes no submission: the gift goes through the
 	// endpoint above it, same-origin, which owes all four of that surface's checks. the one write
 	// its loader makes is the page itself, once per deployment — the one-Donation-page index turns
 	// every later arrival into a read. and what it hands the browser is the served config alone,
-	// never the `form` row it was read from — that row carries `allowed_origins`.
+	// never the `form` row it was read from — that row carries `allowed_origins`. on a deployment
+	// with no organisation set up it answers a temporary redirect to `/admin` and nothing else, so
+	// the first visitor lands in setup; that reads one row and sends a caller who holds no session to
+	// the dashboard's own gate.
 	DONOR_PAGE,
 	// a campaign's page, opened from a link the organisation published, and public for the same
 	// reasons: no session, no submission, the gift through the endpoint above, the served config
@@ -253,11 +267,12 @@ const PUBLIC_ROUTE_FILES: readonly string[] = [
 	// database is read, so a scanner walking top-level paths costs this deployment no query.
 	CAMPAIGN_PAGE,
 	// Show more messages on the donation page, fetched by that page ($lib/donate/show-more.ts) for a
-	// donor who holds no session. a read, charged to the donation page's own meter by nesting under
-	// it, and what it answers is what the page already shows: nothing where the page draws no
+	// donor who holds no session. a read, charged to the donation page's own meter by mounting the
+	// same middleware (it cannot nest under ./routes/donate.tsx, which only redirects), and what it
+	// answers is what the page already shows: nothing where the page draws no
 	// messages ($lib/server/pages/view.ts), and a hidden note, a donor's surname, address or amount
 	// is in no row it reads out ($lib/server/pages/messages.ts).
-	'routes/donate.messages.ts',
+	DONOR_MESSAGES,
 	// a page's photos, fetched by the `<img>` of a donor who holds no session. it reads bytes by id
 	// and writes nothing, and a draft's image is as reachable by its id as a live one's: the id is a
 	// uuidv7 minted by `createImage` ($lib/server/images/queries.ts), whose random bits nobody outside
@@ -287,7 +302,7 @@ const PUBLIC_ROUTE_FILES: readonly string[] = [
 	// fundraiser's own settings row, which serves only while the page is live and shown. its loader
 	// writes nothing, and a page the public may not see is the same 404 an unknown address is.
 	FUNDRAISER_PAGE,
-	// Show more messages on that page, as ./routes/donate.messages.ts is on the donation page: a
+	// Show more messages on that page, as ./routes/donate_.messages.ts is on the donation page: a
 	// read, charged to the page's own meter by nesting under it, listing only what the page shows.
 	'routes/f.$slug.messages.ts',
 	// Start a fundraiser, for a member of the public who holds no session by definition. its write is
@@ -597,13 +612,15 @@ describe('the route surface', () => {
 		expect(uncheckedConnectorRoutes(routes)).toEqual([]);
 	});
 
-	// the home page is behind the login though all it does is forward to the first screen. stated
-	// as its own case rather than left to the sweep, because its position is the one that looks
-	// accidental: a home page outside the gate reads like where a home page goes.
-	it('keeps the entrance behind the gate', () => {
-		const entrance = routes.find((r) => r.file === 'routes/_app._index.tsx');
+	// the home page is the donation page, public and outside the gate. stated as its own case rather
+	// than left to the sweep, because its position is the one that looks accidental: a home page
+	// beside the staff gate reads like a route that lost it. the dashboard it used to forward to is
+	// `/admin`, below.
+	it('serves the donation page at the entrance, outside the gate', () => {
+		const entrance = routes.find((r) => r.file === DONOR_PAGE);
 		expect(entrance?.path).toBe('/');
-		expect(entrance ? under(entrance, PROTECTED_LAYOUT) : false).toBe(true);
+		expect(entrance ? under(entrance, PROTECTED_LAYOUT) : true).toBe(false);
+		expect(PUBLIC_ROUTE_FILES).toContain(DONOR_PAGE);
 	});
 
 	// and `/admin` is behind it too, for the same reason and with the same content: nothing to
@@ -690,8 +707,9 @@ describe('the route surface', () => {
 		{ address: '/forgot', file: 'routes/forgot.tsx' },
 		{ address: '/reset', file: 'routes/reset.tsx' },
 		{ address: '/admin', file: 'routes/_app.admin._index.tsx' },
-		{ address: '/donate', file: DONOR_PAGE },
-		{ address: '/donate/messages', file: 'routes/donate.messages.ts' },
+		{ address: '/', file: DONOR_PAGE },
+		{ address: '/donate', file: DONOR_PAGE_REDIRECT },
+		{ address: '/donate/messages', file: DONOR_MESSAGES },
 		{ address: '/preview/0198c1d2-0000-7000-8000-000000000001', file: PREVIEW_PAGE },
 		{
 			address: '/admin/supporter-pages/0198c1d2-0000-7000-8000-000000000001/preview',
@@ -778,6 +796,7 @@ describe('where middleware is mounted', () => {
 				ZAPIER_LAYOUT,
 				...PREVIEW_PAGES,
 				DONOR_PAGE,
+				DONOR_MESSAGES,
 				CAMPAIGN_PAGE,
 				FUNDRAISER_PAGE
 			].sort()
@@ -786,7 +805,7 @@ describe('where middleware is mounted', () => {
 
 	// a donor page reads what `/api/v1` bounds and more, so it is metered as that surface is, on a
 	// bucket of its own ($lib/server/api/meter.ts, `meterDonorPage`). the meter alone, and on both.
-	it.each([DONOR_PAGE, CAMPAIGN_PAGE, FUNDRAISER_PAGE])(
+	it.each([DONOR_PAGE, DONOR_MESSAGES, CAMPAIGN_PAGE, FUNDRAISER_PAGE])(
 		'is the donor page meter alone on %s',
 		(file) => {
 			expect(readFromDisk(file) ?? '').toMatch(
@@ -908,7 +927,7 @@ describe('the stylesheet a screen outside the layout carries', () => {
 	 * `border` on `*` and `background` on every control, from a layer the form's own unlayered
 	 * rules then outrank back. src/app.css argues both directions.
 	 *
-	 * the import rather than the name, because ./routes/donate.tsx's header names the helper to say
+	 * the import rather than the name, because ./routes/_index.tsx's header names the helper to say
 	 * it does not use it.
 	 */
 	it.each([...DONOR_PAGES, ...PREVIEW_PAGES])(

@@ -10,7 +10,7 @@ import { MarkedText } from '@better-giving/operator/marked-text.react';
 // form's own set ticked.
 //
 // the ticked sites are the whole of where a form loads. a form is for pasting into a site and has
-// no page of its own — the deployment's donation page at `/donate` draws its donation box from the
+// no page of its own — the deployment's donation page at `/` draws its donation box from the
 // page's own settings row, not from any form — so a form with nothing ticked loads nowhere, and the
 // group says so.
 //

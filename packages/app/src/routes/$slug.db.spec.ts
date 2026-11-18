@@ -49,7 +49,7 @@ const env = readEnv({}, specRateLimiters());
 
 // a campaign at its own address, against a real database.
 //
-// a db spec for the reason ./donate.db.spec.ts gives: every answer is decided from rows,
+// a db spec for the reason ./_index.db.spec.ts gives: every answer is decided from rows,
 // and the loader runs through react router's own matcher so a refusal's status is the framework's.
 
 /** this deployment's own origin, which every request in this file is made to. */
@@ -427,7 +427,7 @@ function element(html: string, tag: string, attribute: string): string {
 }
 
 describe('an ended campaign at its address', () => {
-	it('says it has ended and sends the donor on to /donate, with nothing to give through', async () => {
+	it('says it has ended and sends the donor on to /, with nothing to give through', async () => {
 		await endedCampaign();
 
 		const answered = await visit();
@@ -436,7 +436,7 @@ describe('an ended campaign at its address', () => {
 		const html = markup(answered.data);
 		expect(element(html, 'h1', '')).toContain('Ended: Winter coat drive');
 		const link = element(html, 'a', 'part="action"');
-		expect(link).toContain('href="/donate"');
+		expect(link).toContain('href="/"');
 		expect(link).toContain('Donate to Hope Foundation');
 		expect(html).toMatch(/^<div[^>]*data-donate-root/);
 		expect(html).not.toContain('data-area="title"');
@@ -454,7 +454,7 @@ describe('an ended campaign at its address', () => {
 		expect(html).not.toContain('Renamed since');
 	});
 
-	it('names the organisation atop the screen, as /donate does', async () => {
+	it('names the organisation atop the screen, as / does', async () => {
 		await endedCampaign();
 		const answered = await visit();
 		expect(masthead(markup(answered.data))).toContain('Hope Foundation');

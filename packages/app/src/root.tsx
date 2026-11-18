@@ -1,8 +1,10 @@
 import type { ReactNode } from 'react';
 import { Links, Meta, Outlet, Scripts, ScrollRestoration } from 'react-router';
 import type { Route } from './+types/root';
+import { StaffMarkerContext } from '$lib/donate/staff-marker-context';
+import { hasStaffMarker } from '$lib/staff-marker';
 // the operator stylesheet is not linked here, and that absence is the mechanism: the document
-// below renders the donor pages, `/donate` and each campaign's address, as well as every operator
+// below renders the donor pages, `/` and each campaign's address, as well as every operator
 // screen, and the donation form's sheets are unlayered while every operator declaration is
 // layered (./app.css) — so a document that carried both would let one side outrank the other on
 // every property only one of them sets. each surface links its own chain from its own `links`;
@@ -51,8 +53,19 @@ export function Layout({ children }: { children: ReactNode }) {
 	);
 }
 
-export default function App() {
-	return <Outlet />;
+// whether this browser has signed in as staff before, read off the `Cookie` header alone
+// ($lib/staff-marker.ts): the site footer draws its Console link on that (./lib/donate/site-footer.tsx).
+// it reads no session, no signing key and no row, so a donor view costs what it did.
+export function loader({ request }: Route.LoaderArgs) {
+	return { staffMarker: hasStaffMarker(request.headers) };
+}
+
+export default function App({ loaderData }: Route.ComponentProps) {
+	return (
+		<StaffMarkerContext value={loaderData.staffMarker}>
+			<Outlet />
+		</StaffMarkerContext>
+	);
 }
 
 /**

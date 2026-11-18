@@ -9,6 +9,7 @@ import {
 	SITE_CHROME_SHEETS
 } from '$lib/donate/plain-page';
 import { useShowMoreMessages } from '$lib/donate/show-more';
+import { StaffMarkerContext } from '$lib/donate/staff-marker-context';
 import { staffGate } from '$lib/server/auth/gate';
 import { readPage } from '$lib/server/pages/queries';
 import { loadPageView, refusedPage, withFundraiserEntry } from '$lib/server/pages/view';
@@ -16,7 +17,7 @@ import { database, platform } from '../context';
 import type { DonorPolicyHandle } from '../document-policy';
 import type { Route } from './+types/preview.$pageId';
 
-// the preview of a page's draft: drawn by the renderer /donate draws with, at /preview/{pageId},
+// the preview of a page's draft: drawn by the renderer `/` draws with, at /preview/{pageId},
 // which the edit page's Preview page opens in a tab of its own.
 //
 // **it is outside ./_app.tsx and mounts the session gate itself.** the layout draws the dashboard's
@@ -33,12 +34,12 @@ import type { Route } from './+types/preview.$pageId';
 // **nothing in it acts.** the renderer's preview mode lets no press through outside the messages
 // from donors and draws the donation box inert, so no gift can start here
 // ($lib/donate/page-view.tsx). a draft the read rule refuses draws the box alone, inert here too.
-// Show more messages is a read, and asks /donate's own (./donate.messages.ts); the first six are
+// Show more messages is a read, and asks the donation page's own (./donate_.messages.ts); the first six are
 // read as that one reads, against the published page rather than the draft
 // (`readDonationPageMessages` in $lib/server/pages/view.ts), so the preview lists only the
-// messages /donate shows. the layout counts those same messages, the ones /donate lists today
-// ($lib/page/profile-shape.ts), so where /donate lists none until Publish the preview counts none
-// and can draw another layout than /donate draws after it (./preview.$pageId.db.spec.ts).
+// messages `/` shows. the layout counts those same messages, the ones `/` lists today
+// ($lib/page/profile-shape.ts), so where `/` lists none until Publish the preview counts none
+// and can draw another layout than `/` draws after it (./preview.$pageId.db.spec.ts).
 //
 // nobody may frame it (../document-policy.ts), and no cache keeps it: a draft read under a session.
 
@@ -62,13 +63,13 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 			document: page.draft,
 			// an ended campaign that gave its address up has none, so its share buttons send the
 			// Donation page's.
-			address: page.type === 'donation_page' || page.slug === null ? '/donate' : `/${page.slug}`
+			address: page.type === 'donation_page' || page.slug === null ? '/' : `/${page.slug}`
 		},
 		request,
 		{ now, preview: { published: page.published } }
 	);
 	if (loaded.kind === 'refused') return refusedPage();
-	// the instant donor messages' ages are counted from, as /donate's loader hands it.
+	// the instant donor messages' ages are counted from, as the donation page's loader hands it.
 	return { ...(await withFundraiserEntry(db, loaded)), now: new Date(now).toISOString() };
 }
 
@@ -82,7 +83,17 @@ export function links(): Route.LinkDescriptors {
 	return donorPageLinks(SITE_CHROME_SHEETS);
 }
 
-export default function PagePreview({ loaderData }: Route.ComponentProps) {
+// the preview is what a donor sees, and a donor carries no returning-staff marker: the footer is
+// drawn as it is without one, though the staff previewing it do carry it (./root.tsx).
+export default function PagePreview(props: Route.ComponentProps) {
+	return (
+		<StaffMarkerContext value={false}>
+			<PreviewBody {...props} />
+		</StaffMarkerContext>
+	);
+}
+
+function PreviewBody({ loaderData }: Route.ComponentProps) {
 	switch (loaderData.kind) {
 		case 'page':
 			return <CardPage {...loaderData.view} profile={loaderData.profile} now={loaderData.now} />;
@@ -101,7 +112,7 @@ export default function PagePreview({ loaderData }: Route.ComponentProps) {
 	}
 }
 
-/** drawn as /donate draws it, and Show more asks /donate's own read for the next six. */
+/** drawn as `/` draws it, and Show more asks its own read for the next six. */
 function CardPage({ now, ...page }: PageWithCardProps & { readonly now: string }) {
 	const donorMessages = useShowMoreMessages(now);
 	return <PageWithCard {...page} donorMessages={donorMessages} />;

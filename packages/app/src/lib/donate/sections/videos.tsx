@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { type ShownVideo, VIDEOS_MAX, youTubeEmbedUrl, youTubeWatchUrl } from '../../page/videos';
 import { Glyph } from './glyph';
 
-// "Videos" on /donate: the nonprofit's YouTube videos, each a poster this deployment serves with a
+// "Videos" on `/`: the nonprofit's YouTube videos, each a poster this deployment serves with a
 // play press over it, in a grid of one column below 48rem of page width and two from there (an odd
 // count opens with one video across both); the feature's, from 60rem, stand in one row of up to
 // four, four abreast where there are more (../page.css). with no video the section is not drawn.

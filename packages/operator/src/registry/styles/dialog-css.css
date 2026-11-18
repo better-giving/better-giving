@@ -10,21 +10,37 @@
    and the sheet's 40rem breakpoint (tailwind's sm, written out because a query
    cannot read a variable) live only in tailwind's theme; they are declared
    here under ds- names with the same values, and the test holds them equal. */
+/* the spacing step, on the box (the top gap reads it) and on the surface, so a
+   surface used on its own keeps its padding */
+.ds-dialog,
+.ds-dialog-surface {
+  --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
+}
 .ds-dialog {
   --ds-container-md: calc(28 * var(--ds-rem, 1rem));
   --ds-container-lg: calc(32 * var(--ds-rem, 1rem));
   --ds-container-2xl: calc(42 * var(--ds-rem, 1rem));
   --ds-container-3xl: calc(48 * var(--ds-rem, 1rem));
   --ds-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  /* the top gap, 24px, more under a device notch */
+  --ds-dialog-top: max(
+    calc(var(--ds-spacing) * 6),
+    env(safe-area-inset-top, 0px)
+  );
   box-sizing: border-box;
   /* the browser's dialog box, undone: its edge swapped for the hairline, no
      fill or size cap. centred by its margins, never a translate, as modal_box
      is */
   position: fixed;
-  /* the bottom edge --ds-view-lift (0.2) of the height up: the box's middle
-     sits at 40% of the viewport. the height is capped at that band, so a
-     taller box never starts above the viewport */
-  inset: 0 0 calc(100dvh * var(--ds-view-lift, 0.2));
+  /* the box centres in a band symmetric about 40% of the viewport: the top
+     gap below the top, --ds-view-lift (0.2) of the height plus the same gap
+     up from the bottom, so any box's middle sits at 40%. the height is capped
+     at the band, so a taller box stops the gap below the top and scrolls
+     inside. the cap is the band: the viewport minus the lift and twice the
+     gap */
+  inset-block: var(--ds-dialog-top)
+    calc(100dvh * var(--ds-view-lift, 0.2) + var(--ds-dialog-top));
+  inset-inline: 0;
   margin: auto;
   padding: 0;
   /* the floating layer's edge; the sheet draws it only from 40rem */
@@ -34,7 +50,12 @@
   inline-size: 90%;
   max-inline-size: none;
   block-size: fit-content;
-  max-block-size: min(90dvh, calc(100dvh * (1 - var(--ds-view-lift, 0.2))));
+  /* min(90dvh, …) guards a --ds-view-lift override under 0.1, where the band
+     would pass 90dvh */
+  max-block-size: min(
+    90dvh,
+    calc(100dvh * (1 - var(--ds-view-lift, 0.2)) - 2 * var(--ds-dialog-top))
+  );
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: var(--ring) var(--gray-6);
@@ -113,7 +134,7 @@
    set only while open: the browser's own display: none is what keeps a closed
    dialog off the page */
 .ds-dialog-sheet {
-  inset-block-end: 0;
+  inset-block: 0;
   margin: 0;
   inline-size: 100%;
   block-size: 100dvh;
@@ -130,12 +151,16 @@
 }
 @media (width >= 40rem) {
   .ds-dialog-sheet {
-    inset-block-end: calc(100dvh * var(--ds-view-lift, 0.2));
+    inset-block: var(--ds-dialog-top)
+      calc(100dvh * var(--ds-view-lift, 0.2) + var(--ds-dialog-top));
     margin: auto;
     inline-size: 480px;
     max-inline-size: none;
     block-size: fit-content;
-    max-block-size: min(90dvh, calc(100dvh * (1 - var(--ds-view-lift, 0.2))));
+    max-block-size: min(
+      90dvh,
+      calc(100dvh * (1 - var(--ds-view-lift, 0.2)) - 2 * var(--ds-dialog-top))
+    );
     overflow-x: visible;
     overflow-y: auto;
     border-radius: var(--radius-card);
@@ -146,7 +171,6 @@
 /* the surface the box leaves to its content: the popover fill on the card
    corner, 24px in */
 .ds-dialog-surface {
-  --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
   box-sizing: border-box;
   padding: calc(var(--ds-spacing) * 6);
   border-radius: var(--radius-card);

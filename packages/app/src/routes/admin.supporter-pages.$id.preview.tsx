@@ -1,4 +1,5 @@
 import { data, href } from 'react-router';
+import { StaffMarkerContext } from '$lib/donate/staff-marker-context';
 import { FundraiserPage, fundraiserPreviewLinks } from '$lib/supporter/public/fundraiser-page';
 import { staffGate } from '$lib/server/auth/gate';
 import { SERVED_LOCALE } from '$lib/server/forms/published-config';
@@ -81,5 +82,10 @@ export function links(): Route.LinkDescriptors {
 }
 
 export default function FundraiserPreviewRoute({ loaderData }: Route.ComponentProps) {
-	return <FundraiserPage {...loaderData} donationBox={null} />;
+	// drawn as a visitor sees it, whose footer holds no staff link (./root.tsx provides the marker).
+	return (
+		<StaffMarkerContext value={false}>
+			<FundraiserPage {...loaderData} donationBox={null} />
+		</StaffMarkerContext>
+	);
 }

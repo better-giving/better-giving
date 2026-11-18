@@ -75,46 +75,53 @@ export const SITE_CHROME_SHEETS: readonly string[] = [registrySiteNav, registryS
 /** the registry's default accent, for a page with no brand colour to read. */
 export const FORM_LOOK: PageLook = { brandColour: null };
 
-/** a page root in one plain column, holding `children` and nothing else. */
+/** a page root in one plain column holding `children`, with the site footer under it where given. */
 export function PlainPage({
 	look,
+	footer,
 	children
 }: {
 	readonly look: PageLook;
+	/** the site footer under the column, for a page that draws one; none leaves the page bare. */
+	readonly footer?: ReactNode;
 	readonly children: ReactNode;
 }) {
 	return (
-		<PageRoot brandColour={look.brandColour} layout="plain">
+		<PageRoot brandColour={look.brandColour} layout="plain" footer={footer}>
 			<main className="stage">{children}</main>
 		</PageRoot>
 	);
 }
 
 /**
- * a page whose stored document is missing or fails the read rule: its donation box alone, in the
- * organisation's brand colour, so a gift can still be made while the page is repaired.
+ * a page whose stored document is missing or fails the read rule: its donation box with none of the
+ * page's content, in the organisation's brand colour, so a gift can still be made while the page is
+ * repaired, and the site footer under it where given.
  */
 export function PlainDonationPage({
 	config,
 	look,
+	footer,
 	resuming = false
 }: {
 	readonly config: FormConfig;
 	readonly look: PageLook;
+	/** the site footer under the box, as `PlainPage` draws it; none leaves the page bare. */
+	readonly footer?: ReactNode;
 	/** whether the address carries this box's resume stamp, the card's own `resuming`. */
 	readonly resuming?: boolean;
 }) {
 	return (
-		<PlainPage look={look}>
+		<PlainPage look={look} footer={footer}>
 			<DonateCard config={config} resuming={resuming} />
 		</PlainPage>
 	);
 }
 
 /**
- * an ended campaign's address, and an ended supporter fundraiser's: the site nav as /donate draws
+ * an ended campaign's address, and an ended supporter fundraiser's: the site nav as `/` draws
  * it, then the campaign's name, that it has ended, what the caller states under that, and the way
- * on to /donate — at the page's reading measure, in the campaign's own published look (`donorLook`
+ * on to `/` — at the page's reading measure, in the campaign's own published look (`donorLook`
  * in $lib/server/pages/view.ts), with no donation box — and the compact site footer under it. a
  * deployment with no organisation name yet draws no home link in the nav, logo or not.
  */
@@ -147,7 +154,7 @@ export function EndedCampaignPage({
 				<h1>{copy.campaignEnded(name)}</h1>
 				<p>{copy.CAMPAIGN_ENDED_THANKS}</p>
 				{children}
-				<a part={part('action')} href="/donate">
+				<a part={part('action')} href="/">
 					{copy.donateTo(orgName)}
 				</a>
 			</main>

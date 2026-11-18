@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { LOGIN_PATH, NEXT_PARAM, safeNext } from './next';
+import { LOGIN_PATH, NEXT_PARAM, safeNext, signInDestination } from './next';
 
 // the open-redirect control on the sign-in, stated on its own.
 //
@@ -96,5 +96,22 @@ describe('safeNext', () => {
 		expect(safeNext(url.searchParams.get(NEXT_PARAM))).toBe(
 			'/admin/forms/abc/settings?tab=x&q=a%20b'
 		);
+	});
+});
+
+describe('signInDestination', () => {
+	const at = (search: string) => new URL(`https://give.example.org${LOGIN_PATH}${search}`);
+
+	it('lands on the dashboard, not the public donation page, when nothing was asked for', () => {
+		expect(signInDestination(at(''))).toBe('/admin');
+	});
+
+	it('lands on the dashboard when the destination does not validate', () => {
+		expect(signInDestination(at('?next=%2F%2Fevil.example'))).toBe('/admin');
+	});
+
+	it('lets a safe destination win, the public page included', () => {
+		expect(signInDestination(at('?next=%2Fadmin%2Fdonors'))).toBe('/admin/donors');
+		expect(signInDestination(at('?next=%2F'))).toBe('/');
 	});
 });
