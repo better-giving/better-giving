@@ -1,5 +1,5 @@
 import { RESUME_FORM_PARAM } from '@better-giving/form/embed/resume';
-import { data, type ShouldRevalidateFunctionArgs } from 'react-router';
+import { data, redirect, type ShouldRevalidateFunctionArgs } from 'react-router';
 import { DonateNotice } from '$lib/donate/notice';
 import { PageWithCard, type PageWithCardProps } from '$lib/donate/page-with-card';
 import {
@@ -14,6 +14,8 @@ import { NAMELESS_FOOTER, SiteFooter } from '$lib/donate/site-footer';
 import { shareImage } from '$lib/page/image-src';
 import { meterDonorPage } from '$lib/server/api/meter';
 import { donorPageRateLimitRefusal } from '$lib/server/api/rate-limit';
+import { identityMissing } from '$lib/server/org/identity';
+import { readOrgProfile } from '$lib/server/org/queries';
 import { ensureDonationPage } from '$lib/server/pages/donation-page';
 import { loadPageView, refusedPage, withFundraiserEntry } from '$lib/server/pages/view';
 import { database, overDonorPageLimit, platform } from '../context';
@@ -74,7 +76,15 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 		request,
 		{ now }
 	);
-	if (loaded.kind === 'refused') return refusedPage();
+	if (loaded.kind === 'refused') {
+		// a deployment whose organisation has no registered name or EIN has nothing to show a donor
+		// yet and cannot go live (`identityMissing`, the same check the console's readiness reads), so
+		// its first visitor is sent to the dashboard to set it up. temporary, never 308: the address
+		// is the donation page once it is. a page that is off or failed on a set-up organisation keeps
+		// the refusal.
+		if (identityMissing(await readOrgProfile(db)).length > 0) return redirect('/admin', 302);
+		return refusedPage();
+	}
 	const drawn = await withFundraiserEntry(db, loaded);
 	// a donor back from authorizing their gift arrives here with the stamp naming the page's
 	// settings row, and the card's first paint is then the wait for that gift rather than an empty

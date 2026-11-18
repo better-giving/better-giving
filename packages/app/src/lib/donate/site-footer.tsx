@@ -1,5 +1,7 @@
 import { SOCIAL_PLATFORM_NAMES } from '@better-giving/operator/console/social-links';
+import { useContext } from 'react';
 import type { OrgInfo } from './sections/types';
+import { StaffMarkerContext } from './staff-marker-context';
 
 // the foot of every donor page: the registry's compact site footer
 // (packages/operator/src/registry/styles/site-footer-css.usage.md). its line is who the gift is
@@ -8,16 +10,14 @@ import type { OrgInfo } from './sections/types';
 // its links are the ways to reach the organisation: the email, then the social links in the
 // console's order. each detail is drawn only where the organisation has set it.
 //
-// the list ends with one link to the dashboard, on every page that draws the footer and whether or
-// not the organisation has set anything above it: `/` is the deployment's public home page, so a
-// fresh deployment's owner who opens it still finds the way into the console. it reads "Staff sign
-// in" for every visitor rather than "Dashboard" for a signed-in one: telling staff apart would cost
-// the donor pages a session read, and signed out, the gate answers `/admin` with a 303 to
-// `/login?next=%2Fadmin`, which signs the visitor in and back to it (`staffGate` in
-// $lib/server/auth/gate.ts).
+// the list ends with a quiet "Console" link to the dashboard only on a browser that has signed in
+// as staff before (`StaffMarkerContext`, read off a cookie by ../../root.tsx): a donor is shown no
+// staff link at all, and with no organisation details and no marker there is nothing to draw, so
+// the footer draws nothing. the marker authorizes nothing, so the link is a convenience and
+// `/admin` is behind the session gate regardless ($lib/server/auth/gate.ts).
 
-/** where the footer's staff link goes: the dashboard. */
-const STAFF_PATH = '/admin';
+/** where the footer's console link goes: the dashboard. */
+const CONSOLE_PATH = '/admin';
 
 export type SiteFooterInfo = Omit<OrgInfo, 'legalName'> & {
 	/** null where none is set, which leaves the name out of the line. */
@@ -26,7 +26,7 @@ export type SiteFooterInfo = Omit<OrgInfo, 'legalName'> & {
 
 /**
  * the footer of a page that names nobody, such as a refusal, which says nothing back about who it
- * would serve: only the staff link stands in it.
+ * would serve: it holds only the console link, and only for a browser that carries the marker.
  */
 export const NAMELESS_FOOTER: SiteFooterInfo = {
 	legalName: null,
@@ -37,6 +37,7 @@ export const NAMELESS_FOOTER: SiteFooterInfo = {
 };
 
 export function SiteFooter({ info }: { readonly info: SiteFooterInfo }) {
+	const returningStaff = useContext(StaffMarkerContext);
 	const line = [
 		info.legalName,
 		info.ein === null ? null : `EIN ${info.ein}`,
@@ -44,37 +45,43 @@ export function SiteFooter({ info }: { readonly info: SiteFooterInfo }) {
 	]
 		.filter((part) => part !== null)
 		.join(' · ');
+	const linked = info.email !== null || info.socialLinks.length > 0 || returningStaff;
+	if (line === '' && !linked) return null;
 	return (
 		<footer className="ds-site-footer-compact">
 			<div className="ds-site-footer-compact-row">
 				{line === '' ? null : <p>{line}</p>}
-				<nav aria-label="Footer">
-					<ul>
-						{info.email === null ? null : (
-							<li>
-								<a href={`mailto:${info.email}`}>{info.email}</a>
-							</li>
-						)}
-						{info.socialLinks.map((link) => {
-							const platform = SOCIAL_PLATFORM_NAMES[link.platform];
-							return (
-								<li key={link.href}>
-									<a
-										href={link.href}
-										target="_blank"
-										rel="noopener noreferrer"
-										aria-label={`${platform}, opens in a new tab`}
-									>
-										{platform}
-									</a>
+				{linked ? (
+					<nav aria-label="Footer">
+						<ul>
+							{info.email === null ? null : (
+								<li>
+									<a href={`mailto:${info.email}`}>{info.email}</a>
 								</li>
-							);
-						})}
-						<li>
-							<a href={STAFF_PATH}>Staff sign in</a>
-						</li>
-					</ul>
-				</nav>
+							)}
+							{info.socialLinks.map((link) => {
+								const platform = SOCIAL_PLATFORM_NAMES[link.platform];
+								return (
+									<li key={link.href}>
+										<a
+											href={link.href}
+											target="_blank"
+											rel="noopener noreferrer"
+											aria-label={`${platform}, opens in a new tab`}
+										>
+											{platform}
+										</a>
+									</li>
+								);
+							})}
+							{returningStaff ? (
+								<li>
+									<a href={CONSOLE_PATH}>Console</a>
+								</li>
+							) : null}
+						</ul>
+					</nav>
+				) : null}
 			</div>
 		</footer>
 	);
