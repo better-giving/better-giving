@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "dir": "packages/operator/src/registry",
-  "registryVersion": "4.0.1",
+  "registryVersion": "4.0.2",
   "items": {
     "app-shell-css": {
       "version": "2.0.0",
@@ -46,10 +46,10 @@
       }
     },
     "dialog-css": {
-      "version": "1.1.0",
+      "version": "1.1.1",
       "files": {
-        "styles/dialog-css.css": "aef272130adc151be4df0ea7d2edcab37454210c9c747737c827951b689ae847",
-        "styles/dialog-css.usage.md": "7f68211a8f2df997ebd2162920df21ebe33cc62be4ec7121a47d66f3d235daa3"
+        "styles/dialog-css.css": "18d6090e83a28a14a6fbad1ff4f1a5ed63d006e2a242e0fbdee254c99268d682",
+        "styles/dialog-css.usage.md": "4043e17d4d64edcc68821b161c06d38ce05a4947c1a8ad0281a3fb4c32147ce0"
       }
     },
     "field-css": {
