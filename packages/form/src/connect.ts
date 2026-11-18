@@ -945,6 +945,7 @@ export function connect<
 			options: [
 				{
 					value: `${CURRENCY_UNIT}${config.currency}`,
+					code: config.currency,
 					kind: 'currency',
 					label: config.currency.toUpperCase(),
 					name: currencyName(config.locale, config.currency),
@@ -953,6 +954,7 @@ export function connect<
 				},
 				...(unitRails(config).coins ? coinsByTicker : []).map((coin) => ({
 					value: `${COIN_UNIT}${coin.coin}`,
+					code: coin.coin,
 					kind: 'coin',
 					label: coin.ticker.toUpperCase(),
 					name: coin.name,

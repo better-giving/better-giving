@@ -15,7 +15,7 @@
 //
 // no flow logic: which units, which is picked and which were refused are `unitSelect` (./connect.ts),
 // which groups stand and their words are ./unit.ts, and the order a search lists rows in is
-// `searchCoins` (./coins.ts), run on each group alone.
+// `searchCoins` (./coins.ts), run on each group alone over each unit's `code` rather than its value.
 
 import * as zag from '@zag-js/combobox';
 import { normalizeProps, VanillaMachine } from '@zag-js/vanilla';
@@ -34,6 +34,8 @@ import { lostWhileOpen, type Props, rootNodeOf, showWhile, spread } from './zag'
 /** one unit as `unitSelect` lists it. */
 export type UnitOption = {
 	readonly value: string;
+	/** the code `value` carries without the half it is filed under: `USD`, `usdttrc20`. */
+	readonly code: string;
 	readonly kind: 'currency' | 'coin';
 	/** the code the unit is shown under: `USD`, `BTC`. */
 	readonly label: string;
@@ -195,7 +197,10 @@ export function createUnitPicker(
 		readonly options: readonly UnitOption[];
 		readonly collection: ReturnType<typeof zag.collection<UnitOption>>;
 	} | null = null;
-	/** each group searched on its own and laid end to end, so the keys walk the rows as drawn. */
+	/**
+	 * each group searched on its own and laid end to end; `render` draws each group's rows in this
+	 * order, so the keys walk the rows as drawn.
+	 */
 	const collectionNow = () => {
 		const all = current?.options ?? [];
 		if (searched === null || searched.query !== query || searched.options !== all) {
@@ -205,9 +210,11 @@ export function createUnitPicker(
 				collection: zag.collection({
 					items: GROUPS.flatMap(({ id }) =>
 						searchCoins(
-							all.filter((option) => option.kind === id),
+							all
+								.filter((option) => option.kind === id)
+								.map((option) => ({ ...option, value: option.code, option })),
 							query
-						)
+						).map(({ option }) => option)
 					),
 					itemToValue: (option) => option.value,
 					itemToString: (option) => option.label,
@@ -267,6 +274,8 @@ export function createUnitPicker(
 		}));
 
 	let machine: ReturnType<typeof run> | null = null;
+	/** the collection the rows were last put in the order of; a row it drops stays, hidden, ahead. */
+	let ordered: ReturnType<typeof collectionNow> | null = null;
 	const connected = () => (machine === null ? null : zag.connect(machine.service, normalizeProps));
 
 	const render = (): void => {
@@ -291,6 +300,13 @@ export function createUnitPicker(
 		content.setAttribute('aria-label', NAME);
 
 		const collection = collectionNow();
+		if (ordered !== collection) {
+			ordered = collection;
+			for (const option of collection.items) {
+				const row = rows.get(option.value)?.row;
+				if (row !== undefined) row.parentElement?.appendChild(row);
+			}
+		}
 		for (const option of choice.options) {
 			const entry = rows.get(option.value);
 			if (entry === undefined) continue;

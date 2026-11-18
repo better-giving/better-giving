@@ -821,6 +821,7 @@ describe('the unit projection', () => {
 		expect(units.options).toEqual([
 			{
 				value: 'currency:USD',
+				code: 'USD',
 				kind: 'currency',
 				label: 'USD',
 				name: 'US Dollar',
@@ -829,6 +830,7 @@ describe('the unit projection', () => {
 			},
 			{
 				value: 'coin:btc',
+				code: 'btc',
 				kind: 'coin',
 				label: 'BTC',
 				name: 'Bitcoin',
@@ -838,6 +840,7 @@ describe('the unit projection', () => {
 			},
 			{
 				value: 'coin:usdttrc20',
+				code: 'usdttrc20',
 				kind: 'coin',
 				label: 'USDT',
 				name: 'Tether USD (Tron)',

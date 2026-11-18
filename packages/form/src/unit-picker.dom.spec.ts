@@ -20,6 +20,7 @@ function settle(): Promise<void> {
 
 const USD: UnitOption = {
 	value: 'currency:USD',
+	code: 'USD',
 	kind: 'currency',
 	label: 'USD',
 	name: 'US Dollar',
@@ -29,6 +30,7 @@ const USD: UnitOption = {
 const COINS: UnitOption[] = [
 	{
 		value: 'coin:btc',
+		code: 'btc',
 		kind: 'coin',
 		label: 'BTC',
 		name: 'Bitcoin',
@@ -37,6 +39,7 @@ const COINS: UnitOption[] = [
 	},
 	{
 		value: 'coin:btt',
+		code: 'btt',
 		kind: 'coin',
 		label: 'BTT',
 		name: 'BitTorrent',
@@ -45,6 +48,7 @@ const COINS: UnitOption[] = [
 	},
 	{
 		value: 'coin:eth',
+		code: 'eth',
 		kind: 'coin',
 		label: 'ETH',
 		name: 'Ethereum',
@@ -220,6 +224,39 @@ describe('the list', () => {
 
 		expect(groups()).toEqual([['Crypto', 'BTC', 'BTT']]);
 		expect(active()).toBe('BTC');
+	});
+
+	it('finds a unit by its code, ticker and name, never by the half its value is filed under', async () => {
+		const { root, open, typed, groups } = mounted();
+		await open();
+
+		await typed('n:');
+		expect(groups()).toEqual([]);
+		expect(root.querySelector<HTMLElement>('.no-match')?.hidden).toBe(false);
+
+		await typed('ency');
+		expect(groups()).toEqual([]);
+
+		await typed('usd');
+		expect(groups()).toEqual([['Currencies', 'USD']]);
+	});
+
+	it('draws a search’s rows in the order it ranks them, so the highlight and the keys follow the rows', async () => {
+		const { input, key, open, typed, groups, active } = mounted();
+		await open();
+		// ETH's ticker starts the text and BitTorrent's name only holds it, so ETH ranks first.
+		await typed('e');
+
+		expect(groups()).toEqual([['Crypto', 'ETH', 'BTT']]);
+		expect(active()).toBe('ETH');
+		await key(input, 'ArrowDown');
+		expect(active()).toBe('BTT');
+
+		await typed('');
+		expect(groups()).toEqual([
+			['Currencies', 'USD'],
+			['Crypto', 'BTC', 'BTT', 'ETH']
+		]);
 	});
 
 	it('moves the highlight with the arrows, Home and End, and picks with Enter', async () => {
