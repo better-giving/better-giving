@@ -12,7 +12,29 @@
 # other workflows, so your CI and design-check never run on the update PR and
 # required checks stay "Expected". Add a repo secret DESIGN_REGISTRY_PR_TOKEN (a
 # fine-grained PAT or GitHub App token with contents + pull requests write) and
-# the push and the PR use it instead, which does start them.
+# the push and the PR use it instead, which does start them. Issues are always
+# listed, opened and closed with the default GITHUB_TOKEN (issues: write below),
+# so this token needs no issues permission. The checkout keeps no token in git
+# config, so the registry's CLI, which the job downloads and runs, cannot read
+# it; git is given the token only in the step that pushes.
+#
+# CLI pins: an app that pins the CLI in its own workflows (a versioned URL,
+# /registry/cli/<version>/cli.mjs, and its sha256; see the README) keeps the
+# marker comment bg-design-cli-pin, written after a #, on those lines. When the
+# registry's index lists a newer CLI, the job also rewrites the version in the
+# marked URL and the marked sha256, in a commit of its own pushed after the
+# item update. Pushing a workflow file needs permission to write workflows: a
+# fine-grained DESIGN_REGISTRY_PR_TOKEN needs Workflows: read and write, a
+# classic one the workflow scope, and the default GITHUB_TOKEN cannot. When the
+# push is refused the pin commit is dropped, the item update PR is kept and its
+# body says "the CLI pin is behind: move <url> and <sha256>". When there are no
+# item changes either, an issue carries that notice instead. The job closes that
+# issue on any later run that finds the pin current or pushes the pin commit. A
+# token that cannot write workflows never stops the update PR. A pin push that
+# fails for any other reason is dropped too: the item PR is still kept, no issue
+# opens, and the job fails so the next run retries.
+# With Issues turned off, the "CLI pin is behind" notice of a release with no
+# item changes appears only as a warning and in the job summary; the run passes.
 #
 # The design-registry-release dispatch below is a hook for your own tooling.
 # The registry repo does not send it: its GITHUB_TOKEN cannot dispatch into
@@ -29,6 +51,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  issues: write
 
 env:
   REGISTRY: https://design.better.giving/registry
@@ -45,6 +68,7 @@ jobs:
           # full history: the push guard compares the remote branch's commits
           fetch-depth: 0
           token: ${{ secrets.DESIGN_REGISTRY_PR_TOKEN || github.token }}
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -67,58 +91,311 @@ jobs:
           esac
           version=$(node -p 'require("./bg-design.json").registryVersion') || exit 1
           echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Find the CLI pin
+        run: |
+          set -euo pipefail
+          rm -f "$RUNNER_TEMP/pin.txt" "$RUNNER_TEMP/pin.behind" "$RUNNER_TEMP/pin.version"
+          mapfile -d '' files < <(grep -rlZE '#[[:space:]]*bg-design-cli-pin' .github/workflows 2>/dev/null || true)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "no workflow carries a bg-design-cli-pin line"
+            exit 0
+          fi
+          # nothing about a pin may stop the item update: a pin that cannot be
+          # read is a warning, and without pin.txt the PR step leaves pin issues alone
+          if ! curl --fail --silent --show-error --location "${REGISTRY%/}/index.json" --output "$RUNNER_TEMP/index.json"; then
+            echo "::warning::the registry index could not be read for the CLI pin; pins left alone"
+            exit 0
+          fi
+          # the rewrite: a marked line holding /cli/<version>/cli.mjs names the
+          # pinned version; when the index's differs, that URL and the sha256 on
+          # the marked lines of the same file move to the index's. Without WRITE
+          # it only reports (exit 10 when a pin is behind).
+          cat > "$RUNNER_TEMP/pin.mjs" <<'JS'
+          import { readFileSync, writeFileSync } from "node:fs";
+          const MARK = /#\s*bg-design-cli-pin\b/;
+          const URL_AT = /\/cli\/(\d+\.\d+\.\d+)\/cli\.mjs/;
+          const URL_ALL = /https?:\/\/[^\s"']*?\/cli\/\d+\.\d+\.\d+\/cli\.mjs/;
+          const [index_file, ...files] = process.argv.slice(2);
+          const { cli } = JSON.parse(readFileSync(index_file, "utf8"));
+          if (!cli) {
+            console.log("the registry lists no cli version; pins left alone");
+            process.exit(0);
+          }
+          // these values are written into workflow files that a token able to
+          // write workflows pushes, so nothing but the shape the registry
+          // publishes gets through
+          const shape = {
+            version: (v) => /^\d+\.\d+\.\d+$/.test(v),
+            sha256: (v) => /^[0-9a-f]{64}$/.test(v),
+            url: (v) => v === `cli/${cli.version}/cli.mjs`,
+          };
+          for (const [key, ok] of Object.entries(shape)) {
+            if (typeof cli[key] !== "string" || !ok(cli[key])) {
+              console.error(`the registry index's cli.${key} is malformed: ${JSON.stringify(cli[key])}; pins left alone`);
+              process.exit(1);
+            }
+          }
+          let behind = false;
+          for (const file of files) {
+            const lines = readFileSync(file, "utf8").split("\n");
+            const marked = lines.flatMap((l, i) => (MARK.test(l) ? [i] : []));
+            const pinned = marked.map((i) => URL_AT.exec(lines[i])?.[1]).find(Boolean);
+            if (!pinned) {
+              console.log(`${file}: a bg-design-cli-pin line names no /cli/<version>/cli.mjs URL; left alone`);
+              continue;
+            }
+            if (pinned === cli.version) continue;
+            if (process.env.WRITE === "1") {
+              for (const i of marked)
+                lines[i] = lines[i]
+                  .replace(URL_AT, () => `/${cli.url}`)
+                  .replace(/\b[0-9a-f]{64}\b/, () => cli.sha256);
+              writeFileSync(file, lines.join("\n"));
+              console.log(`${file}: bg-design cli ${pinned} → ${cli.version}`);
+            } else {
+              behind = true;
+              const old_url = marked.map((i) => URL_ALL.exec(lines[i])?.[0]).find(Boolean) ?? "";
+              console.log(`${file}: the CLI pin is behind: move ${old_url.replace(URL_AT, () => `/${cli.url}`)} and ${cli.sha256}`);
+            }
+          }
+          process.exit(behind ? 10 : 0);
+          JS
+          rc=0
+          node "$RUNNER_TEMP/pin.mjs" "$RUNNER_TEMP/index.json" "${files[@]}" > "$RUNNER_TEMP/pin.txt" 2> "$RUNNER_TEMP/pin.err" || rc=$?
+          cat "$RUNNER_TEMP/pin.txt"
+          case "$rc" in
+            0) ;;
+            10)
+              touch "$RUNNER_TEMP/pin.behind"
+              node -p 'require(process.argv[1]).cli.version' "$RUNNER_TEMP/index.json" > "$RUNNER_TEMP/pin.version"
+              ;;
+            *)
+              echo "::warning::the CLI pins were not read (exit code $rc): $(tr '\n' ' ' < "$RUNNER_TEMP/pin.err"); pins left alone"
+              rm -f "$RUNNER_TEMP/pin.txt"
+              ;;
+          esac
       - name: Open the PR
         env:
           GH_TOKEN: ${{ secrets.DESIGN_REGISTRY_PR_TOKEN || github.token }}
+          ISSUES_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.update.outputs.version }}
           BOT_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
         run: |
           set -euo pipefail
-          if [ -z "$(git status --porcelain)" ]; then
+          branch="design-registry/update"
+          pin_title="Move the bg-design CLI pin"
+
+          # issues: write is granted to the job's token, not to the PR token
+          gh_issue() { GH_TOKEN="$ISSUES_TOKEN" gh issue "$@"; }
+          # --search filters before --limit cuts, so no number of other open
+          # issues hides the pin issue
+          open_pin_issues() {
+            gh_issue list --state open --search "in:title \"$pin_title\"" --limit 100 \
+              --json number,title --jq ".[] | select(.title | startswith(\"$pin_title\")) | .number"
+          }
+          # a cleanup: an app with no pin line never had a pin issue, and a
+          # failure here (Issues turned off, say) warns instead of failing the job
+          close_pin_issues() {
+            local numbers n
+            # the pin step writes pin.txt only when some workflow is marked
+            [ -f "$RUNNER_TEMP/pin.txt" ] || return 0
+            if ! numbers=$(open_pin_issues); then
+              echo "::warning::could not list open issues to close a \"${pin_title}\" issue; close it by hand if there is one"
+              return 0
+            fi
+            for n in $numbers; do
+              gh_issue close "$n" --comment "$1" ||
+                echo "::warning::could not close issue #${n}; close it by hand"
+            done
+          }
+
+          items=false
+          [ -n "$(git status --porcelain)" ] && items=true
+          behind=false
+          [ -f "$RUNNER_TEMP/pin.behind" ] && behind=true
+          if [ "$behind" = false ]; then
+            close_pin_issues "The CLI pin is current."
+          fi
+          if [ "$items" = false ] && [ "$behind" = false ]; then
             echo "design registry already current"
             exit 0
           fi
-          branch="design-registry/update"
           git config user.name "github-actions[bot]"
           git config user.email "$BOT_EMAIL"
-          git checkout -B "$branch"
-          git add -A
-          git commit -m "Update design registry to ${VERSION}"
+          # git asks gh for credentials, and gh answers with GH_TOKEN; nothing
+          # holding the token is written
+          gh auth setup-git
+          base=$(git rev-parse HEAD)
 
-          # ls-remote exits 2 when the branch is absent; any other failure is real
+          # reads the update branch into remote_sha (empty when absent); returns
+          # 3 when someone else has committed to it, 1 when origin cannot be read
+          read_remote() {
+            local rc=0 others
+            remote_sha=""
+            # ls-remote exits 2 when the branch is absent; any other failure is real
+            git ls-remote --exit-code --heads origin "$branch" >/dev/null || rc=$?
+            case "$rc" in
+              0) ;;
+              2) return 0 ;;
+              *) return 1 ;;
+            esac
+            git fetch --no-tags origin "+refs/heads/${branch}:refs/remotes/origin/${branch}" || return 1
+            remote_sha=$(git rev-parse "origin/${branch}")
+            # commits on the remote branch that the default branch does not have
+            others=$(git log --format='%ae' "$remote_sha" --not "$base" | grep -vxF "$BOT_EMAIL" || true)
+            if [ -n "$others" ]; then
+              echo "::warning::origin/${branch} has commits that are not from github-actions[bot]; leaving it alone. Merge or close that PR, or delete the branch, to resume updates."
+              return 3
+            fi
+          }
+          remote_has_tree() {
+            [ -n "$remote_sha" ] && [ "$(git rev-parse "${remote_sha}^{tree}")" = "$(git rev-parse "${1}^{tree}")" ]
+          }
+          # pushes commit $1 to the update branch, leased on remote_sha; git's
+          # stderr is kept in push.err for the caller to read
+          push_commit() {
+            local rc=0
+            if remote_has_tree "$1"; then
+              echo "origin/${branch} already has this tree; not pushing"
+              return 0
+            fi
+            if [ -n "$remote_sha" ]; then
+              git push --force-with-lease="refs/heads/${branch}:${remote_sha}" origin "${1}:refs/heads/${branch}" 2>"$RUNNER_TEMP/push.err" || rc=$?
+            else
+              git push origin "${1}:refs/heads/${branch}" 2>"$RUNNER_TEMP/push.err" || rc=$?
+            fi
+            cat "$RUNNER_TEMP/push.err" >&2
+            if [ "$rc" -eq 0 ]; then remote_sha=$1; fi
+            return "$rc"
+          }
+
+          # both commits are made before any push, so a branch that already
+          # holds the final tree (an open PR, its items re-applied today) gets
+          # no push at all
+          git checkout -B "$branch"
+          if [ "$items" = true ]; then
+            git add -A
+            git commit -m "Update design registry to ${VERSION}"
+          fi
+          items_head=$(git rev-parse HEAD)
+          pin_head=""
+          if [ "$behind" = true ]; then
+            mapfile -d '' files < <(grep -rlZE '#[[:space:]]*bg-design-cli-pin' .github/workflows)
+            WRITE=1 node "$RUNNER_TEMP/pin.mjs" "$RUNNER_TEMP/index.json" "${files[@]}" > "$RUNNER_TEMP/pin-moved.txt"
+            git add -A
+            git commit -m "Move the bg-design CLI pin to $(cat "$RUNNER_TEMP/pin.version")"
+            pin_head=$(git rev-parse HEAD)
+          fi
+
           rc=0
-          git ls-remote --exit-code --heads origin "$branch" >/dev/null || rc=$?
+          read_remote || rc=$?
           case "$rc" in
-            0)
-              git fetch --no-tags origin "+refs/heads/${branch}:refs/remotes/origin/${branch}"
-              remote_sha=$(git rev-parse "origin/${branch}")
-              # commits on the remote branch that main does not have
-              others=$(git log --format='%ae' "origin/${branch}" --not "HEAD~1" | grep -vxF "$BOT_EMAIL" || true)
-              if [ -n "$others" ]; then
-                echo "::warning::origin/${branch} has commits that are not from github-actions[bot]; leaving it alone. Merge or close that PR, or delete the branch, to resume updates."
-                exit 0
-              fi
-              if [ "$(git rev-parse "origin/${branch}^{tree}")" = "$(git rev-parse 'HEAD^{tree}')" ]; then
-                echo "origin/${branch} already has this tree; not pushing"
-              else
-                git push --force-with-lease="${branch}:${remote_sha}" origin "$branch"
-              fi
-              ;;
-            2) git push --set-upstream origin "$branch" ;;
-            *) echo "::error::could not read origin"; exit 1 ;;
+            0) ;;
+            3) exit 0 ;;
+            *) echo "::error::could not read the ${branch} branch on origin"; exit 1 ;;
           esac
 
-          title="Update design registry to ${VERSION}"
+          # pin_push: pushed, refused (the token cannot write workflows) or failed
+          # (anything else); the pin goes after the item update, so neither drops
+          # the items
+          pin_push=""
+          if remote_has_tree HEAD; then
+            echo "origin/${branch} already has this tree; not pushing"
+            if [ "$behind" = true ]; then pin_push=pushed; fi
+          else
+            if [ "$items" = true ]; then
+              if ! push_commit "$items_head"; then
+                echo "::error::pushing the item update to ${branch} failed"
+                exit 1
+              fi
+            fi
+            if [ "$behind" = true ]; then
+              if push_commit "$pin_head"; then
+                pin_push=pushed
+              else
+                # GitHub's refusal names the actor: "refusing to allow a Personal
+                # Access Token / an OAuth App / a GitHub App to create or update
+                # workflow `<path>` without `workflow` scope / `workflows` permission"
+                if grep -qE 'refusing to allow .+ to create or update workflow' "$RUNNER_TEMP/push.err"; then
+                  pin_push=refused
+                  echo "::warning::the CLI pin was not pushed: the token cannot write workflows; the pin is left behind"
+                else
+                  pin_push=failed
+                fi
+                git reset --hard "$items_head"
+              fi
+            fi
+          fi
+
+          if [ "$pin_push" = failed ]; then
+            pin_error="pushing the CLI pin commit failed: $(grep -m1 -E '^( ! |fatal: )' "$RUNNER_TEMP/push.err" || tail -n 1 "$RUNNER_TEMP/push.err")"
+            if [ "$items" = false ]; then
+              echo "::error::${pin_error}; the next run tries again"
+              exit 1
+            fi
+          fi
+
+          if [ "$items" = false ] && [ "$pin_push" = refused ]; then
+            # nothing to open a PR for: the notice goes in an issue
+            title="${pin_title} to $(cat "$RUNNER_TEMP/pin.version")"
+            {
+              cat "$RUNNER_TEMP/pin.txt"
+              echo
+              echo "The update job could not push the change: pushing a workflow file needs a DESIGN_REGISTRY_PR_TOKEN that can write workflows (a fine-grained token: Workflows, read and write; a classic token: the workflow scope). Edit the lines marked bg-design-cli-pin by hand, or fix the token and run this workflow again."
+            } > "$RUNNER_TEMP/issue.md"
+            # without Issues (turned off, or no permission) the notice goes to a
+            # warning and the job summary instead: the update itself is not at fault
+            published=false
+            if numbers=$(open_pin_issues); then
+              number=${numbers%%$'\n'*}
+              if [ -n "$number" ]; then
+                gh_issue edit "$number" --title "$title" --body-file "$RUNNER_TEMP/issue.md" && published=true
+              else
+                gh_issue create --title "$title" --body-file "$RUNNER_TEMP/issue.md" && published=true
+              fi
+            fi
+            if [ "$published" = false ]; then
+              echo "::warning::the CLI pin is behind and no issue could be opened for it (Issues turned off, or no permission to write them?): $(tr '\n' ' ' < "$RUNNER_TEMP/issue.md")"
+              cat "$RUNNER_TEMP/issue.md" >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+            fi
+            exit 0
+          fi
+
+          if [ "$items" = true ]; then
+            title="Update design registry to ${VERSION}"
+          else
+            title="Update bg-design CLI pin to $(cat "$RUNNER_TEMP/pin.version")"
+          fi
           {
             echo "## Summary"
             echo
-            echo "Updates the design registry components to registry ${VERSION}."
-            echo
-            echo '```'
-            cat "$RUNNER_TEMP/update.txt"
-            echo '```'
-            echo
-            echo "If a pnpm add line is listed above, run it: the new version needs those packages."
+            if [ "$items" = true ]; then
+              echo "Updates the design registry components to registry ${VERSION}."
+              echo
+              echo '```'
+              cat "$RUNNER_TEMP/update.txt"
+              echo '```'
+              echo
+              echo "If a pnpm add line is listed above, run it: the new version needs those packages."
+            fi
+            if [ "$pin_push" = pushed ]; then
+              echo
+              echo "Moves the pinned bg-design CLI."
+              echo
+              echo '```'
+              cat "$RUNNER_TEMP/pin-moved.txt"
+              echo '```'
+            elif [ "$pin_push" = failed ]; then
+              echo
+              echo "The CLI pin commit could not be pushed; the next run tries again."
+            elif [ "$pin_push" = refused ]; then
+              echo
+              echo '```'
+              cat "$RUNNER_TEMP/pin.txt"
+              echo '```'
+              echo
+              echo "The CLI pin was not moved: pushing a workflow file needs a DESIGN_REGISTRY_PR_TOKEN that can write workflows (fine-grained: Workflows, read and write; classic: the workflow scope)."
+            fi
           } > "$RUNNER_TEMP/body.md"
           # open PRs only: a closed one is not reused, so a new one can open
           number=$(gh pr list --head "$branch" --state open --json number --jq '.[0].number // empty')
@@ -126,4 +403,11 @@ jobs:
             gh pr edit "$number" --title "$title" --body-file "$RUNNER_TEMP/body.md"
           else
             gh pr create --head "$branch" --title "$title" --body-file "$RUNNER_TEMP/body.md"
+          fi
+          if [ "$pin_push" = pushed ]; then
+            close_pin_issues "The pin commit is on the ${branch} branch, in the update PR."
+          fi
+          if [ "$pin_push" = failed ]; then
+            echo "::error::${pin_error}; the item PR is up to date and the next run tries the pin again"
+            exit 1
           fi

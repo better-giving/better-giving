@@ -80,13 +80,24 @@ jobs:
       - run: pnpm run test
 
       # bg-design.json lists the files copied from the design registry; this fails when one was
-      # edited, is missing or is behind. the registry's CLI needs Node 24
-      # (https://design.better.giving/registry/cli.mjs), so this step switches to it.
+      # edited, is missing or is behind. the registry's CLI needs Node 24, so this step switches to it.
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
+      # the CLI is pinned to one version and checked against its sha-256 before it runs, so a new
+      # CLI reaches CI only through a reviewed change. when the registry publishes a new CLI,
+      # bg-design-update.yml moves the URL and the hash together: the two lines carrying the pin marker.
       - name: design registry in sync
-        run: pnpm run design:check
+        env:
+          BG_DESIGN_CLI_SHA256: 2f7b1ee44871c0ca4d57b17187cba884d332d7c75498b00748c0f5f25cac9587 # bg-design-cli-pin
+        run: |
+          set -euo pipefail
+          cli="$RUNNER_TEMP/bg-design.mjs"
+          curl --fail --silent --show-error --location \
+            --retry 3 --retry-all-errors --retry-delay 5 --connect-timeout 20 \
+            https://design.better.giving/registry/cli/1.1.0/cli.mjs --output "$cli" # bg-design-cli-pin
+          echo "$BG_DESIGN_CLI_SHA256  $cli" | sha256sum --check --strict
+          BG_DESIGN_CLI="$cli" pnpm run design:check
 
   browser-test:
     name: browser-test

@@ -12,8 +12,11 @@
 // the `bg-design` CLI is one file the registry serves itself (https://design.better.giving/registry/cli.mjs,
 // Node 24, no dependencies), so it is fetched into a temporary directory for each run rather than
 // copied into this repository, where it would drift from the registry it checks against.
+//
+// CI hands over its own copy in BG_DESIGN_CLI instead: a pinned version whose sha-256 it checked first
+// (.github/workflows/ci.yml, the lines marked bg-design-cli-pin). A run without it fetches the newest CLI.
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -58,8 +61,17 @@ const fail = (message) => {
 	console.error(`design:check ${message}`);
 	process.exit(1);
 };
-// one retry for a network error or a 5xx; a 4xx or a wrong body is not transient and fails at once.
 let source;
+const PINNED_CLI = process.env.BG_DESIGN_CLI;
+if (PINNED_CLI) {
+	try {
+		source = readFileSync(PINNED_CLI, 'utf8');
+	} catch (error) {
+		fail(`could not read the bg-design CLI at ${PINNED_CLI} (${error.code ?? error.message}).`);
+	}
+}
+// one retry for a network error or a 5xx; a 4xx or a wrong body is not transient and fails at once.
+// with a pinned CLI read above, source is already set and nothing is fetched.
 for (let attempt = 1; source === undefined; attempt++) {
 	let problem;
 	try {
