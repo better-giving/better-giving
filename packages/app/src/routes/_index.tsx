@@ -10,6 +10,7 @@ import {
 	SITE_CHROME_SHEETS
 } from '$lib/donate/plain-page';
 import { useShowMoreMessages } from '$lib/donate/show-more';
+import { SiteFooter, type SiteFooterInfo } from '$lib/donate/site-footer';
 import { shareImage } from '$lib/page/image-src';
 import { meterDonorPage } from '$lib/server/api/meter';
 import { donorPageRateLimitRefusal } from '$lib/server/api/rate-limit';
@@ -159,12 +160,25 @@ export default function DonationPage({ loaderData }: Route.ComponentProps) {
 			);
 		case 'refused':
 			return (
-				<PlainPage look={FORM_LOOK}>
+				<PlainPage look={FORM_LOOK} footer={<SiteFooter info={NAMELESS_FOOTER} />}>
 					<DonateNotice />
 				</PlainPage>
 			);
 	}
 }
+
+/**
+ * the refusal's footer: it names nobody (the refusal says nothing back about who it would serve),
+ * so only the staff link stands in it, and a deployment whose page cannot take a gift yet still
+ * shows its owner the way into the dashboard.
+ */
+const NAMELESS_FOOTER: SiteFooterInfo = {
+	legalName: null,
+	ein: null,
+	addressLines: [],
+	email: null,
+	socialLinks: []
+};
 
 /** the page and its card, with Show more messages counting ages from `now`, the loader's instant. */
 function CardPage({ now, ...page }: PageWithCardProps & { readonly now: string }) {

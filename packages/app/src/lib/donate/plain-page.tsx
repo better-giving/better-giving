@@ -78,13 +78,20 @@ export const FORM_LOOK: PageLook = { brandColour: null };
 /** a page root in one plain column, holding `children` and nothing else. */
 export function PlainPage({
 	look,
+	footer,
 	children
 }: {
 	readonly look: PageLook;
+	/** the site footer under the column, for a page that draws one; none leaves the page bare. */
+	readonly footer?: ReactNode;
 	readonly children: ReactNode;
 }) {
 	return (
-		<PageRoot brandColour={look.brandColour} layout="plain">
+		<PageRoot
+			brandColour={look.brandColour}
+			layout="plain"
+			{...(footer === undefined ? {} : { footer })}
+		>
 			<main className="stage">{children}</main>
 		</PageRoot>
 	);

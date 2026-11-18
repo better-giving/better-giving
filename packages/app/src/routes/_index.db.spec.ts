@@ -1026,6 +1026,8 @@ describe('the limit on GET /', () => {
 
 		expect(refused.data.kind).toBe('refused');
 		expect(markup(refused.data)).toContain(NO_FORM);
+		// the refusal still carries the way into the dashboard, and names nobody.
+		expect(markup(refused.data)).toContain('<a href="/admin">Staff sign in</a>');
 		expect(refused.headers.get('retry-after')).toBe('60');
 		expect(refused.headers.get('cache-control')).toBe('no-store');
 	});
