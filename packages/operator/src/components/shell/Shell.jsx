@@ -191,7 +191,7 @@ export function Shell({
 		<div className="ds-shell-mark">
 			<Link href={home.href} aria-label={orgLogo ? home.label : undefined}>
 				{/* app-shell-css's contract draws the mark 36px tall. */}
-				{orgLogo ? <img src={orgLogo} alt="" height={36} /> : orgName}
+				{orgLogo ? <img className="adm-logo" src={orgLogo} alt="" height={36} /> : orgName}
 			</Link>
 		</div>
 	);
@@ -218,7 +218,7 @@ export function Shell({
 						<div className="ds-shell-mark-rail">
 							<Link href={home.href} aria-label={home.label}>
 								{/* the rail's box is 1.75rem wide; the canvas draws the symbol 28px. */}
-								<img src={orgLogo} alt="" height={28} />
+								<img className="adm-logo adm-logo--rail" src={orgLogo} alt="" height={28} />
 							</Link>
 						</div>
 					) : null}

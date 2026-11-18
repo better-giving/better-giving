@@ -526,6 +526,28 @@ describe('the shell around the page', () => {
 		);
 		expect(sidebar(without).querySelector('.ds-shell-mark-rail')).toBeNull();
 	});
+
+	// base.css's `img { height: auto }` would draw the logo at its file's own height; the hook is
+	// what ../../styles/adm.css sizes it by (../../styles/org-logo.spec.ts).
+	it.each([
+		[
+			'the sidebar head',
+			(root: HTMLElement) => sidebar(root).querySelector('.ds-shell-mark img'),
+			'adm-logo'
+		],
+		[
+			'the rail',
+			(root: HTMLElement) => sidebar(root).querySelector('.ds-shell-mark-rail img'),
+			'adm-logo adm-logo--rail'
+		],
+		[
+			'the drawer head',
+			(root: HTMLElement) => drawer(root).querySelector('.ds-shell-mark img'),
+			'adm-logo'
+		]
+	])('draws the logo in %s on its size hook', (_, logo, hook) => {
+		expect(logo(render(Shell, props()))?.getAttribute('class')).toBe(hook);
+	});
 });
 
 describe('initials', () => {
