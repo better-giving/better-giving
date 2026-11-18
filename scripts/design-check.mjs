@@ -22,7 +22,8 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const REGISTRY = process.env.BG_DESIGN_REGISTRY ?? 'https://design.better.giving/registry';
-// the CLI also takes a directory here; this wrapper fetches the CLI over http, so it takes a URL only.
+// the CLI also takes a directory here; this wrapper takes a URL only, since it fetches the CLI from
+// it over http whenever BG_DESIGN_CLI is unset.
 if (!/^https?:\/\//.test(REGISTRY)) {
 	console.error(
 		`design:check needs BG_DESIGN_REGISTRY to be an http(s) URL; got ${JSON.stringify(REGISTRY)}.`
