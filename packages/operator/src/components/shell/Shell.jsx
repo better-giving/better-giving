@@ -1,4 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { RAIL_COOKIE, railCookie } from '../../rail-preference';
 import { ActionMenu } from '../controls/ActionMenu.jsx';
 import { Mark } from '../status/Mark.jsx';
 import { RouteProgress } from './RouteProgress.jsx';
@@ -65,10 +66,19 @@ import { RouteProgress } from './RouteProgress.jsx';
  *   as. this package declares no router, so the surface that has one hands it in; unstated, plain
  *   anchors, which load the whole document.
  * @property {ReactNode} [children] the page.
+ * @property {boolean | undefined} [initialCollapsed] the rail collapsed on the first render, as
+ *   `parseRail` read it off the request's cookie (../../rail-preference.ts). unstated, open.
  */
 
-/* the rail preference, per browser: `collapsed` or `expanded`. */
+/* the rail preference's older copy, per browser: `collapsed` or `expanded`. still written, and read
+   only to seed the cookie where the cookie is absent. */
 const RAIL_STORAGE_KEY = 'bg-operator-rail';
+
+/** @param {boolean} collapsed */
+function keepRail(collapsed) {
+	// biome-ignore lint/suspicious/noDocumentCookie: the cookie store api is async and missing from browsers the dashboard serves; this is one synchronous write.
+	document.cookie = railCookie(collapsed);
+}
 
 /* app-shell-css's breakpoint, where the menu button and the drawer give way to the sidebar. */
 const WIDE = '(width >= 48rem)';
@@ -80,11 +90,13 @@ const WIDE = '(width >= 48rem)';
    wire is here: the toggle and its storage, the drawer, the account menu, the rail's tooltip and a
    parent's flyout.
 
-   the rail is open on the first render wherever it happens and the stored choice is read after
-   mount: the dashboard renders this on the server, which has no storage, and a first client
-   render that differed would not hydrate. */
+   the first render, on the server and in the browser alike, draws the rail as `initialCollapsed`
+   says, which the surface reads from the request's cookie with ../../rail-preference.ts: a first
+   client render that differed from the server's would not hydrate, and one changed after mount
+   is a visible jump. */
 /** @param {ShellProps} props */
 export function Shell({
+	initialCollapsed = false,
 	orgName,
 	orgLogo,
 	home,
@@ -103,20 +115,28 @@ export function Shell({
 	const drawerId = useId();
 	const mainId = useId();
 
-	const [collapsed, setCollapsed] = useState(false);
+	const [collapsed, setCollapsed] = useState(initialCollapsed);
+	/* a choice kept only in storage, from before the cookie, becomes the cookie for the next page's
+	   server render; this page keeps what the server drew, since flipping it now is the jump. */
 	useEffect(() => {
+		const hasCookie = document.cookie
+			.split(';')
+			.some((pair) => pair.trim().startsWith(`${RAIL_COOKIE}=`));
+		if (hasCookie) return;
 		try {
-			if (localStorage.getItem(RAIL_STORAGE_KEY) === 'collapsed') setCollapsed(true);
+			const stored = localStorage.getItem(RAIL_STORAGE_KEY);
+			if (stored !== null) keepRail(stored === 'collapsed');
 		} catch {
-			// storage refused (a blocked or private window): the rail stays open.
+			// storage refused (a blocked or private window): there is nothing to carry over.
 		}
 	}, []);
 	function toggle() {
 		const next = !collapsed;
+		keepRail(next);
 		try {
 			localStorage.setItem(RAIL_STORAGE_KEY, next ? 'collapsed' : 'expanded');
 		} catch {
-			// storage refused: the choice holds for this page only.
+			// storage refused: the cookie still carries the choice.
 		}
 		setCollapsed(next);
 	}

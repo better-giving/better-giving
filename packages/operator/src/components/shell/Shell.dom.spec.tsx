@@ -1,5 +1,7 @@
 import { act } from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { renderToString } from 'react-dom/server';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { RAIL_COOKIE, parseRail, railCookie } from '../../rail-preference';
 import { mount, render } from '../render.testing';
 import { Shell, type ShellProps, initials } from './Shell.jsx';
 
@@ -205,30 +207,72 @@ describe('the rail toggle', () => {
 		expect(root.querySelector('.ds-shell')?.hasAttribute('data-collapsed')).toBe(false);
 	});
 
-	it('makes the rail, flips its words and keeps the choice under bg-operator-rail', () => {
-		localStorage.clear();
-		const root = render(Shell, props());
+	describe('and its cookie', () => {
+		// the cookie is scoped to /admin, so the document stands on a dashboard address to read it
+		const before = location.pathname;
+		beforeEach(() => {
+			history.replaceState(null, '', '/admin/donations');
+			localStorage.clear();
+		});
+		const setCookie = (value: string) => {
+			// biome-ignore lint/suspicious/noDocumentCookie: the shell writes it this way, so the spec does.
+			document.cookie = value;
+		};
+		afterEach(() => {
+			setCookie(`${RAIL_COOKIE}=; Path=/admin; Max-Age=0`);
+			localStorage.clear();
+			history.replaceState(null, '', before);
+		});
+		const kept = () => parseRail(document.cookie);
+		const cookieSet = () => document.cookie.includes(`${RAIL_COOKIE}=`);
 
-		act(() => toggle(root).click());
+		it('makes the rail, flips its words and keeps the choice in the cookie and under bg-operator-rail', () => {
+			const root = render(Shell, props());
 
-		expect(root.querySelector('.ds-shell')?.hasAttribute('data-collapsed')).toBe(true);
-		expect(toggle(root).getAttribute('aria-label')).toBe('Expand sidebar');
-		expect(toggle(root).getAttribute('aria-expanded')).toBe('false');
-		expect(localStorage.getItem('bg-operator-rail')).toBe('collapsed');
+			act(() => toggle(root).click());
 
-		act(() => toggle(root).click());
+			expect(root.querySelector('.ds-shell')?.hasAttribute('data-collapsed')).toBe(true);
+			expect(toggle(root).getAttribute('aria-label')).toBe('Expand sidebar');
+			expect(toggle(root).getAttribute('aria-expanded')).toBe('false');
+			expect(kept()).toBe(true);
+			expect(localStorage.getItem('bg-operator-rail')).toBe('collapsed');
 
-		expect(root.querySelector('.ds-shell')?.hasAttribute('data-collapsed')).toBe(false);
-		expect(localStorage.getItem('bg-operator-rail')).toBe('expanded');
+			act(() => toggle(root).click());
+
+			expect(root.querySelector('.ds-shell')?.hasAttribute('data-collapsed')).toBe(false);
+			expect(cookieSet()).toBe(true);
+			expect(kept()).toBe(false);
+			expect(localStorage.getItem('bg-operator-rail')).toBe('expanded');
+		});
+
+		it('mounts the way it was told and is not flipped by a choice kept only in storage', () => {
+			localStorage.setItem('bg-operator-rail', 'collapsed');
+			const root = render(Shell, props());
+
+			expect(root.querySelector('.ds-shell')?.hasAttribute('data-collapsed')).toBe(false);
+			expect(toggle(root).getAttribute('aria-label')).toBe('Collapse sidebar');
+			// the stored choice becomes the cookie, so the next page's server draws it
+			expect(kept()).toBe(true);
+		});
+
+		it('leaves a cookie already there alone on mount', () => {
+			setCookie(railCookie(false));
+			localStorage.setItem('bg-operator-rail', 'collapsed');
+			const root = render(Shell, props());
+
+			expect(root.querySelector('.ds-shell')?.hasAttribute('data-collapsed')).toBe(false);
+			expect(cookieSet()).toBe(true);
+			expect(kept()).toBe(false);
+		});
 	});
 
-	it('opens as the rail where the choice was kept', () => {
-		localStorage.setItem('bg-operator-rail', 'collapsed');
-		const root = render(Shell, props());
+	it('is the rail on the server’s first paint when the cookie said so', () => {
+		const drawn = document.createElement('div');
+		drawn.innerHTML = renderToString(<Shell {...props({ initialCollapsed: true })} />);
 
-		expect(root.querySelector('.ds-shell')?.hasAttribute('data-collapsed')).toBe(true);
-		expect(toggle(root).getAttribute('aria-label')).toBe('Expand sidebar');
-		localStorage.clear();
+		expect(drawn.querySelector('.ds-shell')?.hasAttribute('data-collapsed')).toBe(true);
+		expect(toggle(drawn).getAttribute('aria-label')).toBe('Expand sidebar');
+		expect(toggle(drawn).getAttribute('aria-expanded')).toBe('false');
 	});
 });
 

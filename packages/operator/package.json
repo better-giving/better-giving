@@ -10,6 +10,7 @@
 		"./deploy-split": "./src/deploy-split.ts",
 		"./deductibility": "./src/deductibility.ts",
 		"./origins": "./src/origins.ts",
+		"./rail-preference": "./src/rail-preference.ts",
 		"./setup-folds": "./src/setup-folds.ts",
 		"./zod-issues": "./src/zod-issues.ts",
 		"./console/mail-from": "./src/console/mail-from.ts",
