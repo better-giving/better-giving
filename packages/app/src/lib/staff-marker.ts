@@ -30,8 +30,11 @@ export function hasStaffMarker(headers: Headers): boolean {
 	return false;
 }
 
-/** the `Set-Cookie` value that leaves the marker, `Secure` where the request came in over https. */
-export function staffMarkerCookie(requestUrl: URL): string {
-	const secure = requestUrl.protocol === 'https:' ? '; Secure' : '';
-	return `${STAFF_MARKER_COOKIE}=${STAFF_MARKER_VALUE}; Path=/; Max-Age=${STAFF_MARKER_MAX_AGE}; HttpOnly; SameSite=Lax${secure}`;
+/**
+ * the `Set-Cookie` value that leaves the marker. `secure` is the caller's `cookiesSecure(request)`
+ * ($lib/server/runtime/cookie-scheme.ts), the decision every other cookie this app writes takes: the
+ * scheme `request.url` carries is the connection's and reads `http:` behind a TLS proxy.
+ */
+export function staffMarkerCookie(secure: boolean): string {
+	return `${STAFF_MARKER_COOKIE}=${STAFF_MARKER_VALUE}; Path=/; Max-Age=${STAFF_MARKER_MAX_AGE}; HttpOnly; SameSite=Lax${secure ? '; Secure' : ''}`;
 }

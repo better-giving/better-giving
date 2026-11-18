@@ -14,6 +14,7 @@ import { operatorLinks } from '$lib/admin/operator-links';
 import { LOGS_SAY_WHY } from '$lib/deployment-logs';
 import { boxProps, useAdminForm } from '$lib/admin/use-admin-form';
 import { defineForm } from '$lib/forms/definition';
+import { cookiesSecure } from '$lib/server/runtime/cookie-scheme';
 import { staffMarkerCookie } from '$lib/staff-marker';
 import {
 	isRateLimited,
@@ -246,7 +247,7 @@ export async function action({ context, request, url }: Route.ActionArgs) {
 	for (const cookie of redeemed.cookies) response.headers.append('set-cookie', cookie);
 	// a colleague who sets a password is signed in by the same step, so this browser is staff's too
 	// ($lib/staff-marker.ts).
-	response.headers.append('set-cookie', staffMarkerCookie(url));
+	response.headers.append('set-cookie', staffMarkerCookie(cookiesSecure(request)));
 	return response;
 }
 

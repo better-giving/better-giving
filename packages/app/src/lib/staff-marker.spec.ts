@@ -24,19 +24,19 @@ describe('hasStaffMarker', () => {
 
 describe('staffMarkerCookie', () => {
 	it('is the fixed value for about a year, site-wide, HttpOnly and SameSite=Lax', () => {
-		expect(staffMarkerCookie(new URL('http://localhost:5321/login'))).toBe(
+		expect(staffMarkerCookie(false)).toBe(
 			'bg_staff_seen=1; Path=/; Max-Age=31536000; HttpOnly; SameSite=Lax'
 		);
 	});
 
-	it('adds Secure over https and only then', () => {
-		expect(staffMarkerCookie(new URL('https://give.example.org/login'))).toBe(
+	it('adds Secure where the caller says cookies are Secure, and only then', () => {
+		expect(staffMarkerCookie(true)).toBe(
 			'bg_staff_seen=1; Path=/; Max-Age=31536000; HttpOnly; SameSite=Lax; Secure'
 		);
 	});
 
 	it('is read back by hasStaffMarker as the browser would send it', () => {
-		const sent = staffMarkerCookie(new URL('https://give.example.org/')).split(';', 1)[0];
+		const sent = staffMarkerCookie(true).split(';', 1)[0];
 		expect(hasStaffMarker(headers(sent))).toBe(true);
 	});
 });

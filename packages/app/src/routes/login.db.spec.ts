@@ -1,5 +1,6 @@
 import type { Client } from '@libsql/client';
 import { ADMIN_USERNAME } from '@better-giving/operator/admin-password';
+import { COOKIE_SCHEME_HEADER } from '$lib/server/runtime/cookie-scheme';
 import { CLIENT_IP_HEADER } from '$lib/server/runtime/client-ip';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { signInRateLimitMessage } from '$lib/server/api/rate-limit';
@@ -327,10 +328,18 @@ function post(
 		search = '',
 		ip = `2001:db8:${(0x1000 + callersMinted++).toString(16)}::1`,
 		site,
+		scheme,
 		deployed = DEPLOYED
-	}: { search?: string; ip?: string | null; site?: string; deployed?: typeof DEPLOYED } = {}
+	}: {
+		search?: string;
+		ip?: string | null;
+		site?: string;
+		scheme?: string;
+		deployed?: typeof DEPLOYED;
+	} = {}
 ) {
 	const headers = new Headers({ origin: ORIGIN });
+	if (scheme) headers.set(COOKIE_SCHEME_HEADER, scheme);
 	if (ip !== null) headers.set(CLIENT_IP_HEADER, ip);
 	if (site) headers.set('sec-fetch-site', site);
 	return action(
@@ -436,6 +445,20 @@ describe('POST /login — where a sign-in ends up', () => {
 		// the spec's origin is https, so the marker is Secure (plain http is ../lib/staff-marker.spec.ts).
 		expect(marker).toContain('; Secure');
 		expect(marker).not.toContain('session');
+	});
+
+	// behind a TLS proxy the request's own scheme reads `http:`, and the entry stamps the pinned
+	// scheme instead ($lib/server/runtime/cookie-scheme.ts): the marker follows that, not the url.
+	it.each([
+		['https:', true],
+		['http:', false]
+	])('takes Secure for the marker from the pinned scheme %s', async (scheme, secure) => {
+		const answer = (await post(typed(PASSWORD), { scheme })) as Response;
+
+		const marker = answer.headers
+			.getSetCookie()
+			.find((value) => value.startsWith('bg_staff_seen='));
+		expect(marker?.includes('; Secure')).toBe(secure);
 	});
 
 	it('sets no marker for a refused password', async () => {

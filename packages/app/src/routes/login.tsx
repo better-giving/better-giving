@@ -14,6 +14,7 @@ import { operatorLinks } from '$lib/admin/operator-links';
 import { LOGS_SAY_WHY } from '$lib/deployment-logs';
 import { useAdminForm } from '$lib/admin/use-admin-form';
 import { defineForm } from '$lib/forms/definition';
+import { cookiesSecure } from '$lib/server/runtime/cookie-scheme';
 import { staffMarkerCookie } from '$lib/staff-marker';
 import {
 	isRateLimited,
@@ -404,7 +405,7 @@ export async function action({ context, request, url }: Route.ActionArgs) {
 		for (const cookie of minted) response.headers.append('set-cookie', cookie);
 		// the returning-staff marker, which the donor pages' footer reads to draw its Console link
 		// ($lib/staff-marker.ts). set on a successful sign-in only and never cleared on sign-out.
-		response.headers.append('set-cookie', staffMarkerCookie(destination));
+		response.headers.append('set-cookie', staffMarkerCookie(cookiesSecure(request)));
 		return response;
 	}
 }
