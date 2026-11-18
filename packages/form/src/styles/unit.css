@@ -1,0 +1,152 @@
+/*
+ * the amount step's unit (../unit-picker.ts): the pill at the end of the "How much" line and the
+ * panel it opens over that line.
+ *
+ * adopted into the unit's own shadow root after the registry's button and badge, ./parts.css and
+ * ./coins.css: the pill is the registry's small button (`ds-btn ds-btn-sm`) on a ground of its own,
+ * the panel is the open list's surface (`[part~='select-list']`), its rows are the coin list's (a
+ * mark and two lines) and its search box is the coin list's box. what is here is what the pill and
+ * the panel have that neither of those does. nothing here moves.
+ */
+
+/*
+ * the host stands inside the "How much" legend and inherits its small bold quiet type, and the
+ * panel, shown in the top layer, still inherits from here: so the card's own base is set back on
+ * the host, off the clamped root, and every size below is a step of it.
+ */
+:host {
+	display: inline-flex;
+	font-size: var(--_root-size);
+	font-weight: var(--_w-normal);
+	line-height: var(--_lh-body);
+	color: var(--_n12);
+}
+
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+}
+
+input,
+button {
+	font: inherit;
+	color: inherit;
+	letter-spacing: inherit;
+	margin: 0;
+}
+
+p {
+	margin: 0;
+}
+
+/*
+ * the pill: the registry's small tier — its height, its type and its ring — on the lightest control
+ * ground inside a control's edge, at the full radius, so it reads as a quiet button and never as a
+ * box to type in. the code is at the emphasis weight; the chevron beside it is the quiet ink.
+ */
+[part~='unit-pill'] {
+	font-weight: var(--_w-bold);
+	color: var(--_n12);
+	background: var(--_n2);
+	border-color: var(--_edge-control);
+	border-radius: var(--_r-pill);
+}
+
+[part~='unit-pill'] .unit-chevron {
+	color: var(--_n11);
+}
+
+@media (hover: hover) and (pointer: fine) {
+	[part~='unit-pill']:hover {
+		background: var(--_n3);
+		border-color: var(--_n8);
+	}
+}
+
+[part~='unit-pill']:active {
+	background: var(--_n4);
+	border-color: var(--_n8);
+}
+
+/* covered by the panel while it is open, and no target under it. */
+[part~='unit-pill'][aria-expanded='true'] {
+	pointer-events: none;
+}
+
+/*
+ * the panel: the open list's surface, as wide as the line it covers and as tall as what it holds.
+ * the rows scroll inside it, never the box and the hint above them.
+ */
+.unit-panel {
+	inline-size: var(--reference-width);
+	max-inline-size: none;
+	max-block-size: none;
+	margin-block: 0;
+	overflow: visible;
+	display: flex;
+	flex-direction: column;
+	gap: var(--_sp1);
+}
+
+/* the box holds the caret for as long as the panel stands, so it holds the ring. */
+.unit-panel .picker {
+	border-color: var(--_focus-ring);
+	box-shadow: 0 0 0 var(--_focus-width) var(--_focus-ring);
+}
+
+.unit-hint {
+	padding-inline: var(--_sp3);
+	color: var(--_n11);
+	font-size: var(--_t-xs);
+}
+
+/*
+ * the rows, on the coin list's three columns (`.coin-list` in ./coins.css): each group spans them
+ * and hands them on to its rows, so a mark and a tick stand in one column down the whole list. four
+ * and a half rows tall at most, as the closed choices' list is (`[part~='select-list']` in
+ * ./parts.css), so the half row says there is more to scroll to; the rows are the token's.
+ */
+.unit-list {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr) auto;
+	align-content: start;
+	max-block-size: calc(var(--_row-min) * 4.5);
+	overflow-y: auto;
+}
+
+.unit-group {
+	display: grid;
+	grid-column: 1 / -1;
+	grid-template-columns: subgrid;
+}
+
+/* a line between two groups, the step-6 hairline nothing operates. */
+.unit-group:not([hidden]) ~ .unit-group:not([hidden]) {
+	border-block-start: var(--_border) solid var(--_n6);
+	margin-block-start: var(--_sp1);
+}
+
+.unit-group > .unit-hint {
+	grid-column: 1 / -1;
+	padding-block-end: var(--_sp2);
+}
+
+.unit-group-heading {
+	grid-column: 1 / -1;
+	padding: var(--_sp2) var(--_sp3) var(--_sp1);
+	color: var(--_n11);
+	font-size: var(--_t-xs);
+	font-weight: var(--_w-bold);
+}
+
+/* a currency's name under its code, where a coin's network badge stands on its row. */
+.unit-name {
+	color: var(--_n11);
+	font-size: var(--_t-sm);
+}
+
+/* last, so an element's own `display` above never outranks the attribute that takes it off screen. */
+[hidden] {
+	display: none;
+}

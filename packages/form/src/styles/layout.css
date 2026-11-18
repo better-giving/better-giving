@@ -469,6 +469,17 @@ form {
 }
 
 /*
+ * the "How much" line, with what the gift is given in at its end: the pill, or the currency's code
+ * as words (../unit-picker.ts). one line at every width, the pill centred on it.
+ */
+.group > legend.unit-line {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--_sp2);
+}
+
+/*
  * the frequency control: equal columns, one row, every option at the interactive floor. three
  * frequencies on a card too narrow for them wrap into a second row rather than shrinking an
  * option under it. the track is a query container so the lines between its

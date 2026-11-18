@@ -780,6 +780,158 @@ describe('the crypto projection', () => {
 	});
 });
 
+describe('the unit projection', () => {
+	const COINS: FormConfig = {
+		...CONFIG,
+		currency: 'USD',
+		frequencies: ['one_time', 'monthly', 'yearly'],
+		paymentMethods: ['card', 'crypto'],
+		coins: [
+			{
+				coin: 'usdttrc20',
+				ticker: 'usdt',
+				name: 'Tether USD (Tron)',
+				network: 'Tron',
+				memoRequired: false
+			},
+			{
+				coin: 'btc',
+				ticker: 'btc',
+				name: 'Bitcoin',
+				network: 'Bitcoin',
+				memoRequired: false,
+				logo: 'https://example.test/coins/btc.svg'
+			}
+		]
+	};
+	type Units = {
+		readonly value: string;
+		readonly options: readonly Record<string, unknown>[];
+		readonly onChange: (value: string) => void;
+	};
+	type Cadences = {
+		readonly options: readonly { value: string; checked: boolean; unavailable?: boolean }[];
+	};
+
+	it('lists the currency, then the coins by ticker, and holds the currency at first', () => {
+		const { get } = api(() => {}, { config: COINS });
+		const units = get().unitSelect as Units;
+
+		expect(units.value).toBe('currency:USD');
+		expect(units.options).toEqual([
+			{
+				value: 'currency:USD',
+				kind: 'currency',
+				label: 'USD',
+				name: 'US Dollar',
+				symbol: '$',
+				refused: false
+			},
+			{
+				value: 'coin:btc',
+				kind: 'coin',
+				label: 'BTC',
+				name: 'Bitcoin',
+				network: 'Bitcoin',
+				logo: 'https://example.test/coins/btc.svg',
+				refused: false
+			},
+			{
+				value: 'coin:usdttrc20',
+				kind: 'coin',
+				label: 'USDT',
+				name: 'Tether USD (Tron)',
+				network: 'Tron',
+				refused: false
+			}
+		]);
+	});
+
+	it('lists no coin on a deployment that takes none', () => {
+		const { get } = api();
+
+		expect((get().unitSelect as Units).options.map((option) => option.value)).toEqual([
+			'currency:usd'
+		]);
+	});
+
+	it('mutes every repeating cadence while a coin is picked, and chooses one-time', () => {
+		const { get } = api(
+			(send) => {
+				send({ type: 'SET_FREQUENCY', frequency: 'monthly' } as never);
+			},
+			{ config: COINS }
+		);
+		(get().unitSelect as Units).onChange('coin:btc');
+
+		expect((get().unitSelect as Units).value).toBe('coin:btc');
+		expect((get().frequencyGroup as Cadences).options).toEqual([
+			expect.objectContaining({ value: 'one_time', checked: true, unavailable: false }),
+			expect.objectContaining({ value: 'monthly', checked: false, unavailable: true }),
+			expect.objectContaining({ value: 'yearly', checked: false, unavailable: true })
+		]);
+
+		(get().unitSelect as Units).onChange('currency:USD');
+		expect((get().frequencyGroup as Cadences).options.map((option) => option.checked)).toEqual([
+			false,
+			true,
+			false
+		]);
+	});
+
+	it('names the step-one coin the account refused, on the amount step', async () => {
+		const { get, actor } = api(
+			(send) => {
+				send({ type: 'SET_AMOUNT', amountMinor: 2500 } as never);
+				send({ type: 'SET_UNIT', coin: 'btc' } as never);
+				send({ type: 'CONTINUE' } as never);
+				send({
+					type: 'SET_CONTACT',
+					email: 'donor@example.org',
+					firstName: 'Ada',
+					lastName: 'Lovelace'
+				} as never);
+				send({ type: 'SET_TURNSTILE_TOKEN', token: 'tk_ready' } as never);
+				send({ type: 'CONTINUE' } as never);
+			},
+			{
+				config: COINS,
+				ports: { quote: () => Promise.reject({ code: 'coin_not_accepted', message: 'refused' }) }
+			}
+		);
+		await settle();
+
+		expect(actor.getSnapshot().value).toBe('amount');
+		expect(get().state).toMatchObject({ step: 'amount', refusedCoin: 'btc' });
+		expect(
+			(get().unitSelect as Units).options.find((option) => option.value === 'coin:btc')?.refused
+		).toBe(true);
+	});
+
+	// a press waiting on the challenge token is the details step's on a coin gift, which has no
+	// review step to stand on while it waits.
+	it('projects a coin gift waiting on its token as the wait, not as a review step', () => {
+		const { get, actor } = api(
+			(send) => {
+				send({ type: 'SET_AMOUNT', amountMinor: 2500 } as never);
+				send({ type: 'SET_UNIT', coin: 'btc' } as never);
+				send({ type: 'CONTINUE' } as never);
+				send({
+					type: 'SET_CONTACT',
+					email: 'donor@example.org',
+					firstName: 'Ada',
+					lastName: 'Lovelace'
+				} as never);
+				send({ type: 'CONTINUE' } as never);
+			},
+			{ config: COINS }
+		);
+
+		expect(actor.getSnapshot().value).toBe('holding');
+		expect(get().state).toMatchObject({ step: 'working', phase: 'quoting' });
+	});
+});
+
 describe('the employer ask projection', () => {
 	const GIFT_URL = 'https://giving.example.org/gift/7Qk3-mVx9Lr2NpA4';
 	const asked = {

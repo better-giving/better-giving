@@ -1210,12 +1210,34 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * (`.segment:has(…)::before` in ./motion.css) and its hover by nothing, because a chosen option has
  * nothing left to offer a pointer.
  */
-[part~='frequency-option']:not([part~='selected']):hover {
+[part~='frequency-option']:not([part~='selected']):not([part~='unavailable']):hover {
 	background: var(--_n3);
 }
 
-[part~='frequency-option']:not([part~='selected']):active {
+[part~='frequency-option']:not([part~='selected']):not([part~='unavailable']):active {
 	background: var(--_n4);
+}
+
+/*
+ * a repeating cadence while the gift is given in a coin: the word in the quiet ink and no answer to
+ * the pointer, because the flow refuses its press. it stays focusable and says so with
+ * `aria-disabled`, and the sentence under the track says why (`.cadence-note` below).
+ */
+[part~='frequency-option'][part~='unavailable'] {
+	color: var(--_n11);
+	cursor: not-allowed;
+}
+
+/* why the repeating cadences stand unavailable, under the track, in the quiet ink. */
+.cadence-note {
+	margin: 0;
+	color: var(--_n11);
+	font-size: var(--_t-sm);
+}
+
+/* the deployment's one currency, at the end of the "How much" line where a pill would stand. */
+.unit-plain {
+	color: var(--_n11);
 }
 
 [part~='amount-option']:hover {

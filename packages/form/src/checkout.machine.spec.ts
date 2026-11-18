@@ -1686,6 +1686,7 @@ const EVERY_EVENT: readonly CheckoutEvent[] = Object.values({
 	GO_TO_STEP: { type: 'GO_TO_STEP', step: 'amount' },
 	SET_METHOD: { type: 'SET_METHOD', method: 'card' },
 	SET_COIN: { type: 'SET_COIN', coin: 'btc' },
+	SET_UNIT: { type: 'SET_UNIT', coin: 'btc' },
 	PAYMENT_UNAVAILABLE: {
 		type: 'PAYMENT_UNAVAILABLE',
 		failure: { message: 'The payment fields could not be shown.' }
@@ -2971,6 +2972,194 @@ describe('a crypto gift', () => {
 			expect(actor.getSnapshot().value).toBe('failed');
 			expect(actor.getSnapshot().context.coinRefusal).toBeNull();
 		});
+	});
+});
+
+describe('a coin picked on the amount step', () => {
+	const COINS = [
+		{ coin: 'btc', ticker: 'btc', name: 'Bitcoin', network: 'btc', memoRequired: false },
+		{
+			coin: 'usdttrc20',
+			ticker: 'usdt',
+			name: 'Tether USD (Tron)',
+			network: 'trx',
+			memoRequired: false
+		}
+	];
+	const COIN_CONFIG: FormConfig = { ...CONFIG, paymentMethods: ['card', 'crypto'], coins: COINS };
+	const DEPOSIT_QUOTE: Quote = {
+		paymentToken: 'don_coin_1',
+		feeMinor: 25,
+		totalMinor: 2525,
+		deposit: {
+			address: '1BoatSLRHtKNngkdXEeobR76b53LETtpyT',
+			memo: null,
+			coin: 'btc',
+			network: 'btc',
+			coinAmount: '0.00041',
+			validUntil: new Date(EPOCH + 7 * 24 * 60 * 60 * 1000).toISOString(),
+			qr: { rows: ['101', '010', '101'] }
+		}
+	};
+
+	/** a monthly gift of $25 on the amount step, which a coin then makes one-time. */
+	function monthlyThenCoin(options: HarnessOptions = {}) {
+		const h = harness({ config: COIN_CONFIG, quote: async () => DEPOSIT_QUOTE, ...options });
+		h.actor.send({ type: 'SET_AMOUNT', amountMinor: 2500 });
+		h.actor.send({ type: 'SET_FREQUENCY', frequency: 'monthly' });
+		h.actor.send({ type: 'SET_UNIT', coin: 'btc' });
+		return h;
+	}
+
+	/** the same gift carried through the details step's press, a challenge token in hand. */
+	async function pressedOnDetails(options: HarnessOptions = {}) {
+		const h = monthlyThenCoin(options);
+		h.actor.send({ type: 'CONTINUE' });
+		h.actor.send({
+			type: 'SET_CONTACT',
+			email: 'donor@example.org',
+			firstName: 'Ada',
+			lastName: 'Lovelace'
+		});
+		h.actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'tk_ready' });
+		h.actor.send({ type: 'CONTINUE' });
+		await settle();
+		return h;
+	}
+
+	it('makes the gift one-time and keeps the cadence the donor picked before it', () => {
+		const { actor } = monthlyThenCoin();
+		actor.send({ type: 'CONTINUE' });
+
+		expect(actor.getSnapshot().context.fv?.frequency).toBe('one_time');
+		expect(actor.getSnapshot().context.draft.frequency).toBe('monthly');
+	});
+
+	it('gives the earlier cadence back once the donor picks the currency again', () => {
+		const { actor } = monthlyThenCoin();
+		actor.send({ type: 'SET_UNIT', coin: null });
+		actor.send({ type: 'CONTINUE' });
+
+		expect(actor.getSnapshot().context.fv?.frequency).toBe('monthly');
+	});
+
+	// a muted cadence still sends its event (the header's first rule); the guard is what refuses it.
+	it('takes no repeating cadence while a coin is picked', () => {
+		const { actor } = monthlyThenCoin();
+		actor.send({ type: 'SET_FREQUENCY', frequency: 'yearly' });
+		actor.send({ type: 'SET_UNIT', coin: null });
+
+		expect(actor.getSnapshot().context.draft.frequency).toBe('monthly');
+	});
+
+	it('takes no coin the served list does not carry', () => {
+		const { actor } = monthlyThenCoin();
+		actor.send({ type: 'SET_UNIT', coin: 'doge' });
+
+		expect(actor.getSnapshot().context.draft.coin).toBe('btc');
+	});
+
+	it('mints the address from the details step’s press, with no rail chosen on a review step', async () => {
+		const { actor, calls } = await pressedOnDetails();
+
+		expect(calls.quote[0]).toMatchObject({ method: 'crypto', coin: 'btc', frequency: 'one_time' });
+		expect(actor.getSnapshot().matches('awaitingDeposit')).toBe(true);
+	});
+
+	// the card's payment fields report a rail whenever they like, and that rail is not this gift's.
+	it('mints for the coin whatever rail the payment fields reported meanwhile', async () => {
+		const h = monthlyThenCoin();
+		h.actor.send({ type: 'SET_METHOD', method: 'card' });
+		h.actor.send({ type: 'CONTINUE' });
+		h.actor.send({
+			type: 'SET_CONTACT',
+			email: 'donor@example.org',
+			firstName: 'Ada',
+			lastName: 'Lovelace'
+		});
+		h.actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'tk_ready' });
+		h.actor.send({ type: 'CONTINUE' });
+		await settle();
+
+		expect(h.calls.quote[0]?.method).toBe('crypto');
+	});
+
+	it('holds no way onto the review step while a coin is picked', () => {
+		const { actor } = monthlyThenCoin();
+		actor.send({ type: 'CONTINUE' });
+		actor.send({
+			type: 'SET_CONTACT',
+			email: 'donor@example.org',
+			firstName: 'Ada',
+			lastName: 'Lovelace'
+		});
+
+		expect(stepIsReachable(actor.getSnapshot().context, 'details', 'give')).toBe(false);
+		actor.send({ type: 'GO_TO_STEP', step: 'give' });
+		expect(actor.getSnapshot().value).toBe('details');
+	});
+
+	it('goes back to the amount step from the address, the coin still picked', async () => {
+		const { actor } = await pressedOnDetails();
+
+		actor.send({ type: 'BACK' });
+
+		expect(actor.getSnapshot().value).toBe('amount');
+		expect(actor.getSnapshot().context.draft.coin).toBe('btc');
+	});
+
+	it('starts an expired address again on the amount step', async () => {
+		const { actor, clock } = await pressedOnDetails({ status: async () => ({ state: 'expired' }) });
+		clock.advance(DEPOSIT_POLL_MS);
+		await settle();
+
+		actor.send({ type: 'RETRY' });
+
+		expect(actor.getSnapshot().value).toBe('amount');
+	});
+
+	it('lands a coin the account no longer takes on the amount step, refused there', async () => {
+		const { actor, calls } = await pressedOnDetails({
+			quote: () => Promise.reject({ code: 'coin_not_accepted', message: 'refused' })
+		});
+
+		expect(actor.getSnapshot().value).toBe('amount');
+		expect(actor.getSnapshot().context.refusedCoins).toEqual(['btc']);
+
+		// the same coin is refused here rather than asked of the account again.
+		actor.send({ type: 'CONTINUE' });
+		expect(actor.getSnapshot().value).toBe('amount');
+		expect(calls.quote).toHaveLength(1);
+
+		actor.send({ type: 'SET_UNIT', coin: 'usdttrc20' });
+		actor.send({ type: 'CONTINUE' });
+		expect(actor.getSnapshot().value).toBe('details');
+	});
+
+	it('lands a Try again on the details step, whose press mints the address', async () => {
+		const { actor } = await pressedOnDetails({
+			quote: () => Promise.reject({ code: 'payments_unavailable', message: 'down' })
+		});
+		expect(actor.getSnapshot().value).toBe('failed');
+
+		actor.send({ type: 'RETRY' });
+
+		expect(actor.getSnapshot().value).toBe('details');
+	});
+
+	it('leaves the money path alone once the currency is picked again', async () => {
+		const { actor } = monthlyThenCoin();
+		actor.send({ type: 'SET_UNIT', coin: null });
+		actor.send({ type: 'CONTINUE' });
+		actor.send({
+			type: 'SET_CONTACT',
+			email: 'donor@example.org',
+			firstName: 'Ada',
+			lastName: 'Lovelace'
+		});
+		actor.send({ type: 'CONTINUE' });
+
+		expect(actor.getSnapshot().value).toBe('give');
 	});
 });
 

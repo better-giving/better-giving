@@ -301,7 +301,7 @@ const QR_ROWS = [
 	'1111111001111111111111101'
 ] as const;
 
-/** card and crypto, on both cadences, so the monthly one shows the crypto row leaving the box. */
+/** card and crypto, on both cadences, so picking a coin on the amount step shows the repeating ones muted. */
 const CRYPTO: ServedConfig = {
 	...DEFAULT,
 	formId: 'frm_crypto',
@@ -383,7 +383,7 @@ export const FIXTURES: Readonly<Record<FixtureName, Fixture>> = {
 	},
 	crypto: {
 		formId: CRYPTO.formId,
-		note: 'Card and crypto, five coins. ?deposit= picks the ending: received (default), expired or late. The coin named fail is refused as under its minimum.',
+		note: 'Card and crypto, five coins on the amount step’s unit list. ?deposit= picks the ending: received (default), expired or late. The coin named fail is refused as under its minimum.',
 		load: async () => CRYPTO
 	},
 	one: {
@@ -570,8 +570,8 @@ function ports(config: FormConfig, ending: DepositEnding, employer: EmployerAnsw
  * deployment offers is reported once instead, through the same callback a real surface reports it
  * through.
  *
- * `crypto` is the exception, composed the way ../src/embed/runtime.ts composes it so the coin row,
- * its list and the monthly cadence taking it away are the shipped code. its Stripe half is handed a
+ * `crypto` is the exception, composed the way ../src/embed/runtime.ts composes it so the payment box
+ * is the shipped code; its coin is picked on the amount step's unit list. its Stripe half is handed a
  * loader that answers nothing, which that adapter reads as fields that never came up and
  * ../src/embed/surface.ts withholds, since the crypto half never reports the same — so the card row
  * is counted in the box's header and never drawn.
@@ -628,6 +628,13 @@ export function devRuntime(ending: DepositEnding, employer: EmployerAnswer): For
 				stop: () => {}
 			};
 		},
-		challenge: () => ({ reset: () => {}, stop: () => {} })
+		// a widget that passes every visitor at once, the way an invisible one does, so a press waiting
+		// on its token (`holding` in ../src/checkout.machine.ts) is answered rather than timed out.
+		challenge: (_config, _node, onToken) => {
+			let minted = 0;
+			const mint = () => queueMicrotask(() => onToken(`tk_dev_${(minted += 1)}`));
+			mint();
+			return { reset: mint, stop: () => {} };
+		}
 	};
 }

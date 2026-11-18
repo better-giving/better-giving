@@ -104,6 +104,15 @@ export type AmountDraft = {
 	 * `missingAmountDecisions` below can refuse a press for.
 	 */
 	readonly programId?: string | undefined;
+	/**
+	 * the coin the gift is given in, as `PayableCoin.coin` names it, absent while it is given in the
+	 * deployment's currency — the unit picked on this step (`SET_UNIT` in ./checkout.machine.ts).
+	 *
+	 * a coin gift is one-time, and `frequency` above keeps the cadence the donor picked before it
+	 * rather than being overwritten: `completeAmount` below settles the gift one-time while a coin is
+	 * picked, and the cadence stands again the moment the currency is.
+	 */
+	readonly coin?: string | undefined;
 };
 
 /** how a shown note is signed: the donor's first name and last initial, or "Anonymous". */
@@ -340,7 +349,8 @@ function missingTributeDecisions(tribute: TributeDraft | undefined): readonly Am
  */
 export function completeAmount(draft: AmountDraft, config: FormConfig): FormValue | null {
 	if (missingAmountDecisions(draft, config).length > 0) return null;
-	const { amountMinor, frequency } = draft;
+	const { amountMinor } = draft;
+	const frequency = draftFrequency(draft);
 	if (amountMinor === undefined || frequency === undefined) return null;
 
 	const note = (draft.note ?? '').trim();
@@ -353,6 +363,16 @@ export function completeAmount(draft: AmountDraft, config: FormConfig): FormValu
 		...(note.length > 0 && draft.noteShown !== undefined ? { noteShown: draft.noteShown } : {}),
 		...(tribute === null ? {} : { tribute })
 	};
+}
+
+/**
+ * the cadence this draft stands at: one-time while a coin is picked, the donor's own pick otherwise.
+ *
+ * the one reading of it, for the gift `completeAmount` settles and the track ./connect.ts projects,
+ * so the chip a donor sees and the cadence a quote is minted for cannot part.
+ */
+export function draftFrequency(draft: AmountDraft): Frequency | undefined {
+	return draft.coin === undefined ? draft.frequency : 'one_time';
 }
 
 /**

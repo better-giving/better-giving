@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
-import { cdp, userEvent } from 'vitest/browser';
+import { cdp, page, userEvent } from 'vitest/browser';
 import { createCoinPicker } from './coin-picker';
 import { PRE_UPGRADE_RESERVATION_CSS, RESERVED_MIN_HEIGHT } from './embed/reservation';
 import { defineDonateForm, DONATE_FORM_TAG } from './element';
@@ -1486,5 +1486,102 @@ describe('the brand scale the element generates', () => {
 		expect(luma(bytes(host, '--accent-contrast'))).toBeLessThan(0.3);
 		expect(luma(bytes(host, '--accent-12'))).toBeLessThan(0.3);
 		expect(luma(bytes(host, '--accent-1'))).toBeGreaterThan(0.9);
+	});
+});
+
+describe('the unit list on the amount step', () => {
+	const COINS: FormConfig = {
+		...CONFIG,
+		currency: 'USD',
+		paymentMethods: ['card', 'crypto'],
+		coins: ['btc', 'eth', 'sol', 'xrp', 'ada', 'dot', 'ltc'].map((coin) => ({
+			coin,
+			ticker: coin,
+			name: coin.toUpperCase(),
+			network: coin,
+			memoRequired: false
+		}))
+	};
+
+	/** a card in a column `width` wide: the card's own width on a desktop page, and a phone's. */
+	async function amountStep(width: number) {
+		// a page wider than the column, so nothing measured below is the viewport's edge pushing back.
+		await page.viewport(1440, 900);
+		const column = document.createElement('div');
+		column.style.inlineSize = `${width}px`;
+		document.body.appendChild(column);
+		planted.push(column);
+		const host = await mount(COINS, { parent: column });
+		const root = shadow(host);
+		const legend = root.querySelector('legend.unit-line') as HTMLElement;
+		const unit = (root.querySelector('.unit') as HTMLElement).shadowRoot as ShadowRoot;
+		const pill = unit.querySelector('[part~="unit-pill"]') as HTMLElement;
+		return { root, legend, unit, pill };
+	}
+
+	/** the machine's open lands a frame on: its focus and its placement both wait for one. */
+	const opened = () => new Promise((resolve) => setTimeout(resolve, 50));
+
+	it.each([480, 375])(
+		'covers the How much line from the pill’s top right, at the card’s content width: %ipx',
+		async (width) => {
+			const { legend, unit, pill } = await amountStep(width);
+			await userEvent.click(pill);
+			await opened();
+
+			const panel = (unit.querySelector('.unit-panel') as HTMLElement).getBoundingClientRect();
+			const line = legend.getBoundingClientRect();
+			const own = pill.getBoundingClientRect();
+			const edges = (box: { top: number; right: number; left: number; width: number }) =>
+				[box.top, box.right, box.left, box.width].map(Math.round);
+			expect(edges(panel)).toEqual([
+				Math.round(Math.min(line.top, own.top)),
+				Math.round(own.right),
+				Math.round(line.left),
+				Math.round(line.width)
+			]);
+		}
+	);
+
+	it('scrolls the rows inside the panel, never the box above them', async () => {
+		const { unit, pill } = await amountStep(375);
+		await userEvent.click(pill);
+		await opened();
+
+		const list = unit.querySelector('#unit-list') as HTMLElement;
+		expect(list.scrollHeight).toBeGreaterThan(list.clientHeight);
+		expect(getComputedStyle(list).overflowY).toBe('auto');
+	});
+
+	it.each(['{Enter}', ' ', '{ArrowDown}'])(
+		'opens on %s with the caret in the search, and Escape gives it back to the pill',
+		async (key) => {
+			const { unit, pill } = await amountStep(480);
+			pill.focus();
+			await userEvent.keyboard(key);
+			await opened();
+			expect(unit.activeElement?.getAttribute('role')).toBe('combobox');
+
+			await userEvent.keyboard('{Escape}');
+			await opened();
+			expect(unit.activeElement).toBe(pill);
+			expect(pill.getAttribute('aria-expanded')).toBe('false');
+		}
+	);
+
+	it('hands the caret to the figure once a coin is picked, and mutes the repeating cadence', async () => {
+		const { root, unit, pill } = await amountStep(480);
+		pill.focus();
+		await userEvent.keyboard('{Enter}');
+		await opened();
+		await userEvent.keyboard('btc');
+		await userEvent.keyboard('{Enter}');
+		await opened();
+
+		expect(pill.textContent).toBe('BTC');
+		expect(unit.activeElement).toBeNull();
+		expect(root.activeElement?.closest('[part~="amount-option"]')).not.toBeNull();
+		const monthly = root.querySelectorAll('[part~="frequency-option"] input')[1];
+		expect(monthly?.getAttribute('aria-disabled')).toBe('true');
 	});
 });

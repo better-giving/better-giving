@@ -23,7 +23,6 @@
 import { createActor, type Actor } from 'xstate';
 import {
 	checkoutMachine,
-	cryptoIsOffered,
 	fundIsOffered,
 	openFund,
 	venmoIsOffered,
@@ -112,8 +111,8 @@ export type FormCheckout = {
 	/**
 	 * whether the payment box lists the crypto option, told on every reading.
 	 *
-	 * `cryptoIsOffered` in ./checkout.machine.ts is the answer; the option stands the coin list the
-	 * card built (`coins` on `CardView` in ./views.ts) in a row of its own.
+	 * the option stands the coin list the card built (`coins` on `CardView` in ./views.ts) in a row of
+	 * its own. this element tells it `false` on every reading: its coin is picked on the amount step.
 	 */
 	readonly offerCrypto: (offered: boolean) => void;
 	/**
@@ -1274,7 +1273,9 @@ export function donateFormClass(runtime: FormRuntime): CustomElementConstructor 
 				const api = connect(snapshot, actor.send, domPropTypes);
 				checkout.cadence(committedFrequency(api.state));
 				checkout.offerFund(fundIsOffered(snapshot));
-				checkout.offerCrypto(cryptoIsOffered(snapshot));
+				// a coin is picked on the amount step's unit list (./unit-picker.ts) and goes straight to
+				// its address, so the payment box on this card lists no crypto option at all.
+				checkout.offerCrypto(false);
 				checkout.offerVenmo(venmoIsOffered(snapshot));
 				view.update(api);
 				const { step } = api.state;

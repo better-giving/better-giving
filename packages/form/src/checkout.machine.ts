@@ -77,7 +77,7 @@
 // resume (a cold page load that finds out what happened while nobody was watching) and the
 // indeterminate (a confirmation with no answer, which re-reads rather than re-charges).
 
-import { assign, fromPromise, not, setup, type Actor } from 'xstate';
+import { and, assign, fromPromise, not, setup, type Actor } from 'xstate';
 import {
 	depositIsUsable,
 	estimateDeductedFee,
@@ -109,6 +109,7 @@ import {
 } from './value';
 import { employerAnswer, giftToken } from './employer';
 import { isChariotRail } from './embed/rails';
+import { unitRails } from './unit';
 import {
 	DONATION_STATES,
 	FREQUENCIES,
@@ -453,6 +454,15 @@ export type CheckoutEvent =
 	 * rail it is not a report from a provider's frame and is answered on the review step alone.
 	 */
 	| { readonly type: 'SET_COIN'; readonly coin: string | null }
+	/**
+	 * what the gift is given in, picked on the amount step: a coin, as `PayableCoin.coin` names it,
+	 * or `null` for the deployment's currency.
+	 *
+	 * a coin is the rail as well as the unit, so a gift given in one skips the review step's choice of
+	 * rail: the details step's press mints the address. a coin the served config does not offer is
+	 * dropped by the guard.
+	 */
+	| { readonly type: 'SET_UNIT'; readonly coin: string | null }
 	| { readonly type: 'PAYMENT_UNAVAILABLE'; readonly failure: Failure }
 	| { readonly type: 'CHALLENGE_UNAVAILABLE'; readonly failure: Failure }
 	| { readonly type: 'REPEATING_UNAVAILABLE' }
@@ -617,8 +627,36 @@ function coinRefusalOf(context: CheckoutContext, error: unknown): CoinRefusal | 
  * the two from parting.
  */
 export function payerIsComplete(context: CheckoutContext): boolean {
-	const payer = completePayer(context.payerDraft, context.config);
+	const payer = completePayer(payerDraftFor(context), context.config);
 	return payer !== null && (payer.coin === undefined || !context.refusedCoins.includes(payer.coin));
+}
+
+/**
+ * whether the gift is given in a coin picked on the amount step, which is the rail as well as the
+ * unit. exported for both surfaces that run this flow, which draw the unit off it.
+ */
+export function givesCoin(context: CheckoutContext): boolean {
+	return context.draft.coin !== undefined;
+}
+
+/**
+ * the payer draft a press is completed from: the donor's own, with the rail and the coin the amount
+ * step picked laid over it on a coin gift.
+ *
+ * laid over rather than written into `payerDraft`, because the payment provider's fields report a
+ * rail into that draft whenever they like (`SET_METHOD` at the root), and a coin gift is not theirs
+ * to move; a donor who picks the currency again finds the rail they left there.
+ */
+function payerDraftFor(context: CheckoutContext): PayerDraft {
+	const { coin } = context.draft;
+	return coin === undefined
+		? context.payerDraft
+		: { ...context.payerDraft, method: 'crypto', coin };
+}
+
+/** whether the amount step offers `coin`: its unit list's crypto group stands, and lists it. */
+function coinIsOffered(config: FormConfig, coin: string): boolean {
+	return unitRails(config).coins && (config.coins ?? []).some((offered) => offered.coin === coin);
 }
 
 /** whether a rejected port never heard back from the endpoint (`EmbedFailure` in ./embed/api.ts). */
@@ -926,8 +964,13 @@ function repeatingIsRefused(context: CheckoutContext): boolean {
 	return context.repeatingUnavailable && frequency !== undefined && frequency !== 'one_time';
 }
 
-/** everything the amount step exists to decide has been decided. */
+/**
+ * everything the amount step exists to decide has been decided, in a coin the account has not
+ * refused on this card: a coin gift chooses its coin on this step and on no later one.
+ */
 function amountIsDecided(context: CheckoutContext): boolean {
+	const { coin } = context.draft;
+	if (coin !== undefined && context.refusedCoins.includes(coin)) return false;
 	return completeAmount(context.draft, context.config) !== null;
 }
 
@@ -976,6 +1019,8 @@ export function stepIsReachable(
 	if (target < at) return true;
 	if (target === at) return false;
 	if (!amountIsDecided(context)) return false;
+	// a coin gift has no review step: the details step's press is what mints its address.
+	if (to === 'give' && givesCoin(context)) return false;
 	return to !== 'give' || payerFieldsAreGiven(context);
 }
 
@@ -1165,6 +1210,18 @@ export const checkoutMachine = setup({
 		/** the donor has filled in everything a typed rail needs before an intent can be minted. */
 		payerIsComplete: ({ context }) => payerIsComplete(context),
 
+		/** the gift is given in a coin picked on the amount step — see `givesCoin`. */
+		givesCoin: ({ context }) => givesCoin(context),
+
+		/** a unit the deployment offers: its currency, or a coin it takes. */
+		unitIsOffered: ({ context, event }) =>
+			event.type === 'SET_UNIT' &&
+			(event.coin === null || coinIsOffered(context.config, event.coin)),
+
+		/** a cadence the gift may stand at: any while it is given in money, one-time in a coin. */
+		cadenceIsOpen: ({ context, event }) =>
+			event.type === 'SET_FREQUENCY' && (!givesCoin(context) || event.frequency === 'one_time'),
+
 		/** the review step offering the gift as one-time — see `oneTimeIsOfferedInstead`. */
 		repeatingIsRefused: ({ context }) => repeatingIsRefused(context),
 
@@ -1335,7 +1392,22 @@ export const checkoutMachine = setup({
 
 		/** the one place a donor draft becomes the payer an intent is minted for. */
 		commitPayer: assign({
-			payer: ({ context }) => completePayer(context.payerDraft, context.config)
+			payer: ({ context }) => completePayer(payerDraftFor(context), context.config)
+		}),
+
+		/**
+		 * a coin the account refused, kept for the card's life, and the refusal standing on the step
+		 * it is fixed on — the review step's coin list, or the amount step's unit on a coin gift.
+		 */
+		refuseCoin: assign(({ context, event }) => {
+			const refusal = 'error' in event ? coinRefusalOf(context, event.error) : null;
+			return {
+				coinRefusal: refusal,
+				refusedCoins:
+					refusal === null || context.refusedCoins.includes(refusal.coin)
+						? context.refusedCoins
+						: [...context.refusedCoins, refusal.coin]
+			};
 		}),
 
 		/**
@@ -1592,9 +1664,19 @@ export const checkoutMachine = setup({
 						coinRefusal: null
 					})
 				},
+				// a repeating cadence pressed while a coin is picked is dropped, and the one the donor had
+				// stands for when they pick the currency again (`AmountDraft.coin` in ./value.ts).
 				SET_FREQUENCY: {
+					guard: 'cadenceIsOpen',
 					actions: assign({
 						draft: ({ context, event }) => ({ ...context.draft, frequency: event.frequency })
+					})
+				},
+				SET_UNIT: {
+					guard: 'unitIsOffered',
+					actions: assign({
+						draft: ({ context, event }) => ({ ...context.draft, coin: event.coin ?? undefined }),
+						coinRefusal: null
 					})
 				},
 				SET_NOTE: {
@@ -1775,7 +1857,12 @@ export const checkoutMachine = setup({
 				// a press with a field still missing stays on this step, the way the amount step's
 				// own does: the guard is what stops a donor reaching the screen that spends the money
 				// with no address for the receipt it produces.
-				CONTINUE: { guard: 'payerFieldsAreGiven', target: 'give' },
+				// a coin gift has no rail to choose, so this press is the one that mints its address,
+				// through the same wait on the challenge token the review step's press takes.
+				CONTINUE: [
+					{ guard: and(['payerFieldsAreGiven', 'givesCoin']), target: 'holding' },
+					{ guard: 'payerFieldsAreGiven', target: 'give' }
+				],
 				/**
 				 * the marks: the amount step behind, the review step ahead.
 				 *
@@ -2044,20 +2131,8 @@ export const checkoutMachine = setup({
 							coinRefusal: ({ context, event }) => coinRefusalOf(context, event.error)
 						})
 					},
-					{
-						guard: 'refusesCoin',
-						target: 'give',
-						actions: assign(({ context, event }) => {
-							const refusal = coinRefusalOf(context, event.error);
-							return {
-								coinRefusal: refusal,
-								refusedCoins:
-									refusal === null || context.refusedCoins.includes(refusal.coin)
-										? context.refusedCoins
-										: [...context.refusedCoins, refusal.coin]
-							};
-						})
-					},
+					{ guard: and(['refusesCoin', 'givesCoin']), target: 'amount', actions: 'refuseCoin' },
+					{ guard: 'refusesCoin', target: 'give', actions: 'refuseCoin' },
 					{
 						target: 'failed',
 						actions: assign({
@@ -2354,7 +2429,13 @@ export const checkoutMachine = setup({
 					states: {
 						open: {
 							after: { depositWindow: 'closed' },
-							on: { BACK: { target: '#checkout.give' } }
+							// back to where the coin was chosen: the amount step's unit, or the review step's list.
+							on: {
+								BACK: [
+									{ guard: 'givesCoin', target: '#checkout.amount' },
+									{ target: '#checkout.give' }
+								]
+							}
 						},
 						closed: {}
 					}
@@ -2405,7 +2486,7 @@ export const checkoutMachine = setup({
 		 */
 		depositExpired: {
 			on: {
-				RETRY: { target: 'give' }
+				RETRY: [{ guard: 'givesCoin', target: 'amount' }, { target: 'give' }]
 			}
 		},
 
@@ -2673,6 +2754,8 @@ export const checkoutMachine = setup({
 					{ guard: 'grantIsHeld', target: 'resending' },
 					{ guard: not('amountIsDecided'), target: 'amount' },
 					{ guard: not('payerFieldsAreGiven'), target: 'details' },
+					// a coin gift's press is the details step's, which mints its address again.
+					{ guard: 'givesCoin', target: 'details' },
 					{ target: 'give' }
 				]
 			}

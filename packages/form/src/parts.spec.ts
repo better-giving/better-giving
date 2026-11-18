@@ -119,12 +119,13 @@ const documentedTokens = (element?.cssParts ?? []).map((cssPart) => ({
 }));
 
 describe('the part vocabulary', () => {
-	it('is fifteen names, and a sixteenth is a decision rather than an edit', () => {
+	it('is sixteen names, and a seventeenth is a decision rather than an edit', () => {
 		// the number is asserted on purpose. every name is permanent the day it ships, so growing
 		// the list has to be something a reader of the diff cannot miss. the one withdrawal the list
-		// has had, and the one addition, are argued at the top of ./parts.ts.
-		expect(PART_NAMES).toHaveLength(15);
+		// has had, and the two additions, are argued at the top of ./parts.ts.
+		expect(PART_NAMES).toHaveLength(16);
 		expect(PART_NAMES).toContain('link');
+		expect(PART_NAMES).toContain('unit-pill');
 	});
 
 	it('holds no duplicate name', () => {

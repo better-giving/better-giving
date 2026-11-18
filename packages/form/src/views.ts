@@ -17,7 +17,9 @@
 // in this file is the same answer derived twice, on a page nobody here can reach.
 
 import type { CheckoutApi, EmployerAsk, PropTypes, State } from './connect';
-import { createCoinPicker, type CoinOption } from './coin-picker';
+import { createCoinPicker, REFUSED, type CoinOption } from './coin-picker';
+import { unitRails, unitWords } from './unit';
+import { createUnitPicker, type UnitOption, type UnitPicker } from './unit-picker';
 import { createSelect } from './select';
 import { createEmployerAsk, type EmployerAskScreen } from './employer-ask';
 import {
@@ -44,6 +46,8 @@ type Option = {
 	readonly value: string | number;
 	readonly label?: string;
 	readonly checked: boolean;
+	/** an option the donor can see and not choose now; its press is still sent, and refused. */
+	readonly unavailable?: boolean;
 	readonly onChange: () => void;
 };
 
@@ -835,7 +839,7 @@ function takeoverFor(state: State, config: FormConfig, money: (minor: number) =>
 				...BLANK,
 				heading: 'Send your gift',
 				deposit: depositScreen(state, config, money),
-				secondary: { label: 'Use a different coin' },
+				secondary: { label: 'Change what you give' },
 				secondaryNote: `Also sent to ${state.email}.`
 			};
 
@@ -1054,6 +1058,9 @@ function oneTimeOfferWords(frequency: 'monthly' | 'yearly'): string {
 
 /** what the region says once the offer is taken, which moves the caret to the payment box. */
 const MADE_ONE_TIME = 'This is now a one-time gift.';
+
+/** under the cadence track while the gift is given in a coin, which only a one-time gift takes. */
+const COIN_CADENCE_NOTE = 'Crypto gifts are one-time.';
 
 /** whether the review step is offering a one-time gift in place of the repeating one chosen. */
 function oneTimeOffered(state: State): state is State & { readonly step: 'give' } {
@@ -1479,12 +1486,20 @@ export function createCard(
 
 	const frequencyOptions: { label: HTMLElement; input: HTMLInputElement }[] = [];
 	const frequencyTrack = make(doc, 'div', { class: 'segment' });
-	// a native `<fieldset>` of radios and no sentence under it. the cadence opens already chosen
+	// a native `<fieldset>` of radios and no refusal under it. the cadence opens already chosen
 	// (`settledDraft` in ./checkout.machine.ts) and no control here can un-choose it, so there is no
-	// press this group can be refused for and nothing for a message to say.
+	// press this group can be refused for. the one sentence it carries says why the repeating cadences
+	// stand unavailable while the gift is given in a coin, and describes the group while it shows.
+	const frequencyNote = make(
+		doc,
+		'p',
+		{ class: 'cadence-note', id: 'frequency-note', hidden: true },
+		[COIN_CADENCE_NOTE]
+	);
 	const frequencyGroup = make(doc, 'fieldset', { class: 'group' }, [
 		make(doc, 'legend', { part: part('label') }, ['How often']),
-		frequencyTrack
+		frequencyTrack,
+		frequencyNote
 	]);
 
 	// ── amounts ────────────────────────────────────────────────────────────────────────────────
@@ -1586,16 +1601,36 @@ export function createCard(
 	const amountMessage = make(doc, 'p', { class: 'message', id: 'amount-problem', hidden: true }, [
 		amountProblem
 	]);
+	// the legend is the "How much" line, and what the gift is given in stands at its end: the pill
+	// where the deployment takes more than its one currency (./unit-picker.ts), and that currency's
+	// code as plain words where it does not. the group is named by the words alone, so a donor
+	// reaching the tray hears "How much" and not the pill's own name after it.
+	const rails = unitRails(config);
+	const amountLegend: HTMLElement = make(doc, 'legend', {
+		part: part('label'),
+		class: 'unit-line'
+	});
+	const unitPicker: UnitPicker | null = rails.chooses
+		? createUnitPicker(doc, unitWords(rails), {
+				picked: () => figureControl().focus(),
+				cover: () => amountLegend,
+				stocks: rails.stocks
+			})
+		: null;
+	put(doc, amountLegend, [
+		make(doc, 'span', { id: 'amount-legend' }, ['How much']),
+		unitPicker?.host ?? make(doc, 'span', { class: 'unit-plain' }, [code])
+	]);
 	// no `radiogroup` on this one, and the difference is the free entry: this group holds a text
 	// box beside its radios, which is not what that role describes. the invalid state is carried by
 	// the box itself, where the role does support it, and the sentence reaches the group through
 	// `aria-describedby` — which is global and works on the role a fieldset already has.
-	const amountGroup = make(doc, 'fieldset', { class: 'group' }, [
-		make(doc, 'legend', { part: part('label') }, ['How much']),
-		amountTiles,
-		entryLabel,
-		amountMessage
-	]);
+	const amountGroup = make(
+		doc,
+		'fieldset',
+		{ class: 'group', 'aria-labelledby': 'amount-legend' },
+		[amountLegend, amountTiles, entryLabel, amountMessage]
+	);
 
 	// an emptied box and a box holding what nothing can read are two different events, and the two
 	// nulls below are why they are told apart here rather than by whoever reads them.
@@ -2039,7 +2074,15 @@ export function createCard(
 		// move either, because it is already on the control the first refusal sent it to.
 		repeated = true;
 		update(now());
-		firstAmountProblem(missingDecisions(now())).focus();
+		const missing = missingDecisions(now());
+		const { state } = now();
+		// a coin the account refused is the one thing a press is refused for with nothing missing,
+		// and the pill is where another unit is picked.
+		if (missing.length === 0 && state.step === 'amount' && state.refusedCoin !== undefined) {
+			unitPicker?.focus();
+			return;
+		}
+		firstAmountProblem(missing).focus();
 	});
 
 	/**
@@ -2071,14 +2114,18 @@ export function createCard(
 	 * longer carries it. the minimum is offered the way a tile offers a figure (./money.ts).
 	 */
 	function coinRefusalWords(refusal: NonNullable<(State & { step: 'amount' })['refusal']>): string {
-		const coinName =
-			config.coins?.find((coin) => coin.coin === refusal.coin)?.name ?? refusal.coin.toUpperCase();
+		const name = coinName(refusal.coin);
 		if (refusal.code === 'above_maximum') {
-			return `too large for ${coinName}, lower it or pick another coin`;
+			return `too large for ${name}, lower it or pick another coin`;
 		}
 		return refusal.minAmountMinor === undefined
-			? `too small for ${coinName}, raise it or pick another coin`
-			: `at least ${offer(refusal.minAmountMinor)} in ${coinName}, or pick another coin`;
+			? `too small for ${name}, raise it or pick another coin`
+			: `at least ${offer(refusal.minAmountMinor)} in ${name}, or pick another coin`;
+	}
+
+	/** a coin by the name the served list gives it, and by its own code where the list no longer does. */
+	function coinName(coin: string): string {
+		return config.coins?.find((offered) => offered.coin === coin)?.name ?? coin.toUpperCase();
 	}
 
 	/**
@@ -2760,7 +2807,11 @@ export function createCard(
 			input.addEventListener('change', () => {
 				if (!input.checked) return;
 				onPress?.(option);
-				read(now()).options[index]?.onChange();
+				const pressed = read(now()).options[index];
+				pressed?.onChange();
+				// the flow refuses an unavailable option's press and so sends no snapshot back, and the
+				// radio the platform checked under it is put back here rather than left reading chosen.
+				if (pressed?.unavailable === true) update(now());
 			});
 			const label = render(option, input);
 			into.push({ label, input });
@@ -2956,8 +3007,14 @@ export function createCard(
 			const option = props.options[index];
 			if (option === undefined) return;
 			const checked = chosen(option);
+			const unavailable = option.unavailable === true;
 			if (node.input.checked !== checked) node.input.checked = checked;
-			toggleAttribute(node.label, 'part', partWhen(name, { selected: checked, invalid }));
+			toggleAttribute(node.input, 'aria-disabled', unavailable ? 'true' : null);
+			toggleAttribute(
+				node.label,
+				'part',
+				partWhen(name, { selected: checked, invalid, unavailable })
+			);
 		});
 	}
 
@@ -3075,11 +3132,16 @@ export function createCard(
 		// a coin's refusal of the amount stands in the same place and weight as the bounds, and gives way
 		// to them where both stand: the bounds are the form's own and a figure outside them no coin takes.
 		const refusal = api.state.step === 'amount' ? api.state.refusal : undefined;
+		// a coin picked here that the account has since refused is said in the same place, and it marks
+		// no figure: the way on is another unit, which is the pill's.
+		const refusedCoin = api.state.step === 'amount' ? api.state.refusedCoin : undefined;
 		const amountWords = missingAmount
 			? amountProblem
-			: refusal === undefined
-				? ''
-				: coinRefusalWords(refusal);
+			: refusal !== undefined
+				? coinRefusalWords(refusal)
+				: refusedCoin === undefined
+					? ''
+					: `${coinName(refusedCoin)} is ${REFUSED}, pick another coin`;
 		// either is a refused amount, and marks the tray, the tiles and the entry the same way.
 		const amountRefused = missingAmount || refusal !== undefined;
 		setText(amountMessage, amountWords);
@@ -3109,6 +3171,14 @@ export function createCard(
 		// never invalid: a cadence is chosen from the first paint and cannot be taken back, so this
 		// group has no refused state to draw.
 		updateOptions(frequencyOptions, api.frequencyGroup, 'frequency-option', false);
+		const cadenceMuted = api.frequencyGroup.options.some((option) => option.unavailable === true);
+		setHidden(frequencyNote, !cadenceMuted);
+		toggleAttribute(frequencyGroup, 'aria-describedby', cadenceMuted ? 'frequency-note' : null);
+		unitPicker?.update({
+			value: api.unitSelect.value,
+			options: api.unitSelect.options as readonly UnitOption[],
+			onChange: (value: string) => now().unitSelect.onChange(value)
+		});
 		// a figure the flow holds that no preset equals is the other way already taken — a resume,
 		// or a donor coming back to this step — so the box holding it is not closed over it.
 		const typed = parseMinor(entryInput.value, locale, currency) !== null;
@@ -3296,16 +3366,28 @@ export function createCard(
 
 		// last, and after the step it lands in has been un-hidden: a heading inside a `hidden`
 		// subtree is not focusable, and a caret that failed to land is the defect this exists for.
-		// three arrivals put the caret somewhere other than the heading, each on the control that fixes
-		// what the donor arrived about: a refusal of the amount on the box holding the figure, and a
-		// refusal of the coin — or a way back from the address screen — on the coin list.
+		// four arrivals put the caret somewhere other than the heading, each on the control that fixes
+		// what the donor arrived about: a refusal of the amount on the box holding the figure, a
+		// refusal of the coin — or a way back from the address screen — on the coin list, and the same
+		// two for a coin picked on this step on the pill, where it was picked.
 		const refusedAmount = api.state.step === 'amount' && api.state.refusal !== undefined;
 		const backToCoins =
 			api.state.step === 'give' &&
 			api.state.method === 'crypto' &&
 			((advanced && shownBefore === 'takeover') || (coinRefused && stepBefore === 'working'));
+		const unitIsCoin =
+			(api.unitSelect.options as readonly UnitOption[]).find(
+				(option) => option.value === api.unitSelect.value
+			)?.kind === 'coin';
+		const backToUnit =
+			api.state.step === 'amount' &&
+			unitIsCoin &&
+			!refusedAmount &&
+			((advanced && shownBefore === 'takeover') ||
+				(api.state.refusedCoin !== undefined && stepBefore === 'working'));
 		stepBefore = api.state.step;
 		if (backToCoins) coinPicker.focus();
+		else if (backToUnit) unitPicker?.focus();
 		else if (advanced && refusedAmount) figureControl().focus();
 		else if (advanced || replaced) headings[step].focus();
 		painted = true;
@@ -3872,12 +3954,14 @@ export function createCard(
 			programSelect.reattached();
 			tributeKindSelect.reattached();
 			coinPicker.reattached();
+			unitPicker?.reattached();
 		},
 		stop() {
 			depositBlock.stop();
 			programSelect.stop();
 			tributeKindSelect.stop();
 			coinPicker.stop();
+			unitPicker?.stop();
 			view?.removeEventListener('resize', rewrapped);
 			if (repositioning !== 0) view?.cancelAnimationFrame(repositioning);
 			repositioning = 0;

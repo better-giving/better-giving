@@ -17,10 +17,12 @@
 // `submit-loading`, and the way to serve a host who needs one more hook is a token on a part that
 // already exists, never another name.
 //
-// `link` is the one name added since the list was first published, and it is a surface rather than a
-// state: the thank-you's `Open your gift page` is a text link, which no existing name draws — every
-// `action` and `action-quiet` is a button. the addition was decided with the employer-matching
-// thank-you, and a further name needs the same argument made again.
+// two names have been added since the list was first published, each a surface rather than a state,
+// and a further name needs the same argument made again. `link`: the thank-you's `Open your gift
+// page` is a text link, which no existing name draws — every `action` and `action-quiet` is a
+// button; decided with the employer-matching thank-you. `unit-pill`: the small rounded button at the
+// end of the "How much" line naming what the gift is given in, which is neither a field nor an
+// action; decided with the unit list (STAND-55).
 //
 // what is absent is load-bearing. across the shadow boundary a host's normal declaration beats an
 // inner one, so naming a surface is handing over control of it. layout containers are unnamed
@@ -49,6 +51,7 @@ export const PART_NAMES = [
 	'card',
 	'heading',
 	'label',
+	'unit-pill',
 	'field',
 	'select-list',
 	'select-option',
@@ -72,11 +75,14 @@ export type PartName = (typeof PART_NAMES)[number];
  * is prevented by the flow's shape — `quoting` has no `SUBMIT` handler (./checkout.machine.ts) —
  * and an attribute would invite a reader to believe the attribute is the guarantee, which any
  * second entry point walks straight past; that control takes `busy` instead, and
- * ./connect.spec.ts asserts no getter emits a `disabled` prop at all. on a frequency or an amount
- * it is a state a donor is never in: every cadence and every tile the card offers can be chosen,
- * because one this deployment cannot charge is not offered.
+ * ./connect.spec.ts asserts no getter emits a `disabled` prop at all.
+ *
+ * `unavailable` is the one state a donor can see a choice in and not make: a repeating cadence
+ * while the gift is given in a coin, which only a one-time gift takes. the option stays focusable and
+ * says so with `aria-disabled`, and the flow's guard is what refuses its press
+ * (`cadenceIsOpen` in ./checkout.machine.ts).
  */
-export const STATE_TOKENS = ['selected', 'invalid', 'busy'] as const;
+export const STATE_TOKENS = ['selected', 'invalid', 'busy', 'unavailable'] as const;
 
 export type StateToken = (typeof STATE_TOKENS)[number];
 

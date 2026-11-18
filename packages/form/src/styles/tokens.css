@@ -152,7 +152,10 @@
  * (../checkout.machine.ts states why), so a step a donor cannot reach yet is still focusable and
  * still in the tab order — and a shape a donor can put a focus ring around is a shape they have to be
  * able to see. `--_edge-unavailable` below is the whole of how this system says unavailable in
- * colour: it says it in pattern instead.
+ * colour: it says it in pattern instead. one control is the exception, and its words stay a text
+ * step: a repeating cadence while the gift is given in a coin draws its word in the quiet ink
+ * (`[part~='frequency-option'][part~='unavailable']` in ./parts.css), with the sentence under the
+ * track saying why, because the cadence beside it is still chosen and the two must read apart.
  *
  * ../../package.json exports this file as `./styles/tokens.css`, first of the four the card is
  * dressed from. the element adopts them as constructed sheets (`sheetsFor` in ../element.ts), with
@@ -612,6 +615,14 @@
 	 * serves both and the thumb is as round as the track is.
 	 */
 	--_switch-radius: calc(var(--_switch-block) / 2);
+
+	/*
+	 * the registry's full radius, written as its badge writes it (../registry/styles/badge-css.css),
+	 * which names no variable for it: the unit pill on the "How much" line (`[part~='unit-pill']` in
+	 * ./unit.css) is round by nature, a small button that has to read as one beside the label it ends
+	 * and not as a field.
+	 */
+	--_r-pill: calc(infinity * 1px);
 
 	/*
 	 * the shape drawn inside each mark on the step head (`.step-mark` in ./parts.css), which is the

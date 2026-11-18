@@ -88,8 +88,11 @@ const SEARCH = 'Search by symbol or name';
 /** what the list says when a search finds no coin. */
 const NO_MATCH = 'No coin matches';
 
-/** the sentence a refused coin carries in the list, under its own unchanged label. */
-const REFUSED = 'no longer accepted';
+/**
+ * the sentence a refused coin carries in the list, under its own unchanged label — and in the amount
+ * step's unit list (./unit-picker.ts), which lists the same coins.
+ */
+export const REFUSED = 'no longer accepted';
 
 /** the sheets, built once per document for the reason `sheetFor` in ./embed/rows.ts builds its own. */
 const sheets = new WeakMap<Document, readonly CSSStyleSheet[]>();
@@ -138,15 +141,23 @@ function node<K extends keyof HTMLElementTagNameMap>(
  * processor's to learn from a form embedded in it.
  */
 function logo(doc: Document, option: CoinOption): HTMLElement {
-	const mark = node(doc, 'span', 'logo', [node(doc, 'span', 'initial', [option.name.slice(0, 1)])]);
+	return roundMark(doc, option.name.slice(0, 1), option.logo);
+}
+
+/**
+ * the round mark `logo` above draws, holding `initial` under the image at `src` where there is one.
+ * exported for the amount step's unit list (./unit-picker.ts), which marks a currency by its symbol.
+ */
+export function roundMark(doc: Document, initial: string, src: string | undefined): HTMLElement {
+	const mark = node(doc, 'span', 'logo', [node(doc, 'span', 'initial', [initial])]);
 	mark.setAttribute('aria-hidden', 'true');
-	if (option.logo === undefined) return mark;
+	if (src === undefined) return mark;
 	const image = node(doc, 'img', 'coin-logo');
 	image.loading = 'lazy';
 	image.decoding = 'async';
 	image.referrerPolicy = 'no-referrer';
 	image.alt = '';
-	image.src = option.logo;
+	image.src = src;
 	image.addEventListener('error', () => image.remove());
 	mark.appendChild(image);
 	return mark;
@@ -164,7 +175,7 @@ function logo(doc: Document, option: CoinOption): HTMLElement {
  * one the sheet cannot take back. so they stay one run of inline content wherever the sheet leaves
  * them inline, which is what lets the box above cut a long pill with an ellipsis (`.chosen` there).
  */
-function words(doc: Document, option: CoinOption): HTMLElement {
+export function words(doc: Document, option: Pick<CoinOption, 'label' | 'network'>): HTMLElement {
 	const network = node(doc, 'span', 'net ds-badge ds-badge-neutral', [option.network]);
 	return node(doc, 'span', 'coin-text', [
 		node(doc, 'span', 'coin-ticker', [option.label]),

@@ -41,6 +41,7 @@ import type { SnapshotFrom } from 'xstate';
 import type { AdjustedReconciliation } from './fee';
 import {
 	declinedFee,
+	givesCoin,
 	NUMBERED_STEPS,
 	oneTimeIsOfferedInstead,
 	payerIsComplete,
@@ -53,7 +54,10 @@ import {
 	type Failure,
 	type NumberedStep
 } from './checkout.machine';
+import { currencySymbol } from './money';
+import { unitRails } from './unit';
 import {
+	draftFrequency,
 	methodIsChargeable,
 	missingAmountDecisions,
 	missingPayerFields,
@@ -181,6 +185,11 @@ export type State =
 			 * step is where a donor fixes, standing until the amount, the coin or the rail changes.
 			 */
 			readonly refusal?: CoinRefusal & { readonly code: 'below_minimum' | 'above_maximum' };
+			/**
+			 * the coin picked on this step, where the account refused it since (`coin_not_accepted`):
+			 * the press is refused until another unit is picked.
+			 */
+			readonly refusedCoin?: string;
 	  }
 	| {
 			readonly step: 'details';
@@ -406,6 +415,13 @@ export type CheckoutApi<
 	 * list, which is a way of choosing from this list rather than a different list.
 	 */
 	readonly coinSelect: T['select'];
+	/**
+	 * what the gift is given in, chosen on the amount step: the deployment's currency, then every coin
+	 * it takes, sorted as `coinSelect` sorts them. each option carries its `kind`, the code it is
+	 * shown under, its name, and the currency's symbol or the coin's network and logo; a value is
+	 * `currency:` or `coin:` and the code, so a currency and a coin cannot share one.
+	 */
+	readonly unitSelect: T['select'];
 	readonly consentToggle: T['button'];
 	readonly feeToggle: T['button'];
 	readonly submitButton: T['button'];
@@ -548,9 +564,12 @@ export function toState(snapshot: CheckoutSnapshot): State {
 				coinRefusal !== null && coinRefusal.code !== 'coin_not_accepted'
 					? { refusal: { ...coinRefusal, code: coinRefusal.code } }
 					: {};
+			const { coin } = context.draft;
+			const refused =
+				coin !== undefined && context.refusedCoins.includes(coin) ? { refusedCoin: coin } : {};
 			return fv === null
-				? { step: 'amount', missing, ...refusal }
-				: { step: 'amount', fv, missing, ...refusal };
+				? { step: 'amount', missing, ...refusal, ...refused }
+				: { step: 'amount', fv, missing, ...refusal, ...refused };
 		}
 		case 'success': {
 			const employer = employerAskOf(snapshot);
@@ -607,9 +626,10 @@ export function toState(snapshot: CheckoutSnapshot): State {
 				? working('quoting')
 				: { step: 'details', fv, missing: missingPayerFields(context.payerDraft) };
 		case 'give':
-		// a press held for the challenge token is still the review step, with its press busy.
+		// a press held for the challenge token is still the review step, with its press busy — except a
+		// coin gift's, which is the details step's press and has no review step to stand on.
 		case 'holding':
-			return fv === null
+			return fv === null || (step === 'holding' && givesCoin(context))
 				? working('quoting')
 				: {
 						step: 'give',
@@ -719,6 +739,20 @@ const NO_PROGRAM = '';
 /** what the coin choice carries while no coin is picked, for `NO_PROGRAM`'s reason. */
 const NO_COIN = '';
 
+/** the two halves of a unit's value (`unitSelect`), so a currency and a coin never share one. */
+const CURRENCY_UNIT = 'currency:';
+const COIN_UNIT = 'coin:';
+
+/** a currency's name in the card's language, or its code where the engine has none for it. */
+function currencyName(locale: string, currency: string): string {
+	const code = currency.toUpperCase();
+	try {
+		return new Intl.DisplayNames([locale], { type: 'currency' }).of(code) ?? code;
+	} catch {
+		return code;
+	}
+}
+
 /**
  * derives the render surface from a snapshot.
  *
@@ -737,7 +771,13 @@ export function connect<
 	const { context } = snapshot;
 	const { config, draft, payerDraft } = context;
 	const busy = isWorking(snapshot);
-	const selectedFrequency: Frequency | undefined = draft.frequency;
+	const selectedFrequency: Frequency | undefined = draftFrequency(draft);
+	const inCoin = givesCoin(context);
+	// sorted here rather than by a renderer, so every surface lists the coins in one order: by ticker,
+	// which is how a donor holding a coin knows it.
+	const coinsByTicker = [...(config.coins ?? [])].sort(
+		(a, b) => a.ticker.localeCompare(b.ticker) || a.name.localeCompare(b.name)
+	);
 	/** which numbered step the donor is standing on, or `null` on a screen that is not one. */
 	const standingOn = numberedStepOf(snapshot);
 
@@ -758,6 +798,8 @@ export function connect<
 					value: frequency,
 					label: FREQUENCY_LABELS[frequency],
 					checked: frequency === selectedFrequency,
+					// a repeating cadence while the gift is given in a coin, which only one-time takes.
+					unavailable: inCoin && frequency !== 'one_time',
 					onChange: () => send({ type: 'SET_FREQUENCY', frequency })
 				})
 			)
@@ -874,27 +916,56 @@ export function connect<
 			onChange: (notifyEmail: string) => send({ type: 'SET_TRIBUTE', notifyEmail })
 		}),
 
-		// sorted here rather than by a renderer, so both surfaces list the coins in one order: by ticker,
-		// which is how a donor holding a coin knows it.
-		//
 		// the network and the logo ride through as the served config carries them and are read by no
 		// rule here: what a row draws from them is ./coin-picker.ts's, and a value derived on the way
 		// through would be one this seam had to keep true as well.
 		coinSelect: normalize.select({
 			name: 'coin',
 			value: payerDraft.coin ?? NO_COIN,
-			options: [...(config.coins ?? [])]
-				.sort((a, b) => a.ticker.localeCompare(b.ticker) || a.name.localeCompare(b.name))
-				.map((coin) => ({
-					value: coin.coin,
+			options: coinsByTicker.map((coin) => ({
+				value: coin.coin,
+				label: coin.ticker.toUpperCase(),
+				name: coin.name,
+				network: coin.network,
+				...(coin.logo === undefined ? {} : { logo: coin.logo }),
+				refused: context.refusedCoins.includes(coin.coin)
+			})),
+			onChange: (value: string) =>
+				send({ type: 'SET_COIN', coin: value === NO_COIN ? null : value })
+		}),
+
+		// one currency today, the deployment's own, and the list is a list so a second one is an entry
+		// rather than a shape. its name is the locale's own (`Intl.DisplayNames`), never a table here.
+		unitSelect: normalize.select({
+			name: 'unit',
+			value:
+				draft.coin === undefined
+					? `${CURRENCY_UNIT}${config.currency}`
+					: `${COIN_UNIT}${draft.coin}`,
+			options: [
+				{
+					value: `${CURRENCY_UNIT}${config.currency}`,
+					kind: 'currency',
+					label: config.currency.toUpperCase(),
+					name: currencyName(config.locale, config.currency),
+					symbol: currencySymbol(config.locale, config.currency),
+					refused: false
+				},
+				...(unitRails(config).coins ? coinsByTicker : []).map((coin) => ({
+					value: `${COIN_UNIT}${coin.coin}`,
+					kind: 'coin',
 					label: coin.ticker.toUpperCase(),
 					name: coin.name,
 					network: coin.network,
 					...(coin.logo === undefined ? {} : { logo: coin.logo }),
 					refused: context.refusedCoins.includes(coin.coin)
-				})),
+				}))
+			],
 			onChange: (value: string) =>
-				send({ type: 'SET_COIN', coin: value === NO_COIN ? null : value })
+				send({
+					type: 'SET_UNIT',
+					coin: value.startsWith(COIN_UNIT) ? value.slice(COIN_UNIT.length) : null
+				})
 		}),
 
 		continueButton: button({ onClick: () => send({ type: 'CONTINUE' }) }),
