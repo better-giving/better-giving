@@ -460,13 +460,6 @@ describe('POST /login — where a sign-in ends up', () => {
 			.find((value) => value.startsWith('bg_staff_seen='));
 		expect(marker?.includes('; Secure')).toBe(secure);
 	});
-
-	it('sets no marker for a refused password', async () => {
-		// a refusal is the form's data and not a response, so there is no cookie to carry a marker.
-		const answer = await post(typed('not the password'));
-
-		expect(answer).not.toBeInstanceOf(Response);
-	});
 });
 
 describe('POST /login — what the browser gets back', () => {

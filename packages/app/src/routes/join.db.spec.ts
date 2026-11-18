@@ -173,6 +173,20 @@ describe('POST /join — setting a password', () => {
 		expect(answer.headers.getSetCookie().some((value) => value.includes('session'))).toBe(true);
 	});
 
+	// the colleague is signed in by this step, so their browser leaves holding the returning-staff
+	// marker ($lib/staff-marker.ts) beside the session.
+	it('leaves the returning-staff marker beside the session', async () => {
+		const token = await invitationFor('sam@riverbanktrust.org');
+
+		const answer = (await submit(token, typed('Sam Okonkwo', CHOSEN))) as Response;
+
+		const marker = answer.headers
+			.getSetCookie()
+			.find((value) => value.startsWith('bg_staff_seen='));
+		expect(marker).toContain('bg_staff_seen=1;');
+		expect(marker).toContain('HttpOnly');
+	});
+
 	/** the same link a second time, which is what a stale tab submits. */
 	it('refuses a second use of the same link', async () => {
 		const token = await invitationFor('sam@riverbanktrust.org');

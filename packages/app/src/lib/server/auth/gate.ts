@@ -3,6 +3,8 @@ import { auth as authForRequest, database, platform, staff } from '../../../cont
 import { readAuthEnv } from './env';
 import { createAuth } from './index';
 import { LOGIN_PATH, NEXT_PARAM, safeNext } from './next';
+import { cookiesSecure } from '../runtime/cookie-scheme';
+import { hasStaffMarker, staffMarkerCookie } from '../../staff-marker';
 import { requirePin } from './pin';
 import { resolveAuthSecret, SIGNING_KEY_UNREADABLE } from './signing-key';
 
@@ -111,6 +113,12 @@ export async function staffGate(
 
 	const response = await next();
 	for (const cookie of headers.getSetCookie()) response.headers.append('set-cookie', cookie);
+	// a session that was signed in before the returning-staff marker existed, or whose marker has
+	// lapsed, is still staff's browser: it gets the marker here, from a header read on a request
+	// that has already resolved its session ($lib/staff-marker.ts).
+	if (!hasStaffMarker(request.headers)) {
+		response.headers.append('set-cookie', staffMarkerCookie(cookiesSecure(request)));
+	}
 	return response;
 }
 

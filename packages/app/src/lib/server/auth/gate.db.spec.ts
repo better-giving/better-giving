@@ -225,7 +225,40 @@ describe('the gate on the protected layout', () => {
 		// nothing else copies better-auth's cookies onto the response, so what a missing one looks
 		// like is an operator signed out seven days after signing in, however much they used the
 		// app in between.
-		expect(response.headers.getSetCookie().length).toBeGreaterThan(0);
+		expect(response.headers.getSetCookie().some((value) => value.includes('session'))).toBe(true);
+	});
+
+	// a session signed in before the returning-staff marker existed is still staff's browser, so the
+	// first screen it opens leaves the marker ($lib/staff-marker.ts); one that holds it is not sent
+	// another.
+	it('leaves the returning-staff marker for a signed-in browser that lacks it', async () => {
+		const cookie = await signIn();
+
+		const response = await staffGate(
+			args(`${ORIGIN}/admin/forms`, { headers: { cookie } }),
+			screen().next
+		);
+
+		const marker = response.headers.getSetCookie().filter((v) => v.startsWith('bg_staff_seen='));
+		expect(marker).toHaveLength(1);
+		expect(marker[0]).toContain('bg_staff_seen=1;');
+	});
+
+	it('sends no second marker to a browser that holds it', async () => {
+		const cookie = await signIn();
+
+		const response = await staffGate(
+			args(`${ORIGIN}/admin/forms`, { headers: { cookie: `${cookie}; bg_staff_seen=1` } }),
+			screen().next
+		);
+
+		expect(response.headers.getSetCookie().some((v) => v.startsWith('bg_staff_seen='))).toBe(false);
+	});
+
+	it('leaves no marker for an anonymous request, which is turned away', async () => {
+		const redirect = await refusal(staffGate(args(`${ORIGIN}/admin/forms`), screen().next));
+
+		expect(redirect.headers.getSetCookie().some((v) => v.startsWith('bg_staff_seen='))).toBe(false);
 	});
 });
 

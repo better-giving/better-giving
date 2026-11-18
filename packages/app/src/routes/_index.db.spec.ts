@@ -797,7 +797,7 @@ describe('/ where the served config refuses', () => {
 		await donationFormId();
 		await run(stmt(sql));
 		const answered = await redirected();
-		expect([302, 303]).toContain(answered.status);
+		expect(answered.status).toBe(302);
 		expect(answered.location).toBe('/admin');
 	});
 });

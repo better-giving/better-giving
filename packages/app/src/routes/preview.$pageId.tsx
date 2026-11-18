@@ -9,6 +9,7 @@ import {
 	SITE_CHROME_SHEETS
 } from '$lib/donate/plain-page';
 import { useShowMoreMessages } from '$lib/donate/show-more';
+import { StaffMarkerContext } from '$lib/donate/staff-marker-context';
 import { staffGate } from '$lib/server/auth/gate';
 import { readPage } from '$lib/server/pages/queries';
 import { loadPageView, refusedPage, withFundraiserEntry } from '$lib/server/pages/view';
@@ -82,7 +83,17 @@ export function links(): Route.LinkDescriptors {
 	return donorPageLinks(SITE_CHROME_SHEETS);
 }
 
-export default function PagePreview({ loaderData }: Route.ComponentProps) {
+// the preview is what a donor sees, and a donor carries no returning-staff marker: the footer is
+// drawn as it is without one, though the staff previewing it do carry it (./root.tsx).
+export default function PagePreview(props: Route.ComponentProps) {
+	return (
+		<StaffMarkerContext value={false}>
+			<PreviewBody {...props} />
+		</StaffMarkerContext>
+	);
+}
+
+function PreviewBody({ loaderData }: Route.ComponentProps) {
 	switch (loaderData.kind) {
 		case 'page':
 			return <CardPage {...loaderData.view} profile={loaderData.profile} now={loaderData.now} />;
