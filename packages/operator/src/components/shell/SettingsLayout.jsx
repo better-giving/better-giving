@@ -25,7 +25,7 @@ import { Mark } from '../status/Mark.jsx';
 /* a settings section's stack of cards. the section links are the sidebar's, so it holds no nav. */
 /** @param {SettingsLayoutProps} props */
 export function SettingsLayout({ children }) {
-	return <div className="ds-settings">{children}</div>;
+	return <div className="ds-settings adm-settings">{children}</div>;
 }
 
 /* Discard and Save at the end of a card's footer, through the four states settings-layout-css

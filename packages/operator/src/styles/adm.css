@@ -4864,6 +4864,25 @@
 		border-radius: var(--admin-radius-plane);
 	}
 
+	/* a settings section's card keeps to the section's column. `.adm-settings` is the registry's
+	   `ds-settings` grid (`SettingsLayout` in packages/operator/src/components/shell/SettingsLayout.jsx),
+	   whose every child is a `ds-card`. the column is a track sized by its items, and a card clips
+	   rather than scrolls (../registry/styles/card-css.css), so its floor is its content's: a footer
+	   wider than the phone's column widened the track, and the page with it. */
+	.adm-settings > * {
+		min-inline-size: 0;
+	}
+
+	/* a card's footer there wraps. under 48rem the registry stands Discard and Save across the whole
+	   row (`.ds-settings-save`, ../registry/styles/settings-layout-css.css), so a press beside them —
+	   the organisation card's "Pick a different organisation" — keeps a line of its own at its
+	   label's width, and the pair goes full width under it. from 48rem the pair is its own width and
+	   pushed to the end, and both stay on one row while the card has the room. the footer is matched
+	   as the card's `<footer>` so a card a route adds is covered without a class of its own. */
+	.adm-settings > * > footer {
+		flex-wrap: wrap;
+	}
+
 	/* the step a run of cards takes under whatever is not one. the column gaps everything it holds
 	   by one step, and at that step a sentence between the heading block and the first card stands
 	   as near the box as it does the heading it belongs to. `--admin-space-6` on top of the gap puts

@@ -21,6 +21,14 @@ describe('the settings layout', () => {
 		expect(root.querySelector('.ds-settings > .ds-card')?.textContent).toBe('Card');
 		expect(root.querySelector('nav')).toBeNull();
 	});
+
+	// the class ../../styles/adm.css holds a card to the column and wraps its footer by
+	// (../../styles/settings-card-fits.spec.ts).
+	it('wears the operator class beside the registry’s grid', () => {
+		const root = render(SettingsLayout, { children: <section className="ds-card">Card</section> });
+
+		expect(root.querySelector('.ds-settings')?.classList.contains('adm-settings')).toBe(true);
+	});
 });
 
 describe('the save row', () => {
