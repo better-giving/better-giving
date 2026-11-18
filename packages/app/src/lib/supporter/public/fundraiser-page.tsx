@@ -39,11 +39,11 @@ import type {
 //
 // live, it is drawn on the `plain` root ($lib/donate/page-root.tsx), which arranges nothing, and in
 // the layout ./fundraiser.css gives it: who it is for, the title, the supporter's byline,
-// the photo where there is one, and what has been raised, then the donation box and who the gift
-// goes to, then the story and the messages from donors. on a phone they stand in that order; from
-// 60rem the box and who it goes to are a column beside the rest. the donation box is the page's one
-// primary. the site nav heads it and the share row and the site footer close it, as on every
-// donor page; "Start your own fundraiser", where the setting is on, stands under the share row.
+// the photo where there is one, what has been raised and the share row directly under it, then the
+// donation box and who the gift goes to, then the story and the messages from donors. on a phone
+// they stand in that order; from 60rem the box and who it goes to are a column beside the rest. the
+// donation box is the page's one primary. the site nav heads it and the site footer closes it, as on
+// every donor page; "Start your own fundraiser", where the setting is on, stands over the footer.
 //
 // ended, it is an ended campaign's screen with the final total under the thanks and no box. hidden,
 // pending and unknown alike are the plain notice an unknown campaign address gets, so a visitor
@@ -157,6 +157,13 @@ export function FundraiserPage(props: FundraiserPageViewProps) {
 							goalReached={fundraiser.goalReached}
 							money={money}
 						/>
+						<section aria-labelledby={shareHeading} data-area="share">
+							<Share
+								headingId={shareHeading}
+								sharing={props.sharing}
+								heading={copy.SHARE_HEADING}
+							/>
+						</section>
 					</div>
 					<div className="fundraiser-side" data-area="side">
 						{props.donationBox === null ? null : (
@@ -188,16 +195,15 @@ export function FundraiserPage(props: FundraiserPageViewProps) {
 					</div>
 				</div>
 			</main>
-			<section className="page-end" aria-labelledby={shareHeading} data-area="share">
-				<div className="page-in">
-					<Share headingId={shareHeading} sharing={props.sharing} heading={copy.SHARE_HEADING} />
-					{props.fundraiserEntry ? (
-						<p className="fundraiser-start">
+			{props.fundraiserEntry ? (
+				<div className="page-end">
+					<div className="page-in">
+						<p>
 							<a href={copy.START_HREF}>{copy.START_YOUR_OWN}</a>
 						</p>
-					) : null}
+					</div>
 				</div>
-			</section>
+			) : null}
 		</PageRoot>
 	);
 }

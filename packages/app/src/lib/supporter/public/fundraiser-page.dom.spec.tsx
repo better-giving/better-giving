@@ -175,12 +175,32 @@ describe('a live fundraiser, part way', () => {
 		expect(story?.querySelectorAll('.fundraiser-story > p')).toHaveLength(2);
 	});
 
-	it('closes on the share row, with the way to start one under it while the feature is on', () => {
+	it('stands the share row directly under what has been raised, named by its heading', () => {
 		const root = mount(<FundraiserPage {...props(PART_WAY)} />);
-		const share = root.querySelector('[data-area="share"]');
-		expect(share?.querySelector('.page-share-heading')?.textContent).toBe('Share this page');
-		const start = share?.querySelector<HTMLAnchorElement>('a[href="/fundraise"]');
+		const raised = root.querySelector('[data-area="raised"]');
+		const share = raised?.nextElementSibling;
+		expect(share?.getAttribute('data-area')).toBe('share');
+		const heading = share?.querySelector('.page-share-heading');
+		expect(heading?.textContent).toBe('Share this page');
+		expect(share?.getAttribute('aria-labelledby')).toBe(heading?.id);
+		expect(root.querySelectorAll('[data-area="share"]')).toHaveLength(1);
+	});
+
+	it('shares ahead of the box and the story, in reading order', () => {
+		const root = mount(<FundraiserPage {...props(PART_WAY)} />);
+		const order = [
+			...root.querySelectorAll(
+				'[data-area="raised"], [data-area="share"], [data-area="box"], [data-area="story"]'
+			)
+		].map((node) => node.getAttribute('data-area'));
+		expect(order).toEqual(['raised', 'share', 'box', 'story']);
+	});
+
+	it('closes on the way to start one, past the story, while the feature is on', () => {
+		const root = mount(<FundraiserPage {...props(PART_WAY)} />);
+		const start = root.querySelector<HTMLAnchorElement>('main ~ .page-end a[href="/fundraise"]');
 		expect(start?.textContent).toBe('Start your own fundraiser');
+		expect(start?.closest('[data-area="share"]')).toBeNull();
 	});
 
 	it('heads the page with the site nav, Donate not marked current', () => {
@@ -230,6 +250,8 @@ describe('a live fundraiser, part way', () => {
 		const root = mount(<FundraiserPage {...props(PART_WAY, { fundraiserEntry: false })} />);
 		expect(root.querySelector('a[href="/fundraise"]')).toBeNull();
 		expect(text(root)).not.toContain('Start your own fundraiser');
+		expect(root.querySelector('.page-end')).toBeNull();
+		expect(root.querySelector('[data-area="share"]')).not.toBeNull();
 	});
 });
 
