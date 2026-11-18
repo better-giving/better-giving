@@ -84,8 +84,9 @@
 	min-inline-size: 0;
 }
 
-/* the line over the title: the organisation's logo and name, a way to the donation page. the name is the
-   text ink, the lead-in the quiet one; under the pointer the name takes the page's link ink. */
+/* the line over the title: the organisation's logo and name, a way to the donation page. the name
+   is the text ink, the lead-in the quiet one; under the pointer the name takes the page's link
+   ink. */
 .page-ground a.fundraiser-for {
 	display: inline-flex;
 	align-items: center;

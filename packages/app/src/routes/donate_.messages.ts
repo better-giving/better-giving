@@ -7,20 +7,22 @@ import { meterDonorPage } from '$lib/server/api/meter';
 import { database, overDonorPageLimit, platform } from '../context';
 import type { Route } from './+types/donate_.messages';
 
-// Show more messages on the donation page (`/`): the next six donors' messages after `?after=`, the `next` the page
-// or the last press was handed (`DonateProfile.messages` in $lib/donate/profile.ts). a `loader` and
-// no component, asked by a plain `fetch` ($lib/donate/show-more.ts), which reads its JSON.
+// Show more messages on the donation page (`/`): the next six donors' messages after `?after=`, the
+// `next` the page or the last press was handed (`DonateProfile.messages` in
+// $lib/donate/profile.ts). a `loader` and no component, asked by a plain `fetch`
+// ($lib/donate/show-more.ts), which reads its JSON.
 //
 // it is `donate_` rather than nested under ./donate.tsx, which only redirects: it mounts the page's
-// own `meterDonorPage` so every press is charged to the same bucket a view of ./_index.tsx spends. `no-store` like the page: a list a hide or a refund changes
-// is no capability and no immutable bytes ($lib/server/runtime/response-cache.ts).
+// own `meterDonorPage` so every press is charged to the same bucket a view of ./_index.tsx spends.
+// `no-store` like the page: a list a hide or a refund changes is no capability and no immutable
+// bytes ($lib/server/runtime/response-cache.ts).
 //
-// it lists nothing where the page lists nothing: a page drawn as the donation box alone, or refused,
-// draws no messages (`readDonationPageMessages` in $lib/server/pages/view.ts), and this answers
-// the same then, so a broken page shows its donors no messages here either. the editor's preview
-// reads its first six there too, so its Show more continues the list it drew. it reads the page's
-// row and never makes it: a page never made lists nothing (AGENTS.md → Runtime names the loaders
-// that write).
+// it lists nothing where the page lists nothing: a page drawn as the donation box alone, or
+// refused, draws no messages (`readDonationPageMessages` in $lib/server/pages/view.ts), and this
+// answers the same then, so a broken page shows its donors no messages here either. the editor's
+// preview reads its first six there too, so its Show more continues the list it drew. it reads the
+// page's row and never makes it: a page never made lists nothing (AGENTS.md → Runtime names the
+// loaders that write).
 
 export const middleware: Route.MiddlewareFunction[] = [meterDonorPage];
 

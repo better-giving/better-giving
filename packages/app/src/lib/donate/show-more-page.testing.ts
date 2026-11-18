@@ -1,9 +1,9 @@
 import type { FormConfig } from '@better-giving/form/v1';
 import { defaultDonationPage } from '$lib/page/defaults';
 
-// the loader data of a /donate page holding twelve donor messages, six of them handed, for the
-// specs that press Show more through the real page: ../../routes/donate.show-more.dom.spec.tsx and
-// ../../routes/preview.$pageId.show-more.dom.spec.tsx.
+// the loader data of the donation page at / holding twelve donor messages, six of them handed, for
+// the specs that press Show more through the real page: ../../routes/_index.show-more.dom.spec.tsx
+// and ../../routes/preview.$pageId.show-more.dom.spec.tsx.
 
 export const NOW = '2026-11-09T12:00:00.000Z';
 
@@ -64,7 +64,7 @@ export const PAGE_LOADED = {
 			}
 		},
 		look: { brandColour: null },
-		sharing: { message: '', url: 'https://give.example.org/donate' },
+		sharing: { message: '', url: 'https://give.example.org/' },
 		goal: null,
 		money: { locale: 'en-US', currency: 'usd' }
 	},

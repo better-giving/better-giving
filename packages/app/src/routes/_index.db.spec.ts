@@ -183,12 +183,18 @@ describe('GET / on a fresh deployment', () => {
 	// donor is, which is what keeps the footer's staff link the same for everyone.
 	it('draws the same page for a caller with no session and for one holding a staff cookie', async () => {
 		const anonymous = await visit();
-		const staff = await visit(STRIPE, { cookie: 'better-auth.session_token=signed-in-staff' });
+		const staff = await visit(STRIPE, { cookie: await signIn(db) });
 
 		expect(anonymous.status).toBe(200);
 		expect(staff.status).toBe(200);
 		expect(markup(staff.data)).toBe(markup(anonymous.data));
 		expect(staff.headers.get('cache-control')).toBe('no-store');
+	});
+
+	it('draws the staff sign-in link under the published page', async () => {
+		const answered = await visit();
+		expect(answered.data.kind).toBe('page');
+		expect(markup(answered.data)).toContain('<a href="/admin">Staff sign in</a>');
 	});
 
 	it('draws the chooser once two programs are active, on a page made before any was', async () => {
@@ -726,6 +732,15 @@ describe('a published Donation page the read rule refuses', () => {
 			expect.any(String)
 		);
 	});
+
+	// the box drawn alone is still the deployment's home page, so its owner keeps the way in.
+	it('draws the staff link under the donation box drawn alone', async () => {
+		await publish({});
+		logged();
+		const answered = await visit();
+		expect(answered.data.kind).toBe('plain');
+		expect(markup(answered.data)).toContain('<a href="/admin">Staff sign in</a>');
+	});
 });
 
 describe('/ where the served config refuses', () => {
@@ -737,6 +752,7 @@ describe('/ where the served config refuses', () => {
 		expect(answered.status).toBe(404);
 		expect(answered.headers.get('cache-control')).toBe('no-store');
 		expect(markup(answered.data)).toContain(NO_FORM);
+		expect(markup(answered.data)).toContain('<a href="/admin">Staff sign in</a>');
 		expect(donatePage.meta({ loaderData: answered.data } as unknown as Route.MetaArgs)).toEqual([
 			{ title: 'Donate' }
 		]);

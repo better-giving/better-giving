@@ -11,17 +11,29 @@ import type { OrgInfo } from './sections/types';
 // the list ends with one link to the dashboard, on every page that draws the footer and whether or
 // not the organisation has set anything above it: `/` is the deployment's public home page, so a
 // fresh deployment's owner who opens it still finds the way into the console. it reads "Staff sign
-// in" for every visitor rather than "Dashboard" for a signed-in one, because telling the two apart
-// would cost a session read the donor pages do not make (`staffGate` in
-// $lib/server/auth/gate.ts reads the signing key and the session, two reads on every view), and
-// `/admin` forwards a signed-in member to the dashboard anyway.
+// in" for every visitor rather than "Dashboard" for a signed-in one: telling staff apart would cost
+// the donor pages a session read, and signed out, the gate answers `/admin` with a 303 to
+// `/login?next=%2Fadmin`, which signs the visitor in and back to it (`staffGate` in
+// $lib/server/auth/gate.ts).
 
-/** where the footer's staff link goes: the dashboard, which the gate answers with the sign-in. */
+/** where the footer's staff link goes: the dashboard. */
 const STAFF_PATH = '/admin';
 
 export type SiteFooterInfo = Omit<OrgInfo, 'legalName'> & {
 	/** null where none is set, which leaves the name out of the line. */
 	readonly legalName: string | null;
+};
+
+/**
+ * the footer of a page that names nobody, such as a refusal, which says nothing back about who it
+ * would serve: only the staff link stands in it.
+ */
+export const NAMELESS_FOOTER: SiteFooterInfo = {
+	legalName: null,
+	ein: null,
+	addressLines: [],
+	email: null,
+	socialLinks: []
 };
 
 export function SiteFooter({ info }: { readonly info: SiteFooterInfo }) {

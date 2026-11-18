@@ -6,9 +6,10 @@ import type { Route } from './+types/donate';
 // string, so a donor returning from authorizing a gift (`RESUME_FORM_PARAM` in
 // packages/form/src/embed/resume.ts) still arrives with the stamp the page reads.
 //
-// a bare path, as every server redirect in this app is: nothing configures a base path today. the
-// redirect is the whole of the route and charges nothing: the page it sends to is metered when the
-// browser follows it.
+// a bare path, as every server redirect in this app is: nothing configures a base path today, so a
+// fork that ever did would change every server redirect in this app at once rather than one call
+// site at a time. the redirect is the whole of the route and charges nothing: the page it sends to
+// is metered when the browser follows it.
 export function loader({ request }: Route.LoaderArgs) {
 	return redirect(`/${new URL(request.url).search}`, 308);
 }

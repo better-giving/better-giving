@@ -75,7 +75,7 @@ export const SITE_CHROME_SHEETS: readonly string[] = [registrySiteNav, registryS
 /** the registry's default accent, for a page with no brand colour to read. */
 export const FORM_LOOK: PageLook = { brandColour: null };
 
-/** a page root in one plain column, holding `children` and nothing else. */
+/** a page root in one plain column holding `children`, with the site footer under it where given. */
 export function PlainPage({
 	look,
 	footer,
@@ -87,32 +87,32 @@ export function PlainPage({
 	readonly children: ReactNode;
 }) {
 	return (
-		<PageRoot
-			brandColour={look.brandColour}
-			layout="plain"
-			{...(footer === undefined ? {} : { footer })}
-		>
+		<PageRoot brandColour={look.brandColour} layout="plain" footer={footer}>
 			<main className="stage">{children}</main>
 		</PageRoot>
 	);
 }
 
 /**
- * a page whose stored document is missing or fails the read rule: its donation box alone, in the
- * organisation's brand colour, so a gift can still be made while the page is repaired.
+ * a page whose stored document is missing or fails the read rule: its donation box with none of the
+ * page's content, in the organisation's brand colour, so a gift can still be made while the page is
+ * repaired, and the site footer under it where given.
  */
 export function PlainDonationPage({
 	config,
 	look,
+	footer,
 	resuming = false
 }: {
 	readonly config: FormConfig;
 	readonly look: PageLook;
+	/** the site footer under the box, as `PlainPage` draws it; none leaves the page bare. */
+	readonly footer?: ReactNode;
 	/** whether the address carries this box's resume stamp, the card's own `resuming`. */
 	readonly resuming?: boolean;
 }) {
 	return (
-		<PlainPage look={look}>
+		<PlainPage look={look} footer={footer}>
 			<DonateCard config={config} resuming={resuming} />
 		</PlainPage>
 	);

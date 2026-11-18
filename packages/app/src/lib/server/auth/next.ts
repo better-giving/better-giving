@@ -8,7 +8,10 @@
  */
 export const LOGIN_PATH = '/login';
 
-/** where a sign-in with nothing to return to ends up: the dashboard, the staff surface's own address. */
+/**
+ * where a sign-in with nothing to return to ends up: the dashboard, the staff surface's own
+ * address.
+ */
 const DASHBOARD_PATH = '/admin';
 
 /** the query parameter the gate mints and the sign-in page reads back. */
@@ -37,9 +40,9 @@ function isPathOnly(value: string): boolean {
  * this is an open-redirect control and it is the whole of one. the parameter it validates arrives
  * on a url an attacker composes: a link to this deployment's own `/login`, carrying a destination
  * of their choosing, which the operator signs in at and is then sent to. so a candidate is honoured
- * only when it is a path inside this deployment, and anything else is replaced by the dashboard in silence —
- * never echoed into a message, because a message quoting the rejected value hands the attacker the
- * page they wanted the operator to read.
+ * only when it is a path inside this deployment, and anything else is replaced by the dashboard in
+ * silence — never echoed into a message, because a message quoting the rejected value hands the
+ * attacker the page they wanted the operator to read.
  *
  * a path is not decided by its first character alone. the candidate is resolved against an origin
  * that cannot be reached, and the result is honoured only if it still names that origin — which is

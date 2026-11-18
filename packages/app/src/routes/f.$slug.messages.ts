@@ -6,9 +6,10 @@ import { database, overDonorPageLimit } from '../context';
 import type { Route } from './+types/f.$slug.messages';
 
 // Show more messages on a supporter's fundraiser: the next six of its own gifts' messages after
-// `?after=`, asked by a plain `fetch` ($lib/donate/show-more.ts). ./donate.messages.ts in every
-// way but the list it reads: nested under ./f.$slug.tsx by its name, so that page's meter charges
-// every press, and `no-store` for the same reason.
+// `?after=`, asked by a plain `fetch` ($lib/donate/show-more.ts). ./donate_.messages.ts but for
+// the list it reads and where its meter comes from: that route mounts `meterDonorPage` itself,
+// while this one is nested under ./f.$slug.tsx by its name, so that page's meter charges every
+// press. `no-store` for the same reason.
 //
 // it lists nothing where the page lists nothing: a fundraiser the public cannot see, or one that
 // has ended, draws no messages.

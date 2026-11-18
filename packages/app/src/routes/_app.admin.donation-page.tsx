@@ -36,7 +36,8 @@ import type { Route } from './+types/_app.admin.donation-page';
 // the Donation page's edit page, reached from the globe beside the organisation's name: a plain
 // form of section cards — General, Videos, Donation settings, Settings — under the banner that says
 // whether donors see the draft, and Reset to default at the foot while there is something to reset.
-// the page is always at the deployment’s own address (`/`) and always public, so it has no name, no link and no Unpublish.
+// the page is always at the deployment’s own address (`/`) and always public, so it has no name,
+// no link and no Unpublish.
 //
 // **the loader makes the page on first need** (`ensureDonationPage` in
 // $lib/server/pages/donation-page.ts), so on a fresh deployment the globe opens this page rather
