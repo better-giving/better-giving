@@ -8,7 +8,7 @@ import { createEmailProvider } from '../email/factory';
 import { sendSupporterSignInEmail } from '../email/supporter-sign-in';
 import { redirectWithFlash, SUPPORTER_SIGN_IN_FLASH } from '../flash';
 import { readOrgProfile, readOrgProfileLogo } from '../org/queries';
-import { donorContact } from '../pages/view';
+import { endedFooter } from '../pages/view';
 import type { SendLink } from './links';
 import { type OwnFundraiser, readOwnFundraiser } from './pages';
 import { requireSupporter, type SignedInSupporter } from './session';
@@ -33,11 +33,7 @@ export async function readSupporterOrg(db: Db): Promise<SupporterOrg> {
 		name: profile?.legalName ?? APP_NAME,
 		logo,
 		brandColour: profile?.brandColour ?? null,
-		footer: {
-			legalName: profile?.legalName ?? null,
-			ein: profile?.taxId ?? null,
-			...donorContact(profile)
-		}
+		footer: endedFooter(profile)
 	};
 }
 

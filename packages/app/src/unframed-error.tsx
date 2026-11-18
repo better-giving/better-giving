@@ -6,8 +6,26 @@ import { ErrorState, errorTitle } from '$lib/error-state';
 // $lib/admin/operator-links.ts argue why the document itself carries none.
 import operatorSheet from './app.css?url';
 
-/** the ids react router gives the donor pages, ./routes/donate.tsx and ./routes/$slug.tsx. */
-const DONOR_PAGE_ROUTE_IDS: ReadonlySet<string> = new Set(['routes/donate', 'routes/$slug']);
+/**
+ * the ids react router gives the donor pages: ./routes/donate.tsx, ./routes/$slug.tsx and a
+ * supporter's fundraiser, ./routes/f.$slug.tsx. the routes' `donor` handle is not the test, since
+ * the staff previews carry it too.
+ */
+const DONOR_PAGE_ROUTE_IDS: ReadonlySet<string> = new Set([
+	'routes/donate',
+	'routes/$slug',
+	'routes/f.$slug'
+]);
+
+/**
+ * the prefix of every supporter screen's id, ./routes/fundraise.*.tsx, drawn as a donor page is:
+ * a supporter holds no staff session either.
+ */
+const SUPPORTER_ROUTE_ID_PREFIX = 'routes/fundraise.';
+
+function isDonorPage(routeId: string): boolean {
+	return DONOR_PAGE_ROUTE_IDS.has(routeId) || routeId.startsWith(SUPPORTER_ROUTE_ID_PREFIX);
+}
 
 /**
  * the error page of everything the operator shell does not frame: the donor pages, the screens
@@ -42,7 +60,7 @@ export function UnframedError() {
 	// a donor page is the organisation's and not the project's, so there the second half is the
 	// word its own tab falls back to (`meta` in ./routes/donate.tsx). which page this is comes off
 	// the matched route's id and never its data, for the same reason the name does.
-	const onDonorPage = useMatches().some((match) => DONOR_PAGE_ROUTE_IDS.has(match.id));
+	const onDonorPage = useMatches().some((match) => isDonorPage(match.id));
 	const tab = (face: string) => <title>{`${face} · ${onDonorPage ? 'Donate' : APP_NAME}`}</title>;
 
 	// the failures able to reach here are written where the failure is known and mark their
