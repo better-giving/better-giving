@@ -408,9 +408,16 @@ describe('a sign-in document', () => {
 });
 
 describe('the donor page', () => {
-	// a deployment whose organisation has saved no details: the page draws its refusal, under the
-	// same route and so the same policy as a page it can draw.
+	// a deployment whose organisation is set up and holds no processor keys: the page draws its
+	// refusal, under the same route and so the same policy as a page it can draw. one with no
+	// organisation details is sent on to the dashboard instead (./routes/_index.db.spec.ts).
 	const answer = () => send('/');
+	beforeAll(async () => {
+		await writeOrgRow(client, { tax_id: '12-3456789' });
+	});
+	afterAll(async () => {
+		await run(stmt('delete from org_profile'));
+	});
 
 	it('allows the processors the card loads, and scripts only by origin or by the nonce', async () => {
 		const response = await answer();
