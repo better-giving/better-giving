@@ -4,6 +4,10 @@ Self-hosted donation platform for nonprofits. Your own processor, receipts and b
 
 Donors give on a form on the organisation's site, or on the page the deployment serves at its own address, `/`, which is also its public home page. A deployment with no organisation set up sends its first visitor on to `/admin`, and a browser that has signed in as staff before is shown a Console link in the footer of every public page. Staff use the dashboard at `/admin` for campaigns, forms, gifts, donors, and the books. Charges land in the organisation's own Stripe, PayPal, Chariot, or NOWPayments account.
 
+## Project status
+
+Standalone, the software in this repository, is alpha. The latest release is `v0.0.42-alpha.1`, and it is the only one that gets security fixes.
+
 ## Run it
 
 Docker with Compose.
@@ -26,6 +30,10 @@ The dashboard opens. A form takes gifts once Settings has the organisation's reg
 - [Embed a form](docs/embed.md)
 - [Architecture](docs/architecture.md)
 - [Contributing](CONTRIBUTING.md)
+- [Code of conduct](CODE_OF_CONDUCT.md)
+- [Security](SECURITY.md)
+- [Privacy](docs/privacy.md)
+- [Content policy](docs/content-policy.md)
 
 ## License
 
