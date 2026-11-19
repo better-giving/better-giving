@@ -18,11 +18,11 @@ Every table below is in the deployment's own database (`packages/app/src/lib/ser
 
 **Supporter fundraisers** (`supporter`, `supporter_page`, `supporter_link`, `supporter_session`). A member of the public who starts a fundraiser gives a name and an email address. Their page holds a title, a story, a goal and an optional photo, and these are public once the page is live. Sign-in links and sessions are stored as hashes, and expired ones are swept out.
 
-**Staff accounts** (`auth_user`, `auth_account`, `auth_session`, `auth_verification`). A name and email address for each colleague you invite. A colleague's password is stored as a hash. The deployer's own password is a setting in `.env` and is not stored in the database. Each staff session keeps the IP address and browser user agent it was opened from, and lasts seven days.
+**Staff accounts** (`auth_user`, `auth_account`, `auth_session`, `auth_verification`). A name and email address for each colleague you invite. A colleague's password is stored as a hash. The deployer's own password is a setting in `.env` and is not stored in the database. Each staff session keeps the IP address and browser user agent it was opened from.
 
 **Payments** (`payment`, `recurring_plan`). Which processor took a gift, its reference ids and its state. The app never sees a card number. The donor's browser sends card details to the processor.
 
-**Logs.** The database has no log table. The server writes ordinary output, and where it goes depends on your host. Rate limits are counted in memory and are not written down.
+**Logs.** The server writes ordinary output, and where it goes depends on your host.
 
 ## What goes to other services
 
@@ -32,7 +32,7 @@ Every table below is in the deployment's own database (`packages/app/src/lib/ser
 
 ## Where it lives, and backups
 
-All of it is in one database file on your host. Nothing is sent to a hosted database. Photos are in the same file.
+All of it is in one database file on your host. Photos are in the same file.
 
 A backup is a copy of that file, so it holds every table above. Treat a backup like the database. [Deployment](../DEPLOY.md#backups) shows how to take one and how to restore it.
 

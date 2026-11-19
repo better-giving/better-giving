@@ -24,13 +24,13 @@ Staff write everything else, such as campaign pages.
 
 ## Hide a page
 
-Open Supporter pages in `/admin` (`packages/app/src/lib/admin/destinations.ts`). Press Hide on the page. You can add a note of up to 300 characters, and the supporter reads it word for word on their own page (`packages/app/src/lib/admin/supporter-pages/supporter-pages.tsx`, `packages/app/src/lib/supporter/area/manage.tsx`). A hidden page no longer shows to visitors. Staff can still open it. The gifts it raised stay on the books. Press Show again to bring it back, which clears the note.
+Open Supporter pages in `/admin` (`packages/app/src/lib/admin/destinations.ts`). Press Hide on the page. You can add a note, and the supporter reads it word for word on their own page (`packages/app/src/lib/admin/supporter-pages/supporter-pages.tsx`, `packages/app/src/lib/supporter/area/manage.tsx`). Visitors no longer see a hidden page, and the gifts it raised stay on the books. Press Show again to bring it back, which clears the note.
 
 To take a gift note off the donation page, open Messages under Donations in `/admin` and press Hide message (`packages/app/src/routes/_app.admin.donations.messages.tsx`). The gift itself is untouched.
 
 ## Report a page
 
-Anyone can report a page to the organisation that runs the deployment. Use the contact address the organisation publishes. A deployment has no report button. Say which page it is and what is wrong with it.
+Anyone can report a page to the organisation that runs the deployment. Use the contact address the organisation publishes. Say which page it is and what is wrong with it.
 
 If you run a deployment, publish a contact address on your site and read it. When a report is about child sexual abuse material, hide the page at once and report it to your local authority.
 
@@ -40,4 +40,4 @@ On Better Giving's own managed service, report to {{CONDUCT_CONTACT}}. Better Gi
 
 A supporter must be 18 or older, or have a parent's or guardian's consent. The payment processors you connect also have their own age rules.
 
-The software does not check age. It asks no date of birth. Applying this rule is your policy to keep, for example in your fundraiser terms and in how you answer reports.
+The software does not check age. Applying this rule is your policy to keep, for example in your fundraiser terms and in how you answer reports.
