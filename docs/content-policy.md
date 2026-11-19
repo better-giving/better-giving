@@ -34,7 +34,7 @@ Anyone can report a page to the organisation that runs the deployment. Use the c
 
 If you run a deployment, publish a contact address on your site and read it. When a report is about child sexual abuse material, hide the page at once and report it to your local authority.
 
-On Better Giving's own managed service, report to {{CONDUCT_CONTACT}}. Better Giving responds within 2 business days.
+On Better Giving's own managed service, report to support@better.giving. Better Giving responds within 2 business days.
 
 ## Who can start a fundraiser
 

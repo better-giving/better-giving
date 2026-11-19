@@ -6,7 +6,7 @@ Standalone is alpha. Only the latest release gets security fixes. Upgrade to it 
 
 ## Report a vulnerability
 
-Email {{SECURITY_CONTACT}}.
+Use "Report a vulnerability" on this repository's Security tab, or go straight to [the private report form](https://github.com/better-giving/better-giving/security/advisories/new). Only the maintainers can read what you send.
 
 Do not open a public issue, pull request or discussion for a vulnerability. A public report tells everyone before there is a fix.
 
