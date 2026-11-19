@@ -6,7 +6,7 @@ Donors give on a form on the organisation's site, or on the page the deployment 
 
 ## Project status
 
-Alpha. The latest release is `v0.0.42-alpha.1`, and it is the only one that gets security fixes.
+Standalone, the software in this repository, is alpha. The latest release is `v0.0.42-alpha.1`, and it is the only one that gets security fixes.
 
 ## Run it
 
