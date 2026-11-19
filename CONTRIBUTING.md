@@ -1,6 +1,6 @@
 # Contributing
 
-This file is for changing the code. Running it is [the README](README.md). A host or Fly.io is [Deployment](DEPLOY.md). What the system is made of is [Architecture](docs/architecture.md). The invariants are [`AGENTS.md`](AGENTS.md).
+This file is for changing the code. Running it is [the README](README.md). A host or Fly.io is [Deployment](DEPLOY.md). What the system is made of is [Architecture](docs/architecture.md). The invariants are [`AGENTS.md`](AGENTS.md). Everyone who takes part follows the [code of conduct](CODE_OF_CONDUCT.md).
 
 ## Setup
 
