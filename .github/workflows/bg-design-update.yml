@@ -35,10 +35,10 @@
 #      lock, or LOCKS with root-relative dirs.
 # Every lock, however it is found, must be a plain relative path to an existing
 # regular file (not a symlink, not under .git or .github, not outside the repo;
-# an absolute LOCKS entry or APP_DIR is refused). A missing one fails the job,
-# and so does discovery that finds none. No lock dir may hold
-# another lock's dir or lock file; the job fails on an overlap ("src" next to
-# "src-evil" is fine).
+# an absolute LOCKS entry, or an absolute APP_DIR when LOCKS is empty, is
+# refused). A missing one fails the job, and so does discovery that finds none.
+# No lock dir may hold another lock's dir or lock file; the job fails on an
+# overlap ("src" next to "src-evil" is fine).
 #
 # Two jobs. "update" downloads the registry's CLI, checks it against the sha256
 # in the registry's index.json and runs it, once per lock, with contents: read,
@@ -165,7 +165,12 @@ jobs:
             const fail = (m) => { console.error(`::error::${m}`); process.exit(1); };
             const plain = /^[A-Za-z0-9._@+\/-]+$/;
             const listed = (process.env.LOCKS || "").split(/\s+/).filter(Boolean);
-            const app_dir = path.normalize(process.env.APP_DIR || ".").replace(/\/+$/, "") || ".";
+            const raw_app_dir = process.env.APP_DIR || ".";
+            // judged before normalizing and trimming the trailing slash, which would
+            // turn "/" into "."; APP_DIR is ignored when LOCKS is set, so only an
+            // APP_DIR in use is refused
+            if (!listed.length && path.isAbsolute(raw_app_dir)) fail(`APP_DIR ${raw_app_dir} is an absolute path; set it relative to the repo root`);
+            const app_dir = path.normalize(raw_app_dir).replace(/\/+$/, "") || ".";
             const found = [];
             if (listed.length) {
               for (const lock of listed) found.push({ app: ".", lock, how: "listed" });
@@ -185,7 +190,6 @@ jobs:
               // rule by rule, each rule with its own message; absolute is judged
               // before the join, which would turn "/x" into "x"
               if (path.isAbsolute(lock)) fail(`${lock} is an absolute path; lock paths are relative to the repo root`);
-              if (path.isAbsolute(app)) fail(`APP_DIR ${app} is an absolute path; it is relative to the repo root`);
               if (!plain.test(app)) fail(`APP_DIR ${JSON.stringify(app)} has characters other than letters, digits and . _ @ + / -`);
               if (!plain.test(lock)) fail(`${JSON.stringify(lock)} has characters other than letters, digits and . _ @ + / -`);
               const full = path.normalize(path.join(app, lock));
@@ -225,7 +229,7 @@ jobs:
       - name: Take new versions
         id: update
         run: |
-          set -uo pipefail
+          set -euo pipefail
           handoff="$RUNNER_TEMP/handoff"
           cli="$RUNNER_TEMP/bg-design.mjs"
           locks="$RUNNER_TEMP/locks.tsv"
@@ -246,9 +250,12 @@ jobs:
           while IFS=$'\t' read -r app lock path; do
             out="$RUNNER_TEMP/update-$index.txt"
             # no pipe, so the CLI's own exit code is the one tested; stdin is
-            # /dev/null, or a CLI that reads it would eat the rest of the locks
-            (cd "$app" && node "$cli" update --registry "$REGISTRY" --lock "$lock") < /dev/null > "$out" 2>&1
-            code=$?
+            # /dev/null, or a CLI that reads it would eat the rest of the locks.
+            # The step runs under bash -e (no shell: is named), so the code is
+            # taken with || rather than $? on the next line, which -e would
+            # never reach for a non-zero exit.
+            code=0
+            (cd "$app" && node "$cli" update --registry "$REGISTRY" --lock "$lock") < /dev/null > "$out" 2>&1 || code=$?
             cat "$out"
             if [ "$count" -gt 1 ]; then echo "== $path ==" >> "$handoff/update.txt"; fi
             cat "$out" >> "$handoff/update.txt"
@@ -267,9 +274,10 @@ jobs:
             if [ -z "$changed_path" ] && [ -s "$handoff/items-$index.patch" ]; then changed_version=$lock_version; changed_path=$path; fi
             index=$((index + 1))
           done < "$locks"
-          # the PR's version is the first changed lock's, else the first lock's
-          version=${changed_version:-$first_version}
-          version_path=${changed_path:-$first_path}
+          # the PR's version is the first changed lock's, else the first lock's;
+          # a changed lock with no usable version fails naming that lock
+          if [ -n "$changed_path" ]; then version=$changed_version; version_path=$changed_path
+          else version=$first_version; version_path=$first_path; fi
           # the version goes into a commit message and a PR title
           case "$version" in
             ""|*[!0-9A-Za-z._+-]*) echo "::error::$version_path has an unusable registryVersion"; exit 1 ;;
@@ -319,7 +327,12 @@ jobs:
             const fail = (m) => { console.error(`::error::${m}`); process.exit(1); };
             const plain = /^[A-Za-z0-9._@+\/-]+$/;
             const listed = (process.env.LOCKS || "").split(/\s+/).filter(Boolean);
-            const app_dir = path.normalize(process.env.APP_DIR || ".").replace(/\/+$/, "") || ".";
+            const raw_app_dir = process.env.APP_DIR || ".";
+            // judged before normalizing and trimming the trailing slash, which would
+            // turn "/" into "."; APP_DIR is ignored when LOCKS is set, so only an
+            // APP_DIR in use is refused
+            if (!listed.length && path.isAbsolute(raw_app_dir)) fail(`APP_DIR ${raw_app_dir} is an absolute path; set it relative to the repo root`);
+            const app_dir = path.normalize(raw_app_dir).replace(/\/+$/, "") || ".";
             const found = [];
             if (listed.length) {
               for (const lock of listed) found.push({ app: ".", lock, how: "listed" });
@@ -339,7 +352,6 @@ jobs:
               // rule by rule, each rule with its own message; absolute is judged
               // before the join, which would turn "/x" into "x"
               if (path.isAbsolute(lock)) fail(`${lock} is an absolute path; lock paths are relative to the repo root`);
-              if (path.isAbsolute(app)) fail(`APP_DIR ${app} is an absolute path; it is relative to the repo root`);
               if (!plain.test(app)) fail(`APP_DIR ${JSON.stringify(app)} has characters other than letters, digits and . _ @ + / -`);
               if (!plain.test(lock)) fail(`${JSON.stringify(lock)} has characters other than letters, digits and . _ @ + / -`);
               const full = path.normalize(path.join(app, lock));
