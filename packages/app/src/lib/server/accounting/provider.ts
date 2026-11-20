@@ -26,9 +26,9 @@ import type { ProcessorName } from '../payments/provider';
 // ./connection.ts reads `realm_id` into `companyId` in one select and the vendor stops there.
 //
 // ---------------------------------------------------------------------------
-// a handful of roles and never nine accounts.
+// a handful of roles and never the whole chart.
 //
-// this app's own chart is the nine seeded rows in ../db/accounts.ts, and a connected company's is
+// this app's own chart is the seeded rows in ../db/accounts.ts, and a connected company's is
 // whatever its bookkeeper built. nothing maps one onto the other, so the operator picks one account
 // in their own books per role — where income lands, where the processor's cut lands, and where the
 // money sits until it reaches the bank, one of those per party that holds it — and every line this

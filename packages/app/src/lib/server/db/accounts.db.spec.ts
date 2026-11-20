@@ -2,11 +2,13 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { POSTING_ACCOUNTS, ROLLUPS } from './accounts';
 import { postableFromAccount, type PostableCandidate } from './postable';
 import type { Account } from './schema';
-import { all, stmt } from '../db/database.testing';
+import { all, MIGRATIONS, openUnmigrated, rawSql, stmt } from '../db/database.testing';
+import { applyMigrations } from './migrate';
 
-// the drift guard between `accounts.ts` and `migrations/0000_initial_schema.sql`.
+// the drift guard between `accounts.ts` and the migrations that seed the `account` table:
+// `migrations/0000_initial_schema.sql` and every later file that adds an account.
 //
-// the ids are deliberately duplicated across those two files (see the header of 0001),
+// the ids are deliberately duplicated across those files (see the header of 0001),
 // and without this test nothing detects a divergence: a later PR adds an account to
 // the map with a fresh UUIDv7, forgets the migration, and `check`/`lint`/`build` all
 // pass. it then surfaces as an FK rejection on `ledger_entry.account_id` — the
@@ -83,6 +85,46 @@ describe('seeded chart of accounts', () => {
 	it('resolves every parent_id to a seeded account', () => {
 		const ids = new Set(rows.map((r) => r.id));
 		for (const r of rows) if (r.parent_id !== null) expect(ids, r.code).toContain(r.parent_id);
+	});
+});
+
+describe('an account a later migration seeds', () => {
+	// the suite above reads a database the whole chain built at once. a deployment already running
+	// takes the same account from the one file it has not applied, and a file that seeds a row must
+	// leave that row as it is when it meets it again.
+	const SEEDED_BY = '0041_fraud_loss_account.sql';
+	const seed = MIGRATIONS.findIndex((m) => m.name === SEEDED_BY);
+	const declared = [...Object.values(POSTING_ACCOUNTS), ...Object.values(ROLLUPS)];
+
+	it('reaches a database migrated as far as the file in front of it', async () => {
+		expect(seed, SEEDED_BY).toBeGreaterThan(0);
+		const db = await openUnmigrated();
+		await applyMigrations(db, MIGRATIONS.slice(0, seed));
+		const before = await rawSql(db).first(
+			stmt('select id from account where id = ?', POSTING_ACCOUNTS.fraudLoss.id)
+		);
+		expect(before).toBeNull();
+
+		await applyMigrations(db, MIGRATIONS);
+
+		const rows = await rawSql(db).all<AccountRow>(
+			stmt('select id, code, name, type, is_postable, parent_id from account')
+		);
+		expect(rows.map(identity).sort()).toEqual(declared.map(identity).sort());
+		const fraudLoss = rows.find((r) => r.id === POSTING_ACCOUNTS.fraudLoss.id);
+		expect(fraudLoss).toMatchObject({ is_postable: 1, parent_id: null });
+	});
+
+	it('leaves the row it seeded as it is when run again', async () => {
+		const db = await openUnmigrated();
+		await applyMigrations(db, MIGRATIONS);
+		const read = stmt('select * from account where id = ?', POSTING_ACCOUNTS.fraudLoss.id);
+		const before = await rawSql(db).all(read);
+
+		await db.executeMultiple(MIGRATIONS[seed]!.sql);
+
+		expect(await rawSql(db).all(read)).toEqual(before);
+		expect(before).toHaveLength(1);
 	});
 });
 

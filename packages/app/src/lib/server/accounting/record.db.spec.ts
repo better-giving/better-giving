@@ -7,7 +7,7 @@ import { contact, donation, payment, type PaymentProviderName } from '../db/sche
 import { post, postingStatements, type Posting } from '../ledger/posting';
 import type { Settlement } from '../payments/provider';
 import { readSendable } from './record';
-import { client, run, stmt } from '$lib/server/db/database.testing';
+import { all, client, run, stmt } from '$lib/server/db/database.testing';
 
 // what a queued entry group turns out to be, read out of a real database.
 //
@@ -292,10 +292,48 @@ describe('a correction', () => {
 
 		const sendable = await readSendable(db, correction.group.id ?? '');
 
-		// three accounts are picked on the connection screen and this app's chart has nine, so an
+		// three accounts are picked on the connection screen and this app's chart has more, so an
 		// entry outside the three has nowhere to land — named, rather than posted somewhere plausible.
 		expect(sendable).toMatchObject({ ok: false, reason: 'unmapped_account', retryable: false });
 		expect(sendable).toMatchObject({ detail: expect.stringContaining('Sales Tax Payable') });
+	});
+
+	it('refuses a loss booked out of the bank, which stays posted in these books', async () => {
+		const correction = post({
+			sourceType: 'adjustment',
+			sourceId: uuidv7(),
+			currency: 'USD',
+			occurredAt: new Date('2026-04-30T00:00:00.000Z'),
+			memo: 'written off',
+			lines: [
+				{ accountId: postableId('fraudLoss'), amountMinor: 2_500 },
+				{ accountId: postableId('bankCash'), amountMinor: -2_500 }
+			]
+		});
+		await commit([correction]);
+
+		const sendable = await readSendable(db, correction.group.id ?? '');
+
+		expect(sendable).toMatchObject({
+			ok: false,
+			reason: 'unmapped_account',
+			retryable: false,
+			detail: expect.stringContaining('Fraud loss')
+		});
+		expect(sendable).toMatchObject({
+			detail: expect.stringContaining('Post this correction in QuickBooks instead.')
+		});
+		expect(
+			await all(
+				stmt(
+					'select account_id, amount_minor from ledger_entry where entry_group_id = ? order by amount_minor',
+					correction.group.id ?? ''
+				)
+			)
+		).toEqual([
+			{ account_id: postableId('bankCash'), amount_minor: -2_500 },
+			{ account_id: postableId('fraudLoss'), amount_minor: 2_500 }
+		]);
 	});
 });
 

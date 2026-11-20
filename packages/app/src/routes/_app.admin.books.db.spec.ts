@@ -202,6 +202,30 @@ describe('posting a correction', () => {
 		expect(newest?.movement).toEqual(MOVEMENT);
 		expect(hasMore).toBe(false);
 	});
+
+	it('books a loss out of the bank into Fraud loss, balanced', async () => {
+		const { status, answer } = await post({
+			...CORRECTION,
+			out_of: POSTING_ACCOUNTS.bankCash.id,
+			into: POSTING_ACCOUNTS.fraudLoss.id,
+			amount: '120.00',
+			note: 'Written off.'
+		});
+		expect(status).toBe(200);
+		expect(answer.outcome).toEqual({
+			kind: 'posted',
+			sourceId: CORRECTION.source_id,
+			movement: ['5900 — Fraud loss +$120.00', '1010 — Bank / Cash −$120.00']
+		});
+
+		const { lines } = await stored();
+		expect(lines.map(({ account_id, amount_minor }) => [account_id, amount_minor]).sort()).toEqual(
+			[
+				[POSTING_ACCOUNTS.bankCash.id, -12_000],
+				[POSTING_ACCOUNTS.fraudLoss.id, 12_000]
+			].sort()
+		);
+	});
 });
 
 describe('a correction presented twice under one id', () => {
@@ -319,14 +343,18 @@ describe('a write that failed', () => {
 });
 
 describe('the screen as it is served', () => {
-	it('offers the nine postable accounts and no rollup, labelled by code and name', async () => {
+	it('offers every postable account and no rollup, labelled by code and name', async () => {
 		// derived from the seeded chart with no read, so the pickers stand even where the list below
 		// them could not be read.
 		const { accounts } = await visit();
-		expect(accounts).toHaveLength(9);
+		expect(accounts).toHaveLength(Object.keys(POSTING_ACCOUNTS).length);
 		expect(accounts[0]).toEqual({
 			value: POSTING_ACCOUNTS.bankCash.id,
 			label: '1010 — Bank / Cash'
+		});
+		expect(accounts.at(-1)).toEqual({
+			value: POSTING_ACCOUNTS.fraudLoss.id,
+			label: '5900 — Fraud loss'
 		});
 		expect(accounts.map((a) => a.value)).not.toContain(ROLLUPS.donations.id);
 		// the blank the pickers open on is the screen's and not the chart's.
@@ -344,7 +372,7 @@ describe('the screen as it is served', () => {
 		const served = await withoutTable('entry_group', () => visit());
 
 		expect(served.entries).toBe(null);
-		expect(served.accounts).toHaveLength(9);
+		expect(served.accounts).toHaveLength(Object.keys(POSTING_ACCOUNTS).length);
 		// the deployer's QuickBooks half reads the same table, and says so rather than failing the page.
 		expect(served.quickbooks).toBe('unreadable');
 	});

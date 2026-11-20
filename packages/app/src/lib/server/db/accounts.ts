@@ -29,10 +29,10 @@ type SeededAccount<TId extends string = string> = {
 
 /**
  * the seeded chart of accounts, by semantic name. these ids are the ones hardcoded
- * in `migrations/0000_initial_schema.sql` and are identical in every
- * deployment; `accounts.db.spec.ts` asserts the two sets are equal, which is the only
- * thing standing between a forgotten migration and an FK rejection on
- * `ledger_entry.account_id` in production on someone else's fork.
+ * in `migrations/0000_initial_schema.sql` and the later migrations that add an account,
+ * and are identical in every deployment; `accounts.db.spec.ts` asserts the two sets are
+ * equal, which is the only thing standing between a forgotten migration and an FK
+ * rejection on `ledger_entry.account_id` in production on someone else's fork.
  *
  * this module is the only place app code names a seeded account. it stays a constant
  * map rather than a `where code = ?` lookup on purpose: `posting.ts` needs its ids
@@ -114,6 +114,13 @@ export const POSTING_ACCOUNTS = {
 		id: '019fb0b4-ec6e-7ff7-960c-a44693a8124e',
 		code: '5200',
 		name: 'Processor Fees',
+		type: 'expense'
+	},
+	/** money lost to fraud or written off — never a processor's fee, so never booked to 5200. */
+	fraudLoss: {
+		id: '01a1f654-cd8e-7e4b-8d49-7015b1d3d452',
+		code: '5900',
+		name: 'Fraud loss',
 		type: 'expense'
 	}
 } as const satisfies Record<string, SeededAccount>;

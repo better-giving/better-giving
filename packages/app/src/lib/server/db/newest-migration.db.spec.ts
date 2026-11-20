@@ -119,6 +119,14 @@ const LOGO_IMAGES = [
  */
 const DROPPED: readonly string[] = ['zapier_key'];
 
+/**
+ * reference rows a file from the stop on inserts on purpose, by table and id: the comparison sets
+ * them aside and asserts they arrived. ./accounts.db.spec.ts holds each account to ./accounts.ts.
+ */
+const SEEDED: Readonly<Record<string, readonly string[]>> = {
+	account: [POSTING_ACCOUNTS.fraudLoss.id]
+};
+
 const sha256Hex = (value: string) => createHash('sha256').update(value).digest('hex');
 
 /** a database of this file's own that nothing has migrated, so a case can stop the chain short. */
@@ -834,8 +842,14 @@ describe('the migrations not yet applied keep every row the database already hel
 			for (const [table, rows] of before) {
 				if (DROPPED.includes(table)) continue;
 				const columns = rows.length > 0 ? Object.keys(rows[0]!) : [];
+				const seeded = SEEDED[table] ?? [];
+				const afterRows = after.get(table) ?? [];
 				expect(
-					(after.get(table) ?? []).map((r) => project(r, columns)),
+					afterRows.filter((r) => seeded.includes(r.id as string)).map((r) => r.id),
+					`${table} did not gain the rows a migration from ${FIRST_UNAPPLIED} seeds`
+				).toEqual(seeded);
+				expect(
+					afterRows.filter((r) => !seeded.includes(r.id as string)).map((r) => project(r, columns)),
 					`${table} lost or changed rows across the migrations from ${FIRST_UNAPPLIED}`
 				).toEqual(rows.map((r) => project(r, columns)));
 			}
