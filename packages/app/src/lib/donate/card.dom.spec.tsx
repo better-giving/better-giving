@@ -3140,7 +3140,7 @@ describe('a crypto gift', () => {
 		expect(screen(root).className).not.toContain('step-give');
 		expect(one(root, '#amount-problem').hidden).toBe(false);
 		expect(one(root, '#amount-problem').textContent).toBe(
-			'at least $12 in Tether USD (Tron), or pick another coin'
+			'Enter at least $12 in Tether USD (Tron), or choose another coin'
 		);
 		const focused = document.activeElement as HTMLElement;
 		expect(focused.getAttribute('aria-describedby')).toBe('amount-problem');
@@ -3151,8 +3151,8 @@ describe('a crypto gift', () => {
 	});
 
 	it.each([
-		['above_maximum', 'too large for Tether USD (Tron), lower it or pick another coin'],
-		['below_minimum', 'too small for Tether USD (Tron), raise it or pick another coin']
+		['above_maximum', 'Enter a smaller amount for Tether USD (Tron), or choose another coin'],
+		['below_minimum', 'Enter a larger amount for Tether USD (Tron), or choose another coin']
 	])('words a %s refusal with no figure', async (code, words) => {
 		const { root } = await onCrypto(() => json({ error: code, message: 'refused' }, 422));
 		await pick(root, 'USDT');

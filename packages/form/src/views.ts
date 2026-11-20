@@ -2069,11 +2069,11 @@ export function createCard(
 		const coinName =
 			config.coins?.find((coin) => coin.coin === refusal.coin)?.name ?? refusal.coin.toUpperCase();
 		if (refusal.code === 'above_maximum') {
-			return `too large for ${coinName}, lower it or pick another coin`;
+			return `Enter a smaller amount for ${coinName}, or choose another coin`;
 		}
 		return refusal.minAmountMinor === undefined
-			? `too small for ${coinName}, raise it or pick another coin`
-			: `at least ${offer(refusal.minAmountMinor)} in ${coinName}, or pick another coin`;
+			? `Enter a larger amount for ${coinName}, or choose another coin`
+			: `Enter at least ${offer(refusal.minAmountMinor)} in ${coinName}, or choose another coin`;
 	}
 
 	/**
@@ -3325,8 +3325,7 @@ export function createCard(
 	 * token alone, so what is red on the card is what this function called missing.
 	 *
 	 * one refusal, one channel, and this returns the words for the channel that is not the caret:
-	 * every sentence the press was refused for, each under its field's label (`spokenRefusal`),
-	 * joined. each field carries its own by `aria-describedby` and announces it on arrival, so a
+	 * every sentence the press was refused for, as the card shows it, joined. each field carries its own by `aria-describedby` and announces it on arrival, so a
 	 * press that moves the caret has said the refusal already — and `update` above puts these words
 	 * on the region only for a press that moved no caret, which is the press with nothing else to
 	 * say them. the Continue handler is

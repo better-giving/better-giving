@@ -254,10 +254,11 @@ export function coinRefusal(
 	coinName: string,
 	minimum: string | null
 ): string {
-	if (code === 'above_maximum') return `too large for ${coinName}, lower it or pick another coin`;
+	if (code === 'above_maximum')
+		return `Enter a smaller amount for ${coinName}, or choose another coin`;
 	return minimum === null
-		? `too small for ${coinName}, raise it or pick another coin`
-		: `at least ${minimum} in ${coinName}, or pick another coin`;
+		? `Enter a larger amount for ${coinName}, or choose another coin`
+		: `Enter at least ${minimum} in ${coinName}, or choose another coin`;
 }
 
 /**
