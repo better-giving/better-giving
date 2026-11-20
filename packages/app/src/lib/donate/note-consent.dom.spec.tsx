@@ -361,7 +361,20 @@ describe('the refusal sentences the card shares with the element', () => {
 		// packages/form/src/views.ts, `tributeBox('tribute-notify-name', …)` and
 		// `tributeBox('tribute-notify-email', …)`.
 		['NOTIFY_NAME_PROBLEM', copy.NOTIFY_NAME_PROBLEM, 'Enter a name'],
-		['NOTIFY_EMAIL_PROBLEM', copy.NOTIFY_EMAIL_PROBLEM, 'Enter their email address']
+		['NOTIFY_EMAIL_PROBLEM', copy.NOTIFY_EMAIL_PROBLEM, 'Enter their email address'],
+		[
+			'NOTIFY_EMAIL_MALFORMED',
+			copy.NOTIFY_EMAIL_MALFORMED,
+			'Enter an email address like name@example.org'
+		],
+		['FIRST_NAME_PROBLEM', copy.FIRST_NAME_PROBLEM, 'Enter your first name'],
+		['LAST_NAME_PROBLEM', copy.LAST_NAME_PROBLEM, 'Enter your last name'],
+		['EMAIL_MISSING', copy.EMAIL_MISSING, 'Enter your email address'],
+		['EMAIL_MALFORMED', copy.EMAIL_MALFORMED, 'Enter an email address like name@example.org'],
+		['PAYMENT_PROBLEM', copy.PAYMENT_PROBLEM, 'Choose a payment method'],
+		['COIN_REQUIRED', copy.COIN_REQUIRED, 'Choose a coin'],
+		['COIN_REFUSED', copy.COIN_REFUSED, 'Choose another coin'],
+		['EVERY_COIN_REFUSED', copy.EVERY_COIN_REFUSED, 'Choose another payment method']
 	])('says %s as the element does', (_name, ours, elements) => {
 		expect(ours).toBe(elements);
 	});

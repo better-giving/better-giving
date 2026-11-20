@@ -2095,7 +2095,7 @@ describe('the box a payment provider paints in', () => {
 		await settle();
 
 		expect(shadow.activeElement).toBe(paymentBox(shadow));
-		expect(said(shadow)).toBe('Please select payment method');
+		expect(said(shadow)).toBe('Choose a payment method');
 	});
 
 	// and again on the press after it. the words do not change, so a region handed them a second
@@ -2114,7 +2114,7 @@ describe('the box a payment provider paints in', () => {
 
 		await settle();
 
-		expect(said(shadow)).toBe('Please select payment method');
+		expect(said(shadow)).toBe('Choose a payment method');
 	});
 
 	// and the state the caret's own channel does not survive, which a host page can reach on its
@@ -2129,7 +2129,7 @@ describe('the box a payment provider paints in', () => {
 		await settle();
 
 		expect(shadow.activeElement).not.toBe(paymentBox(shadow));
-		expect(said(shadow)).toBe('Please select payment method');
+		expect(said(shadow)).toBe('Choose a payment method');
 	});
 });
 

@@ -1835,7 +1835,7 @@ describe('the amount step', () => {
 		// something twice is a clear and a write a task apart (`#announce` in ./element.ts).
 		await settle();
 
-		expect(card.text('[role="status"]')).toBe('Amount: Enter an amount between $5 and $50,000');
+		expect(card.text('[role="status"]')).toBe('Enter an amount between $5 and $50,000');
 	});
 
 	// the bounds on the card stand under the box they are about; the region's sentence has no box to
@@ -1847,7 +1847,7 @@ describe('the amount step', () => {
 		card.find('[part~="action"]:not([part~="submit"])').click();
 		await settle();
 
-		expect(card.text('[role="status"]')).toBe('Amount: Enter an amount between $5 and $50,000');
+		expect(card.text('[role="status"]')).toBe('Enter an amount between $5 and $50,000');
 		expect(card.text('#amount-problem')).toBe('Enter an amount between $5 and $50,000');
 	});
 
@@ -2480,7 +2480,8 @@ describe('the gift the donor dedicates', () => {
 	// the two sentences the app's note card must match (`copy` in packages/app/src/lib/donate).
 	const NOTIFY_PROBLEM = {
 		name: 'Enter a name',
-		email: 'Enter their email address'
+		email: 'Enter their email address',
+		malformedEmail: 'Enter an email address like name@example.org'
 	};
 
 	it('says what to do under each box of the pair a half answer leaves empty', async () => {
@@ -2512,6 +2513,7 @@ describe('the gift the donor dedicates', () => {
 
 		expect(card.all('.step')[0]?.hidden).toBe(false);
 		expect(card.find('#tribute-notify-email-problem').hidden).toBe(false);
+		expect(card.text('#tribute-notify-email-problem')).toBe(NOTIFY_PROBLEM.malformedEmail);
 	});
 
 	it('clears the refusal when the donor unticks the box instead', async () => {
@@ -3119,7 +3121,7 @@ describe('the review step', () => {
 		expect(card.text('[role="status"]')).toMatch(/^Total today is /);
 		card.find('[part~="submit"]').click();
 		await settle();
-		expect(card.text('[role="status"]')).toBe('Please select payment method');
+		expect(card.text('[role="status"]')).toBe('Choose a payment method');
 
 		card.find('[part~="submit"]').click();
 
@@ -3127,7 +3129,7 @@ describe('the review step', () => {
 
 		await settle();
 
-		expect(card.text('[role="status"]')).toBe('Please select payment method');
+		expect(card.text('[role="status"]')).toBe('Choose a payment method');
 	});
 
 	// the box is a form control inside the card's form, so Enter on it implicitly submits — and the
@@ -3922,7 +3924,7 @@ describe('the details step’s refusals', () => {
 		email.blur();
 
 		expect(card.find('#email-problem').hidden).toBe(false);
-		expect(card.text('#email-problem')).toBe('not an email address');
+		expect(card.text('#email-problem')).toBe('Enter an email address like name@example.org');
 		expect(email.getAttribute('part')).toBe('field invalid');
 		expect(email.getAttribute('aria-invalid')).toBe('true');
 		expect(email.getAttribute('aria-describedby')).toBe('email-problem');
@@ -3938,7 +3940,7 @@ describe('the details step’s refusals', () => {
 		type(first, '');
 		first.blur();
 
-		expect(card.text('#first-name-problem')).toBe('required');
+		expect(card.text('#first-name-problem')).toBe('Enter your first name');
 		expect(first.getAttribute('aria-invalid')).toBe('true');
 	});
 
@@ -3960,8 +3962,8 @@ describe('the details step’s refusals', () => {
 		proceed(card);
 
 		expect(card.find('#email-problem').hidden).toBe(false);
-		expect(card.text('#email-problem')).toBe('required for your receipt');
-		expect(card.text('#first-name-problem')).toBe('required');
+		expect(card.text('#email-problem')).toBe('Enter your email address');
+		expect(card.text('#first-name-problem')).toBe('Enter your first name');
 		expect(card.find('#email').getAttribute('part')).toBe('field invalid');
 		expect(card.find('#email').getAttribute('aria-invalid')).toBe('true');
 	});
@@ -4005,7 +4007,7 @@ describe('the details step’s refusals', () => {
 		type(card.find('#email'), 'donor at example.org');
 		proceed(card);
 
-		expect(card.text('#email-problem')).toBe('not an email address');
+		expect(card.text('#email-problem')).toBe('Enter an email address like name@example.org');
 	});
 
 	it('ties each sentence to its own field with aria-describedby', async () => {
@@ -4018,7 +4020,7 @@ describe('the details step’s refusals', () => {
 		// what it points at, rather than only that it points somewhere: an id naming a node that is
 		// hidden or empty is a field a reader is told has a description and hears nothing of.
 		expect(card.find(`#${described}`).hidden).toBe(false);
-		expect(card.text(`#${described}`)).toBe('required for your receipt');
+		expect(card.text(`#${described}`)).toBe('Enter your email address');
 
 		type(card.find('#email'), 'donor@example.org');
 
@@ -4060,7 +4062,7 @@ describe('the details step’s refusals', () => {
 		proceed(card);
 
 		expect(card.find('#first-name-problem').hidden).toBe(false);
-		expect(card.text('#first-name-problem')).toBe('required');
+		expect(card.text('#first-name-problem')).toBe('Enter your first name');
 		expect(card.find('#first-name').getAttribute('part')).toBe('field invalid');
 		expect(card.shadow.activeElement).toBe(card.find('#first-name'));
 		// and the control carries the same rule, so the engine refuses it too rather than leaving
@@ -4127,10 +4129,10 @@ describe('the details step’s refusals', () => {
 		// each sentence spoken under the label the field draws, in the order the fields are laid out:
 		// a run of bare problems is "required, required" with nothing saying which box is which.
 		expect(card.text('[role="status"]')).toBe(
-			'Email: required for your receipt; First name: required; Last name: required'
+			'Enter your email address; Enter your first name; Enter your last name'
 		);
 		// and the words on the card stay the field's own, with no label repeated beside its box.
-		expect(card.text('#first-name-problem')).toBe('required');
+		expect(card.text('#first-name-problem')).toBe('Enter your first name');
 	});
 
 	// the challenge widget hands its token over whenever it finishes, which is as likely to be the
@@ -4146,7 +4148,7 @@ describe('the details step’s refusals', () => {
 		await settle();
 
 		expect(card.text('[role="status"]')).toBe(
-			'Email: required for your receipt; First name: required; Last name: required'
+			'Enter your email address; Enter your first name; Enter your last name'
 		);
 	});
 
@@ -4266,8 +4268,8 @@ describe('the review step’s one refusal', () => {
 		expect(box.getAttribute('aria-describedby')).toBe('payment-problem');
 		expect(box.hasAttribute('aria-invalid')).toBe(false);
 		expect(card.shadow.activeElement).toBe(box);
-		expect(card.text('#payment-problem')).toBe('Please select payment method');
-		expect(card.text('[role="status"]')).toBe('Please select payment method');
+		expect(card.text('#payment-problem')).toBe('Choose a payment method');
+		expect(card.text('[role="status"]')).toBe('Choose a payment method');
 	});
 
 	// a header over one option is a question with one answer, so it is drawn only where the box
@@ -4308,7 +4310,7 @@ describe('the review step’s one refusal', () => {
 		card.find('[part~="submit"]').click();
 		await settle();
 
-		expect(card.text('[role="status"]')).toBe('Please select payment method');
+		expect(card.text('[role="status"]')).toBe('Choose a payment method');
 
 		// the caret is already on the box, which is where a Safari donor's second press finds it.
 		card.find('[part~="payment"]').focus();
@@ -4318,7 +4320,7 @@ describe('the review step’s one refusal', () => {
 
 		await settle();
 
-		expect(card.text('[role="status"]')).toBe('Please select payment method');
+		expect(card.text('[role="status"]')).toBe('Choose a payment method');
 	});
 
 	it('clears the payment sentence once the provider reports a rail it can charge', async () => {
@@ -6370,7 +6372,7 @@ describe('where a payment provider paints', () => {
 			const card = await atMonthlyReview({ paymentMethods: ['card', 'daf'] });
 			card.find('[part~="submit"]').click();
 			await settle();
-			expect(card.text('[role="status"]')).toBe('Please select payment method');
+			expect(card.text('[role="status"]')).toBe('Choose a payment method');
 
 			card.repeatingUnavailable();
 			await settle();
@@ -6948,7 +6950,7 @@ describe('a crypto gift', () => {
 		card.find('[part~="submit"]').click();
 
 		expect(quotes).toHaveLength(0);
-		expect(coins(card).getElementById('coin-problem')?.textContent).toBe('required');
+		expect(coins(card).getElementById('coin-problem')?.textContent).toBe('Choose a coin');
 		expect(coins(card).activeElement).toBe(combobox(card));
 		expect(card.find('#payment-problem').hidden).toBe(true);
 	});
@@ -7498,9 +7500,7 @@ describe('a crypto gift', () => {
 		await settle();
 
 		expect(card.find('.step-give').hidden).toBe(false);
-		expect(coins(card).getElementById('coin-problem')?.textContent).toBe(
-			'no longer accepted, pick another coin'
-		);
+		expect(coins(card).getElementById('coin-problem')?.textContent).toBe('Choose another coin');
 		expect(coins(card).activeElement).toBe(combobox(card));
 		expect(coins(card).querySelector('[aria-disabled="true"] .coin-ticker')?.textContent).toBe(
 			'USDT'

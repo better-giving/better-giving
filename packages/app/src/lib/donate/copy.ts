@@ -101,10 +101,12 @@ export const NOTIFY_NAME_PROBLEM = 'Enter a name';
 export const NOTIFY_EMAIL_LABEL = 'Email address of the person to tell';
 export const NOTIFY_EMAIL_PLACEHOLDER = 'Email';
 /**
- * one sentence for an empty box and one holding something that is not an address. worded as the
- * element's (packages/form/src/views.ts, `tributeBox('tribute-notify-email', …)`).
+ * an empty box is asked for an address; one holding something that is not an address is shown the
+ * shape of one. worded as the element's (packages/form/src/views.ts,
+ * `tributeBox('tribute-notify-email', …)`).
  */
 export const NOTIFY_EMAIL_PROBLEM = 'Enter their email address';
+export const NOTIFY_EMAIL_MALFORMED = 'Enter an email address like name@example.org';
 
 /**
  * the bounds a gift is taken between, offered the way a tile is rather than stated the way a row is.
@@ -115,16 +117,9 @@ export function amountProblem(offer: (minor: number) => string, min: number, max
 	return `Enter an amount between ${offer(min)} and ${offer(max)}`;
 }
 
-/**
- * one refusal spoken on the card's region, named by the label its box already draws.
- *
- * the visible sentence leaves the subject to the label standing over it; a region read with no box
- * in sight has nothing standing over it, so the label is said first. the words match the element's
- * own (`spokenRefusal` in packages/form/src/views.ts), so the two surfaces say one refusal one way.
- */
-export function refusalSaid(label: string, problem: string): string {
-	return `${label}: ${problem}`;
-}
+// a refusal is spoken on the card's region as the sentence the card shows, with no field name in
+// front: every sentence is an imperative that names its own field, the same rule as the element's
+// (the note above `PAYMENT_PROBLEM` in packages/form/src/views.ts).
 
 // ── the details step ─────────────────────────────────────────────────────────────────────────
 
@@ -134,10 +129,11 @@ export const YOUR_NAME = 'Your name';
 export const FIRST_NAME = 'First name';
 export const LAST_NAME = 'Last name';
 
-/** one sentence for both rules a name can break: an empty box and a box holding a space. */
-export const NAME_PROBLEM = 'required';
-export const EMAIL_MISSING = 'required for your receipt';
-export const EMAIL_MALFORMED = 'not an email address';
+/** one sentence per name for both rules it can break: an empty box and a box holding a space. */
+export const FIRST_NAME_PROBLEM = 'Enter your first name';
+export const LAST_NAME_PROBLEM = 'Enter your last name';
+export const EMAIL_MISSING = 'Enter your email address';
+export const EMAIL_MALFORMED = 'Enter an email address like name@example.org';
 
 export function consentLabel(org: string): string {
 	return `Allow ${org} to contact me`;
@@ -158,7 +154,7 @@ export const PAYMENT_HEADING = 'Select payment method';
  * because it travels two channels — the sentence on the card, and the live region where the caret
  * cannot land.
  */
-export const PAYMENT_PROBLEM = 'Please select payment method';
+export const PAYMENT_PROBLEM = 'Choose a payment method';
 
 /**
  * the offer of a one-time gift, standing where the payment box was while no processor still up
@@ -243,9 +239,9 @@ export function feeDeclinedCrypto(org: string): string {
 // ── the coin a crypto gift is sent in ────────────────────────────────────────────────────────
 
 /** the coin list's predicates. its own words — the label, the search, a refused row — are the list's. */
-export const COIN_REQUIRED = 'required';
-export const COIN_REFUSED = 'no longer accepted, pick another coin';
-export const EVERY_COIN_REFUSED = 'none accepted right now, choose another payment method';
+export const COIN_REQUIRED = 'Choose a coin';
+export const COIN_REFUSED = 'Choose another coin';
+export const EVERY_COIN_REFUSED = 'Choose another payment method';
 
 /**
  * a coin's refusal of the amount, as the predicate under `How much`.

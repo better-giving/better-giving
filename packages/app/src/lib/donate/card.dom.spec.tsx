@@ -892,7 +892,7 @@ describe('the way past the presets', () => {
  * the amount step's refusal as the region says it, with the subject the visible sentence takes from
  * where it stands.
  */
-const AMOUNT_REFUSED = 'Amount: Enter an amount between $5 and $5,000';
+const AMOUNT_REFUSED = 'Enter an amount between $5 and $5,000';
 
 // the caret lands on the entry, which is described by the sentence while it stands, so arriving there
 // reads it: the region saying it too is the refusal twice.
@@ -1212,7 +1212,7 @@ it('marks only the payer fields the press was refused for and puts the caret on 
 
 	expect(one(root, '#email-problem').hidden).toBe(true);
 	expect(one(root, '#first-name-problem').hidden).toBe(false);
-	expect(one(root, '#first-name-problem').textContent).toBe(copy.NAME_PROBLEM);
+	expect(one(root, '#first-name-problem').textContent).toBe(copy.FIRST_NAME_PROBLEM);
 	expect(input(root, '#first-name').getAttribute('aria-describedby')).toBe('first-name-problem');
 	expect(document.activeElement).toBe(input(root, '#first-name'));
 	// and it is said under the box, in the row's own column, on this row as on every other: one
@@ -1239,14 +1239,14 @@ it('names each refused field when a press leaves the caret where it was', async 
 	press(one(root, CONTINUE));
 
 	expect(document.activeElement).toBe(input(root, '#email'));
-	expect(said(root)).toBe('Email: required for your receipt; First name: required');
+	expect(said(root)).toBe('Enter your email address; Enter your first name');
 	// the sentences under the boxes are unchanged: their label is the one standing over them.
 	expect(one(root, '#email-problem').textContent).toBe(copy.EMAIL_MISSING);
-	expect(one(root, '#first-name-problem').textContent).toBe(copy.NAME_PROBLEM);
+	expect(one(root, '#first-name-problem').textContent).toBe(copy.FIRST_NAME_PROBLEM);
 });
 
 describe('the refused fields, said where the press left the caret', () => {
-	const REFUSAL = 'Email: required for your receipt; First name: required';
+	const REFUSAL = 'Enter your email address; Enter your first name';
 
 	/** the details step refused with the caret on the email box, which the press leaves it on. */
 	async function refused() {

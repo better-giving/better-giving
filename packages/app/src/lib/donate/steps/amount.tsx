@@ -528,7 +528,11 @@ export function AmountStep({
 										id="tribute-notify-email"
 										label={copy.NOTIFY_EMAIL_LABEL}
 										placeholder={copy.NOTIFY_EMAIL_PLACEHOLDER}
-										sentence={copy.NOTIFY_EMAIL_PROBLEM}
+										sentence={
+											api.tributeNotifyEmailField.box.value.trim() === ''
+												? copy.NOTIFY_EMAIL_PROBLEM
+												: copy.NOTIFY_EMAIL_MALFORMED
+										}
 										field={api.tributeNotifyEmailField}
 										wrong={missing.includes('tribute-notify-email')}
 										inputRef={refs.notifyEmail}

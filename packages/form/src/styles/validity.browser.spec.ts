@@ -331,7 +331,9 @@ describe('the details step’s problem edge', () => {
 
 		expect(edgeOf(email)).toBe(dangerOf(card));
 		expect(card.find('#email-problem').hidden).toBe(false);
-		expect(card.find('#email-problem').textContent).toBe('not an email address');
+		expect(card.find('#email-problem').textContent).toBe(
+			'Enter an email address like name@example.org'
+		);
 		expect(card.find('#first-name-problem').hidden).toBe(true);
 	});
 
@@ -344,8 +346,8 @@ describe('the details step’s problem edge', () => {
 		await painted(...boxes);
 
 		for (const box of boxes) expect(edgeOf(box), box.id).toBe(dangerOf(card));
-		expect(card.find('#email-problem').textContent).toBe('required for your receipt');
-		expect(card.find('#first-name-problem').textContent).toBe('required');
+		expect(card.find('#email-problem').textContent).toBe('Enter your email address');
+		expect(card.find('#first-name-problem').textContent).toBe('Enter your first name');
 	});
 
 	// the mark is the border and the ring is a shadow laid outside it (./parts.css), two properties,

@@ -49,7 +49,8 @@ export type DetailsStepProps = {
  * calls missing and everything else is what it calls malformed.
  */
 export function fieldProblem(key: PayerField, value: string): string {
-	if (key !== 'email') return copy.NAME_PROBLEM;
+	if (key === 'firstName') return copy.FIRST_NAME_PROBLEM;
+	if (key === 'lastName') return copy.LAST_NAME_PROBLEM;
 	return value.trim() === '' ? copy.EMAIL_MISSING : copy.EMAIL_MALFORMED;
 }
 
@@ -104,7 +105,7 @@ export function DetailsStep({
 						field={api.firstNameField}
 						floating
 						wrong={missing.includes('firstName')}
-						problem={copy.NAME_PROBLEM}
+						problem={copy.FIRST_NAME_PROBLEM}
 						inputRef={refs.firstName}
 					/>
 					<TextField
@@ -114,7 +115,7 @@ export function DetailsStep({
 						field={api.lastNameField}
 						floating
 						wrong={missing.includes('lastName')}
-						problem={copy.NAME_PROBLEM}
+						problem={copy.LAST_NAME_PROBLEM}
 						inputRef={refs.lastName}
 					/>
 				</div>
