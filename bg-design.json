@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "dir": "packages/operator/src/registry",
-  "registryVersion": "4.3.0",
+  "registryVersion": "4.4.0",
   "items": {
     "app-shell-css": {
       "version": "2.0.0",
@@ -95,10 +95,10 @@
       }
     },
     "page-header-css": {
-      "version": "2.0.1",
+      "version": "2.0.2",
       "files": {
-        "styles/page-header-css.css": "5381081a5ff64dbefecaf219f29e33f0fccd0e862fc28ef528c4c3887c273604",
-        "styles/page-header-css.usage.md": "9055ed782bff3a5a21b8d8703c9581839ef6d2ba5c098ed0f2ea7267d0541be3"
+        "styles/page-header-css.css": "ea3dc20cbe54d23c445b23054f097ecfeb0ffffd917f78cce9658bdc7c6d5302",
+        "styles/page-header-css.usage.md": "d325366478a4c8de333cebf3dae6a1e2cb3e197a429851c3e1bd9785e998ef38"
       }
     },
     "page-state-css": {

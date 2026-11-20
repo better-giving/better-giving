@@ -12,8 +12,9 @@
    it and asserts the same computed look in light and dark, for the default
    and example themes, wide and at 375.
 
-   the tab row is drawn here because the registry has no plain-css tabs: it is
-   the React `Tabs` item's look, held equal by the same test.
+   the tab row is the React `Tabs` item's look, held equal by the same test.
+   it is drawn here with its own ds-page-tab classes; tabs-css is the same row
+   for a page that is not a header.
 
    the spacing step, the type size and the weight and the 40rem
    breakpoint (tailwind's sm, written out because a query cannot read a
@@ -94,6 +95,7 @@
 }
 .ds-page-tab {
   box-sizing: border-box;
+  position: relative;
   display: inline-flex;
   align-items: safe center;
   min-block-size: calc(var(--ds-spacing) * 9);
@@ -111,6 +113,13 @@
   font-weight: var(--ds-font-weight-semibold);
   text-decoration: none;
 }
+/* the hit area, as the React Tab's: --ds-hit-target tall and at least that
+   wide, centered on the tab, the drawn size unchanged */
+.ds-page-tab::after {
+  content: "";
+  position: absolute;
+  inset: min(0px, calc((100% - var(--ds-hit-target)) / 2));
+}
 @media (hover: hover) and (pointer: fine) {
   .ds-page-tab:hover {
     color: var(--gray-12);
@@ -125,12 +134,16 @@
   outline-offset: 2px;
 }
 /* forced colors paint the transparent edge in a system color, which would
-   underline every tab: the others take Canvas, the selected one Highlight */
+   underline every tab: the others take Canvas, the selected one Highlight.
+   a Canvas edge on the hairline would cut it to ticks between the tabs, so
+   only the selected tab overlaps the hairline there */
 @media (forced-colors: active) {
   .ds-page-tab {
+    margin-block-end: 0;
     border-block-end-color: Canvas;
   }
   .ds-page-tab[aria-selected="true"] {
+    margin-block-end: -1px;
     border-block-end-color: Highlight;
   }
 }
@@ -171,5 +184,12 @@
       black calc(100% - calc(var(--ds-spacing) * 7)),
       transparent
     );
+  }
+}
+/* forced colors leave the mask nothing to fade, only tabs to cut, so it goes */
+@media (forced-colors: active) {
+  .ds-page-tabs,
+  .ds-page-tabs:dir(rtl) {
+    mask-image: none;
   }
 }
