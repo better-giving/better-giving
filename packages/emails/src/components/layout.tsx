@@ -8,6 +8,8 @@ import {
 	LH_BODY,
 	LH_HEADING,
 	MEASURE,
+	OUTLOOK_MONO,
+	OUTLOOK_SANS,
 	PAGE_BG,
 	PLANE_BG,
 	RADIUS_PLANE,
@@ -39,8 +41,37 @@ import {
 // renders it — a hex triple, checked, and a pixel count, converted — because a mail resolves no
 // custom property and no colour function. the type stacks come over whole, self-hosted first face
 // included, and no web font is linked for it: a client that walks the list sets the platform's own
-// face, and Outlook for Windows, which reads the first name alone, sets Times New Roman
-// (fontStack in ../tokens.ts).
+// face. Outlook for Windows reads the first name alone and would set Times New Roman, so the head
+// carries an Outlook-only block naming Arial and Consolas (OUTLOOK_FONT_BLOCK below): two system
+// faces, no web font, no link, and no other client reads it.
+
+/**
+ * the one `<style>` this shell carries, read by Outlook for Windows and no other client: the
+ * conditional comment hides it from everything but Word's engine. that engine takes the first name
+ * of an inline `font-family` list and sets Times New Roman when it is not installed, so the inline
+ * list stays as it is for every other client and this block sets a system face over it, with
+ * `!important` because an inline declaration outranks a sheet otherwise. the second rule is for
+ * `<code>` and `<pre>`; a cell the templates set in the mono stack takes the sans face here, since
+ * Word's selectors reach elements and not inline values. `mso-font-alt` states the same face for
+ * Word's own substitution. it names two system faces and links nothing.
+ */
+const OUTLOOK_FONT_BLOCK =
+	'<!--[if mso]><style>' +
+	'body,table,td,th,p,h1,h2,h3,div,span,a,li{' +
+	`font-family:${OUTLOOK_SANS} !important;mso-font-alt:Arial;}` +
+	'code,pre{' +
+	`font-family:${OUTLOOK_MONO} !important;mso-font-alt:'Courier New';}` +
+	'</style><![endif]-->';
+
+/** the text a node would escape, for the one string the head is written as. */
+function escapeHtml(text: string): string {
+	return text
+		.replaceAll('&', '&amp;')
+		.replaceAll('<', '&lt;')
+		.replaceAll('>', '&gt;')
+		.replaceAll('"', '&quot;')
+		.replaceAll("'", '&#x27;');
+}
 
 /**
  * the base type styling.
@@ -122,13 +153,18 @@ export interface LayoutProps {
 export function Layout({ title, children }: LayoutProps) {
 	return (
 		<html dir="ltr" lang="en">
-			<head>
-				{/* the charset, the attribute that stops iOS resizing the type, and the viewport. */}
-				<meta content="text/html; charset=UTF-8" httpEquiv="Content-Type" />
-				<meta name="x-apple-disable-message-reformatting" />
-				<meta name="viewport" content="width=device-width,initial-scale=1" />
-				<title>{title}</title>
-			</head>
+			{/* the head is a string because a conditional comment is not a node react can write. */}
+			<head
+				dangerouslySetInnerHTML={{
+					__html:
+						// the charset, the attribute that stops iOS resizing the type, and the viewport.
+						'<meta content="text/html; charset=UTF-8" http-equiv="Content-Type"/>' +
+						'<meta name="x-apple-disable-message-reformatting"/>' +
+						'<meta name="viewport" content="width=device-width,initial-scale=1"/>' +
+						`<title>${escapeHtml(title)}</title>` +
+						OUTLOOK_FONT_BLOCK
+				}}
+			/>
 			<body style={DOCUMENT_STYLE}>
 				<table
 					border={0}
