@@ -17,16 +17,48 @@
 # are always listed, opened and closed with the default GITHUB_TOKEN (issues:
 # write below), so this token needs no issues permission.
 #
+# Which locks: an app can hold more than one bg-design.json (a root lock plus
+# one per package, say). The job updates every lock in one run and opens one PR.
+# Which locks it updates, first match wins:
+#   1. LOCKS below: paths to lock files, relative to the repo root, separated by
+#      newlines or spaces (no spaces inside a path). Each is updated with
+#      `--lock <path>`; its "dir" is read against the repo root.
+#   2. APP_DIR, when it is set to anything but "." (the way a single-lock copy of
+#      this file was configured): the one lock at APP_DIR/bg-design.json, with
+#      its "dir" read against APP_DIR. LOCKS wins over APP_DIR when both are set.
+#   3. Discovery, with both left at their defaults: the root bg-design.json and
+#      every packages/*/bg-design.json that exists. Only packages/* is searched;
+#      locks anywhere else (apps/*, say) need LOCKS. Discovery reads every
+#      "dir" against the repo root, so a lock in packages/<d> whose dir is not
+#      inside packages/<d>/ (a dir written from the package, like "src") fails
+#      the job before the CLI runs: set APP_DIR to the package for a single
+#      lock, or LOCKS with root-relative dirs.
+# Every lock, however it is found, must be a plain relative path to an existing
+# regular file (not a symlink, not under .git or .github, not outside the repo;
+# an absolute LOCKS entry or APP_DIR is refused). A missing one fails the job,
+# and so does discovery that finds none. No lock dir may hold
+# another lock's dir or lock file; the job fails on an overlap ("src" next to
+# "src-evil" is fine).
+#
 # Two jobs. "update" downloads the registry's CLI, checks it against the sha256
-# in the registry's index.json and runs it with contents: read, no secrets and no
-# write permission. It hands over an artifact: a patch of the item changes, the
-# CLI's output and a version. "open-pr" holds the tokens and runs none of the
-# registry's code. It validates everything it takes from the artifact (the
-# patch may only touch the item directory and bg-design.json, the version must
-# be a bare version, the output goes in the PR body inside a fence) and takes
-# the CLI pin from its own download of index.json, never from the artifact. The
-# hash comes from the same registry host as the CLI, so it catches a CLI that
-# does not match its index, not a host that serves both.
+# in the registry's index.json and runs it, once per lock, with contents: read,
+# no secrets and no write permission. It hands over an artifact: one patch per
+# lock (the patch holds what that run of the CLI changed), the CLI's output and a
+# version. "open-pr" holds the tokens and runs none of the registry's code. It
+# works out the list of locks again from its own checkout, never from the
+# artifact, and validates everything it takes from the artifact (a lock's patch
+# may only touch that lock file and the item directory in that lock's "dir", and
+# since lock dirs may not overlap, a patch cannot reach another lock's directory
+# under the first one's name; only regular files, 100644 or 100755, and nothing
+# under .github; the version must be a bare version; the output goes in the PR
+# body inside a fence) and takes the CLI pin from its own download of
+# index.json, never from the artifact. The hash comes from the same registry
+# host as the CLI, so it catches a CLI that does not match its index, not a host
+# that serves both.
+#
+# One PR for all the locks: the patches are applied in order into one commit. The
+# PR body holds the CLI's output for every lock in one block, with a
+# "== <lock path> ==" heading line per lock when there is more than one.
 #
 # One run at a time: a scheduled and a manual run started together would both
 # push the update branch, and the second would fail to lock its ref.
@@ -71,7 +103,14 @@ concurrency:
 
 env:
   REGISTRY: https://design.better.giving/registry
-  # set to the directory bg-design.json lives in, if not the repo root
+  # the lock files to update, separated by newlines or spaces, for example
+  #   LOCKS: |
+  #     bg-design.json
+  #     packages/form/bg-design.json
+  # empty: see "Which locks" in the header
+  LOCKS: ""
+  # a single lock at APP_DIR/bg-design.json, for copies that set it; used only
+  # when LOCKS is empty and this is not "."
   APP_DIR: .
 
 jobs:
@@ -114,37 +153,128 @@ jobs:
           cli="$RUNNER_TEMP/bg-design.mjs"
           curl --fail --silent --show-error --location "${REGISTRY%/}/${cli_url}" --output "$cli"
           printf '%s  %s\n' "$cli_sha" "$cli" | sha256sum --check --strict -
+      - name: Find the locks
+        run: |
+          set -euo pipefail
+          # one line per lock: <app dir>, <lock path from there>, <lock path from
+          # the repo root>, tab separated. The same step runs in both jobs and
+          # reads only this checkout.
+          node -e '
+            const fs = require("node:fs");
+            const path = require("node:path").posix;
+            const fail = (m) => { console.error(`::error::${m}`); process.exit(1); };
+            const plain = /^[A-Za-z0-9._@+\/-]+$/;
+            const listed = (process.env.LOCKS || "").split(/\s+/).filter(Boolean);
+            const app_dir = path.normalize(process.env.APP_DIR || ".").replace(/\/+$/, "") || ".";
+            const found = [];
+            if (listed.length) {
+              for (const lock of listed) found.push({ app: ".", lock, how: "listed" });
+            } else if (app_dir !== ".") {
+              found.push({ app: app_dir, lock: "bg-design.json", how: "app" });
+            } else {
+              if (fs.existsSync("bg-design.json")) found.push({ app: ".", lock: "bg-design.json", how: "root" });
+              if (fs.existsSync("packages"))
+                for (const d of fs.readdirSync("packages").sort())
+                  if (fs.existsSync(`packages/${d}/bg-design.json`)) found.push({ app: ".", lock: `packages/${d}/bg-design.json`, how: "package", package: `packages/${d}` });
+            }
+            if (!found.length) fail("no bg-design.json found: set LOCKS to the lock files to update");
+            const seen = new Set();
+            const rows = [];
+            for (const { app, lock, how, package: pkg } of found) {
+              // the paths go into shell loops and a patch check, so each is checked
+              // rule by rule, each rule with its own message; absolute is judged
+              // before the join, which would turn "/x" into "x"
+              if (path.isAbsolute(lock)) fail(`${lock} is an absolute path; lock paths are relative to the repo root`);
+              if (path.isAbsolute(app)) fail(`APP_DIR ${app} is an absolute path; it is relative to the repo root`);
+              if (!plain.test(app)) fail(`APP_DIR ${JSON.stringify(app)} has characters other than letters, digits and . _ @ + / -`);
+              if (!plain.test(lock)) fail(`${JSON.stringify(lock)} has characters other than letters, digits and . _ @ + / -`);
+              const full = path.normalize(path.join(app, lock));
+              if (full === ".." || full.startsWith("../")) fail(`${full} is outside the repo`);
+              if (/^\.git(hub)?(\/|$)/.test(full)) fail(`${full} is under .git or .github`);
+              let stat;
+              try { stat = fs.lstatSync(full); } catch { fail(`${full} does not exist`); }
+              if (stat.isSymbolicLink()) fail(`${full} is a symlink`);
+              if (!stat.isFile()) fail(`${full} is not a regular file`);
+              if (seen.has(full)) continue;
+              seen.add(full);
+              let dir;
+              try {
+                const doc = JSON.parse(fs.readFileSync(full, "utf8"));
+                if (typeof doc.dir === "string") dir = path.normalize(path.join(app, doc.dir.replace(/\/+$/, "")));
+              } catch {}
+              // a lock found by discovery in packages/<d> is read from the repo
+              // root; a dir that sits in its own package was written from there
+              if (how === "package" && dir !== undefined && !dir.startsWith(`${pkg}/`))
+                fail(`${full} has dir ${JSON.stringify(dir === "." ? "." : dir)}, which is outside ${pkg}/: the dir of this lock looks relative to its package. Set APP_DIR to the package for a single lock, or LOCKS with root-relative dirs.`);
+              rows.push({ app, lock: path.normalize(lock), full, dir });
+            }
+            // each lock patch is judged against its own dir, so no dir may hold
+            // another lock dir or lock file ("src" and "src-evil" are apart)
+            const within = (p, d) => p === d || p.startsWith(`${d}/`);
+            for (const a of rows) {
+              if (a.dir === undefined) continue;
+              for (const b of rows) {
+                if (a === b) continue;
+                if (within(b.full, a.dir)) fail(`${a.full} (dir ${a.dir}) holds the lock file ${b.full}: lock dirs must not overlap`);
+                if (b.dir !== undefined && within(b.dir, a.dir)) fail(`${a.full} (dir ${a.dir}) holds the dir of ${b.full} (${b.dir}): lock dirs must not overlap`);
+              }
+            }
+            fs.writeFileSync(`${process.env.RUNNER_TEMP}/locks.tsv`, rows.map((r) => [r.app, r.lock, r.full].join("\t")).join("\n") + "\n");
+          '
+          cat "$RUNNER_TEMP/locks.tsv"
       - name: Take new versions
         id: update
-        working-directory: ${{ env.APP_DIR }}
         run: |
           set -uo pipefail
           handoff="$RUNNER_TEMP/handoff"
           cli="$RUNNER_TEMP/bg-design.mjs"
-          # no pipe, so the CLI's own exit code is the one tested
-          node "$cli" update --registry "$REGISTRY" > "$handoff/update.txt" 2>&1
-          code=$?
-          cat "$handoff/update.txt"
-          # 0 = updated, 3 = finished but skipped locally edited items (listed in
-          # the PR). Anything else (1 runtime error, 2 usage) is a failure.
-          case "$code" in
-            0|3) ;;
-            *) echo "::error::bg-design update failed with exit code $code"; exit 1 ;;
-          esac
-          version=$(node -p 'require("./bg-design.json").registryVersion') || exit 1
+          locks="$RUNNER_TEMP/locks.tsv"
+          count=$(wc -l < "$locks")
+          : > "$handoff/update.txt"
+          # the CLI runs once per lock, with an explicit --lock, from the lock's
+          # app dir. After each run everything it changed is staged and diffed
+          # against the tree the previous lock left, so each lock gets a patch of
+          # its own run. No rename detection: every path open-pr checks is a plain
+          # add, change or delete, and an empty patch means that lock changed
+          # nothing.
+          index=0
+          first_version=""
+          changed_version=""
+          first_path=""
+          changed_path=""
+          prev=$(git write-tree) || exit 1
+          while IFS=$'\t' read -r app lock path; do
+            out="$RUNNER_TEMP/update-$index.txt"
+            # no pipe, so the CLI's own exit code is the one tested; stdin is
+            # /dev/null, or a CLI that reads it would eat the rest of the locks
+            (cd "$app" && node "$cli" update --registry "$REGISTRY" --lock "$lock") < /dev/null > "$out" 2>&1
+            code=$?
+            cat "$out"
+            if [ "$count" -gt 1 ]; then echo "== $path ==" >> "$handoff/update.txt"; fi
+            cat "$out" >> "$handoff/update.txt"
+            # 0 = updated, 3 = finished but skipped locally edited items (listed in
+            # the PR). Anything else (1 runtime error, 2 usage) is a failure.
+            case "$code" in
+              0|3) ;;
+              *) echo "::error::bg-design update failed with exit code $code for $path"; exit 1 ;;
+            esac
+            git add -A || exit 1
+            tree=$(git write-tree) || exit 1
+            git diff --cached --binary --no-renames "$prev" > "$handoff/items-$index.patch" || exit 1
+            prev=$tree
+            lock_version=$(node -p 'String(JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8")).registryVersion ?? "")' "$path") || exit 1
+            if [ "$index" -eq 0 ]; then first_version=$lock_version; first_path=$path; fi
+            if [ -z "$changed_path" ] && [ -s "$handoff/items-$index.patch" ]; then changed_version=$lock_version; changed_path=$path; fi
+            index=$((index + 1))
+          done < "$locks"
+          # the PR's version is the first changed lock's, else the first lock's
+          version=${changed_version:-$first_version}
+          version_path=${changed_path:-$first_path}
           # the version goes into a commit message and a PR title
           case "$version" in
-            ""|*[!0-9A-Za-z._+-]*) echo "::error::bg-design.json has an unusable registryVersion"; exit 1 ;;
+            ""|*[!0-9A-Za-z._+-]*) echo "::error::$version_path has an unusable registryVersion"; exit 1 ;;
           esac
           echo "version=$version" >> "$GITHUB_OUTPUT"
-      - name: Stage the item update
-        run: |
-          set -euo pipefail
-          handoff="$RUNNER_TEMP/handoff"
-          # an empty patch means no item changed; no rename detection, so every
-          # path open-pr checks is a plain add, change or delete
-          git add -A
-          git diff --cached --binary --no-renames > "$handoff/items.patch"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: bg-design-update
@@ -153,7 +283,7 @@ jobs:
           retention-days: 1
 
   # holds the tokens and runs none of the registry's code: it checks what the
-  # update job handed over, applies the item patch, takes the CLI pin from its
+  # update job handed over, applies the item patches, in order, takes the CLI pin from its
   # own download of the index, then commits, pushes and opens the PR or issue
   open-pr:
     needs: update
@@ -177,65 +307,145 @@ jobs:
         with:
           name: bg-design-update
           path: ${{ runner.temp }}/handoff
+      - name: Find the locks
+        run: |
+          set -euo pipefail
+          # one line per lock: <app dir>, <lock path from there>, <lock path from
+          # the repo root>, tab separated. The same step runs in both jobs and
+          # reads only this checkout.
+          node -e '
+            const fs = require("node:fs");
+            const path = require("node:path").posix;
+            const fail = (m) => { console.error(`::error::${m}`); process.exit(1); };
+            const plain = /^[A-Za-z0-9._@+\/-]+$/;
+            const listed = (process.env.LOCKS || "").split(/\s+/).filter(Boolean);
+            const app_dir = path.normalize(process.env.APP_DIR || ".").replace(/\/+$/, "") || ".";
+            const found = [];
+            if (listed.length) {
+              for (const lock of listed) found.push({ app: ".", lock, how: "listed" });
+            } else if (app_dir !== ".") {
+              found.push({ app: app_dir, lock: "bg-design.json", how: "app" });
+            } else {
+              if (fs.existsSync("bg-design.json")) found.push({ app: ".", lock: "bg-design.json", how: "root" });
+              if (fs.existsSync("packages"))
+                for (const d of fs.readdirSync("packages").sort())
+                  if (fs.existsSync(`packages/${d}/bg-design.json`)) found.push({ app: ".", lock: `packages/${d}/bg-design.json`, how: "package", package: `packages/${d}` });
+            }
+            if (!found.length) fail("no bg-design.json found: set LOCKS to the lock files to update");
+            const seen = new Set();
+            const rows = [];
+            for (const { app, lock, how, package: pkg } of found) {
+              // the paths go into shell loops and a patch check, so each is checked
+              // rule by rule, each rule with its own message; absolute is judged
+              // before the join, which would turn "/x" into "x"
+              if (path.isAbsolute(lock)) fail(`${lock} is an absolute path; lock paths are relative to the repo root`);
+              if (path.isAbsolute(app)) fail(`APP_DIR ${app} is an absolute path; it is relative to the repo root`);
+              if (!plain.test(app)) fail(`APP_DIR ${JSON.stringify(app)} has characters other than letters, digits and . _ @ + / -`);
+              if (!plain.test(lock)) fail(`${JSON.stringify(lock)} has characters other than letters, digits and . _ @ + / -`);
+              const full = path.normalize(path.join(app, lock));
+              if (full === ".." || full.startsWith("../")) fail(`${full} is outside the repo`);
+              if (/^\.git(hub)?(\/|$)/.test(full)) fail(`${full} is under .git or .github`);
+              let stat;
+              try { stat = fs.lstatSync(full); } catch { fail(`${full} does not exist`); }
+              if (stat.isSymbolicLink()) fail(`${full} is a symlink`);
+              if (!stat.isFile()) fail(`${full} is not a regular file`);
+              if (seen.has(full)) continue;
+              seen.add(full);
+              let dir;
+              try {
+                const doc = JSON.parse(fs.readFileSync(full, "utf8"));
+                if (typeof doc.dir === "string") dir = path.normalize(path.join(app, doc.dir.replace(/\/+$/, "")));
+              } catch {}
+              // a lock found by discovery in packages/<d> is read from the repo
+              // root; a dir that sits in its own package was written from there
+              if (how === "package" && dir !== undefined && !dir.startsWith(`${pkg}/`))
+                fail(`${full} has dir ${JSON.stringify(dir === "." ? "." : dir)}, which is outside ${pkg}/: the dir of this lock looks relative to its package. Set APP_DIR to the package for a single lock, or LOCKS with root-relative dirs.`);
+              rows.push({ app, lock: path.normalize(lock), full, dir });
+            }
+            // each lock patch is judged against its own dir, so no dir may hold
+            // another lock dir or lock file ("src" and "src-evil" are apart)
+            const within = (p, d) => p === d || p.startsWith(`${d}/`);
+            for (const a of rows) {
+              if (a.dir === undefined) continue;
+              for (const b of rows) {
+                if (a === b) continue;
+                if (within(b.full, a.dir)) fail(`${a.full} (dir ${a.dir}) holds the lock file ${b.full}: lock dirs must not overlap`);
+                if (b.dir !== undefined && within(b.dir, a.dir)) fail(`${a.full} (dir ${a.dir}) holds the dir of ${b.full} (${b.dir}): lock dirs must not overlap`);
+              }
+            }
+            fs.writeFileSync(`${process.env.RUNNER_TEMP}/locks.tsv`, rows.map((r) => [r.app, r.lock, r.full].join("\t")).join("\n") + "\n");
+          '
+          cat "$RUNNER_TEMP/locks.tsv"
       - name: Check the handoff
         env:
           VERSION: ${{ needs.update.outputs.version }}
         run: |
           set -euo pipefail
           handoff="$RUNNER_TEMP/handoff"
+          locks="$RUNNER_TEMP/locks.tsv"
           # the version goes into a commit message and a PR title
           [[ $VERSION =~ ^[0-9A-Za-z._+-]+$ ]] || { echo "::error::the update job's version is not a plain version"; exit 1; }
-          [ -s "$handoff/items.patch" ] || exit 0
-          # first filter: the update job uses no rename detection, so a patch
-          # with a rename or copy header is forged
-          if grep -qE '^(rename|copy) (from|to|old|new) |^similarity index ' "$handoff/items.patch"; then
-            echo "::error::the item update renames or copies a file; not pushing it"
-            exit 1
-          fi
-          # the check that counts judges the result, not the patch text: apply it
-          # to a scratch index (this checkout stays untouched) and read back what
-          # changed against HEAD, every path and mode NUL separated and whole
+          # the check that counts judges the result, not the patch text: each
+          # lock's patch is applied, in order, to a scratch index (this checkout
+          # stays untouched) and what it changed is read back against the index
+          # before it, every path and mode NUL separated and whole. The patches
+          # are those of the locks this job found itself, by position; any other
+          # patch in the artifact is never read.
           index="$RUNNER_TEMP/check.index"
           rm -f "$index"
           GIT_INDEX_FILE="$index" git read-tree HEAD
-          # a patch that does not apply is refused below, after the item directory
-          # is checked, so the first thing wrong with it is the one reported
-          apply_error=""
-          : > "$RUNNER_TEMP/changes.bin"
-          if GIT_INDEX_FILE="$index" git apply --cached "$handoff/items.patch" 2> "$RUNNER_TEMP/apply.err"; then
-            GIT_INDEX_FILE="$index" git diff --cached --no-renames --raw -z HEAD > "$RUNNER_TEMP/changes.bin"
-          else
-            apply_error=$(tr '\n' ' ' < "$RUNNER_TEMP/apply.err")
-          fi
-          # only the item directory and the lock may change, both read from this
-          # checkout, never from the artifact, and only as regular files
-          APPLY_ERROR="$apply_error" node -e '
-            const fs = require("node:fs");
-            const path = require("node:path").posix;
-            const app = process.env.APP_DIR;
-            const lock = JSON.parse(fs.readFileSync(`${app}/bg-design.json`, "utf8"));
-            // a dir written with a trailing slash ("src/ui/") names the same directory
-            const dir = typeof lock.dir === "string" ? path.normalize(path.join(app, lock.dir.replace(/\/+$/, ""))) : "";
-            const usable = dir && dir !== "." && !path.isAbsolute(dir) && !dir.startsWith("..") && !/^\.git(hub)?(\/|$)/.test(dir);
-            const fail = (m) => { console.error(`::error::${m}`); process.exit(1); };
-            if (!usable) fail("bg-design.json names no usable item directory");
-            if (process.env.APPLY_ERROR) fail(`the item update does not apply: ${process.env.APPLY_ERROR}`);
-            const allowed = (p) => p === path.normalize(path.join(app, "bg-design.json")) || (p.startsWith(`${dir}/`) && !p.split("/").includes(".."));
-            const tokens = fs.readFileSync(process.argv[1], "latin1").split("\0");
-            const text = (s) => Buffer.from(s, "latin1").toString("utf8");
-            const changes = [];
-            for (let i = 0; i < tokens.length; i += 2) {
-              if (!tokens[i]) continue;
-              const m = /^:(\d{6}) (\d{6}) [0-9a-f]+ [0-9a-f]+ ([A-Z])\d*$/.exec(tokens[i]);
-              if (!m || tokens[i + 1] === undefined) fail("the item update has an entry this check cannot read");
-              changes.push({ mode: m[2], status: m[3], path: text(tokens[i + 1]) });
-            }
-            const bad = changes.filter((c) => !allowed(c.path));
-            if (bad.length) fail(`the item update touches ${bad.length} path(s) outside ${dir}/ and bg-design.json, for example ${JSON.stringify(bad[0].path)}; not pushing it`);
-            // a deleted entry has mode 000000; anything else must be a regular file
-            const odd = changes.filter((c) => c.status !== "D" && c.mode !== "100644" && c.mode !== "100755");
-            if (odd.length) fail(`the item update has a mode other than 100644 or 100755 (a symlink or submodule, say) at ${JSON.stringify(odd[0].path)}; not pushing it`);
-          ' "$RUNNER_TEMP/changes.bin"
+          n=0
+          while IFS=$'\t' read -r app lock path; do
+            patch="$handoff/items-$n.patch"
+            n=$((n + 1))
+            [ -s "$patch" ] || continue
+            # first filter: the update job uses no rename detection, so a patch
+            # with a rename or copy header is forged
+            if grep -qE '^(rename|copy) (from|to|old|new) |^similarity index ' "$patch"; then
+              echo "::error::the item update for $path renames or copies a file; not pushing it"
+              exit 1
+            fi
+            before=$(GIT_INDEX_FILE="$index" git write-tree)
+            # a patch that does not apply is refused below, after the item directory
+            # is checked, so the first thing wrong with it is the one reported
+            apply_error=""
+            : > "$RUNNER_TEMP/changes.bin"
+            if GIT_INDEX_FILE="$index" git apply --cached "$patch" 2> "$RUNNER_TEMP/apply.err"; then
+              GIT_INDEX_FILE="$index" git diff --cached --no-renames --raw -z "$before" > "$RUNNER_TEMP/changes.bin"
+            else
+              apply_error=$(tr '\n' ' ' < "$RUNNER_TEMP/apply.err")
+            fi
+            # only this lock and its item directory may change, both read from this
+            # checkout, never from the artifact, and only as regular files
+            APPLY_ERROR="$apply_error" APP="$app" LOCK="$lock" node -e '
+              const fs = require("node:fs");
+              const path = require("node:path").posix;
+              const app = process.env.APP;
+              const lock_file = path.normalize(path.join(app, process.env.LOCK));
+              const lock = JSON.parse(fs.readFileSync(lock_file, "utf8"));
+              // a dir written with a trailing slash ("src/ui/") names the same directory
+              const dir = typeof lock.dir === "string" ? path.normalize(path.join(app, lock.dir.replace(/\/+$/, ""))) : "";
+              const usable = dir && dir !== "." && !path.isAbsolute(dir) && !dir.startsWith("..") && !/^\.git(hub)?(\/|$)/.test(dir);
+              const fail = (m) => { console.error(`::error::${m}`); process.exit(1); };
+              if (!usable) fail(`${lock_file} names no usable item directory`);
+              if (process.env.APPLY_ERROR) fail(`the item update for ${lock_file} does not apply: ${process.env.APPLY_ERROR}`);
+              const allowed = (p) => p === lock_file || (p.startsWith(`${dir}/`) && !p.split("/").includes(".."));
+              const tokens = fs.readFileSync(process.argv[1], "latin1").split("\0");
+              const text = (s) => Buffer.from(s, "latin1").toString("utf8");
+              const changes = [];
+              for (let i = 0; i < tokens.length; i += 2) {
+                if (!tokens[i]) continue;
+                const m = /^:(\d{6}) (\d{6}) [0-9a-f]+ [0-9a-f]+ ([A-Z])\d*$/.exec(tokens[i]);
+                if (!m || tokens[i + 1] === undefined) fail("the item update has an entry this check cannot read");
+                changes.push({ mode: m[2], status: m[3], path: text(tokens[i + 1]) });
+              }
+              const bad = changes.filter((c) => !allowed(c.path));
+              if (bad.length) fail(`the item update for ${lock_file} touches ${bad.length} path(s) outside ${dir}/ and ${lock_file}, for example ${JSON.stringify(bad[0].path)}; not pushing it`);
+              // a deleted entry has mode 000000; anything else must be a regular file
+              const odd = changes.filter((c) => c.status !== "D" && c.mode !== "100644" && c.mode !== "100755");
+              if (odd.length) fail(`the item update for ${lock_file} has a mode other than 100644 or 100755 (a symlink or submodule, say) at ${JSON.stringify(odd[0].path)}; not pushing it`);
+            ' "$RUNNER_TEMP/changes.bin"
+          done < "$locks"
       - name: Find the CLI pin
         run: |
           set -euo pipefail
@@ -371,8 +581,15 @@ jobs:
             done
           }
 
+          # the patches of the locks this job found, by position
+          patches=()
+          n=0
+          while IFS= read -r _; do
+            [ -s "$handoff/items-$n.patch" ] && patches+=("$handoff/items-$n.patch")
+            n=$((n + 1))
+          done < "$RUNNER_TEMP/locks.tsv"
           items=false
-          [ -s "$handoff/items.patch" ] && items=true
+          [ "${#patches[@]}" -gt 0 ] && items=true
           behind=false
           [ -f "$pin_dir/pin.behind" ] && behind=true
           if [ "$behind" = false ]; then
@@ -436,7 +653,9 @@ jobs:
           # no push at all
           git checkout -B "$branch"
           if [ "$items" = true ]; then
-            git apply --index "$handoff/items.patch"
+            for patch in "${patches[@]}"; do
+              git apply --index "$patch"
+            done
             git commit -m "Update design registry to ${VERSION}"
           fi
           items_head=$(git rev-parse HEAD)
