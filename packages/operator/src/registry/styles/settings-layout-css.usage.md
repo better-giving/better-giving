@@ -1,6 +1,6 @@
 # settings-layout-css
 
-Registry item `settings-layout-css` (files: `styles/settings-layout-css.css`; depends on `variables` and `button-css`). Plain CSS: no Tailwind, no React. The look of the `settings-layout` item for a page that has only `variables`: a settings section's stack of cards. The section links have moved to the sidebar (`nav-list-css`'s parent row and its children, in `app-shell-css`), so the layout holds no nav, and nothing in it pins.
+Registry item `settings-layout-css` (files: `styles/settings-layout-css.css`; depends on `variables` and `button-css`). Plain CSS: no Tailwind, no React. The look of the `settings-layout` item for a page that has only `variables`: a settings page's stack of cards. The settings links have moved to the sidebar (`nav-list-css`'s parent row and its children, in `app-shell-css`), so the layout holds no nav, and nothing in it pins.
 
 ## Markup contract
 
@@ -23,16 +23,16 @@ Import `styles/variables.css`, `styles/button-css.css` (Discard and Save) and `s
 </div>
 ```
 
-- `ds-settings`: the section's cards (`card-css`), one column 24px apart at every width.
+- `ds-settings`: the page's cards (`card-css`), one column 24px apart at every width.
 - `ds-settings-save`: Discard and Save at the end of a card's footer, 12px apart; under 48rem they share the row in equal halves.
 
 ## Migrating from 1.x
 
-2.0 removes the section nav and its column. The section links move into the sidebar, as the Settings row's children.
+2.0 removes the settings nav and its column. The settings links move into the sidebar, as the Settings row's children.
 
 - Delete the `<nav class="ds-nav-list ds-nav-list-section ds-settings-nav">` from your copy's markup, and unwrap the cards from `ds-settings-main`: they go straight into `ds-settings`. `ds-settings-nav`, `ds-settings-main` and `--ds-settings-nav-w` are no longer in the stylesheet. Markup that keeps them still draws: the nav is `nav-list-css`'s section variant (its rows from 48rem, a sideways-scrolling row of tabs under it) above the cards, no longer in a column and no longer pinned, and the cards in a kept `ds-settings-main` stack with no gap between them, as the 24px gap is `ds-settings`'s and falls between its own children.
-- Give the section links to the sidebar: `nav-list-css` 1.1.0's `ds-nav-parent` link over a `ds-nav-sub` of `ds-nav-sublink` rows, with `app-shell-css` 2.0's rail link and flyout (see those notes).
-- Name the section in the page header: a hidden `<h1 class="ds-sr-only">` with its title and nothing else (no crumbs, no visible title or description): a section has a sidebar entry, so the sidebar and the tab title say where the reader is (`page-header-css` 2.0.0).
+- Give the settings links to the sidebar: `nav-list-css` 1.1.0's `ds-nav-parent` link over a `ds-nav-sub` of `ds-nav-sublink` rows, with `app-shell-css` 2.0's rail link and flyout (see those notes).
+- Name the page in the page header: a hidden `<h1 class="ds-sr-only">` with its title and nothing else (no crumbs, no visible title or description): a settings page has a sidebar entry, so the sidebar and the tab title say where the reader is (`page-header-css` 2.0.0).
 
 ## The save states
 
@@ -49,7 +49,7 @@ The danger card is a plain `ds-card` whose body holds the consequence and a `ds-
 
 ## Accessibility
 
-- The layout holds no nav: the sidebar's parent row and its list named "Settings sections" lead to each section.
+- The layout holds no nav: the sidebar's parent row and its list named "Settings sections" lead to each settings page.
 - Save is never `disabled`, so focus stays on it from the press to "Saved".
 
 ## Theming

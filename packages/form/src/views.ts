@@ -984,24 +984,15 @@ function missingDecisions(api: DomApi): readonly AmountDecision[] {
 type DetailsField = {
 	readonly key: PayerField;
 	readonly field: HTMLInputElement;
-	/** the label the row draws, whose words name the field when its refusal is spoken. */
-	readonly label: HTMLLabelElement;
 	readonly message: HTMLElement;
 	readonly problemId: string;
 	readonly wording: (validity: ValidityState) => string;
 };
 
-/**
- * a refusal as it is spoken: the field's own label, then what is wrong with it.
- *
- * the sentence on the card stands beside its box and needs no subject; the region's has none to
- * stand beside, and a run of bare problems is "required, required" with nothing saying which box
- * is which (WCAG 3.3.1). the label is read off the node the field already draws, so the name a
- * donor hears is the name they see.
- */
-function spokenRefusal(label: HTMLElement, problem: string): string {
-	return `${label.textContent}: ${problem}`;
-}
+// a refusal is spoken as the sentence the card shows, with no field name in front. every sentence
+// is an imperative that names its own field ("Enter your email address"), so a run of them says
+// which box is which without a prefix, and a prefix would say the field twice (WCAG 3.3.1). a
+// sentence that did not name its field would need the label said before it.
 
 /**
  * the words on the fee control, which are also its whole accessible name.
@@ -1037,7 +1028,7 @@ const NOTIFY_OPEN = '\u2212 Notify recipient';
  * because it travels two channels — the sentence on the card, and the live region where the caret
  * cannot land (`updatePayment` below) — and two copies is how those two drift apart.
  */
-const PAYMENT_PROBLEM = 'Please select payment method';
+const PAYMENT_PROBLEM = 'Choose a payment method';
 
 /** the payment box's name where no header stands over it to name it. */
 const PAYMENT_NAME = 'Payment details';
@@ -1789,6 +1780,9 @@ export function createCard(
 		readonly field: HTMLInputElement;
 		readonly message: HTMLElement;
 		readonly problemId: string;
+		/** the sentence for a box that holds something wrong, where the empty box has its own. */
+		readonly malformed?: string | undefined;
+		readonly sentence: string;
 	};
 	const tributeBoxes: TributeBox[] = [];
 
@@ -1811,7 +1805,8 @@ export function createCard(
 		labelText: string,
 		placeholder: string,
 		sentence: string,
-		read: (api: DomApi) => FieldProps
+		read: (api: DomApi) => FieldProps,
+		malformed?: string
 	): readonly HTMLElement[] => {
 		field.setAttribute('placeholder', placeholder);
 		// off, on all three. these are somebody else's name and somebody else's address, so a
@@ -1820,7 +1815,7 @@ export function createCard(
 		field.addEventListener('input', () => read(now()).onChange(field.value));
 		const problemId = `${field.id}-problem`;
 		const message = make(doc, 'p', { class: 'message', id: problemId, hidden: true }, [sentence]);
-		tributeBoxes.push({ key, field, message, problemId });
+		tributeBoxes.push({ key, field, message, problemId, sentence, malformed });
 		return [
 			make(doc, 'label', { part: part('label'), class: 'vh', for: field.id }, [labelText]),
 			field,
@@ -1903,11 +1898,11 @@ export function createCard(
 					}),
 					'Email address of the person to tell',
 					'Email',
-					// two rules and one sentence, the way a name field on the details step has one for both
-					// of the rules it can break: an empty box and one holding something that is not an
-					// address are the same thing to a donor looking at the pair.
+					// two rules, two sentences: an empty box is asked for an address, and one holding
+					// something that is not an address is shown the shape of one.
 					'Enter their email address',
-					(api) => api.tributeNotifyEmailField
+					(api) => api.tributeNotifyEmailField,
+					'Enter an email address like name@example.org'
 				)
 			)
 		]
@@ -2074,11 +2069,11 @@ export function createCard(
 		const coinName =
 			config.coins?.find((coin) => coin.coin === refusal.coin)?.name ?? refusal.coin.toUpperCase();
 		if (refusal.code === 'above_maximum') {
-			return `too large for ${coinName}, lower it or pick another coin`;
+			return `Enter a smaller amount for ${coinName}, or choose another coin`;
 		}
 		return refusal.minAmountMinor === undefined
-			? `too small for ${coinName}, raise it or pick another coin`
-			: `at least ${offer(refusal.minAmountMinor)} in ${coinName}, or pick another coin`;
+			? `Enter a larger amount for ${coinName}, or choose another coin`
+			: `Enter at least ${offer(refusal.minAmountMinor)} in ${coinName}, or choose another coin`;
 	}
 
 	/**
@@ -2288,7 +2283,7 @@ export function createCard(
 			{ part: part('label'), for: field.id },
 			floating ? [make(doc, 'span', { class: 'label-words' }, [labelText])] : [labelText]
 		);
-		detailsFields.push({ key, field, label, message, problemId, wording });
+		detailsFields.push({ key, field, message, problemId, wording });
 		return make(doc, 'div', { class: floating ? 'field-row floating' : 'field-row' }, [
 			label,
 			field,
@@ -2304,7 +2299,10 @@ export function createCard(
 		'Email',
 		'email',
 		(api) => api.emailField,
-		(validity) => (validity.valueMissing ? 'required for your receipt' : 'not an email address'),
+		(validity) =>
+			validity.valueMissing
+				? 'Enter your email address'
+				: 'Enter an email address like name@example.org',
 		{ floating: false }
 	);
 	// the pair is one ask, so it is one group with one legend — the same construction the two groups
@@ -2323,7 +2321,7 @@ export function createCard(
 				'First name',
 				'given-name',
 				(api) => api.firstNameField,
-				() => 'required',
+				() => 'Enter your first name',
 				{ floating: true }
 			),
 			textField(
@@ -2332,7 +2330,7 @@ export function createCard(
 				'Last name',
 				'family-name',
 				(api) => api.lastNameField,
-				() => 'required',
+				() => 'Enter your last name',
 				{ floating: true }
 			)
 		])
@@ -3207,7 +3205,7 @@ export function createCard(
 		//
 		// the details step's is among the `News` below rather than here: the amount step's is said by
 		// every patch while a decision is missing, and that one only by the press that moved no caret.
-		const askedFor = missingAmount ? spokenRefusal(entryLabel, amountProblem) : '';
+		const askedFor = missingAmount ? amountProblem : '';
 
 		for (const node of [continueButton, detailsContinue]) {
 			toggleAttribute(node, 'aria-busy', busy ? 'true' : null);
@@ -3327,8 +3325,7 @@ export function createCard(
 	 * token alone, so what is red on the card is what this function called missing.
 	 *
 	 * one refusal, one channel, and this returns the words for the channel that is not the caret:
-	 * every sentence the press was refused for, each under its field's label (`spokenRefusal`),
-	 * joined. each field carries its own by `aria-describedby` and announces it on arrival, so a
+	 * every sentence the press was refused for, as the card shows it, joined. each field carries its own by `aria-describedby` and announces it on arrival, so a
 	 * press that moves the caret has said the refusal already — and `update` above puts these words
 	 * on the region only for a press that moved no caret, which is the press with nothing else to
 	 * say them. the Continue handler is
@@ -3375,6 +3372,9 @@ export function createCard(
 			setValue(entry.field, field.value);
 
 			const wrong = missing.includes(entry.key);
+			if (wrong && entry.malformed !== undefined) {
+				setText(entry.message, field.value.trim() === '' ? entry.sentence : entry.malformed);
+			}
 			setHidden(entry.message, !wrong);
 			toggleAttribute(entry.field, 'part', partWhen('field', { invalid: wrong }));
 			toggleAttribute(entry.field, 'aria-invalid', wrong ? 'true' : null);
@@ -3427,7 +3427,7 @@ export function createCard(
 			toggleAttribute(entry.field, 'part', partWhen('field', { invalid: wrong }));
 			toggleAttribute(entry.field, 'aria-invalid', wrong ? 'true' : null);
 			toggleAttribute(entry.field, 'aria-describedby', wrong ? entry.problemId : null);
-			if (words !== '') said.push(spokenRefusal(entry.label, words));
+			if (words !== '') said.push(words);
 		}
 		// in the order the fields are asked in, which is the order they are laid out in and the order
 		// the caret walks them — `detailsFields` is filled as the rows are built. a semicolon between
@@ -3527,10 +3527,10 @@ export function createCard(
 		const refused = picked?.refused === true;
 		const words = refused
 			? options.every((option) => option.refused)
-				? 'none accepted right now, choose another payment method'
-				: 'no longer accepted, pick another coin'
+				? 'Choose another payment method'
+				: 'Choose another coin'
 			: pressed && state.step === 'give' && state.method === 'crypto' && !state.payerComplete
-				? 'required'
+				? 'Choose a coin'
 				: '';
 		coinPicker.update(
 			{ value: choice.value, options, onChange: (value) => now().coinSelect.onChange(value) },

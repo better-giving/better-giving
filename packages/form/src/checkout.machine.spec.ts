@@ -1029,7 +1029,7 @@ describe('the press that spends the money', () => {
 		actor.send({ type: 'SUBMIT' });
 		await settle();
 		expect(actor.getSnapshot().context.failure?.message).toBe(
-			'This gift was not started, and nothing was charged. Please try again.'
+			'This gift was not started, and nothing was charged. Try again.'
 		);
 	});
 });

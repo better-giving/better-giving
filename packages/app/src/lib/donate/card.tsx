@@ -1020,14 +1020,11 @@ function CheckoutCard({
 	// caret walks them. what the step is refusing as it stands, which the press's sentence is spoken
 	// from and a kept one is checked against.
 	const detailsRefusal = [
-		missingFields.includes('email')
-			? copy.refusalSaid(copy.EMAIL, fieldProblem('email', api.emailField.box.value))
-			: '',
-		missingFields.includes('firstName') ? copy.refusalSaid(copy.FIRST_NAME, copy.NAME_PROBLEM) : '',
-		missingFields.includes('lastName') ? copy.refusalSaid(copy.LAST_NAME, copy.NAME_PROBLEM) : ''
+		missingFields.includes('email') ? fieldProblem('email', api.emailField.box.value) : '',
+		missingFields.includes('firstName') ? fieldProblem('firstName', '') : '',
+		missingFields.includes('lastName') ? fieldProblem('lastName', '') : ''
 	]
 		.filter((sentence) => sentence !== '')
-		// a semicolon because each already holds a colon, and a comma runs one field into the next.
 		.join('; ');
 	const detailsSaid = spent === 'details' ? detailsRefusal : '';
 	// the employer ask's refusal is news as a write's refusal lands under the box, which moves no
@@ -1052,12 +1049,7 @@ function CheckoutCard({
 	// are: the two are mutually exclusive, because a press is refused on the step it was made on. each
 	// is here only for the press that moved no caret and had no other channel (`askedInPlace`,
 	// `detailsSaid`).
-	const askedFor = [
-		askedInPlace && missingDecisions.includes('amount')
-			? copy.refusalSaid(copy.AMOUNT, bounds)
-			: '',
-		detailsSaid
-	]
+	const askedFor = [askedInPlace && missingDecisions.includes('amount') ? bounds : '', detailsSaid]
 		.filter((sentence) => sentence !== '')
 		.join(', ');
 

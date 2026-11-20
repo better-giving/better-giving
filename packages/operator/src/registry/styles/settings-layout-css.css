@@ -1,12 +1,12 @@
 /* the registry's settings layout as plain css, no tailwind: a settings
-   section's stack of cards, and the row a card's footer holds Discard and
-   Save in. the sections are the sidebar's (nav-list-css's parent row and its
-   children), so the layout holds no nav, and nothing in it pins. reads only
-   the variables the `variables` item declares; the cards are card-css's, the
-   buttons button-css's. settings-layout-css.test.tsx renders the React
-   `SettingsLayout` and `SaveActions` beside it and asserts the same computed
-   look in light and dark, for the default and example themes, wide and at
-   375.
+   page's stack of cards, and the row a card's footer holds Discard and
+   Save in. the links to the settings pages are the sidebar's (nav-list-css's
+   parent row and its children), so the layout holds no nav, and nothing in it
+   pins. reads only the variables the `variables` item declares; the cards
+   are card-css's, the buttons button-css's. settings-layout-css.test.tsx
+   renders the React `SettingsLayout` and `SaveActions` beside it and asserts
+   the same computed look in light and dark, for the default and example
+   themes, wide and at 375.
 
    the spacing step and the 48rem breakpoint (tailwind's md, written out
    because a query cannot read a variable) live only in tailwind's theme; the
@@ -17,7 +17,7 @@
   --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
 }
 
-/* the section's cards, one column 24px apart */
+/* the page's cards, one column 24px apart */
 .ds-settings {
   display: grid;
   min-inline-size: 0;

@@ -2,6 +2,8 @@
 
 Registry item `card-css` (files: `styles/card-css.css`; depends on `variables`). Plain CSS: no Tailwind. The look of the `card` item.
 
+A card separates a group from its siblings. A group alone on its page or section gets no card; two or more groups each get one. Never put a card inside a card: a group inside a carded group gets none. For a titled form group use `form-section` (`form-section-css`), which takes `card` and draws the card or not.
+
 ## Markup contract
 
 Import `styles/variables.css` and `styles/card-css.css`:

@@ -555,7 +555,7 @@ const CHECK_UNFINISHED =
  * step — so a donor not told otherwise reasonably assumes their card was taken and goes and pays
  * somewhere else. `UNCHARGED` in ./embed/api.ts says the same thing at the port.
  */
-const GENERIC_FAILURE = 'This gift was not started, and nothing was charged. Please try again.';
+const GENERIC_FAILURE = 'This gift was not started, and nothing was charged. Try again.';
 
 /**
  * what a donor is told when their fund's approval expired before the grant was created.
