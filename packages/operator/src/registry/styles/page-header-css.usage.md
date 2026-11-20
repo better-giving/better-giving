@@ -65,7 +65,7 @@ With no actions and no tabs a page with a sidebar entry has no header at all: on
 - `ds-page-desc`: the status line under the trail, 14px in `--gray-11`.
 - `ds-sr-only` (from `field-css`): the hidden `h1` of a page with a sidebar entry.
 - `ds-page-actions`: the secondary buttons (`ds-ph-secondary`), the primary in a `ds-ph-primary` wrapper, and More, a secondary icon button (`ds-btn ds-btn-secondary ds-btn-icon`, lucide's `ellipsis`) that opens a `ds-menu`. Under 40rem the `ds-ph-secondary` buttons leave (the hide is scoped to `.ds-page-actions`, so it holds whichever stylesheet loads last) and the primary fills the row beside More: list those actions first in the More menu, above its own rows and ahead of the destructive one, and show More whenever it has rows.
-- `ds-page-tabs`, holding a `ds-page-tablist` of `ds-page-tab` buttons: the page's sections, 16px under the row of actions or the trail (the header's 12px gap and 4px more). The selected tab (`aria-selected="true"`) is underlined 2px in `--primary` and inked `--accent-11`; the others are `--gray-11`, `--gray-12` hovered where the pointer can hover; a disabled one is at opacity .6. The row scrolls sideways when it runs out of room, and under 40rem its end fades out over 28px (the left end under `dir="rtl"`). The row is padded 4px (negative margins take it back), so a tab's ring is drawn whole. Its hairline is the header's only rule. The registry has no plain-CSS tabs item; this is the React `tabs` item's look, held to it by this item's test.
+- `ds-page-tabs`, holding a `ds-page-tablist` of `ds-page-tab` buttons: the page's sections, 16px under the row of actions or the trail (the header's 12px gap and 4px more). The selected tab (`aria-selected="true"`) is underlined 2px in `--primary` and inked `--accent-11`; the others are `--gray-11`, `--gray-12` hovered where the pointer can hover; a disabled one is at opacity .6. The row scrolls sideways when it runs out of room, and under 40rem its end fades out over 28px (the left end under `dir="rtl"`). The row is padded 4px (negative margins take it back), so a tab's ring is drawn whole. Its hairline is the header's only rule. Each tab's hit area is `--ds-hit-target` tall and at least that wide, centered on the tab (44px on a coarse pointer), the drawn size unchanged. This is the React `tabs` item's look, held to it by this item's test; for a tab row of its own, see `tabs-css`.
 
 ## Migrating from 1.x
 
@@ -86,7 +86,7 @@ No script ships with the item. The tab row is the WAI-ARIA tabs pattern: one tab
 - The More button carries `aria-haspopup="menu"` and `aria-expanded`.
 - The secondary buttons are `display: none` under 40rem, where their actions are the menu's rows instead, so each is reached once.
 - Focus on a tab shows the 2px `--ring` outline 2px out.
-- Under forced colors the selected `ds-page-tab` keeps its underline in `Highlight` and the others take `Canvas`.
+- Under forced colors the selected `ds-page-tab` keeps its underline in `Highlight` and the others take `Canvas`, and only the selected tab overlaps the hairline there, so the line stays unbroken. The fade under 40rem is off there too.
 
 ## Theming
 
