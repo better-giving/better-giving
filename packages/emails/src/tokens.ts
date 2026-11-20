@@ -113,6 +113,14 @@ export const CODE_INK = hexColour(ADMIN_TOKENS['--admin-code-ink']);
 export const FONT_SANS = fontStack(ADMIN_TOKENS['--admin-font-sans']);
 export const FONT_MONO = fontStack(ADMIN_TOKENS['--admin-font-mono']);
 
+/**
+ * what Outlook for Windows sets in place of FONT_SANS and FONT_MONO. it reads the first name of a
+ * list alone, so these are the stacks its own block in ../components/layout.tsx names. system faces
+ * on every Windows install, so nothing is linked for them.
+ */
+export const OUTLOOK_SANS = fontStack('Arial, sans-serif');
+export const OUTLOOK_MONO = fontStack("Consolas, 'Courier New', monospace");
+
 /** what a mail is read at. a step of the scale and not `--admin-body-size`, which is 14px because
  * an operator screen is dense; a mail is a document in somebody's client. */
 export const TEXT_BODY = pxFromLength(ADMIN_TOKENS['--admin-text-md']);
