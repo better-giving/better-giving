@@ -53,7 +53,7 @@ import {
  * `!important` because an inline declaration outranks a sheet otherwise. the second rule is for
  * `<code>` and `<pre>`; a cell the templates set in the mono stack takes the sans face here, since
  * Word's selectors reach elements and not inline values. `mso-font-alt` states the same face for
- * Word's own substitution. it names two system faces and links nothing.
+ * Word's own substitution.
  */
 const OUTLOOK_FONT_BLOCK =
 	'<!--[if mso]><style>' +
