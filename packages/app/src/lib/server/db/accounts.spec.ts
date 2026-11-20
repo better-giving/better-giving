@@ -6,7 +6,7 @@ import { POSTING_ACCOUNTS, pickableAccounts, postableIdFromSubmitted, ROLLUPS } 
 // the seed, so these assert against the map and against literals from the seed alike.
 
 describe('pickableAccounts()', () => {
-	it('offers the nine postable accounts by code, and no rollup', () => {
+	it('offers every postable account by code, and no rollup', () => {
 		expect(pickableAccounts().map((a) => a.code)).toEqual([
 			'1010',
 			'1020',
@@ -16,7 +16,8 @@ describe('pickableAccounts()', () => {
 			'3100',
 			'4110',
 			'4120',
-			'5200'
+			'5200',
+			'5900'
 		]);
 	});
 

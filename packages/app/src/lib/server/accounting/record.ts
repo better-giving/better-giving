@@ -56,7 +56,7 @@ import {
 // each goes over as what it is: the lines it holds, each in its role, against the gift's donor.
 
 /**
- * which of the operator's roles each of this app's nine accounts stands for.
+ * which of the operator's roles each of this app's postable accounts stands for.
  *
  * total over `PostingAccountKey`, so an account added to ../db/accounts.ts is a compile error here
  * rather than a posting that silently has nowhere to go.
@@ -67,13 +67,15 @@ import {
  * is where a gift received in hand is debited (../donations/entries.ts), so it is the company's own
  * Undeposited Funds — money nobody has banked yet — and never its bank account.
  *
- * `null` is deliberate on four of them:
+ * `null` is deliberate on five of them:
  *
  *   accountsReceivable — a pledge, which this app does not yet post and a company records as an
  *                        invoice rather than as money arrived.
  *   salesTaxPayable    — owed to a jurisdiction, and never an account the QuickBooks screen asks an
  *                        operator to pick.
  *   the two net-asset classes — closing entries, which a bookkeeper makes in their own books.
+ *   fraudLoss          — a loss the company books against an expense account of its own choosing,
+ *                        and never one the QuickBooks screen asks an operator to pick.
  *
  * an entry naming one of those is refused by name rather than posted to whichever role looked
  * closest: nothing the operator picked says where a tax liability belongs.
@@ -87,7 +89,8 @@ const ROLE_OF: Readonly<Record<PostingAccountKey, AccountRole | 'processor' | nu
 	netAssetsWithRestrictions: null,
 	donationsDeductible: 'income',
 	donationsNonDeductible: 'income',
-	processorFees: 'fee'
+	processorFees: 'fee',
+	fraudLoss: null
 };
 
 /** the same table by account id, which is what a ledger line carries. */

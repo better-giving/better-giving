@@ -288,6 +288,13 @@
       "when": 1794759693578,
       "tag": "0040_dispute_closed_by_refund",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "6",
+      "when": 1795134115130,
+      "tag": "0041_fraud_loss_account",
+      "breakpoints": true
     }
   ]
 }
