@@ -31,7 +31,7 @@ describe('pickableAccounts()', () => {
 });
 
 describe('postableIdFromSubmitted()', () => {
-	it('accepts each of the nine postable ids', () => {
+	it('accepts each postable id in the chart', () => {
 		for (const account of Object.values(POSTING_ACCOUNTS)) {
 			expect(postableIdFromSubmitted(account.id), account.code).toBe(account.id);
 		}
