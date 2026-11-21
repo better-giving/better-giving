@@ -95,7 +95,13 @@ describe('a pledge a screen may draw', () => {
 		expect(pledgeIsUsable(IRA, 'ira_qcd', 'p2')).toBe(true);
 	});
 
+	it('takes a pledge with no address to send its receipt to', () => {
+		expect(pledgeIsUsable({ ...STOCK, receiptTo: '' }, 'stock', 'p1')).toBe(true);
+		expect(pledgeIsUsable({ ...IRA, receiptTo: ' ' }, 'ira_qcd', 'p2')).toBe(true);
+	});
+
 	it.each([
+		['a missing receipt address', { ...STOCK, receiptTo: undefined }, 'stock'],
 		['another id', { ...STOCK, id: 'p9' }, 'stock'],
 		['another rail', STOCK, 'ira_qcd'],
 		['a blank reference', { ...STOCK, reference: ' ' }, 'stock'],

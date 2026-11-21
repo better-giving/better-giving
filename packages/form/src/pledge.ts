@@ -113,13 +113,15 @@ function filled(value: unknown): value is string {
  * the answer is untrusted json off a deployment, and every field here is a value the pending screen
  * shows and a donor hands to their broker or custodian. a pledge missing one would draw an empty row
  * a donor copies, so the answer is refused instead. the id and the rail are matched to the save:
- * a pledge answered for another id or rail is not the one this donor pledged.
+ * a pledge answered for another id or rail is not the one this donor pledged. `receiptTo` alone may
+ * be blank: the endpoint answers `''` for a pledge with no address on file, and it is no row a donor
+ * copies — the thank-you leaves the receipt out instead (`pledgedScreen` in ./views.ts).
  */
 export function pledgeIsUsable(value: unknown, method: PledgeRail, id: string): value is Pledge {
 	if (typeof value !== 'object' || value === null) return false;
 	const pledge = value as Record<string, unknown>;
 	if (pledge.id !== id || pledge.method !== method) return false;
-	if (!filled(pledge.reference) || !filled(pledge.receiptTo)) return false;
+	if (!filled(pledge.reference) || typeof pledge.receiptTo !== 'string') return false;
 	if (method === 'stock') {
 		return [
 			pledge.ticker,

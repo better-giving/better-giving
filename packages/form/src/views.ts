@@ -597,7 +597,8 @@ const BLANK: Takeover = {
  *
  * the thank-you's notice names the address the receipt goes to, which is the pledge's own
  * (`Pledge.receiptTo` in ./v1.ts): the receipt is sent when staff mark the gift received, whatever
- * the deployment's `receipts` says about a charged gift's.
+ * the deployment's `receipts` says about a charged gift's. a pledge with a blank address promises
+ * no receipt, and the notice is the arrival sentence alone.
  */
 function pledgedScreen(
 	state: State & { readonly step: 'pledged' },
@@ -610,10 +611,12 @@ function pledgedScreen(
 	// the notice's words, for the card's live region (`notice` in ./pledge-screen.ts).
 	const spoken = (notice: PledgeNotice) => `${notice.title}. ${notice.body}`;
 	if (state.phase === 'told') {
+		const counts = `Your gift counts when ${stock ? 'the shares arrive' : 'it arrives'}.`;
+		const receiptTo = pledge.receiptTo.trim();
 		const told: PledgeNotice = {
 			tone: 'info',
 			title: 'We’ve told the organization',
-			body: `Your gift counts when ${stock ? 'the shares arrive' : 'it arrives'}. We’ll email a receipt to ${pledge.receiptTo} then.`
+			body: receiptTo === '' ? counts : `${counts} We’ll email a receipt to ${receiptTo} then.`
 		};
 		return {
 			...BLANK,

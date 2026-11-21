@@ -3394,13 +3394,12 @@ describe('an IRA (QCD) pledge', () => {
 		await settle();
 
 		expect(actor.getSnapshot().value).toBe('failed');
-		expect(actor.getSnapshot().context.failure?.message).toBe(
-			'We couldn’t confirm your gift was saved. Try again; it will not be saved twice.'
-		);
+		expect(actor.getSnapshot().context.failure?.message).toBe(PLEDGE_UNSAVED);
 	});
 
-	const PLEDGE_UNSAVED =
-		'We couldn’t confirm your gift was saved. Try again; it will not be saved twice.';
+	// promises nothing about a second save: a Try again after a corrected field is a changed
+	// request under a fresh `pledgeId` (`pledgeId` in ./v1.ts), which the endpoint saves as its own.
+	const PLEDGE_UNSAVED = 'We couldn’t confirm your gift was saved. Try again.';
 
 	const ID_TAKEN = Object.assign(new Error('This gift reference is already in use.'), {
 		code: 'pledge_id_taken'

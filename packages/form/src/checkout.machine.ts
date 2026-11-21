@@ -603,11 +603,12 @@ const GENERIC_FAILURE = 'This gift was not started, and nothing was charged. Try
 
 /**
  * what a donor is told when a pledge's save answered without the pledge, or its answer was lost
- * (`pledgeMayBeSaved` below). it may have been saved, and a Try again of the same request sends the
- * same `pledgeId`, which the endpoint answers with that pledge rather than a second one.
+ * (`pledgeMayBeSaved` below). it may have been saved, so it promises nothing about a second save: a
+ * Try again of the same request resends its `pledgeId` and is answered with that pledge, but a
+ * request the donor changed first is minted an id of its own and saved as a pledge of its own
+ * (`pledgeId` in ./v1.ts).
  */
-const PLEDGE_UNSAVED =
-	'We couldn’t confirm your gift was saved. Try again; it will not be saved twice.';
+const PLEDGE_UNSAVED = 'We couldn’t confirm your gift was saved. Try again.';
 
 /**
  * what a donor is told when their fund's approval expired before the grant was created.

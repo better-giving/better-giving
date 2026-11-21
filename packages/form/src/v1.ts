@@ -555,7 +555,7 @@ export type Quote = {
  * `id` is the `pledgeId` the request sent, and the capability the told press is posted with
  * (`PledgeToldAnswer` below). `reference` is what the donor quotes to their broker or custodian, uppercase:
  * `CFCP-AAPL-7Q2D`, `CFCP-IRA-4K9M`. `receiptTo` is the donor's address, where the receipt goes once
- * staff mark the gift received.
+ * staff mark the gift received, and `''` where the pledge has none on file.
  *
  * the rest is the organisation's own transfer details, as saved under Payments, and what the donor
  * pledged. `shares` is decimal text, at most six places and never a number (`QuoteRequest.shares`).
