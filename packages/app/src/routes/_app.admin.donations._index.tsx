@@ -6,6 +6,7 @@ import { ScreenHeading } from '$lib/admin/crumbs';
 import { GiftsTable } from '$lib/admin/donations/gifts-table';
 import { WaitingCard } from '$lib/admin/donations/waiting-pledges';
 import { screenTitle } from '$lib/admin/screen-title';
+import { formPress } from '$lib/admin/unreached';
 import { formatMinor } from '$lib/donations/money';
 import {
 	MARK_RECEIVED_FORM_ID,
@@ -245,6 +246,14 @@ export async function action({ context, request }: Route.ActionArgs) {
 		)
 	);
 	return { received: { pledgeId: submission.value.pledge_id } };
+}
+
+/**
+ * a Mark received whose request never reached the server, answered in the browser as the dialog's
+ * refusal rather than with the error boundary ($lib/admin/unreached.ts).
+ */
+export function clientAction({ request, serverAction }: Route.ClientActionArgs) {
+	return formPress(request, serverAction);
 }
 
 const MARK_RECEIVED_FORM = defineForm({ id: MARK_RECEIVED_FORM_ID, schema: MARK_RECEIVED_INPUT });

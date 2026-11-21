@@ -4,11 +4,14 @@ import { createRoutesStub, data, useLoaderData } from 'react-router';
 import { describe, expect, it, onTestFinished } from 'vitest';
 import { MARK_RECEIVED_FORM_ID } from '$lib/donations/pledge-forms';
 import { WHICH_FORM } from '$lib/forms/definition';
+import { clientAction } from '../../../routes/_app.admin.donations._index';
+import { UNREACHED } from '../unreached';
 import { WaitingCard, type WaitingCardProps, type WaitingPledge } from './waiting-pledges';
 
 // the "Waiting to arrive" card and its Mark received dialog, mounted under the Gifts screen's index
-// route with a stand-in for the gifts table's scroll plane beside it. the action answers each press
-// as the test says and the loader reads the waiting list back, so a press that lands redraws the
+// route with a stand-in for the gifts table's scroll plane beside it. each press goes through the
+// route's `clientAction`, whose server action answers as the test says, and the loader reads the
+// waiting list back, so a press that lands redraws the
 // card from what is still waiting. happy-dom implements `showModal()` as a flag with no top layer,
 // so focus is asserted only where this card and the Modal move it themselves.
 
@@ -87,13 +90,17 @@ async function screen(stored: Waiting, answer: Answer) {
 				{
 					index: true,
 					loader: () => waiting,
-					action: async ({ request }) => {
-						const body = await request.formData();
-						posted.push(body);
-						const [next, said] = answer(body, waiting);
-						waiting = next;
-						return said;
-					},
+					action: (args) =>
+						clientAction({
+							...args,
+							serverAction: async () => {
+								const body = await args.request.formData();
+								posted.push(body);
+								const [next, said] = answer(body, waiting);
+								waiting = next;
+								return said;
+							}
+						} as never),
 					Component: Page,
 					HydrateFallback: () => null
 				}
@@ -291,5 +298,20 @@ describe('the Mark received dialog', () => {
 		const still = root.querySelector('dialog');
 		expect(still).not.toBeNull();
 		expect(still?.querySelector('[role="alert"]')?.textContent).toBe(sentence);
+	});
+
+	it('stays open over what it typed when the press never reaches the server', async () => {
+		const { root } = await screen(BOTH, () => {
+			throw new TypeError('Failed to fetch');
+		});
+		const dialog = await open(root, 'Maya Okafor');
+		await fill(dialog);
+		await press(button(dialog, 'Mark received'));
+
+		const still = root.querySelector('dialog');
+		expect(still).not.toBeNull();
+		expect(still?.querySelector('[role="alert"]')?.textContent).toBe(UNREACHED);
+		expect(box(still ?? dialog, 'Value received').value).toBe('9,512.40');
+		expect(rowOf(root, 'Maya Okafor')).toBeDefined();
 	});
 });
