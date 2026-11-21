@@ -1,5 +1,6 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDb, type Db } from '../db/client';
+import { ticker } from '../db/schema';
 import type { TurnstileCheck, TurnstileResult } from '../api/turnstile';
 import type { EmailProvider } from '../email/provider';
 import { campaignRaised } from '../pages/goal';
@@ -369,6 +370,29 @@ describe('mintQuote() — what every pledge is refused over', () => {
 		expect(d.checks).toHaveLength(1);
 		expect(result).toMatchObject({ ok: false, reason: 'challenge_failed' });
 		expect(await pledges()).toHaveLength(0);
+	});
+});
+
+describe('mintQuote() — a pledge the database fails', () => {
+	it('answers `internal_error` rather than throwing, so the route still sends its CORS', async () => {
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+		// `tickerListed` (./tickers.ts) is the one select naming `ticker.symbol`; the config read
+		// before it is the real database.
+		const failing = new Proxy(db, {
+			get: (target, key, receiver) =>
+				key === 'select'
+					? (fields?: Record<string, unknown>) => {
+							if (fields?.symbol === ticker.symbol) throw new Error('SQLITE_IOERR: disk I/O error');
+							return target.select(fields as never);
+						}
+					: Reflect.get(target, key, receiver)
+		});
+
+		const result = await save(stock(), { ...deps(), db: failing });
+
+		expect(result).toMatchObject({ ok: false, reason: 'internal_error' });
+		expect(await pledges()).toHaveLength(0);
+		expect(logged.mock.calls.flat().join(' ')).toContain('SQLITE_IOERR');
 	});
 });
 

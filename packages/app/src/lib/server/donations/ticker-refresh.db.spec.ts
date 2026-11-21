@@ -83,8 +83,8 @@ async function holdList(count: number): Promise<void> {
 }
 
 describe('refreshTickers', () => {
-	it('fetches nothing when the list held was replaced under a day ago', async () => {
-		await holdOldList(20 * HOUR);
+	it('fetches nothing when the list held was replaced under twelve hours ago', async () => {
+		await holdOldList(12 * HOUR - 60_000);
 		const sec = wholeFiles();
 		const { email, sent } = recordingEmail();
 
@@ -96,6 +96,16 @@ describe('refreshTickers', () => {
 
 	it('refreshes on the next day’s run, the list having been stored a little after the last run fired', async () => {
 		await holdOldList(24 * HOUR - 30_000);
+		const sec = wholeFiles();
+
+		await refresh(sec, recordingEmail().email);
+
+		expect(sec.requests).toHaveLength(2);
+		expect(await searchTickers(db, 'OLD', 8)).toEqual([]);
+	});
+
+	it('refreshes on the run after a Stocks Save filled the list late the morning before', async () => {
+		await holdOldList(23 * HOUR - 10 * 60_000);
 		const sec = wholeFiles();
 
 		await refresh(sec, recordingEmail().email);

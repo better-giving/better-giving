@@ -374,7 +374,12 @@ export async function mintQuote(deps: QuoteDeps, attempt: QuoteAttempt): Promise
 
 	// a stock or IRA (QCD) gift is a pledge saved rather than a payment minted, and its own branch:
 	// the same ladder above it and the same challenge inside it, and no processor anywhere.
-	if (pledging) return mintPledge(deps, config, form, attempt, origin);
+	if (pledging) {
+		return mintPledge(deps, config, form, attempt, origin).catch((error: unknown) => {
+			console.error('a pledge could not be saved:', error);
+			return pledgeNotSaved(form);
+		});
+	}
 
 	const parsed = parseQuoteRequest(attempt.body, config);
 	if (!parsed.ok) {
@@ -603,7 +608,8 @@ async function challengeRefusal(
  *
  * every refusal a donor can meet without a read runs first, then the two that need one — the rail
  * being on and the ticker being listed — and only then the challenge, so a token is never spent on
- * a pledge that was always going to be refused.
+ * a pledge that was always going to be refused. a database fault in any of it throws, and
+ * `mintQuote` answers that as `pledgeNotSaved` below.
  */
 async function mintPledge(
 	deps: QuoteDeps,
@@ -669,12 +675,7 @@ async function mintPledge(
 			);
 		}
 		logWriteFailure(saved.detail);
-		return refuse(
-			form,
-			'internal_error',
-			'We couldn’t save this gift. Try again in a moment.',
-			`This is a fault in this deployment rather than anything about the request. ${LOGS_SAY_WHY}`
-		);
+		return pledgeNotSaved(form);
 	}
 
 	const instructions = pledgeOnWire(saved.value, rails, config, giver.donor.primaryEmail);
@@ -700,6 +701,16 @@ function pledgeRailOff(form: FormRecord, rail: PledgeMethod): QuoteResult {
 		NOT_CONFIGURED,
 		`${PAYMENT_METHOD_LABELS[rail]} is turned off under Payments in /admin. Whoever runs this ` +
 			'site turns it on there with its transfer details.'
+	);
+}
+
+/** a pledge the database could not read for or save, already logged. */
+function pledgeNotSaved(form: FormRecord): QuoteResult {
+	return refuse(
+		form,
+		'internal_error',
+		'We couldn’t save this gift. Try again in a moment.',
+		`This is a fault in this deployment rather than anything about the request. ${LOGS_SAY_WHY}`
 	);
 }
 

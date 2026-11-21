@@ -25,14 +25,14 @@ import { sendDueZapierEvents } from '$lib/server/zapier/deliver';
  * quarter to, in a run of their own, the donor notices of refunds that did not send are sent
  * again; at a quarter past, the connector's and the supporters' spent links, codes and sessions
  * are swept with them. at 04:20 each day, the stock step's ticker list is fetched again from the
- * SEC ($lib/server/donations/ticker-refresh.ts). every ten minutes, the employer match reminders that fell due are sent
- * ($lib/server/matching/reminders.ts), and the match packs owed and never tried, or that failed
- * an hour or more before, are sent ($lib/server/matching/pack.ts). every minute, in one run, what
- * this deployment owes is sent: the
- * organisation's books, its Zaps and its webhook destinations — a minute because a gift is meant
- * to arrive while it is still the thing somebody is looking at, and a run on a deployment owing
- * nothing is an indexed read of each outbox and no call to anybody. what a row that has already failed waits is the backoff on
- * the row rather than this interval.
+ * SEC ($lib/server/donations/ticker-refresh.ts). every ten minutes, the employer match reminders
+ * that fell due are sent ($lib/server/matching/reminders.ts), and the match packs owed and never
+ * tried, or that failed an hour or more before, are sent ($lib/server/matching/pack.ts). every
+ * minute, in one run, what this deployment owes is sent: the organisation's books, its Zaps and
+ * its webhook destinations — a minute because a gift is meant to arrive while it is still the
+ * thing somebody is looking at, and a run on a deployment owing nothing is an indexed read of each
+ * outbox and no call to anybody. what a row that has already failed waits is the backoff on the
+ * row rather than this interval.
  *
  * the keys are the schedule, so a schedule with no work cannot be written; ./cron-runs.spec.ts
  * holds every key to one the scheduler reads and some minute matches.
