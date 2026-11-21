@@ -398,13 +398,14 @@ function CheckoutCard({
 	/**
 	 * a sentence one press asked for. a refusal or a one-time switch arrives on the snapshot it was
 	 * asked on and is kept from there as a `News`; a Copy's is kept by the heading it was pressed
-	 * under, in `on`.
+	 * under, in `on`, and a pledge's Copy by the notice it was pressed under too, in `over`.
 	 */
 	const [shot, setShot] = useState<{
 		at: CheckoutSnapshot;
 		kind: 'details' | 'copy' | 'one-time' | 'ask' | 'custodian';
 		words?: string;
 		on?: string;
+		over?: string;
 	} | null>(null);
 	/** a commit, so a press that changed nothing else still gets its caret moved. */
 	const [, setTick] = useState(0);
@@ -949,10 +950,17 @@ function CheckoutCard({
 
 	/**
 	 * a pledge's Copy reporting, said on the card's one region again on every press and kept by the
-	 * heading it was pressed under, as the address block's are.
+	 * heading it was pressed under, as the address block's are — and by the notice standing as it was
+	 * pressed, which the region has already said and which it outranks until that notice changes.
 	 */
 	function onPledgeCopied(words: string): void {
-		setShot({ at: read(), kind: 'copy', words, on: screen.current.heading });
+		setShot({
+			at: read(),
+			kind: 'copy',
+			words,
+			on: screen.current.heading,
+			over: takeover.announce
+		});
 		setNonce((at) => at + 1);
 	}
 
@@ -1073,6 +1081,11 @@ function CheckoutCard({
 		(takeover.deposit !== null || takeover.pledge !== null)
 			? (shot.words ?? '')
 			: '';
+	// a pledge's Copy pressed while its screen's notice stood, which the region said before the press:
+	// it outranks that notice as the element's does (`createPledgeBlock` in @better-giving/form's
+	// views.ts says it straight onto the region), and a notice that changes since spends it.
+	const copiedOverNotice =
+		takeover.announce !== '' && shot?.over === takeover.announce ? copied : '';
 	// in the order the fields are asked in, which is the order they are laid out in and the order the
 	// caret walks them. what the step is refusing as it stands, which the press's sentence is spoken
 	// from and a kept one is checked against.
@@ -1118,6 +1131,11 @@ function CheckoutCard({
 	// a press held on a challenge that is asking the donor to solve something: the puzzle is in the
 	// review step's box, and `aria-busy` over it would have assistive technology hold it back.
 	const asking = snapshot.value === 'holding' && snapshot.context.challengeInteractive;
+	// and the same wait for a lost pledge's save made again, whose puzzle is drawn under the told
+	// press: no write is out while it asks.
+	const tellAsking =
+		snapshot.matches({ pledged: { telling: 'awaitingToken' } }) &&
+		snapshot.context.challengeInteractive;
 	// the takeover's own words first: a screen that has taken the whole card is not one a numbered step
 	// is still asking anything on. the review step's refusal stands ahead of every `News`, a moved
 	// total included, as `standing` in @better-giving/form's views.ts ranks it: it is a thing the donor
@@ -1159,30 +1177,39 @@ function CheckoutCard({
 			? prior
 			: null;
 	const words =
-		takeover.announce !== ''
-			? takeover.announce
-			: askedFor !== ''
-				? askedFor
-				: refusedPayment
-					? copy.PAYMENT_PROBLEM
-					: arrived !== null
-						? arrived.words
-						: copied !== ''
-							? copied
-							: busy && live !== null
-								? workingWords(api.state)
-								: news !== null
-									? news.words
-									: handed.words !== ''
-										? handed.words
-										: retitle.words;
+		copiedOverNotice !== ''
+			? copiedOverNotice
+			: takeover.announce !== ''
+				? takeover.announce
+				: askedFor !== ''
+					? askedFor
+					: refusedPayment
+						? copy.PAYMENT_PROBLEM
+						: arrived !== null
+							? arrived.words
+							: copied !== ''
+								? copied
+								: busy && live !== null
+									? workingWords(api.state)
+									: news !== null
+										? news.words
+										: handed.words !== ''
+											? handed.words
+											: retitle.words;
 	useEffect(() => {
 		const replaced = (by: string) => words !== '' && words !== by;
 		kept.current = {
 			// a Copy is kept by the heading it was pressed under, so a commit drawing another one spends
-			// it as surely as a sentence replacing it does: the screen it comes back to is a new one.
+			// it as surely as a sentence replacing it does: the screen it comes back to is a new one. a
+			// pledge's is kept by the notice it was pressed under as well, so a told press taking that
+			// notice away spends it, and a refusal worded as the last one is still said.
 			outsaid:
-				shot?.kind === 'copy' && (copied === '' || replaced(copied)) ? shot : kept.current.outsaid,
+				shot?.kind === 'copy' &&
+				(copied === '' ||
+					replaced(copied) ||
+					(shot.over !== undefined && shot.over !== takeover.announce))
+					? shot
+					: kept.current.outsaid,
 			retitle: replaced(retitle.words) ? { on: retitle.on, words: '' } : retitle,
 			handed: replaced(handed.words) ? { on: handed.on, words: '' } : handed,
 			decline,
@@ -1305,7 +1332,7 @@ function CheckoutCard({
 						screen={takeover}
 						hidden={shown !== 'takeover'}
 						// the told press is busy on its own write, which the flow's working states do not cover.
-						busy={busy || api.toldButton['aria-busy']}
+						busy={busy || (api.toldButton['aria-busy'] && !tellAsking)}
 						receipt={inTakeover ? receipt : null}
 						headingRef={headings.takeover}
 						sectionRef={takeoverSection}

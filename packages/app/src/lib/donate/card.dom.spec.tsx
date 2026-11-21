@@ -3884,6 +3884,73 @@ describe('an IRA (QCD) gift', () => {
 		expect(takeoverHeading(root).textContent).toBe('Your IRA (QCD) gift is pending');
 	});
 
+	// the puzzle drawn under it is what the donor must act on, and no press is out while it asks.
+	it('leaves Try again unbusy while the widget for the save made again asks the donor', async () => {
+		deployment(['save'], ['missing', 'ok']);
+		const root = await onIra(WITH_IRA, false);
+		type(custodian(root), 'Fidelity Investments');
+		token('tok_first');
+		await pressHeld(submit(root));
+		await pressHeld(takeoverPrimary(root));
+
+		await pressHeld(takeoverPrimary(root));
+		expect(takeoverPrimary(root).getAttribute('aria-busy')).toBe('true');
+		act(() => {
+			widget.asks();
+		});
+		await drain();
+
+		expect(takeoverPrimary(root).getAttribute('aria-busy')).toBe('false');
+	});
+
+	describe('a Copy over a notice', () => {
+		const stubClipboard = () => {
+			const clipboard = { writeText: vi.fn(async () => {}) };
+			vi.stubGlobal('navigator', { ...navigator, clipboard });
+			return clipboard;
+		};
+		async function copyOf(root: HTMLElement, noun: string): Promise<void> {
+			await act(async () => {
+				one(screen(root), `[aria-label="Copy ${noun}"]`).click();
+				for (let at = 0; at < 4; at += 1) await Promise.resolve();
+			});
+		}
+
+		it('says each Copy pressed under the notice of a save made again, and not the notice again', async () => {
+			const clipboard = stubClipboard();
+			const { root } = await pending(deployment(['save'], ['missing', 'ok']));
+			await pressHeld(takeoverPrimary(root));
+			await pressHeld(takeoverPrimary(root));
+			expect(said(root)).toBe(
+				'We saved your gift again. Your new reference is CFCP-IRA-4K9M. Use it for your transfer.'
+			);
+
+			await copyOf(root, 'reference');
+			expect(said(root)).toBe('Reference copied.');
+
+			clipboard.writeText.mockRejectedValueOnce(new Error('denied'));
+			await copyOf(root, 'EIN');
+			expect(said(root)).toBe('EIN not copied. It is selected so you can copy it.');
+			await drain();
+			expect(said(root)).toBe('EIN not copied. It is selected so you can copy it.');
+		});
+
+		it('says a Copy under a refused told press’s notice, and the next refusal over it', async () => {
+			stubClipboard();
+			const { root } = await pending(deployment(['save'], ['down', 'down', 'ok']));
+			const refused =
+				'We couldn’t tell the organization. Your gift is saved. Check your connection and try again.';
+			await pressHeld(takeoverPrimary(root));
+			expect(said(root)).toBe(refused);
+
+			await copyOf(root, 'reference');
+			expect(said(root)).toBe('Reference copied.');
+
+			await pressHeld(takeoverPrimary(root));
+			expect(said(root)).toBe(refused);
+		});
+	});
+
 	// the press relabelled to Try again is the same control on the same screen, so every refusal is
 	// the region's to say and the caret stays on the press; the thank-you's new heading still takes it.
 	it('leaves the caret on the press through every refused told press', async () => {

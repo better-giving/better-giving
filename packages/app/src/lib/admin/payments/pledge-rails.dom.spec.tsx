@@ -503,3 +503,63 @@ describe('Disable', () => {
 		);
 	});
 });
+
+describe('a refusal', () => {
+	let presses = 0;
+	/** an action refusing the presses `refused` counts (from 1) as one that never reached the server. */
+	const refusing =
+		(...refused: number[]) =>
+		(body: FormData, rails: Rails): [Rails, unknown] => {
+			presses += 1;
+			if (!refused.includes(presses)) return landing(body, rails);
+			return [
+				rails,
+				{
+					form: {
+						id: String(body.get(WHICH_FORM)),
+						result: { status: 'error', error: { '': ['Not saved. Try again.'] } }
+					}
+				}
+			];
+		};
+	const alerts = (root: HTMLElement) =>
+		[...card(root, 'Stocks').querySelectorAll('[role="alert"]')].map((one) => one.textContent);
+
+	it('goes once a Save lands after a refused Disable', async () => {
+		presses = 0;
+		const { root, posted } = await screen(
+			{ ...OFF, stock: { enabled: true, details: STOCK_DETAILS } },
+			refusing(1)
+		);
+		await pressPosting(button(card(root, 'Stocks'), 'Disable stocks'), posted);
+		await vi.waitFor(() => expect(alerts(root)).toEqual(['Not saved. Try again.']));
+
+		await pressPosting(button(card(root, 'Stocks'), 'Save'), posted);
+		await vi.waitFor(() =>
+			expect(card(root, 'Stocks').querySelector('[role="status"]')?.textContent).toBe('Saved')
+		);
+
+		expect(alerts(root)).toEqual([]);
+	});
+
+	it('goes once a Disable lands after a refused Save, and the card opened again is clear', async () => {
+		presses = 0;
+		const { root, posted } = await screen(
+			{ ...OFF, stock: { enabled: true, details: STOCK_DETAILS } },
+			refusing(1)
+		);
+		await pressPosting(button(card(root, 'Stocks'), 'Save'), posted);
+		await vi.waitFor(() => expect(alerts(root)).toEqual(['Not saved. Try again.']));
+
+		await pressPosting(button(card(root, 'Stocks'), 'Disable stocks'), posted);
+		await vi.waitFor(() => expect(switchOf(root, 'Stocks')).not.toBeNull());
+		expect(alerts(root)).toEqual([]);
+		const reopened = await turnOn(root, 'Stocks');
+
+		expect(posted.map((body) => body.get(WHICH_FORM))).toEqual([
+			PLEDGE_RAIL_FORMS.stock,
+			PLEDGE_RAIL_FORMS.stockOff
+		]);
+		expect(reopened.querySelectorAll('[role="alert"]')).toHaveLength(0);
+	});
+});

@@ -165,9 +165,15 @@ function RailCard({
 	const off = useFetcher<RailAnswer>();
 	// the switch is a request to open the card and is never posted: the rail goes live at Save.
 	const [turnedOn, setTurnedOn] = useState(false);
-	// the answer that may no longer say Saved: one standing over a card reopened after Disable is a
-	// claim the rail is live. it returns only with the next answer.
-	const [spent, setSpent] = useState<RailAnswer | undefined>(undefined);
+	// each fetcher's answer as the last press of either kind, or the card closing, found it: what it
+	// says is about the rail before that press. a Saved standing over a card reopened after Disable is
+	// a claim the rail is live, and a refusal standing over a later press that landed asks for a press
+	// already made. each returns only with its fetcher's next answer.
+	const [spent, setSpent] = useState<{
+		readonly save: RailAnswer | undefined;
+		readonly off: RailAnswer | undefined;
+	}>({ save: undefined, off: undefined });
+	const spendAnswers = () => setSpent({ save: save.data, off: off.data });
 	// the boxes as the last Save sent them, and whether they still read so: a Saved standing over a
 	// box edited since, during the Save included, is a claim the edit is stored.
 	const sent = useRef<Boxes | null>(null);
@@ -182,10 +188,13 @@ function RailCard({
 	// it again over its message, since the rail is still live.
 	const expanded = turnedOn || (enabled && off.state === 'idle');
 	const answer = save.state === 'idle' ? save.data : undefined;
-	const saved = answer?.pledgeRail?.outcome === 'saved' && spent !== answer && !edited;
+	const saved = answer?.pledgeRail?.outcome === 'saved' && spent.save !== answer && !edited;
 	const busy = save.state !== 'idle';
+	const saveRefused = spent.save === save.data ? undefined : refusal;
 	const disableRefused =
-		off.state === 'idle' ? resultFor(offForm, off.data)?.error?.['']?.[0] : undefined;
+		off.state === 'idle' && spent.off !== off.data
+			? resultFor(offForm, off.data)?.error?.['']?.[0]
+			: undefined;
 
 	// a card opened by its switch puts the caret in its first box; one opened again by a refused
 	// Disable puts it back on Disable, over the refusal that asks for that press again.
@@ -244,6 +253,7 @@ function RailCard({
 					sent.current = boxesOf(event.currentTarget);
 					typed.current = sent.current;
 					setEdited(false);
+					spendAnswers();
 				}}
 				onInput={(event) => {
 					const now = boxesOf(event.currentTarget);
@@ -283,7 +293,7 @@ function RailCard({
 						className="ds-text-btn ds-text-btn-sm adm-actions__end"
 						onClick={() => {
 							setTurnedOn(false);
-							setSpent(save.data);
+							spendAnswers();
 							// a rail switched on and never saved is off on the server already: the press
 							// closes the card and posts nothing. one whose Save is out is posted, since
 							// that Save may land.
@@ -297,7 +307,7 @@ function RailCard({
 						{disable}
 					</button>
 				</div>
-				{refusal === undefined ? null : <FieldMessage>{refusal}</FieldMessage>}
+				{saveRefused === undefined ? null : <FieldMessage>{saveRefused}</FieldMessage>}
 				{disableRefused === undefined ? null : <FieldMessage>{disableRefused}</FieldMessage>}
 			</save.Form>
 		</Section>
