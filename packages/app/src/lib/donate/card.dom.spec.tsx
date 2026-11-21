@@ -3452,8 +3452,7 @@ describe('an IRA (QCD) gift', () => {
 	/** what the endpoint says of a save it refused with a code of its own. */
 	const CODED_REFUSAL = 'This gift is above the most this form takes. Give $5,000.00 or less.';
 	/** what the card says of a save that may have landed (`PLEDGE_UNSAVED` in @better-giving/form/machine). */
-	const MAY_BE_SAVED =
-		'We couldn’t confirm your gift was saved. Try again; it will not be saved twice.';
+	const MAY_BE_SAVED = 'We couldn’t confirm your gift was saved. Try again.';
 
 	/** the pledge the endpoint saves for a request, under the id the request sent. */
 	function saved(request: Record<string, unknown>) {
@@ -3480,7 +3479,9 @@ describe('an IRA (QCD) gift', () => {
 	 * each told press by `told` in turn the same way. every save's body and every told url are kept.
 	 */
 	function deployment(
-		answers: readonly ('save' | 'unsaved' | 'refused' | 'lost' | 'coded' | 'taken')[] = ['save'],
+		answers: readonly ('save' | 'blank' | 'unsaved' | 'refused' | 'lost' | 'coded' | 'taken')[] = [
+			'save'
+		],
 		told: readonly ('ok' | 'down' | 'missing')[] = ['ok']
 	) {
 		const saves: Record<string, unknown>[] = [];
@@ -3524,6 +3525,11 @@ describe('an IRA (QCD) gift', () => {
 				if (answer === 'lost') throw new TypeError('Failed to fetch');
 				// a save answered without the pledge it saved, which may still have landed.
 				if (answer === 'unsaved') return Response.json({ ...saved(request), pledge: undefined });
+				// a pledge saved with no address on file, which the endpoint answers as a blank `receiptTo`.
+				if (answer === 'blank') {
+					const answered = saved(request);
+					return Response.json({ ...answered, pledge: { ...answered.pledge, receiptTo: '' } });
+				}
 				return Response.json(saved(request));
 			})
 		);
@@ -3761,6 +3767,23 @@ describe('an IRA (QCD) gift', () => {
 			'We’ve told the organization. Your gift counts when it arrives. We’ll email a receipt to donor@example.org then.'
 		);
 		expect(root.querySelector('[disabled]')).toBeNull();
+	});
+
+	it('shows the transfer instructions for a pledge saved with no address, and thanks without a receipt', async () => {
+		const { root, server } = await pending(deployment(['blank']));
+
+		expect(server.saves).toHaveLength(1);
+		expect(takeoverHeading(root).textContent).toBe('Your IRA (QCD) gift is pending');
+		expect(takeoverPrimary(root).textContent).toBe('I’ve asked my custodian');
+		expect(one(screen(root), '.pledge-details').textContent).toContain('CFCP-IRA-4K9M');
+
+		await pressHeld(takeoverPrimary(root));
+
+		expect(takeoverHeading(root).textContent).toBe('Thank you');
+		expect(one(screen(root), '.ds-notice-card-info .ds-notice-card-body').textContent).toBe(
+			'Your gift counts when it arrives.'
+		);
+		expect(said(root)).toBe('We’ve told the organization. Your gift counts when it arrives.');
 	});
 
 	it('shows the error notice and Try again where the told press failed, and thanks on the retry', async () => {

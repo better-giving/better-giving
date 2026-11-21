@@ -440,7 +440,8 @@ export function takeoverFor(
  *
  * the thank-you's notice names the pledge's own address (`Pledge.receiptTo` in
  * @better-giving/form/v1): the receipt is sent when staff mark the gift received, whatever the
- * deployment's `receipts` says about a charged gift's.
+ * deployment's `receipts` says about a charged gift's. a pledge with a blank address promises no
+ * receipt (`toldBody` in ./copy.ts).
  */
 function pledgedScreen(
 	state: State & { readonly step: 'pledged' },

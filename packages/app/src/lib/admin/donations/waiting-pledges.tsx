@@ -6,7 +6,7 @@ import { Section } from '@better-giving/operator/components/shell/Layout';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
 import { getFormProps } from '@conform-to/react';
 import { useId, useRef, useState } from 'react';
-import { type FetcherWithComponents, useFetcher } from 'react-router';
+import { type FetcherWithComponents, useFetcher, useLocation } from 'react-router';
 import { MARK_RECEIVED_FORM_ID, MARK_RECEIVED_INPUT } from '$lib/donations/pledge-forms';
 import { FORM_CURRENCY } from '$lib/forms/amounts';
 import { defineForm, type FormRejection } from '$lib/forms/definition';
@@ -59,13 +59,33 @@ const MARK_RECEIVED_FETCHER = 'mark-received';
 
 const MARK_RECEIVED_FORM = defineForm({ id: MARK_RECEIVED_FORM_ID, schema: MARK_RECEIVED_INPUT });
 
+type Received = NonNullable<ReceivedAnswer['received']>;
+
 /**
  * what a landed Mark received says. the screen mounts it in every state, beside the card rather than
  * in it: the last pledge marked unmounts the card on the render its answer lands.
+ *
+ * the line stands over the press's own revalidation, which keeps the search, and goes for good once
+ * the Gifts filter or page moves the search off the one it landed on: the keyed fetcher keeps its
+ * answer across those navigations, which would otherwise leave it over a list it no longer describes.
  */
 export function MarkedReceived() {
 	const fetcher = useFetcher<ReceivedAnswer>({ key: MARK_RECEIVED_FETCHER });
-	const received = fetcher.state === 'idle' ? fetcher.data?.received : undefined;
+	const { search } = useLocation();
+	const answer = fetcher.state === 'idle' ? fetcher.data?.received : undefined;
+	// the answer last seen and the search it landed on, the search null once a navigation spent it.
+	const [landed, setLanded] = useState<{
+		readonly answer: Received;
+		readonly search: string | null;
+	} | null>(null);
+	if (answer !== undefined && answer !== landed?.answer) setLanded({ answer, search });
+	else if (landed !== null && landed.search !== null && landed.search !== search) {
+		setLanded({ ...landed, search: null });
+	}
+	const received =
+		answer !== undefined && landed?.answer === answer && landed.search === search
+			? answer
+			: undefined;
 	// the day as a `time`, which base.css keeps on one line, as Add donation's outcome writes it.
 	return (
 		<p role="status" className={received === undefined ? 'adm-vh' : undefined}>

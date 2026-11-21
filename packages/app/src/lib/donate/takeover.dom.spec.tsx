@@ -917,6 +917,36 @@ describe('a saved pledge’s screens', () => {
 		expect(told.querySelector('[disabled]')).toBeNull();
 	});
 
+	it.each([
+		['stock', STOCK, 'Your gift counts when the shares arrive.'],
+		['IRA (QCD)', IRA, 'Your gift counts when it arrives.']
+	])(
+		'leaves the receipt out of a %s thank-you whose pledge has no address',
+		(_rail, pledge, body) => {
+			for (const receiptTo of ['', '  ']) {
+				const blank: Pledge = { ...pledge, receiptTo };
+				expect(notices(pledged(blank, 'told'))).toEqual([
+					['', 'We’ve told the organization', body]
+				]);
+				expect(
+					takeoverFor({ step: 'pledged', pledge: blank, phase: 'told', refused: false }, ORG, money)
+						.arrival
+				).toBe(`We’ve told the organization. ${body}`);
+			}
+		}
+	);
+
+	it('names a trimmed address in the thank-you', () => {
+		const padded: Pledge = { ...IRA, receiptTo: ' maya.okafor@example.org ' };
+		expect(notices(pledged(padded, 'told'))).toEqual([
+			[
+				'',
+				'We’ve told the organization',
+				'Your gift counts when it arrives. We’ll email a receipt to maya.okafor@example.org then.'
+			]
+		]);
+	});
+
 	it('marks the told press busy while it is in flight, still pressable', () => {
 		const root = document.createElement('div');
 		document.body.appendChild(root);

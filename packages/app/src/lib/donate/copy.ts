@@ -767,9 +767,15 @@ export function resavedBody(reference: string): string {
 	return `Your new reference is ${reference}. Use it for your transfer.`;
 }
 export const TOLD_TITLE = 'We’ve told the organization';
-/** the receipt goes to the pledge's own address once staff mark the gift received. */
+/**
+ * the receipt goes to the pledge's own address once staff mark the gift received. a blank address
+ * promises no receipt, and the body is the arrival sentence alone (`pledgedScreen` in
+ * packages/form/src/views.ts).
+ */
 export function toldBody(stock: boolean, receiptTo: string): string {
-	return `Your gift counts when ${stock ? 'the shares arrive' : 'it arrives'}. We’ll email a receipt to ${receiptTo} then.`;
+	const counts = `Your gift counts when ${stock ? 'the shares arrive' : 'it arrives'}.`;
+	const address = receiptTo.trim();
+	return address === '' ? counts : `${counts} We’ll email a receipt to ${address} then.`;
 }
 export const DONE = 'Done';
 

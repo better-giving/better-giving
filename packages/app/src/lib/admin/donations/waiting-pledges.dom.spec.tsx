@@ -1,6 +1,6 @@
 import { act, createElement, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { createRoutesStub, data, useLoaderData } from 'react-router';
+import { createRoutesStub, data, Link, useLoaderData, useLocation } from 'react-router';
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { MARK_RECEIVED_FORM_ID } from '$lib/donations/pledge-forms';
 import { WHICH_FORM } from '$lib/forms/definition';
@@ -82,14 +82,20 @@ const recording: Answer = (body, waiting) => {
 async function screen(stored: Waiting, answer: Answer) {
 	let waiting = stored;
 	const posted: FormData[] = [];
+	/** the search of every load, the press's own revalidations included. */
+	const searches: string[] = [];
 	const Page = () => {
 		const now = useLoaderData() as Waiting;
+		const { search } = useLocation();
 		return createElement(
 			'div',
-			null,
+			{ 'data-search': search },
 			createElement(MarkedReceived),
 			now.total > 0 ? createElement(WaitingCard, { waiting: now }) : null,
-			createElement('section', { className: 'adm-plane', tabIndex: 0 })
+			createElement('section', { className: 'adm-plane', tabIndex: 0 }),
+			// stand-ins for the gifts table's filter and pager, which navigate the route's search.
+			createElement(Link, { to: '/admin/donations?status=refunded' }, 'Refunded'),
+			createElement(Link, { to: '/admin/donations' }, 'All gifts')
 		);
 	};
 	const Stub = createRoutesStub([
@@ -98,7 +104,10 @@ async function screen(stored: Waiting, answer: Answer) {
 			children: [
 				{
 					index: true,
-					loader: () => waiting,
+					loader: ({ request }) => {
+						searches.push(new URL(request.url).search);
+						return waiting;
+					},
 					action: (args) =>
 						clientAction({
 							...args,
@@ -118,8 +127,12 @@ async function screen(stored: Waiting, answer: Answer) {
 	]);
 	const root = mount(createElement(Stub, { initialEntries: ['/admin/donations'] }));
 	await vi.waitFor(() => expect(root.querySelector('section.adm-plane')).not.toBeNull());
-	return { root, posted };
+	return { root, posted, searches };
 }
+
+/** the search the screen last drew for. */
+const drawnFor = (root: HTMLElement) =>
+	root.querySelector('[data-search]')?.getAttribute('data-search');
 
 function rowOf(root: HTMLElement, donor: string): HTMLElement {
 	const found = [...root.querySelectorAll<HTMLElement>('li')].find((one) =>
@@ -462,6 +475,34 @@ describe('the line a landed Mark received leaves', () => {
 		);
 		expect(statusOf(root)?.classList.contains('adm-vh')).toBe(false);
 		expect(statusOf(root)?.querySelector('time')?.getAttribute('dateTime')).toBe('2026-11-18');
+	});
+
+	it('goes when the gifts are filtered or paged, and stays gone on the way back', async () => {
+		const { root, posted, searches } = await screen(BOTH, recording);
+		const link = (name: string) => {
+			const found = [...root.querySelectorAll('a')].find((one) => one.textContent === name);
+			if (found === undefined) throw new Error(`no ${name} link`);
+			return found;
+		};
+		const dialog = await open(root, 'Maya Okafor');
+		await fill(dialog);
+		await markReceived(dialog, posted);
+		await vi.waitFor(() => expect(root.querySelectorAll('li')).toHaveLength(1));
+		// the press's own revalidation reloaded the same search, and the line stands over it.
+		expect(searches).toEqual(['', '']);
+		expect(statusOf(root)?.textContent).toBe(
+			'Marked received. $9,512.40 from Maya Okafor on 2026-11-18.'
+		);
+
+		await press(link('Refunded'));
+		await vi.waitFor(() => expect(drawnFor(root)).toBe('?status=refunded'));
+		expect(statusOf(root)?.textContent).toBe('');
+		expect(statusOf(root)?.classList.contains('adm-vh')).toBe(true);
+
+		await press(link('All gifts'));
+		await vi.waitFor(() => expect(drawnFor(root)).toBe(''));
+		expect(searches).toEqual(['', '', '?status=refunded', '']);
+		expect(statusOf(root)?.textContent).toBe('');
 	});
 
 	it('says nothing over a refusal', async () => {
