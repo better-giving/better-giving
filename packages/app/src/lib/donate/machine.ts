@@ -213,6 +213,8 @@ export function startCheckout(
 	let previous: State['step'] | null = null;
 	/** whether the last reading was a pledge's second save, which spends a token too. */
 	let resaving = false;
+	/** whether the last reading waited to send a pledge again under a fresh id. */
+	let retaking = false;
 
 	const read = (): void => {
 		const snapshot = actor.getSnapshot();
@@ -255,6 +257,12 @@ export function startCheckout(
 		const saving = snapshot.matches({ pledged: { telling: 'saving' } });
 		if (resaving && !saving) challenge?.reset();
 		resaving = saving;
+		// and on the way into the wait to send a save refused `pledge_id_taken` under a fresh id, which
+		// stays in `working`: the refused send spent the token, and the retry waits for a fresh one
+		// (`retaking` in @better-giving/form/machine).
+		const waitingToRetake = snapshot.matches('retaking');
+		if (waitingToRetake && !retaking) challenge?.reset();
+		retaking = waitingToRetake;
 	};
 
 	const subscription = actor.subscribe(read);

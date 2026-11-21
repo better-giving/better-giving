@@ -216,6 +216,9 @@ describe('turning a rail on', () => {
 		const { root } = await screen(OFF, landing);
 		const ira = await turnOn(root, 'IRA (QCD)');
 
+		expect(ira.querySelector('.adm-hint')?.textContent).toBe(
+			'Donors pledge a gift from their IRA and are shown who to make the check out to. Only public charities can receive a QCD, not private foundations or supporting organizations.'
+		);
 		expect(box(ira, 'Payee name').value).toBe('');
 		const address = box(ira, 'Mailing address');
 		expect(address.tagName).toBe('TEXTAREA');
@@ -297,6 +300,51 @@ describe('Save', () => {
 		expect(button(after, 'Save').type).toBe('submit');
 		expect(after.querySelector('[role="status"]')?.textContent).toBe('');
 	});
+
+	it('keeps what was typed while a Save that moves the record was out, the untouched boxes on the stored values', async () => {
+		let release: () => void = () => {};
+		// the store writes the brokerage its own way, so the untouched box has a value of its own to take.
+		const { root, posted } = await screen(
+			{ ...OFF, stock: { enabled: true, details: STOCK_DETAILS } },
+			(body, rails) => {
+				const [next, said] = landing(body, rails);
+				const stored: Rails = {
+					...next,
+					stock: {
+						...next.stock,
+						details: { ...next.stock.details, brokerage_name: 'Harbor Street Securities LLC' }
+					}
+				};
+				return [stored, new Promise((done) => (release = () => done(said)))];
+			}
+		);
+		const stocks = card(root, 'Stocks');
+		await type(box(stocks, 'Account name'), 'Cedar Fork Pantry');
+		await press(button(stocks, 'Save'));
+		await vi.waitFor(() => expect(posted).toHaveLength(1));
+		await type(box(stocks, 'DTC number'), '0165');
+		await act(async () => release());
+		await vi.waitFor(() => {
+			expect(root.querySelector('[aria-busy="true"]')).toBeNull();
+			expect(box(card(root, 'Stocks'), 'Brokerage name').value).toBe(
+				'Harbor Street Securities LLC'
+			);
+		});
+
+		const after = card(root, 'Stocks');
+		expect(box(after, 'DTC number').value).toBe('0165');
+		expect(box(after, 'Account name').value).toBe('Cedar Fork Pantry');
+		expect(box(after, 'Account number').value).toBe(STOCK_DETAILS.account_number);
+		expect(button(after, 'Save').type).toBe('submit');
+		expect(after.querySelector('[role="status"]')?.textContent).toBe('');
+
+		// the next Save sends what the boxes now hold.
+		await press(button(after, 'Save'));
+		await vi.waitFor(() => expect(posted).toHaveLength(2));
+		expect(posted[1]?.get('dtc_number')).toBe('0165');
+		expect(posted[1]?.get('brokerage_name')).toBe('Harbor Street Securities LLC');
+		await act(async () => release());
+	});
 });
 
 describe('Disable', () => {
@@ -350,7 +398,7 @@ describe('Disable', () => {
 		expect(posted[0]?.get('payee_name')).toBe('Cedar Fork Community Pantry Inc.');
 		expect(posted[0]?.get('mailing_address')).toBe('412 Alder Lane, Suite 3\nCedar Fork, OR 97330');
 		expect(card(root, 'IRA (QCD)').querySelector('.adm-hint')?.textContent).toBe(
-			'Donors pledge a gift from their IRA and are shown who to make the check out to. You mark each gift received when the check arrives.'
+			'Donors pledge a gift from their IRA and are shown who to make the check out to. You mark each gift received when the check arrives. Only public charities can receive a QCD, not private foundations or supporting organizations.'
 		);
 
 		await pressPosting(button(card(root, 'IRA (QCD)'), 'Disable IRA (QCD)'), posted);

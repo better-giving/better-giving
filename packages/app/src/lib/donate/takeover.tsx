@@ -434,8 +434,8 @@ export function takeoverFor(
 
 /**
  * a saved pledge's screen: the instructions while the donor has not said they asked for the
- * transfer, the same with the error notice where the last told press did not reach the
- * organisation, and the thank-you once it did.
+ * transfer, the same with a notice where the last told press did not reach the organisation or the
+ * gift was saved again in its place (`pendingNotice` below), and the thank-you once it did.
  *
  * the thank-you's notice names the pledge's own address (`Pledge.receiptTo` in
  * @better-giving/form/v1): the receipt is sent when staff mark the gift received, whatever the
@@ -470,17 +470,15 @@ function pledgedScreen(
 			secondary: { label: copy.DONE, filled: true }
 		};
 	}
-	const refusal: PledgeNotice | null = state.refused
-		? { tone: 'destructive', title: copy.TOLD_REFUSED_TITLE, body: copy.TOLD_REFUSED_BODY }
-		: null;
+	const notice = pendingNotice(state);
 	return {
 		...BLANK,
 		heading: stock ? copy.STOCK_PENDING_HEADING : copy.IRA_PENDING_HEADING,
 		body: stock ? copy.STOCK_PENDING_BODY : copy.IRA_PENDING_BODY,
 		// not while the next press is in flight, so a second refusal arrives into a cleared region.
-		announce: refusal === null || state.phase === 'telling' ? '' : spoken(refusal),
+		announce: notice === null || state.phase === 'telling' ? '' : spoken(notice),
 		pledge: {
-			notice: refusal,
+			notice,
 			summary,
 			details: pledgeDetails(pledge),
 			benefits: stock ? copy.STOCK_BENEFITS : copy.IRA_BENEFITS
@@ -493,6 +491,28 @@ function pledgedScreen(
 			label: copy.EMAIL_INSTRUCTIONS,
 			href: instructionsMailto(pledge, config.orgLegalName, money)
 		}
+	};
+}
+
+/**
+ * the notice on a pending screen, by how the last told press went, as `pendingNotice` in
+ * packages/form/src/views.ts words the element's: a pledge the endpoint could not find is not called
+ * saved, and one saved again names the new reference the donor's transfer has to carry, before the
+ * press that tells the organisation.
+ */
+function pendingNotice(state: State & { readonly step: 'pledged' }): PledgeNotice | null {
+	if (state.resave === 'done') {
+		return {
+			tone: 'info',
+			title: copy.RESAVED_TITLE,
+			body: copy.resavedBody(state.pledge.reference)
+		};
+	}
+	if (!state.refused) return null;
+	return {
+		tone: 'destructive',
+		title: copy.TOLD_REFUSED_TITLE,
+		body: state.resave === 'needed' ? copy.TOLD_LOST_BODY : copy.TOLD_REFUSED_BODY
 	};
 }
 

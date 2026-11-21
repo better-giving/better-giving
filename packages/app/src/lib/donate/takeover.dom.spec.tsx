@@ -737,7 +737,7 @@ describe('a saved pledge’s screens', () => {
 	];
 	const STOCK_BENEFITS = [
 		'Benefits of donating appreciated stock',
-		'Give shares you have held for more than a year and you may deduct their full market value, without paying the capital gains tax you would owe if you sold them.',
+		'If you itemize and give shares you have held for more than a year, you may be able to deduct their market value on the day of the gift, and you generally avoid the capital gains tax you would owe if you sold them. Deduction limits apply.',
 		NOT_ADVICE
 	];
 
@@ -784,6 +784,51 @@ describe('a saved pledge’s screens', () => {
 		expect(rows(root, 'pledge-details')).toEqual(STOCK_DETAILS);
 		expect(primary(root)).toBe('Try again');
 		expect(link(root)?.textContent).toBe('Email these instructions');
+		expect(root.querySelector('[disabled]')).toBeNull();
+	});
+
+	it('says a pledge the told press could not find is not saved, and that Try again saves it anew', () => {
+		const lost = { step: 'pledged', pledge: STOCK, refused: true, resave: 'needed' } as const;
+		const root = draw({ ...lost, phase: 'pending' }, ORG);
+		const body =
+			'We couldn’t find your gift. Press Try again to save it again under a new reference.';
+
+		expect(notices(root)).toEqual([['', 'We couldn’t tell the organization', body]]);
+		expect(root.querySelector('.ds-notice-card-destructive')?.hasAttribute('hidden')).toBe(false);
+		expect(takeoverFor({ ...lost, phase: 'pending' }, ORG, money).announce).toBe(
+			`We couldn’t tell the organization. ${body}`
+		);
+		expect(takeoverFor({ ...lost, phase: 'telling' }, ORG, money).announce).toBe('');
+		expect(primary(root)).toBe('Try again');
+		expect(rows(root, 'pledge-details')).toEqual(STOCK_DETAILS);
+	});
+
+	it('names the new reference once the pledge is saved again, over the press that tells', () => {
+		const anew: Pledge = { ...STOCK, id: 'p3', reference: 'CFCP-AAPL-8Z3P' };
+		const resaved = { step: 'pledged', pledge: anew, refused: false, resave: 'done' } as const;
+		const root = draw({ ...resaved, phase: 'pending' }, ORG);
+
+		expect(heading(root)).toBe('Your stock gift is pending');
+		expect(notices(root)).toEqual([
+			[
+				'',
+				'We saved your gift again',
+				'Your new reference is CFCP-AAPL-8Z3P. Use it for your transfer.'
+			]
+		]);
+		// the info notice heads the block, over the lists that carry the new reference.
+		const notice = root.querySelector('.ds-notice-card-info');
+		expect(notice?.nextElementSibling?.classList.contains('pledge-summary')).toBe(true);
+		expect(rows(root, 'pledge-details').at(-1)).toEqual([
+			'Reference',
+			'CFCP-AAPL-8Z3P',
+			'Copy reference'
+		]);
+		expect(takeoverFor({ ...resaved, phase: 'pending' }, ORG, money).announce).toBe(
+			'We saved your gift again. Your new reference is CFCP-AAPL-8Z3P. Use it for your transfer.'
+		);
+		expect(takeoverFor({ ...resaved, phase: 'telling' }, ORG, money).announce).toBe('');
+		expect(primary(root)).toBe('I’ve contacted my broker');
 		expect(root.querySelector('[disabled]')).toBeNull();
 	});
 
@@ -838,8 +883,8 @@ describe('a saved pledge’s screens', () => {
 		]);
 		expect(benefits(root)).toEqual([
 			'Benefits of giving from an IRA',
-			'If you are 70½ or older, you can give up to the annual QCD limit straight from your IRA. It counts toward your required minimum distribution and isn’t added to your taxable income.',
-			NOT_ADVICE
+			'If you are 70½ or older, you can give up to the IRS yearly limit from your traditional IRA. Your IRA custodian must pay us directly, not you and not a donor-advised fund. It can count toward any required minimum distribution and isn’t added to your taxable income (you can’t also deduct it).',
+			'This is general information, not tax advice. Talk to your tax adviser or IRA custodian about your own situation.'
 		]);
 		expect(primary(root)).toBe('I’ve asked my custodian');
 		expect(link(root)?.getAttribute('href')).toMatch(/^mailto:\?subject=IRA%20\(QCD\)%20gift/);

@@ -363,7 +363,7 @@ it('draws the challenge on arrival at the details step and resets it on the way 
 	expect(challenge.resets).toEqual(['widget-1']);
 });
 
-it('saves a pledge the told press could not find again on a fresh token, and resets the widget after', async () => {
+it('saves a pledge the told press could not find again under a new reference on a fresh token, and tells on the press after', async () => {
 	const { paymentMount, challengeMount, heldChallengeMount } = boxes();
 	const payment = paymentProvider();
 	const challenge = challengeProvider();
@@ -371,6 +371,7 @@ it('saves a pledge the told press could not find again on a fresh token, and res
 	const saves: Record<string, unknown>[] = [];
 	// the first told press finds no pledge and the second is taken, through the real `createPledgeTold`.
 	const told: string[] = [];
+	const references = ['CFCP-IRA-4K9M', 'CFCP-IRA-8Z3P'];
 	vi.stubGlobal(
 		'fetch',
 		vi.fn(async (url: string, init?: RequestInit) => {
@@ -383,6 +384,104 @@ it('saves a pledge the told press could not find again on a fresh token, and res
 			}
 			const request = JSON.parse(String(init?.body)) as Record<string, unknown>;
 			saves.push(request);
+			return Response.json({
+				paymentToken: request.pledgeId,
+				feeMinor: 0,
+				totalMinor: request.amountMinor,
+				pledge: {
+					id: request.pledgeId,
+					method: 'ira_qcd',
+					reference: references[saves.length - 1],
+					receiptTo: request.email,
+					amountMinor: request.amountMinor,
+					custodian: request.custodian,
+					payeeName: 'Helping Hands',
+					ein: '12-3456789',
+					mailingAddress: '412 Alder Lane\nCedar Fork, OR 97330'
+				}
+			});
+		})
+	);
+
+	const checkout = startCheckout(WITH_IRA, {
+		paymentMount,
+		challengeMount,
+		heldChallengeMount,
+		resumeToken: null,
+		seams: {
+			payment: { stripe: { load: payment.load, delay: timer.delay } },
+			challenge: { turnstile: { load: challenge.load, delay: timer.delay } }
+		}
+	});
+	onTestFinished(() => checkout.stop());
+	await settle();
+
+	const { actor } = checkout;
+	actor.send({ type: 'CONTINUE' });
+	actor.send({ type: 'SET_CONTACT', email: 'donor@example.org' });
+	actor.send({ type: 'SET_CONTACT', firstName: 'Ada' });
+	actor.send({ type: 'SET_CONTACT', lastName: 'Lovelace' });
+	actor.send({ type: 'CONTINUE' });
+	actor.send({ type: 'SET_METHOD', method: 'ira_qcd' });
+	actor.send({ type: 'SET_CUSTODIAN', custodian: 'Fidelity Investments' });
+	actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'token-1' });
+	actor.send({ type: 'SUBMIT' });
+	await vi.waitFor(() => expect(toState(actor.getSnapshot()).step).toBe('pledged'));
+	expect(challenge.resets).toEqual(['widget-1']);
+
+	actor.send({ type: 'TELL_ORGANIZATION' });
+	await vi.waitFor(() =>
+		expect(toState(actor.getSnapshot())).toMatchObject({ refused: true, resave: 'needed' })
+	);
+
+	// the widget's reset answers with a fresh token, and the press saves on it under a fresh id in
+	// place of telling, so the donor has the new reference before anyone is told.
+	actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'token-2' });
+	actor.send({ type: 'TELL_ORGANIZATION' });
+	await vi.waitFor(() =>
+		expect(toState(actor.getSnapshot())).toMatchObject({
+			phase: 'pending',
+			refused: false,
+			resave: 'done'
+		})
+	);
+	const resaved = toState(actor.getSnapshot());
+	expect(resaved.step === 'pledged' ? resaved.pledge.reference : null).toBe('CFCP-IRA-8Z3P');
+
+	const [first, second] = saves;
+	expect(saves.map((save) => [save.pledgeId, save.turnstileToken])).toEqual([
+		[first?.pledgeId, 'token-1'],
+		[second?.pledgeId, 'token-2']
+	]);
+	expect(second?.pledgeId).toMatch(/^[0-9a-f-]{36}$/);
+	expect(second?.pledgeId).not.toBe(first?.pledgeId);
+	expect(told).toEqual([first?.pledgeId]);
+	// the second save spent a token without leaving the pledge's screen.
+	expect(challenge.resets).toEqual(['widget-1', 'widget-1']);
+
+	actor.send({ type: 'TELL_ORGANIZATION' });
+	await vi.waitFor(() => expect(toState(actor.getSnapshot())).toMatchObject({ phase: 'told' }));
+	expect(told).toEqual([first?.pledgeId, second?.pledgeId]);
+	expect(saves).toHaveLength(2);
+});
+
+it('sends a save refused pledge_id_taken once more under a fresh id, on a token the reset minted', async () => {
+	const { paymentMount, challengeMount, heldChallengeMount } = boxes();
+	const payment = paymentProvider();
+	const challenge = challengeProvider();
+	const timer = clock();
+	const saves: Record<string, unknown>[] = [];
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async (_url: string, init?: RequestInit) => {
+			const request = JSON.parse(String(init?.body)) as Record<string, unknown>;
+			saves.push(request);
+			if (saves.length === 1) {
+				return Response.json(
+					{ error: 'pledge_id_taken', message: 'This gift reference is already in use.' },
+					{ status: 409 }
+				);
+			}
 			return Response.json({
 				paymentToken: request.pledgeId,
 				feeMinor: 0,
@@ -425,24 +524,20 @@ it('saves a pledge the told press could not find again on a fresh token, and res
 	actor.send({ type: 'SET_CUSTODIAN', custodian: 'Fidelity Investments' });
 	actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'token-1' });
 	actor.send({ type: 'SUBMIT' });
-	await vi.waitFor(() => expect(toState(actor.getSnapshot()).step).toBe('pledged'));
+	await vi.waitFor(() => expect(actor.getSnapshot().matches('retaking')).toBe(true));
+	// the refused send spent the token, so the widget is reset on the way in.
 	expect(challenge.resets).toEqual(['widget-1']);
 
-	actor.send({ type: 'TELL_ORGANIZATION' });
-	await vi.waitFor(() => expect(toState(actor.getSnapshot())).toMatchObject({ refused: true }));
-
-	// the widget's reset answers with a fresh token, and the press saves on it before it tells.
 	actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'token-2' });
-	actor.send({ type: 'TELL_ORGANIZATION' });
-	await vi.waitFor(() => expect(toState(actor.getSnapshot())).toMatchObject({ phase: 'told' }));
+	await vi.waitFor(() => expect(toState(actor.getSnapshot()).step).toBe('pledged'));
 
-	const [first] = saves;
+	const [first, second] = saves;
 	expect(saves.map((save) => [save.pledgeId, save.turnstileToken])).toEqual([
 		[first?.pledgeId, 'token-1'],
-		[first?.pledgeId, 'token-2']
+		[second?.pledgeId, 'token-2']
 	]);
-	expect(told).toEqual([first?.pledgeId, first?.pledgeId]);
-	// the second save spent a token without leaving the pledge's screen.
+	expect(second?.pledgeId).not.toBe(first?.pledgeId);
+	// and once more on the way out of the busy flow, as after any save.
 	expect(challenge.resets).toEqual(['widget-1', 'widget-1']);
 });
 

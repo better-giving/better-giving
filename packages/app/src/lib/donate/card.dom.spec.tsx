@@ -3480,8 +3480,8 @@ describe('an IRA (QCD) gift', () => {
 	 * each told press by `told` in turn the same way. every save's body and every told url are kept.
 	 */
 	function deployment(
-		answers: readonly ('save' | 'unsaved' | 'refused' | 'lost' | 'coded')[] = ['save'],
-		told: readonly ('ok' | 'down')[] = ['ok']
+		answers: readonly ('save' | 'unsaved' | 'refused' | 'lost' | 'coded' | 'taken')[] = ['save'],
+		told: readonly ('ok' | 'down' | 'missing')[] = ['ok']
 	) {
 		const saves: Record<string, unknown>[] = [];
 		const tolds: string[] = [];
@@ -3491,6 +3491,9 @@ describe('an IRA (QCD) gift', () => {
 				if (url.endsWith('/told')) {
 					tolds.push(url);
 					const answer = told[Math.min(tolds.length, told.length) - 1];
+					if (answer === 'missing') {
+						return Response.json({ error: 'pledge_not_found' }, { status: 404 });
+					}
 					return answer === 'ok'
 						? Response.json({ ok: true })
 						: Response.json({ error: 'down' }, { status: 503 });
@@ -3502,6 +3505,13 @@ describe('an IRA (QCD) gift', () => {
 					return Response.json(
 						{ error: 'pledge_detail_invalid', field: 'custodian', message: 'no' },
 						{ status: 422 }
+					);
+				}
+				// a save whose id already names another gift or pledge.
+				if (answer === 'taken') {
+					return Response.json(
+						{ error: 'pledge_id_taken', message: 'This gift reference is already in use.' },
+						{ status: 409 }
 					);
 				}
 				if (answer === 'coded') {
@@ -3596,6 +3606,12 @@ describe('an IRA (QCD) gift', () => {
 		expect(submit(root).textContent).toBe('Continue');
 		expect(custodian(root).labels?.[0]?.textContent).toBe('Custodian');
 		expect(shownText(root, '.benefits-title')).toBe('Benefits of giving from an IRA');
+		expect(shownText(root, '.benefits-body')).toBe(
+			'If you are 70½ or older, you can give up to the IRS yearly limit from your traditional IRA. Your IRA custodian must pay us directly, not you and not a donor-advised fund. It can count toward any required minimum distribution and isn’t added to your taxable income (you can’t also deduct it).'
+		);
+		expect(shownText(root, '.benefits-fine')).toBe(
+			'This is general information, not tax advice. Talk to your tax adviser or IRA custodian about your own situation.'
+		);
 		expect(root.querySelector('[disabled]')).toBeNull();
 	});
 
@@ -3678,6 +3694,30 @@ describe('an IRA (QCD) gift', () => {
 		expect(one(screen(root), ':scope > .message').textContent).toBe(CODED_REFUSAL);
 	});
 
+	it('sends a save refused pledge_id_taken once more under a fresh id, and shows the pledge', async () => {
+		const server = deployment(['taken', 'save']);
+		const { root } = await pending(server);
+
+		const [first, second] = server.saves;
+		expect(server.saves).toHaveLength(2);
+		expect(second?.pledgeId).toMatch(/^[0-9a-f-]{36}$/);
+		expect(second?.pledgeId).not.toBe(first?.pledgeId);
+		// on the token the widget's reset minted, since the refused send spent the first.
+		expect(second?.turnstileToken).not.toBe(first?.turnstileToken);
+		expect(takeoverHeading(root).textContent).toBe('Your IRA (QCD) gift is pending');
+	});
+
+	it('shows the generic failure where the fresh id is refused pledge_id_taken too', async () => {
+		const server = deployment(['taken', 'taken']);
+		const { root } = await pending(server);
+
+		expect(server.saves).toHaveLength(2);
+		expect(takeoverHeading(root).textContent).toBe(copy.FAILED_HEADING);
+		expect(one(screen(root), ':scope > .message').textContent).toBe(
+			'This gift was not started, and nothing was charged. Try again.'
+		);
+	});
+
 	it('puts the caret back in the box where the endpoint refused the custodian', async () => {
 		const server = deployment(['refused']);
 		const { root } = await pending(server);
@@ -3746,6 +3786,44 @@ describe('an IRA (QCD) gift', () => {
 		await pressHeld(takeoverPrimary(root));
 
 		expect(server.tolds).toHaveLength(3);
+		expect(takeoverHeading(root).textContent).toBe('Thank you');
+	});
+
+	it('saves a pledge the told press could not find again under a new reference, and tells on the press after', async () => {
+		const { root, server } = await pending(deployment(['save'], ['missing', 'ok']));
+		const lost =
+			'We couldn’t tell the organization. We couldn’t find your gift. Press Try again to save it again under a new reference.';
+
+		await pressHeld(takeoverPrimary(root));
+
+		expect(one(screen(root), '.ds-notice-card-destructive').textContent).toBe(
+			'We couldn’t tell the organizationWe couldn’t find your gift. Press Try again to save it again under a new reference.'
+		);
+		expect(said(root)).toBe(lost);
+		expect(takeoverPrimary(root).textContent).toBe('Try again');
+
+		press(takeoverPrimary(root));
+		expect(said(root)).toBe('');
+		await drain();
+
+		const [first, second] = server.saves;
+		expect(server.saves).toHaveLength(2);
+		expect(second?.pledgeId).not.toBe(first?.pledgeId);
+		expect(server.tolds).toHaveLength(1);
+		expect(takeoverHeading(root).textContent).toBe('Your IRA (QCD) gift is pending');
+		const resaved =
+			'We saved your gift again. Your new reference is CFCP-IRA-4K9M. Use it for your transfer.';
+		expect(one(screen(root), '.ds-notice-card-info').textContent).toBe(
+			'We saved your gift againYour new reference is CFCP-IRA-4K9M. Use it for your transfer.'
+		);
+		expect(said(root)).toBe(resaved);
+		expect(takeoverPrimary(root).textContent).toBe('I’ve asked my custodian');
+		expect(document.activeElement).toBe(takeoverPrimary(root));
+
+		await pressHeld(takeoverPrimary(root));
+
+		expect(server.tolds).toHaveLength(2);
+		expect(server.tolds[1]).toContain(String(second?.pledgeId));
 		expect(takeoverHeading(root).textContent).toBe('Thank you');
 	});
 

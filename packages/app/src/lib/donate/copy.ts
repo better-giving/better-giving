@@ -732,19 +732,21 @@ export const CUSTODIAN_LABEL = 'Custodian';
 /** under the box over a Continue with no custodian, and over a custodian the endpoint refused. */
 export const CUSTODIAN_PROBLEM = 'Enter your IRA custodian’s name';
 
-/** a benefits panel's words. the claims await legal review, and no figure is stated in either. */
+/**
+ * a benefits panel's words, word for word as the PM and legal approved them and as `BENEFITS` in
+ * packages/form/src/pledge-screen.ts states them: a claim changes only with their approval, and
+ * neither panel states a figure.
+ */
 export type Benefits = { readonly title: string; readonly body: string; readonly fine: string };
-const NOT_ADVICE =
-	'This is general information, not tax advice. Talk to your tax adviser about your own situation.';
 export const STOCK_BENEFITS: Benefits = {
 	title: 'Benefits of donating appreciated stock',
-	body: 'Give shares you have held for more than a year and you may deduct their full market value, without paying the capital gains tax you would owe if you sold them.',
-	fine: NOT_ADVICE
+	body: 'If you itemize and give shares you have held for more than a year, you may be able to deduct their market value on the day of the gift, and you generally avoid the capital gains tax you would owe if you sold them. Deduction limits apply.',
+	fine: 'This is general information, not tax advice. Talk to your tax adviser about your own situation.'
 };
 export const IRA_BENEFITS: Benefits = {
 	title: 'Benefits of giving from an IRA',
-	body: 'If you are 70½ or older, you can give up to the annual QCD limit straight from your IRA. It counts toward your required minimum distribution and isn’t added to your taxable income.',
-	fine: NOT_ADVICE
+	body: 'If you are 70½ or older, you can give up to the IRS yearly limit from your traditional IRA. Your IRA custodian must pay us directly, not you and not a donor-advised fund. It can count toward any required minimum distribution and isn’t added to your taxable income (you can’t also deduct it).',
+	fine: 'This is general information, not tax advice. Talk to your tax adviser or IRA custodian about your own situation.'
 };
 
 export const STOCK_PENDING_HEADING = 'Your stock gift is pending';
@@ -758,6 +760,13 @@ export const IRA_TOLD = 'I’ve asked my custodian';
 export const EMAIL_INSTRUCTIONS = 'Email these instructions';
 export const TOLD_REFUSED_TITLE = 'We couldn’t tell the organization';
 export const TOLD_REFUSED_BODY = 'Your gift is saved. Check your connection and try again.';
+/** the refusal's body where the endpoint held no pledge under its id, so the gift is not saved. */
+export const TOLD_LOST_BODY =
+	'We couldn’t find your gift. Press Try again to save it again under a new reference.';
+export const RESAVED_TITLE = 'We saved your gift again';
+export function resavedBody(reference: string): string {
+	return `Your new reference is ${reference}. Use it for your transfer.`;
+}
 export const TOLD_TITLE = 'We’ve told the organization';
 /** the receipt goes to the pledge's own address once staff mark the gift received. */
 export function toldBody(stock: boolean, receiptTo: string): string {

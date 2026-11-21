@@ -249,6 +249,31 @@ describe('the Mark received dialog', () => {
 		expect(dialog.querySelector('[disabled]')).toBeNull();
 	});
 
+	it('says in its description that confirming emails the donor a receipt', async () => {
+		const { root } = await screen(BOTH, recording);
+		const dialog = await open(root, 'Maya Okafor');
+		const description = document.getElementById(dialog.getAttribute('aria-describedby') ?? '');
+
+		expect(description?.querySelector('p')?.textContent).toBe(
+			'50 shares of AAPL from Maya Okafor, reference CFCP-AAPL-7Q2D. Marking this received emails the donor a receipt.'
+		);
+		expect(dialog.querySelector('h2')?.textContent).toBe('Mark received');
+	});
+
+	it('promises no receipt for a pledge whose donor gave no email', async () => {
+		const { root } = await screen(
+			{ total: 1, pledges: [{ ...MAYA, donorEmail: null }] },
+			recording
+		);
+		const dialog = await open(root, 'Maya Okafor');
+		const description = document.getElementById(dialog.getAttribute('aria-describedby') ?? '');
+
+		expect(description?.querySelector('p')?.textContent).toBe(
+			'50 shares of AAPL from Maya Okafor, reference CFCP-AAPL-7Q2D.'
+		);
+		expect(dialog.textContent).not.toContain('receipt');
+	});
+
 	it('gives focus back to the row’s press when it is cancelled', async () => {
 		const { root, posted } = await screen(BOTH, recording);
 		const dialog = await open(root, 'James Whitfield');

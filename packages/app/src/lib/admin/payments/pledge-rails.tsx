@@ -104,6 +104,7 @@ function IraQcdRail({ rail }: { readonly rail: PledgeRailsProps['rails']['ira_qc
 			heading="IRA (QCD)"
 			intro="Donors pledge a gift from their IRA and are shown who to make the check out to."
 			live="You mark each gift received when the check arrives."
+			closing="Only public charities can receive a QCD, not private foundations or supporting organizations."
 			disable="Disable IRA (QCD)"
 			offForm={IRA_QCD_OFF_FORM}
 			enabled={rail.enabled}
@@ -131,6 +132,8 @@ type RailCardProps = {
 	readonly intro: string;
 	/** the sentence the intro gains once the rail is live. */
 	readonly live: string;
+	/** the sentence that ends the intro whether or not the rail is live, after `live` where it shows. */
+	readonly closing?: string;
 	readonly disable: string;
 	/** the Disable press's form, which states no box. */
 	readonly offForm: { readonly id: string };
@@ -149,6 +152,7 @@ function RailCard({
 	heading,
 	intro,
 	live,
+	closing,
 	disable,
 	offForm,
 	enabled,
@@ -166,7 +170,9 @@ function RailCard({
 	const [spent, setSpent] = useState<RailAnswer | undefined>(undefined);
 	// the boxes as the last Save sent them, and whether they still read so: a Saved standing over a
 	// box edited since, during the Save included, is a claim the edit is stored.
-	const sent = useRef<string | null>(null);
+	const sent = useRef<Boxes | null>(null);
+	// the boxes as the last keystroke or Save left them, read before a reset puts them back.
+	const typed = useRef<Boxes | null>(null);
 	const [edited, setEdited] = useState(false);
 	const headingRef = useRef<HTMLHeadingElement>(null);
 	const switchRef = useRef<HTMLInputElement>(null);
@@ -213,7 +219,9 @@ function RailCard({
 			<h2 id={headingId} ref={headingRef} tabIndex={-1}>
 				{heading}
 			</h2>
-			<p className="adm-hint">{enabled ? `${intro} ${live}` : intro}</p>
+			<p className="adm-hint">
+				{[intro, enabled ? live : null, closing].filter((sentence) => sentence != null).join(' ')}
+			</p>
 			<save.Form
 				method="post"
 				className="adm-stack"
@@ -223,11 +231,25 @@ function RailCard({
 					// conform's own validation passes are submits it cancels; only one it lets through posts.
 					if (event.defaultPrevented) return;
 					sent.current = boxesOf(event.currentTarget);
+					typed.current = sent.current;
 					setEdited(false);
 				}}
-				onInput={(event) => setEdited(boxesOf(event.currentTarget) !== sent.current)}
-				// a landed Save that moved the record resets the boxes onto it (`useAdminForm`).
-				onReset={() => setEdited(false)}
+				onInput={(event) => {
+					const now = boxesOf(event.currentTarget);
+					typed.current = now;
+					setEdited(!sameBoxes(now, sent.current));
+				}}
+				// a landed Save that moved the record resets the boxes onto it (`useAdminForm`); a box
+				// edited since the press is put back as it was typed, and the rest keep the stored value.
+				onReset={(event) => {
+					const kept = editedSince(typed.current, sent.current);
+					typed.current = null;
+					setEdited(false);
+					if (kept.length === 0) return;
+					const saveForm = event.currentTarget;
+					// after the reset itself, which a browser runs once this event is dispatched.
+					queueMicrotask(() => retype(saveForm, kept));
+				}}
 			>
 				<input {...whichForm(form.id)} />
 				{children}
@@ -273,9 +295,34 @@ function RailCard({
 	);
 }
 
-/** what a Save form's boxes hold, as one comparable value. */
-function boxesOf(form: HTMLFormElement): string {
-	return JSON.stringify([...new FormData(form)].map(([name, value]) => [name, String(value)]));
+/** what a Save form's boxes hold, by name. */
+type Boxes = Readonly<Record<string, string>>;
+
+function boxesOf(form: HTMLFormElement): Boxes {
+	return Object.fromEntries([...new FormData(form)].map(([name, value]) => [name, String(value)]));
+}
+
+function sameBoxes(left: Boxes, right: Boxes | null): boolean {
+	return right !== null && Object.entries(left).every(([name, value]) => right[name] === value);
+}
+
+/** each box holding something other than the Save sent, as its name and what it holds. */
+function editedSince(typed: Boxes | null, sent: Boxes | null): [string, string][] {
+	if (typed === null || sent === null) return [];
+	return Object.entries(typed).filter(([name, value]) => sent[name] !== value);
+}
+
+/**
+ * each box written back as it was typed, with the `input` a keystroke fires, so conform's value and
+ * the form's own `onInput` read it as typed.
+ */
+function retype(form: HTMLFormElement, boxes: readonly [string, string][]): void {
+	for (const [name, value] of boxes) {
+		const box = form.elements.namedItem(name);
+		if (!(box instanceof HTMLInputElement || box instanceof HTMLTextAreaElement)) continue;
+		box.value = value;
+		box.dispatchEvent(new Event('input', { bubbles: true }));
+	}
 }
 
 /**

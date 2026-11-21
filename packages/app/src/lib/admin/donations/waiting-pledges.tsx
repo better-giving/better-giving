@@ -236,8 +236,11 @@ function MarkReceivedDialog({
 				initialFocus={valueBox}
 				fallbackFocus={fallback}
 			>
+				{/* the body is the dialog's description, so the receipt is read with the question; a
+				    donor who gave no email is sent none. */}
 				<p>
 					{pledge.pledged} from {pledge.donorName}, reference {pledge.reference}.
+					{pledge.donorEmail === null ? null : ' Marking this received emails the donor a receipt.'}
 				</p>
 				<MoneyField
 					id={fields.value.id}
