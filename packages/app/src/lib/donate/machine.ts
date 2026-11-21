@@ -4,6 +4,7 @@ import {
 	cryptoIsOffered,
 	fundIsOffered,
 	openFund,
+	pledgeIsOffered,
 	venmoIsOffered
 } from '@better-giving/form/machine';
 import type { CheckoutEvent, CheckoutInput, Failure } from '@better-giving/form/machine';
@@ -107,6 +108,12 @@ export type Checkout = {
 	 */
 	readonly coins: CoinPicker;
 	/**
+	 * the node the IRA (QCD) option stands in its row in the payment box, for the card to draw the
+	 * custodian box and the benefits panel into. built here for `coins`' reason; a plain node, since
+	 * this page's own sheets are the only ones in its document.
+	 */
+	readonly ira: HTMLElement;
+	/**
 	 * hands `listener` how many options the payment box lists, now and on every change.
 	 *
 	 * the surface's own `rows`, passed through: the count is the one this module's surface drew. one
@@ -168,6 +175,7 @@ export function startCheckout(
 	let opened: FundReports['opened'] = () => null;
 
 	const coins = createCoinPicker(paymentMount.ownerDocument);
+	const ira = paymentMount.ownerDocument.createElement('div');
 
 	const surface = createPaymentSurface(
 		config,
@@ -180,7 +188,8 @@ export function startCheckout(
 			closed: () => fundSays({ type: 'FUND_CLOSED' })
 		},
 		coins.host,
-		seams?.payment
+		seams?.payment,
+		ira
 	);
 
 	const actor = createActor(checkoutMachine, {
@@ -212,6 +221,7 @@ export function startCheckout(
 		surface.offerFund(fundIsOffered(snapshot));
 		surface.offerCrypto(cryptoIsOffered(snapshot));
 		surface.offerVenmo(venmoIsOffered(snapshot));
+		surface.offerIra(pledgeIsOffered(snapshot, 'ira_qcd'));
 
 		if (state.step === 'details' && challenge === null) {
 			challenge = createChallenge(
@@ -247,9 +257,13 @@ export function startCheckout(
 	return {
 		actor,
 		coins,
+		ira,
 		rows: (listener) => surface.rows(listener),
 		stop() {
 			subscription.unsubscribe();
+			// the IRA (QCD) row reports its rail closing as `surface.stop` below takes it off the page,
+			// and the actor it would report to is stopped by then.
+			rail = () => {};
 			actor.stop();
 			const widget = challenge;
 			challenge = null;

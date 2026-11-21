@@ -1,14 +1,20 @@
-import { createEmployerWrite, createQuote, createStatusRead } from '@better-giving/form/embed/api';
+import {
+	createEmployerWrite,
+	createPledgeTold,
+	createQuote,
+	createStatusRead
+} from '@better-giving/form/embed/api';
 import type { PaymentSurface } from '@better-giving/form/embed/stripe';
 import { quoteThrough } from '@better-giving/form/embed/surface';
 import type { CheckoutPorts } from '@better-giving/form/ports';
 
 // the outside world, for the deployment's own donation page.
 //
-// six functions, exactly the set `CheckoutPorts` names. three of them are the payment surface's —
-// `confirm` and `resume` are its own, and the write is wrapped so the provider's fields learn the
-// total the server just named. the fourth is the read of a crypto gift the donor sends from their own
-// wallet, the fifth the thank-you's employer write, and the sixth the clock.
+// the set `CheckoutPorts` names. three of them are the payment surface's — `confirm` and `resume`
+// are its own, and the write is wrapped so the provider's fields learn the total the server just
+// named. then the read of a crypto gift the donor sends from their own wallet, the thank-you's
+// employer write, the clock, and the two pledge rails' ports: the same write unwrapped, since no
+// processor stands behind a pledge, and the pending screen's told press.
 //
 // this is the client half of the rule CLAUDE.md states about payments: nothing here imports a
 // payment SDK. `createPaymentSurface` in @better-giving/form/embed/surface is the seam, and the
@@ -21,7 +27,8 @@ import type { CheckoutPorts } from '@better-giving/form/ports';
  * one deployment.
  *
  * `createQuote` and `createStatusRead` build `${origin}/api/v1/forms/:id/donations…`, and
- * `createEmployerWrite` `${origin}/api/v1/forms/:id/gifts/:token/employer`, so an empty
+ * `createEmployerWrite` `${origin}/api/v1/forms/:id/gifts/:token/employer`, and `createPledgeTold`
+ * `${origin}/api/v1/forms/:id/donations/:pledgeId/told`, so an empty
  * origin is a path and each request is same-origin by construction rather than by a stored address
  * anyone can get wrong. it
  * is not the absent origin that module refuses on — that is `null`, which is the embed being unable
@@ -46,6 +53,11 @@ export function deploymentPorts(surface: PaymentSurface): CheckoutPorts {
 		resume: surface.resume,
 		status: createStatusRead(SAME_DEPLOYMENT),
 		employer: createEmployerWrite(SAME_DEPLOYMENT),
-		now: () => Date.now()
+		now: () => Date.now(),
+		pledges: {
+			id: () => crypto.randomUUID(),
+			save: post,
+			told: createPledgeTold(SAME_DEPLOYMENT)
+		}
 	};
 }

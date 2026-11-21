@@ -6,6 +6,8 @@ import { part, partWhen, REGISTRY_CLASS } from '@better-giving/form/parts';
 import { useEffect, useRef, type ReactNode, type RefObject } from 'react';
 import * as copy from './copy';
 import type { FieldBox } from './normalize';
+import { instructionsMailto, pledgeDetails, pledgeSummary } from './pledge';
+import { PledgeBlock, type PledgeScreen } from './pledge-block';
 import { Glyph } from './sections/glyph';
 
 // every state that takes the whole card, in the words a donor reads.
@@ -50,8 +52,16 @@ export type Takeover = {
 	readonly primaryNote: string;
 	/** where and how much to send a `crypto` gift, on the one screen that states it. */
 	readonly deposit: DepositScreen | null;
-	/** the way out of the screen: beside the primary where there is one, alone where there is not. */
-	readonly secondary: { readonly label: string } | null;
+	/**
+	 * the way out of the screen: beside the primary where there is one, alone where there is not.
+	 * `filled` draws it as the registry's secondary button rather than as words, which is how the
+	 * pledge screens draw theirs.
+	 */
+	readonly secondary: { readonly label: string; readonly filled?: true } | null;
+	/** a link under the primary, drawn as the registry's secondary button: a pledge's instructions, emailed. */
+	readonly secondaryLink: { readonly label: string; readonly href: string } | null;
+	/** what a saved pledge's screens list (./pledge-block.tsx), on the screens that have one. */
+	readonly pledge: PledgeScreen | null;
 	/**
 	 * the line under the way out, on the one screen that has one.
 	 *
@@ -94,9 +104,17 @@ export const BLANK: Takeover = {
 	primaryNote: '',
 	deposit: null,
 	secondary: null,
+	secondaryLink: null,
+	pledge: null,
 	secondaryNote: '',
 	employer: null
 };
+
+/**
+ * the registry's secondary button at the action's own size, for the pledge screens' way out and
+ * their emailed instructions, which the design draws as buttons rather than as words.
+ */
+const SECONDARY_BUTTON = 'ds-btn ds-btn-secondary ds-btn-lg';
 
 /** what the thank-you says over a refused ask, by why it stands refused, as packages/form/src/views.ts does. */
 const EMPLOYER_REFUSALS: Readonly<Record<NonNullable<EmployerAsk['refusal']>, string>> = {
@@ -403,11 +421,8 @@ export function takeoverFor(
 				? { ...BLANK, heading: copy.RESUMING_HEADING, body: copy.RESUMING_BODY }
 				: { ...BLANK, heading: copy.CONFIRMING_HEADING, body: copy.CONFIRMING_BODY };
 
-		// a saved stock or IRA (QCD) pledge, which this page cannot reach: it hands the flow no pledge
-		// ports (`CheckoutPorts.pledges` in @better-giving/form/ports), and no pledge rail is offered
-		// without them (`pledgeIsOffered` in @better-giving/form/machine).
 		case 'pledged':
-			return BLANK;
+			return pledgedScreen(state, config, money);
 
 		// the three the card renders as a numbered step rather than as a takeover.
 		case 'amount':
@@ -415,6 +430,63 @@ export function takeoverFor(
 		case 'give':
 			return BLANK;
 	}
+}
+
+/**
+ * a saved pledge's screen: the instructions while the donor has not said they asked for the
+ * transfer, the same with the error notice where the last told press did not reach the
+ * organisation, and the thank-you once it did.
+ *
+ * the thank-you's notice names the pledge's own address (`Pledge.receiptTo` in
+ * @better-giving/form/v1): the receipt is sent when staff mark the gift received, whatever the
+ * deployment's `receipts` says about a charged gift's.
+ */
+function pledgedScreen(
+	state: State & { readonly step: 'pledged' },
+	config: FormConfig,
+	money: (minor: number) => string
+): Takeover {
+	const { pledge } = state;
+	const stock = pledge.method === 'stock';
+	const summary = pledgeSummary(pledge, money);
+	if (state.phase === 'told') {
+		return {
+			...BLANK,
+			heading: copy.SUCCESS_HEADING,
+			pledge: {
+				notice: {
+					tone: 'info',
+					title: copy.TOLD_TITLE,
+					body: copy.toldBody(stock, pledge.receiptTo)
+				},
+				summary,
+				details: null,
+				benefits: null
+			},
+			secondary: { label: copy.DONE, filled: true }
+		};
+	}
+	return {
+		...BLANK,
+		heading: stock ? copy.STOCK_PENDING_HEADING : copy.IRA_PENDING_HEADING,
+		body: stock ? copy.STOCK_PENDING_BODY : copy.IRA_PENDING_BODY,
+		pledge: {
+			notice: state.refused
+				? { tone: 'destructive', title: copy.TOLD_REFUSED_TITLE, body: copy.TOLD_REFUSED_BODY }
+				: null,
+			summary,
+			details: pledgeDetails(pledge),
+			benefits: stock ? copy.STOCK_BENEFITS : copy.IRA_BENEFITS
+		},
+		primary: {
+			label: state.refused ? copy.TRY_AGAIN : stock ? copy.STOCK_TOLD : copy.IRA_TOLD,
+			submit: false
+		},
+		secondaryLink: {
+			label: copy.EMAIL_INSTRUCTIONS,
+			href: instructionsMailto(pledge, config.orgLegalName, money)
+		}
+	};
 }
 
 export type TakeoverScreenProps = {
@@ -434,6 +506,8 @@ export type TakeoverScreenProps = {
 	readonly employer: ReactNode;
 	readonly onPrimary: () => void;
 	readonly onSecondary: () => void;
+	/** a pledge's Copy reporting, in the words the card's region says. */
+	readonly onCopied: (words: string) => void;
 };
 
 export function TakeoverScreen({
@@ -446,7 +520,8 @@ export function TakeoverScreen({
 	deposit,
 	employer,
 	onPrimary,
-	onSecondary
+	onSecondary,
+	onCopied
 }: TakeoverScreenProps) {
 	const primary = useRef<HTMLButtonElement | null>(null);
 	// a child of the section itself, where the element stands it, so the takeover's own column rules
@@ -511,6 +586,7 @@ export function TakeoverScreen({
 			<p className="message" hidden={screen.failure === ''}>
 				{screen.failure}
 			</p>
+			<PledgeBlock screen={screen.pledge} onCopied={onCopied} />
 			{/*
 			 * Enter reaches this control only where the screen says the press submits the gift. the two
 			 * recovery screens' primaries start a gift over rather than send one, and a keystroke that
@@ -537,15 +613,31 @@ export function TakeoverScreen({
 			 * the control at the group's own step rather than a screen's step away from it. every other
 			 * takeover writes no line and the group is the control alone.
 			 */}
-			<div className="foot" hidden={screen.secondary === null && screen.secondaryNote === ''}>
+			<div
+				className="foot"
+				hidden={
+					screen.secondary === null && screen.secondaryLink === null && screen.secondaryNote === ''
+				}
+			>
 				<button
 					part={part('action-quiet')}
+					className={screen.secondary?.filled === true ? SECONDARY_BUTTON : undefined}
 					type="button"
 					hidden={screen.secondary === null}
 					onClick={onSecondary}
 				>
 					{screen.secondary?.label ?? ''}
 				</button>
+				{/* a link rather than a press: what it opens is the donor's own mail client, addressed to
+				    nobody (`instructionsMailto` in ./pledge.ts). the registry's button takes an `<a>`. */}
+				<a
+					part={part('action-quiet')}
+					className={SECONDARY_BUTTON}
+					href={screen.secondaryLink?.href}
+					hidden={screen.secondaryLink === null}
+				>
+					{screen.secondaryLink?.label ?? ''}
+				</a>
 				<p className="aside" hidden={screen.secondaryNote === ''}>
 					{screen.secondaryNote}
 				</p>

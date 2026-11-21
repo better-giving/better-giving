@@ -722,3 +722,79 @@ export function orgCanSee(org: string): string {
 export function matchArrived(employer: string | null, day: string): string {
 	return `${employer ?? 'Your employer'}’s match arrived on ${day}. Thank you.`;
 }
+
+/**
+ * a stock or IRA (QCD) pledge, as packages/form/src/views.ts and pledge-screen.ts word it for the
+ * element: the IRA (QCD) option on the review step, and the pending screen and the thank-you a saved
+ * pledge is shown on.
+ */
+export const CUSTODIAN_LABEL = 'Custodian';
+/** under the box over a Continue with no custodian, and over a custodian the endpoint refused. */
+export const CUSTODIAN_PROBLEM = 'Enter your IRA custodian’s name';
+
+/** a benefits panel's words. the claims await legal review, and no figure is stated in either. */
+export type Benefits = { readonly title: string; readonly body: string; readonly fine: string };
+const NOT_ADVICE =
+	'This is general information, not tax advice. Talk to your tax adviser about your own situation.';
+export const STOCK_BENEFITS: Benefits = {
+	title: 'Benefits of donating appreciated stock',
+	body: 'Give shares you have held for more than a year and you may deduct their full market value, without paying the capital gains tax you would owe if you sold them.',
+	fine: NOT_ADVICE
+};
+export const IRA_BENEFITS: Benefits = {
+	title: 'Benefits of giving from an IRA',
+	body: 'If you are 70½ or older, you can give up to the annual QCD limit straight from your IRA. It counts toward your required minimum distribution and isn’t added to your taxable income.',
+	fine: NOT_ADVICE
+};
+
+export const STOCK_PENDING_HEADING = 'Your stock gift is pending';
+export const STOCK_PENDING_BODY =
+	'Ask your broker to transfer these shares using the details below. Your gift counts when they arrive.';
+export const STOCK_TOLD = 'I’ve contacted my broker';
+export const IRA_PENDING_HEADING = 'Your IRA (QCD) gift is pending';
+export const IRA_PENDING_BODY =
+	'Ask your custodian to send this gift using the details below. Your gift counts when it arrives.';
+export const IRA_TOLD = 'I’ve asked my custodian';
+export const EMAIL_INSTRUCTIONS = 'Email these instructions';
+export const TOLD_REFUSED_TITLE = 'We couldn’t tell the organization';
+export const TOLD_REFUSED_BODY = 'Your gift is saved. Check your connection and try again.';
+export const TOLD_TITLE = 'We’ve told the organization';
+/** the receipt goes to the pledge's own address once staff mark the gift received. */
+export function toldBody(stock: boolean, receiptTo: string): string {
+	return `Your gift counts when ${stock ? 'the shares arrive' : 'it arrives'}. We’ll email a receipt to ${receiptTo} then.`;
+}
+export const DONE = 'Done';
+
+/** each row's label on a pledge's lists (./pledge.ts). */
+export const PLEDGE_LABELS = {
+	shares: 'Shares',
+	ticker: 'Ticker',
+	amount: 'Amount',
+	custodian: 'Custodian',
+	deliverTo: 'Deliver to',
+	dtcNumber: 'DTC number',
+	accountNumber: 'Account number',
+	accountName: 'Account name',
+	payeeName: 'Payee name',
+	ein: 'EIN',
+	mailingAddress: 'Mailing address',
+	reference: 'Reference'
+} as const;
+/** what a row's Copy is named for (`Copy {noun}`), on a value a donor hands on. */
+export function copyNamed(noun: string): string {
+	return `Copy ${noun}`;
+}
+/** said on the card's region as a Copy reports, in the address screen's two sentences. */
+export function pledgeCopied(noun: string): string {
+	return `${capitalised(noun)} copied.`;
+}
+export function pledgeNotCopied(noun: string): string {
+	return `${capitalised(noun)} not copied. It is selected so you can copy it.`;
+}
+function capitalised(noun: string): string {
+	return `${noun.charAt(0).toUpperCase()}${noun.slice(1)}`;
+}
+/** the emailed instructions' subject. */
+export function instructionsSubject(stock: boolean, org: string, reference: string): string {
+	return `${stock ? 'Stock' : 'IRA (QCD)'} gift to ${org}, reference ${reference}`;
+}

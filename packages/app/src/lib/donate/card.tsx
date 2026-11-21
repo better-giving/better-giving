@@ -17,6 +17,7 @@ import {
 	type ReactNode,
 	type RefObject
 } from 'react';
+import { createPortal } from 'react-dom';
 import { getInitialSnapshot } from 'xstate';
 import { DonateAnnouncer } from './announce';
 import * as copy from './copy';
@@ -29,6 +30,7 @@ import {
 } from './machine';
 import { createReactPropTypes, type ReactApi } from './normalize';
 import { useBrandScope } from './page-root';
+import { IraPanel } from './pledge-block';
 import { AmountStep, type AmountRefs } from './steps/amount';
 import { DetailsStep, fieldProblem, type DetailsRefs } from './steps/details';
 import { GiveStep, readReceipt, Receipt, type ReceiptReading } from './steps/give';
@@ -390,7 +392,7 @@ function CheckoutCard({
 	 */
 	const [shot, setShot] = useState<{
 		at: CheckoutSnapshot;
-		kind: 'details' | 'copy' | 'one-time' | 'ask';
+		kind: 'details' | 'copy' | 'one-time' | 'ask' | 'custodian';
 		words?: string;
 		on?: string;
 	} | null>(null);
@@ -430,12 +432,15 @@ function CheckoutCard({
 	// a crypto gift's press is refused for its coin rather than its rail, and that is said in the coin
 	// list rather than on the box it stands in. and an offer of a one-time gift hides the box, so a
 	// refusal naming it is about nothing on screen: the offer is what the step is asking.
+	// an IRA (QCD) gift's press is refused for its custodian the same way, said under the box.
 	const onCrypto = api.state.step === 'give' && api.state.method === 'crypto';
+	const onIra = api.state.step === 'give' && api.state.method === 'ira_qcd';
 	const refusedPayment =
 		pressed &&
 		api.state.step === 'give' &&
 		!api.state.payerComplete &&
 		!onCrypto &&
+		!onIra &&
 		!api.state.oneTimeInstead;
 
 	/**
@@ -570,6 +575,21 @@ function CheckoutCard({
 			coinWords
 		);
 	});
+
+	// ── the custodian an IRA (QCD) gift is sent by ───────────────────────────────────────────────
+
+	const custodianBox = useRef<HTMLInputElement | null>(null);
+	/**
+	 * what the custodian box says under itself: nothing until a press on the IRA (QCD) rail was
+	 * refused for it, or until the endpoint refused the custodian a save named. it clears on the
+	 * keystroke that names one.
+	 */
+	const custodianWords =
+		api.state.step === 'give' &&
+		api.state.method === 'ira_qcd' &&
+		((pressed && api.state.custodianMissing) || api.state.custodianRefused)
+			? copy.CUSTODIAN_PROBLEM
+			: '';
 
 	// a coin's refusal of the amount, stated under `How much`. the coin is named as the served list
 	// names it, and by its own code where the list no longer carries it.
@@ -733,7 +753,12 @@ function CheckoutCard({
 			state.step === 'give' &&
 			state.method === 'crypto' &&
 			((advanced && before.shown === 'takeover') || (coinRefused && before.step === 'working'));
+		// the custodian a save named, refused by the endpoint: the donor is back on this step from the
+		// wait, and the box that fixes it is where the caret goes, as the coin list is for a coin.
+		const backToCustodian =
+			state.step === 'give' && state.custodianRefused && before.step === 'working';
 		if (backToCoins) live?.coins.focus();
+		else if (backToCustodian) custodianBox.current?.focus();
 		else if (advanced && state.step === 'amount' && state.refusal !== undefined) {
 			figureControl()?.focus();
 		} else if (advanced || replaced) headings[shown].current?.focus();
@@ -761,6 +786,7 @@ function CheckoutCard({
 	const totalMoved =
 		kept.current.total.step === 'give' &&
 		api.state.step === 'give' &&
+		reading?.totalShown !== false &&
 		figure !== kept.current.total.figure;
 
 	const feeBox = useRef<HTMLInputElement | null>(null);
@@ -874,7 +900,15 @@ function CheckoutCard({
 		// donor's second press re-focuses a box the caret is already on.
 		setNonce((at) => at + 1);
 		// on crypto the rail is chosen and the coin is what is missing, and its list is ours to send the
-		// caret to.
+		// caret to; on IRA (QCD) the custodian, whose box is. a caret already in that box — Enter in it —
+		// moves nowhere and reads nothing, so the region says the refusal instead.
+		if (state.method === 'ira_qcd') {
+			if (document.activeElement === custodianBox.current) {
+				setShot({ at: read(), kind: 'custodian' });
+			}
+			focusOn(custodianBox.current);
+			return;
+		}
 		focusOn(state.method === 'crypto' ? (live?.coins ?? null) : paymentMount.current);
 	}
 
@@ -898,6 +932,15 @@ function CheckoutCard({
 		const after = now().state;
 		if (!caretInBox || after.step !== 'success' || after.employer?.refusal !== 'blank') return;
 		setShot({ at: read(), kind: 'ask' });
+		setNonce((at) => at + 1);
+	}
+
+	/**
+	 * a pledge's Copy reporting, said on the card's one region again on every press and kept by the
+	 * heading it was pressed under, as the address block's are.
+	 */
+	function onPledgeCopied(words: string): void {
+		setShot({ at: read(), kind: 'copy', words, on: screen.current.heading });
 		setNonce((at) => at + 1);
 	}
 
@@ -991,6 +1034,7 @@ function CheckoutCard({
 		const next = now();
 		if (next.state.step === 'confirm') next.confirmButton.onClick();
 		else if (next.state.step === 'mandate') next.acceptMandateButton.onClick();
+		else if (next.state.step === 'pledged') next.toldButton.onClick();
 		else next.retryButton.onClick();
 	}
 
@@ -1001,8 +1045,9 @@ function CheckoutCard({
 	function onSecondary(): void {
 		const next = now();
 		if (next.state.step === 'mandate') next.declineMandateButton.onClick();
-		// `success` is terminal and is given no way out, so a second gift is a new card.
-		else if (next.state.step === 'success') restart(holdsCaret());
+		// `success` is terminal and is given no way out, so a second gift is a new card. a told
+		// pledge's Done is the same door.
+		else if (next.state.step === 'success' || next.state.step === 'pledged') restart(holdsCaret());
 		else next.backButton.onClick();
 	}
 
@@ -1013,7 +1058,7 @@ function CheckoutCard({
 		shot?.kind === 'copy' &&
 		shot !== kept.current.outsaid &&
 		shot.on === takeover.heading &&
-		takeover.deposit !== null
+		(takeover.deposit !== null || takeover.pledge !== null)
 			? (shot.words ?? '')
 			: '';
 	// in the order the fields are asked in, which is the order they are laid out in and the order the
@@ -1048,8 +1093,12 @@ function CheckoutCard({
 	// what a numbered step was refused for, said out loud, and one sentence however many steps there
 	// are: the two are mutually exclusive, because a press is refused on the step it was made on. each
 	// is here only for the press that moved no caret and had no other channel (`askedInPlace`,
-	// `detailsSaid`).
-	const askedFor = [askedInPlace && missingDecisions.includes('amount') ? bounds : '', detailsSaid]
+	// `detailsSaid`, and a Continue refused with the caret already in the custodian box).
+	const askedFor = [
+		askedInPlace && missingDecisions.includes('amount') ? bounds : '',
+		detailsSaid,
+		spent === 'custodian' ? custodianWords : ''
+	]
 		.filter((sentence) => sentence !== '')
 		.join(', ');
 
@@ -1243,7 +1292,8 @@ function CheckoutCard({
 					<TakeoverScreen
 						screen={takeover}
 						hidden={shown !== 'takeover'}
-						busy={busy}
+						// the told press is busy on its own write, which the flow's working states do not cover.
+						busy={busy || api.toldButton['aria-busy']}
 						receipt={inTakeover ? receipt : null}
 						headingRef={headings.takeover}
 						sectionRef={takeoverSection}
@@ -1260,7 +1310,20 @@ function CheckoutCard({
 						}
 						onPrimary={onPrimary}
 						onSecondary={onSecondary}
+						onCopied={onPledgeCopied}
 					/>
+					{/* into the node the IRA (QCD) option stands in its row, which the payment box holds and
+					    react does not render (./payment.tsx). */}
+					{live === null
+						? null
+						: createPortal(
+								<IraPanel
+									field={api.custodianField}
+									problem={custodianWords}
+									inputRef={custodianBox}
+								/>,
+								live.ira
+							)}
 				</form>
 			</div>
 			<DonateAnnouncer words={words} again={nonce} />

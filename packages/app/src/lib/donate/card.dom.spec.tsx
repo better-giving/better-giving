@@ -1684,11 +1684,16 @@ it('draws its controls with the registry’s classes, on the elements the elemen
 			);
 			seen.action += 1;
 		}
-		// the employer ask's Skip stands beside its Send at the registry's md press, which the registry
-		// draws (`[part~='action-quiet']` in packages/form/src/styles/parts.css).
+		// the employer ask's Skip stands beside its Send at the registry's md press, and a pledge's
+		// emailed instructions are the registry's secondary at the action's size, both of which the
+		// registry draws (`[part~='action-quiet']` in packages/form/src/styles/parts.css).
 		for (const node of every(root, '[part~="action-quiet"]')) {
 			expect(registryClasses(node), node.outerHTML).toEqual(
-				node.closest('.employer-actions') === null ? [] : ['ds-btn', 'ds-btn-secondary']
+				node.closest('.employer-actions') !== null
+					? ['ds-btn', 'ds-btn-secondary']
+					: node.matches('.foot > a')
+						? ['ds-btn', 'ds-btn-secondary', 'ds-btn-lg']
+						: []
 			);
 		}
 		for (const node of every(root, '[part~="field"]')) {
@@ -3436,3 +3441,259 @@ describe('the thank-you’s employer ask', () => {
 		expect(back(root).hidden).toBe(false);
 	});
 });
+
+describe('an IRA (QCD) gift', () => {
+	const WITH_IRA: FormConfig = {
+		...CONFIG,
+		orgLegalName: 'Cedar Fork Community Pantry Inc.',
+		paymentMethods: ['card', 'ira_qcd']
+	};
+
+	/** the pledge the endpoint saves for a request, under the id the request sent. */
+	function saved(request: Record<string, unknown>) {
+		return {
+			paymentToken: request.pledgeId,
+			feeMinor: 0,
+			totalMinor: request.amountMinor,
+			pledge: {
+				id: request.pledgeId,
+				method: 'ira_qcd',
+				reference: 'CFCP-IRA-4K9M',
+				receiptTo: request.email,
+				amountMinor: request.amountMinor,
+				custodian: request.custodian,
+				payeeName: 'Cedar Fork Community Pantry Inc.',
+				ein: '47-3829105',
+				mailingAddress: '412 Alder Lane, Suite 3\nCedar Fork, OR 97330'
+			}
+		};
+	}
+
+	/**
+	 * the deployment: each save answered by `answers` in turn (the last for every save after), and
+	 * each told press by `told` in turn the same way. every save's body and every told url are kept.
+	 */
+	function deployment(
+		answers: readonly ('save' | 'unsaved' | 'refused')[] = ['save'],
+		told: readonly ('ok' | 'down')[] = ['ok']
+	) {
+		const saves: Record<string, unknown>[] = [];
+		const tolds: string[] = [];
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (url: string, init?: RequestInit) => {
+				if (url.endsWith('/told')) {
+					tolds.push(url);
+					const answer = told[Math.min(tolds.length, told.length) - 1];
+					return answer === 'ok'
+						? Response.json({ ok: true })
+						: Response.json({ error: 'down' }, { status: 503 });
+				}
+				const request = JSON.parse(String(init?.body)) as Record<string, unknown>;
+				saves.push(request);
+				const answer = answers[Math.min(saves.length, answers.length) - 1];
+				if (answer === 'refused') {
+					return Response.json(
+						{ error: 'pledge_detail_invalid', field: 'custodian', message: 'no' },
+						{ status: 422 }
+					);
+				}
+				// a save answered without the pledge it saved, which may still have landed.
+				if (answer === 'unsaved') return Response.json({ ...saved(request), pledge: undefined });
+				return Response.json(saved(request));
+			})
+		);
+		return { saves, tolds };
+	}
+
+	/** the head of the payment row named `name`, or null where the box lists none. */
+	function row(root: HTMLElement, name: string): HTMLElement | null {
+		for (const node of every(root, '[part~="payment"] *')) {
+			const head = node.shadowRoot?.querySelector<HTMLElement>('.head');
+			if (head?.querySelector('.name')?.textContent === name) return head;
+		}
+		return null;
+	}
+
+	const submit = (root: HTMLElement) => one(root, 'button[part~="submit"]');
+	const custodian = (root: HTMLElement) => input(root, '#custodian');
+
+	/** a control pressed from the keyboard, with the promise chains behind it let run. */
+	async function pressHeld(node: HTMLElement): Promise<void> {
+		await act(async () => {
+			node.focus();
+			node.click();
+			for (let at = 0; at < 30; at += 1) await Promise.resolve();
+		});
+	}
+
+	/** the review step of a one-time gift with the IRA (QCD) option open. */
+	async function onIra(config: FormConfig = WITH_IRA) {
+		const { root } = await card(config);
+		await walkToGive(root);
+		const head = row(root, 'IRA (QCD)');
+		if (head === null) throw new Error('no IRA (QCD) option on the review step');
+		press(head);
+		return root;
+	}
+
+	/** the IRA (QCD) pending screen, the custodian named and Continue pressed. */
+	async function pending(server = deployment()) {
+		const root = await onIra();
+		type(custodian(root), 'Fidelity Investments');
+		await pressHeld(submit(root));
+		return { root, server };
+	}
+
+	const takeoverHeading = (root: HTMLElement) => one(screen(root), ':scope > h2');
+	const takeoverPrimary = (root: HTMLElement) =>
+		one(screen(root), ':scope > button[part~="action"]');
+
+	it('lists the option after the card’s rail where the form offers it, on a one-time gift alone', async () => {
+		deployment();
+		const offered = await card(WITH_IRA);
+		await walkToGive(offered.root);
+		expect(row(offered.root, 'IRA (QCD)')).not.toBeNull();
+
+		const notOffered = await card(CONFIG);
+		await walkToGive(notOffered.root);
+		expect(row(notOffered.root, 'IRA (QCD)')).toBeNull();
+
+		const monthly = await card(WITH_IRA);
+		press(one(monthly.root, '.segment > label:nth-of-type(2)'));
+		await walkToGive(monthly.root);
+		expect(row(monthly.root, 'IRA (QCD)')).toBeNull();
+	});
+
+	it('states the gift alone, with no fee switch and no total, and presses Continue', async () => {
+		deployment();
+		const root = await onIra();
+
+		expect(one(root, '.row.fee').hidden).toBe(true);
+		expect(one(root, '.row.total').hidden).toBe(true);
+		expect(one(root, '[part~="summary"] .row .figure').textContent).toBe('$25.00');
+		expect(submit(root).textContent).toBe('Continue');
+		expect(custodian(root).labels?.[0]?.textContent).toBe('Custodian');
+		expect(shownText(root, '.benefits-title')).toBe('Benefits of giving from an IRA');
+		expect(root.querySelector('[disabled]')).toBeNull();
+	});
+
+	it('saves nothing on a Continue with no custodian, and flags the box with the caret in it', async () => {
+		const server = deployment();
+		const root = await onIra();
+
+		await pressHeld(submit(root));
+
+		expect(server.saves).toEqual([]);
+		expect(custodian(root).getAttribute('aria-invalid')).toBe('true');
+		const problem = one(root, `#${custodian(root).getAttribute('aria-describedby')}`);
+		expect(problem.textContent).toBe('Enter your IRA custodian’s name');
+		expect(problem.hidden).toBe(false);
+		expect(document.activeElement).toBe(custodian(root));
+		// the payment box says nothing about it: the rail is chosen.
+		expect(one(root, '#payment-problem').hidden).toBe(true);
+
+		type(custodian(root), 'Fidelity Investments');
+		expect(custodian(root).hasAttribute('aria-invalid')).toBe(false);
+	});
+
+	it('saves once under the id it minted, and sends the same id on the retry', async () => {
+		const server = deployment(['unsaved', 'save']);
+		const { root } = await pending(server);
+
+		expect(server.saves).toHaveLength(1);
+		const [first] = server.saves;
+		expect(first).toMatchObject({
+			method: 'ira_qcd',
+			custodian: 'Fidelity Investments',
+			coversFee: false,
+			amountMinor: 2500
+		});
+		expect(first?.pledgeId).toMatch(/^[0-9a-f-]{36}$/);
+		expect(takeoverHeading(root).textContent).toBe(copy.FAILED_HEADING);
+		expect(one(screen(root), ':scope > .message').textContent).toBe(
+			'We couldn’t confirm your gift was saved. Try again; it will not be saved twice.'
+		);
+
+		await pressHeld(takeoverPrimary(root));
+		await pressHeld(submit(root));
+
+		expect(server.saves).toHaveLength(2);
+		expect(server.saves[1]?.pledgeId).toBe(first?.pledgeId);
+		expect(takeoverHeading(root).textContent).toBe('Your IRA (QCD) gift is pending');
+	});
+
+	it('puts the caret back in the box where the endpoint refused the custodian', async () => {
+		const server = deployment(['refused']);
+		const { root } = await pending(server);
+
+		expect(server.saves).toHaveLength(1);
+		expect(screen(root).classList.contains('step-give')).toBe(true);
+		expect(document.activeElement).toBe(custodian(root));
+		expect(custodian(root).getAttribute('aria-invalid')).toBe('true');
+	});
+
+	it('shows the pledge on arrival with the caret on its heading', async () => {
+		const { root } = await pending();
+
+		expect(takeoverHeading(root).textContent).toBe('Your IRA (QCD) gift is pending');
+		expect(document.activeElement).toBe(takeoverHeading(root));
+		expect(takeoverPrimary(root).textContent).toBe('I’ve asked my custodian');
+		expect(one(screen(root), '.foot > a').textContent).toBe('Email these instructions');
+		expect(root.querySelector('[disabled]')).toBeNull();
+	});
+
+	it('thanks the donor once the told press lands, the caret on the thank-you’s heading', async () => {
+		const { root, server } = await pending();
+
+		await pressHeld(takeoverPrimary(root));
+
+		expect(server.tolds).toHaveLength(1);
+		expect(server.tolds[0]).toMatch(/\/api\/v1\/forms\/[^/]+\/donations\/[0-9a-f-]{36}\/told$/);
+		expect(server.tolds[0]).toContain(String(server.saves[0]?.pledgeId));
+		expect(takeoverHeading(root).textContent).toBe('Thank you');
+		expect(document.activeElement).toBe(takeoverHeading(root));
+		const notice = one(screen(root), '.ds-notice-card-info');
+		expect(notice.getAttribute('role')).toBe('status');
+		expect(notice.textContent).toContain(
+			'Your gift counts when it arrives. We’ll email a receipt to donor@example.org then.'
+		);
+		expect(root.querySelector('[disabled]')).toBeNull();
+	});
+
+	it('shows the error notice and Try again where the told press failed, and thanks on the retry', async () => {
+		const { root, server } = await pending(deployment(['save'], ['down', 'ok']));
+
+		await pressHeld(takeoverPrimary(root));
+
+		expect(server.tolds).toHaveLength(1);
+		expect(takeoverHeading(root).textContent).toBe('Your IRA (QCD) gift is pending');
+		const notice = one(screen(root), '.ds-notice-card-destructive');
+		expect(notice.hidden).toBe(false);
+		expect(notice.getAttribute('role')).toBe('alert');
+		expect(takeoverPrimary(root).textContent).toBe('Try again');
+		expect(root.querySelector('[disabled]')).toBeNull();
+
+		await pressHeld(takeoverPrimary(root));
+
+		expect(server.tolds).toHaveLength(2);
+		expect(takeoverHeading(root).textContent).toBe('Thank you');
+	});
+
+	it('starts a fresh card from Done', async () => {
+		const { root } = await pending();
+		await pressHeld(takeoverPrimary(root));
+
+		await pressHeld(one(screen(root), '.foot > button'));
+
+		expect(screen(root).querySelector('h2')?.textContent).toBe(copy.STEP_HEADINGS[0]);
+	});
+});
+
+/** the words of the nodes `selector` matches that are not hidden themselves, joined. */
+function shownText(root: HTMLElement, selector: string): string {
+	return every(root, selector)
+		.filter((node) => !node.hidden)
+		.map((node) => node.textContent ?? '')
+		.join('|');
+}

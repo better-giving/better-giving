@@ -41,6 +41,8 @@ export type ReceiptReading = {
 	readonly consequence: string;
 	readonly totalLabel: string;
 	readonly totalFigure: string;
+	/** whether the total row is drawn, which it is not under an IRA (QCD) pledge: nothing is totalled today. */
+	readonly totalShown: boolean;
 	readonly receiptNote: string;
 	/** whether the total on screen is not the one the donor pressed Donate on. */
 	readonly corrected: boolean;
@@ -104,7 +106,12 @@ export function readReceipt(
 	const totalMinor = authoritative ?? api.submitButton.totalMinor ?? fv.amountMinor;
 	const feeMinor = totalMinor - fv.amountMinor;
 	const feeShown = feeMinor > 0;
-	const changeable = state.step === 'give';
+	// an IRA (QCD) gift is pledged rather than charged: no processor, a fee of nothing, and nothing
+	// totalled today. the receipt states the gift alone, the fee decision is not offered, the press
+	// saves the pledge and says Continue, and the line promising a receipt now is not drawn — the
+	// pending screen says when one is sent.
+	const pledging = state.step === 'give' && state.method === 'ira_qcd';
+	const changeable = state.step === 'give' && !pledging;
 	const covering = api.feeToggle.pressed === true;
 	const declined = api.feeToggle.declinedFee ?? null;
 	const org = config.orgLegalName;
@@ -153,18 +160,19 @@ export function readReceipt(
 		giftLabel: copy.giftRow(FREQUENCY_LABELS[fv.frequency]),
 		giftFigure: money(fv.amountMinor),
 		programName,
-		feeRowShown: feeShown || changeable,
+		feeRowShown: !pledging && (feeShown || changeable),
 		feeFigure: feeShown ? `+ ${money(feeMinor)}` : '',
 		changeable,
 		covering,
 		consequence: changeable ? consequence : '',
 		totalLabel,
 		totalFigure: money(totalMinor),
+		totalShown: !pledging,
 		receiptNote,
 		corrected: state.step === 'confirm',
 		words: `${totalLabel} is ${money(totalMinor)}.`,
-		submitLabel: copy.donateLabel(money(totalMinor)),
-		receiptTo
+		submitLabel: pledging ? copy.CONTINUE : copy.donateLabel(money(totalMinor)),
+		receiptTo: pledging ? '' : receiptTo
 	};
 }
 
@@ -238,7 +246,7 @@ export function Receipt({ reading, onFee, feeRef }: ReceiptProps) {
 				</span>
 				<span className="figure">{reading.feeFigure}</span>
 			</div>
-			<div className="row total">
+			<div className="row total" hidden={!reading.totalShown}>
 				<span className="row-label">{reading.totalLabel}</span>
 				{/*
 				 * an `<output>`, for what it is — the result of the decisions above it — and never a
