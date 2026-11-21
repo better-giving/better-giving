@@ -3,7 +3,9 @@ import { eq } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDb, type Db } from '../db/client';
-import { contact, dispute, donation, payment, type ZapierTrigger } from '../db/schema';
+import { postableId } from '../db/accounts';
+import { contact, dispute, donation, form, payment, type ZapierTrigger } from '../db/schema';
+import { receivedPledge } from '../pages/settled-gifts.testing';
 import { MINUTE_RUN, PACE } from '../outbox/budget';
 import { POST_TIMEOUT_MS, sendDueZapierEvents } from './deliver';
 import { giftRefundedStatements, zapierStatements } from './events';
@@ -208,6 +210,40 @@ describe('sendDueZapierEvents()', () => {
 		expect(await deliveryRows()).toEqual([
 			expect.objectContaining({ status: 'sent', attempts: 1, leased_until: null })
 		]);
+	});
+
+	it('posts a received stock and IRA (QCD) pledge to its new_gift hook on its own rail, at the value staff entered', async () => {
+		const formId = '019fb800-0000-7000-8000-000000000001';
+		await db
+			.insert(form)
+			.values({
+				id: formId,
+				name: 'General Fund',
+				status: 'live',
+				revenueAccountId: postableId('donationsDeductible'),
+				currency: 'USD',
+				minMinor: 500,
+				maxMinor: 1_000_000
+			})
+			.onConflictDoNothing();
+		const hook = await listen();
+		const stock = await receivedPledge(db, formId, 'stock', 951_240);
+		const ira = await receivedPledge(db, formId, 'ira_qcd', 480_000);
+		const zapier = hooksAnswering();
+
+		await sendDueZapierEvents({ db, fetch: zapier.fetch }, new Date(Date.now() + 1_000));
+
+		expect(
+			zapier.posts
+				.map((p) => [p.url, p.body.donation_id, p.body.method, p.body.amount, p.body.amount_minor])
+				.sort()
+		).toEqual(
+			[
+				[hook.hookUrl, stock, 'stock', '9512.40', 951_240],
+				[hook.hookUrl, ira, 'ira_qcd', '4800.00', 480_000]
+			].sort()
+		);
+		expect((await deliveryRows()).map((row) => row.status)).toEqual(['sent', 'sent']);
 	});
 
 	it('posts a refund to its gift_refunded hook: the amount refunded, and the gift it came out of', async () => {

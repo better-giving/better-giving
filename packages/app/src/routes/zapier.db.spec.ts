@@ -5,7 +5,8 @@ import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { postableId } from '$lib/server/db/accounts';
 import { createDb, type Db } from '$lib/server/db/client';
 import { mintApiKey } from '$lib/server/integrations/keys';
-import { contact, donation, orgProfile, payment } from '$lib/server/db/schema';
+import { contact, donation, form, orgProfile, payment } from '$lib/server/db/schema';
+import { receivedPledge } from '$lib/server/pages/settled-gifts.testing';
 import { post, postingStatements } from '$lib/server/ledger/posting';
 import { makeZapierKey, readZapierKey, replaceZapierKey } from '$lib/server/zapier/key';
 import {
@@ -89,12 +90,15 @@ beforeEach(async () => {
 		'zapier_subscription',
 		'api_key',
 		'org_profile',
+		'pledge',
 		'ledger_entry',
 		'entry_group',
 		'payment',
+		'line_item',
 		'gift_match',
 		'donation',
-		'contact'
+		'contact',
+		'form'
 	]) {
 		await run(stmt(`delete from ${table}`));
 	}
@@ -311,6 +315,37 @@ describe('the samples the Zap editor shows', () => {
 		const { data } = (await response.json()) as { data: unknown[] };
 		expect(data).toHaveLength(1);
 		expect(fieldsOf(data[0])).toEqual(fieldsOf(eventOf(live)));
+	});
+
+	it('list a received stock and IRA (QCD) pledge as new_gift events on their own rails', async () => {
+		const formId = '019fb800-0000-7000-8000-000000000002';
+		await db.insert(form).values({
+			id: formId,
+			name: 'General Fund',
+			status: 'live',
+			revenueAccountId: postableId('donationsDeductible'),
+			currency: 'USD',
+			minMinor: 500,
+			maxMinor: 1_000_000
+		});
+		const stock = await receivedPledge(db, formId, 'stock', 951_240);
+		const ira = await receivedPledge(db, formId, 'ira_qcd', 480_000);
+
+		const response = await samplesOf('new_gift');
+
+		expect(response.status).toBe(200);
+		const { data } = (await response.json()) as { data: GiftEvent[] };
+		expect(data.map((g) => [g.donation_id, g.method, g.amount, g.amount_minor]).sort()).toEqual(
+			[
+				[stock, 'stock', '9512.40', 951_240],
+				[ira, 'ira_qcd', '4800.00', 480_000]
+			].sort()
+		);
+		const live = await readGiftEvents(
+			db,
+			data.map((g) => g.id)
+		);
+		expect(data).toEqual(data.map((g) => live.get(g.id)));
 	});
 
 	it('answers gift_refunded with the live refund event, never a gift', async () => {
