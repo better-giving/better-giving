@@ -212,7 +212,8 @@ export interface ReceiptData {
 	/**
 	 * the address of the donor's own page for this gift, where the filing details an employer's
 	 * giving portal asks for are printed. given, the receipt closes on `MATCH_NOTE`; absent, it is
-	 * the receipt it was before the note existed, byte for byte.
+	 * the receipt it was before the note existed, byte for byte. a stock receipt drops both: the page
+	 * states the gift's amount, and a stock receipt states no dollar value.
 	 */
 	readonly giftPageUrl?: string;
 }
@@ -292,7 +293,7 @@ export function template(data: ReceiptData): EmailTemplate {
 		...(data.program === null ? [] : [{ label: RECEIPT_LABELS.program, value: data.program }])
 	];
 
-	const giftPageUrl = data.giftPageUrl ?? null;
+	const giftPageUrl = pledge?.method === 'stock' ? null : (data.giftPageUrl ?? null);
 	const copy: ReceiptCopy = { org, greeting, thanks, rows, closing, discloses, giftPageUrl };
 	return {
 		subject,

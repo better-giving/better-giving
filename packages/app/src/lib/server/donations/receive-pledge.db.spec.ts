@@ -148,7 +148,11 @@ describe('receivePledge', () => {
 		const later = await receivePledge(db, ARRIVAL);
 
 		expect(earlier).toMatchObject({ ok: true });
-		expect(later).toEqual({ ok: false, reason: 'already_received' });
+		expect(later).toEqual({
+			ok: false,
+			reason: 'already_received',
+			gift: expect.objectContaining({ amountMinor: 1_000_000 })
+		});
 		expect(await count('payment')).toBe(1);
 		expect(await first(stmt('select total_minor from donation'))).toEqual({
 			total_minor: 1_000_000
@@ -230,20 +234,23 @@ describe('receivePledge', () => {
 		);
 	});
 
-	it('still answers the gift, with no donor, where the donor cannot be read after the commit', async () => {
+	it('answers write_failed over the committed gift where the donor cannot be read after the commit, and the gift as recorded on the press again', async () => {
 		vi.mocked(readContactSummaries).mockRejectedValueOnce(new Error('SQLITE_BUSY'));
 		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-		const result = await receivePledge(db, ARRIVAL);
-
-		expect(result).toEqual({
-			ok: true,
-			gift: expect.objectContaining({ donationId: PLEDGE_ID, donorName: null, donorEmail: null })
-		});
+		expect(await receivePledge(db, ARRIVAL)).toEqual({ ok: false, reason: 'write_failed' });
 		expect(await stamp()).toBe(PLEDGE_ID);
-		expect(logged).toHaveBeenCalledWith(
-			'reading a received pledge’s donor or cause failed:',
-			expect.any(Error)
-		);
+		expect(logged).toHaveBeenCalledWith('recording a received pledge failed:', expect.any(Error));
+
+		expect(await receivePledge(db, { ...ARRIVAL, amountMinor: 1_000_000 })).toEqual({
+			ok: false,
+			reason: 'already_received',
+			gift: expect.objectContaining({
+				donationId: PLEDGE_ID,
+				amountMinor: 951_240,
+				dated: ARRIVAL.dated,
+				donorEmail: 'maya.okafor@example.org'
+			})
+		});
 	});
 });

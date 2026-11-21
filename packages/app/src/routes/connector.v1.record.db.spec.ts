@@ -154,6 +154,23 @@ describe('donations.record', () => {
 		expect(await count('entry_group')).toBe(0);
 	});
 
+	// a stock or IRA (QCD) gift reaches the books only through Mark received, which values it.
+	it.each(['stock', 'ira_qcd'])(
+		'refuses %s as a method at its path, writing nothing',
+		async (method) => {
+			const key = await connect();
+
+			const response = await record(key, { ...CHEQUE, method });
+
+			expect(response.status).toBe(422);
+			const problem = (await response.json()) as { errors: { path: string; message: string }[] };
+			expect(problem.errors).toEqual([
+				{ path: 'method', message: expect.stringMatching(/cash.*check/) }
+			]);
+			expect(await count('donation')).toBe(0);
+		}
+	);
+
 	it('refuses a campaign, an unknown key and another currency, writing nothing', async () => {
 		const key = await connect();
 

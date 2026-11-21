@@ -227,24 +227,25 @@ export async function action({ context, request }: Route.ActionArgs) {
 		amountMinor: money.minor,
 		dated: dated.at
 	});
+	const { env, deferred } = context.get(platform);
+	const mailDeps = () => ({
+		db,
+		email: createEmailProvider(env),
+		giftOrigin: giftLinkOrigin(env, new URL(request.url))
+	});
 	if (!received.ok) {
+		// the mail an earlier press may not have sent, before the press is answered: `sendReceipt`
+		// claims the gift's stamp, so a receipt that went is not sent again.
+		if (received.reason === 'already_received') {
+			await sendReceivedPledgeMail(mailDeps(), received.gift);
+		}
 		const [status, sentence] = MARK_RECEIVED_REFUSALS[received.reason];
 		return invalid(status, submission.reject({ formErrors: [sentence] }));
 	}
 
 	// after the response, through the process's tracker: the gift is in the books whatever the mail
 	// does, and `sendReceipt` claims the gift's stamp, so a receipt goes once.
-	const { env, deferred } = context.get(platform);
-	deferred.waitUntil(
-		sendReceivedPledgeMail(
-			{
-				db,
-				email: createEmailProvider(env),
-				giftOrigin: giftLinkOrigin(env, new URL(request.url))
-			},
-			received.gift
-		)
-	);
+	deferred.waitUntil(sendReceivedPledgeMail(mailDeps(), received.gift));
 	// the gift in words for the screen's line (`MarkedReceived`), as Add donation's outcome states one.
 	return {
 		received: {

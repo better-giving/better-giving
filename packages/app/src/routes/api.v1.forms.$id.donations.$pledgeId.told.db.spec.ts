@@ -212,6 +212,29 @@ describe('telling the organisation', () => {
 		expect(mail.sent[0]?.subject).toBe('Maya Okafor says 50 shares of AAPL are on the way');
 	});
 
+	it('hands the stamp back when the donor cannot be read, so the press again tells the organisation once', async () => {
+		vi.mocked(readContactSummaries).mockRejectedValueOnce(new Error('SQLITE_BUSY'));
+		vi.spyOn(console, 'error').mockImplementation(() => {});
+
+		const failed = press();
+		expect((await failed.response).status).toBe(500);
+		await failed.settled();
+		expect((await toldAt(STOCK_ID))?.told_at).toBeNull();
+		expect(mail.sent).toHaveLength(0);
+
+		const again = press();
+		expect((await again.response).status).toBe(200);
+		await again.settled();
+		const repeat = press();
+		expect((await repeat.response).status).toBe(200);
+		await repeat.settled();
+
+		expect((await toldAt(STOCK_ID))?.told_at).toEqual(expect.any(Number));
+		expect(mail.sent.map((m) => m.subject)).toEqual([
+			'Maya Okafor says 50 shares of AAPL are on the way'
+		]);
+	});
+
 	it('answers ok and mails nobody for a pledge staff already marked received', async () => {
 		await client.batch([
 			stmt(

@@ -29,7 +29,9 @@ import { sendTributeNotice } from './tribute-notice';
 // `pledge_donation_id_idx` keeps one pledge to one gift.
 //
 // the receipt is not sent here. `sendReceivedPledgeMail` below runs after the commit, when the
-// caller hands it to the deferred-work tracker.
+// caller hands it to the deferred-work tracker. a press that finds the gift already recorded
+// answers it too, as that gift was recorded, so the caller sends the mail an earlier press never
+// got to: `sendReceipt`'s claim on `receipt_sent_at` (./receipt.ts) keeps it to one receipt.
 
 /** one Mark received press, as the action parsed it. */
 export type PledgeArrival = {
@@ -59,13 +61,16 @@ export type ReceivedPledge = {
 /**
  *   ok               — the gift is recorded and in the books, and the pledge left the waiting card.
  *   not_found        — no pledge has this id.
- *   already_received — an earlier press recorded it, and this one wrote nothing.
- *   write_failed     — the write did not report success; the cause is logged. it may have landed,
- *                      and pressing again is safe: the gift's id is the pledge's.
+ *   already_received — an earlier press recorded it, and this one wrote nothing. `gift` is the gift
+ *                      as that press recorded it, for the mail it may not have sent.
+ *   write_failed     — the write did not report success, or it did and the gift's donor could not
+ *                      be read for its mail; the cause is logged. it may have landed, and pressing
+ *                      again is safe: the gift's id is the pledge's.
  */
 export type ReceivePledgeResult =
 	| { readonly ok: true; readonly gift: ReceivedPledge }
-	| { readonly ok: false; readonly reason: 'not_found' | 'already_received' | 'write_failed' };
+	| { readonly ok: false; readonly reason: 'already_received'; readonly gift: ReceivedPledge }
+	| { readonly ok: false; readonly reason: 'not_found' | 'write_failed' };
 
 /**
  * record one pledge as received. an amount that is not a positive whole number of minor units
@@ -87,7 +92,7 @@ export async function receivePledge(db: Db, arrival: PledgeArrival): Promise<Rec
 	}
 	if (row === undefined) return { ok: false, reason: 'not_found' };
 	// an early answer for the press that plainly comes second. what refuses it is the batch below.
-	if (row.donationId !== null) return { ok: false, reason: 'already_received' };
+	if (row.donationId !== null) return alreadyReceived(db, row);
 
 	const donationId = row.id;
 	const paymentId = uuidv7();
@@ -153,7 +158,7 @@ export async function receivePledge(db: Db, arrival: PledgeArrival): Promise<Rec
 			(code === 'SQLITE_CONSTRAINT_PRIMARYKEY' || code === 'SQLITE_CONSTRAINT_UNIQUE') &&
 			(await stampedWith(db, row.id))
 		) {
-			return { ok: false, reason: 'already_received' };
+			return alreadyReceived(db, row);
 		}
 		// a refusal the pledge's own stamp does not answer. `savePledge` (./pledges.ts) refuses a
 		// pledge id a gift already holds, so this is a fault: logged, and never told as received.
@@ -163,20 +168,34 @@ export async function receivePledge(db: Db, arrival: PledgeArrival): Promise<Rec
 	try {
 		return { ok: true, gift: await receivedOf(db, row, arrival) };
 	} catch (error) {
-		// the gift is in the books; only the words for its mail could not be read.
-		console.error('reading a received pledge’s donor or cause failed:', error);
-		return { ok: true, gift: { ...giftOf(row, arrival), donorName: null, donorEmail: null } };
+		// the gift is in the books but its receipt has no address yet, so the press is answered as
+		// failed: pressing again finds the gift recorded and sends its mail (`alreadyReceived`).
+		return failed(error);
 	}
 }
 
-function giftOf(
-	row: Pledge,
-	arrival: PledgeArrival
-): Omit<ReceivedPledge, 'donorName' | 'donorEmail'> {
+/** the gift an earlier press recorded, read back at that press's value and day for its mail. */
+async function alreadyReceived(db: Db, row: Pledge): Promise<ReceivePledgeResult> {
+	try {
+		const [recorded] = await db
+			.select({ amountMinor: donation.totalMinor, dated: donation.receivedAt })
+			.from(donation)
+			.where(eq(donation.id, row.id))
+			.limit(1);
+		if (recorded === undefined) {
+			throw new Error(`pledge ${row.id} is stamped received and no gift has its id`);
+		}
+		return { ok: false, reason: 'already_received', gift: await receivedOf(db, row, recorded) };
+	} catch (error) {
+		return failed(error);
+	}
+}
+
+function giftOf(row: Pledge, recorded: Recorded): Omit<ReceivedPledge, 'donorName' | 'donorEmail'> {
 	return {
 		donationId: row.id,
-		amountMinor: arrival.amountMinor,
-		dated: arrival.dated,
+		amountMinor: recorded.amountMinor,
+		dated: recorded.dated,
 		program: null,
 		pledge:
 			row.method === 'stock' && row.ticker !== null && row.sharesMillionths !== null
@@ -192,14 +211,17 @@ function giftOf(
 	};
 }
 
-async function receivedOf(db: Db, row: Pledge, arrival: PledgeArrival): Promise<ReceivedPledge> {
+/** the value and day a gift was recorded at. */
+type Recorded = Pick<PledgeArrival, 'amountMinor' | 'dated'>;
+
+async function receivedOf(db: Db, row: Pledge, recorded: Recorded): Promise<ReceivedPledge> {
 	const [donors, cause] = await Promise.all([
 		readContactSummaries(db, [row.contactId]),
 		row.programId === null ? null : readProgram(db, row.programId)
 	]);
 	const donor = donors.get(row.contactId);
 	return {
-		...giftOf(row, arrival),
+		...giftOf(row, recorded),
 		donorName: donor?.displayName ?? null,
 		donorEmail: donor?.primaryEmail ?? null,
 		program: cause?.name ?? null

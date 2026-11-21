@@ -1,5 +1,6 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createAuth } from '$lib/server/auth';
+import { readContactSummaries } from '$lib/server/contacts/queries';
 import { resolveAuthSecret } from '$lib/server/auth/signing-key';
 import { beforeNextBatch } from '$lib/server/db/batch.testing';
 import { createDb, type Db } from '$lib/server/db/client';
@@ -34,6 +35,12 @@ vi.mock('$lib/server/email/factory', () => ({
 		}
 	})
 }));
+
+// the donor read after the commit, made to fail in the one case that needs it.
+vi.mock('$lib/server/contacts/queries', async (actual) => {
+	const queries = await actual<typeof import('$lib/server/contacts/queries')>();
+	return { ...queries, readContactSummaries: vi.fn(queries.readContactSummaries) };
+});
 
 const ORIGIN = 'https://give.example';
 const PASSWORD = 'a-long-enough-password';
@@ -401,6 +408,46 @@ describe('Mark received', () => {
 		expect(await count('donation')).toBe(1);
 		expect(await booked()).toBe(951240);
 		expect(sent).toHaveLength(1);
+	});
+
+	it('sends the receipt for the recorded gift on the press again after the first could not read the donor', async () => {
+		vi.mocked(readContactSummaries).mockRejectedValueOnce(new Error('SQLITE_BUSY'));
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+		const IRA_RECEIVED = { pledge_id: IRA_PLEDGE, received_on: '2026-11-17' };
+
+		const pressed = await markReceived({ ...IRA_RECEIVED, value: '4800.00' });
+		const again = await markReceived({ ...IRA_RECEIVED, value: '5000.00' });
+		const third = await markReceived({ ...IRA_RECEIVED, value: '5000.00' });
+		logged.mockRestore();
+
+		expect(pressed.status).toBe(500);
+		expect(again.status).toBe(409);
+		expect(third.status).toBe(409);
+		expect(await count('donation')).toBe(1);
+		expect(sent.map((m) => m.to)).toEqual(['j.whitfield@example.com']);
+		// the gift as the first press recorded it, not the figure the retry typed.
+		expect(sent[0]?.text).toContain('Amount      USD 4,800.00');
+		expect(sent[0]?.text).toContain('November 17, 2026');
+	});
+
+	it('sends the receipt a failed send handed back on the press again, and none after it went', async () => {
+		mail.answer = {
+			ok: false,
+			reason: 'timeout',
+			detail: 'the host went quiet',
+			indeterminate: true
+		};
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+		await markReceived(STOCK_RECEIVED);
+		logged.mockRestore();
+		mail.answer = { ok: true };
+		sent.length = 0;
+
+		expect((await markReceived(STOCK_RECEIVED)).status).toBe(409);
+		expect((await markReceived(STOCK_RECEIVED)).status).toBe(409);
+
+		expect(sent.map((m) => m.to)).toEqual(['maya.okafor@example.org']);
+		expect(sent[0]?.text).toContain('Shares received      50 shares of AAPL');
 	});
 
 	it.each([

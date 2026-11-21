@@ -3,7 +3,12 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { CONNECTOR_ACTIONS } from '$lib/server/connector/surface';
 import { page } from '$lib/server/db/schema';
 import { createCampaign } from '$lib/server/pages/campaign';
-import { gift, refund, repeatingGift } from '$lib/server/pages/settled-gifts.testing';
+import {
+	gift,
+	receivedPledge,
+	refund,
+	repeatingGift
+} from '$lib/server/pages/settled-gifts.testing';
 import { connectorHarness, under } from '../connector-routes.testing';
 import * as donations from './connector.v1.donations';
 import * as donor from './connector.v1.donors.$id';
@@ -21,6 +26,7 @@ import { run, stmt } from '$lib/server/db/database.testing';
 // registered ahead of the harness's own, which empties `form` and `page`: a gift names its form.
 beforeEach(async () => {
 	for (const table of [
+		'pledge',
 		'dispute',
 		'zapier_delivery',
 		'quickbooks_sync',
@@ -197,6 +203,34 @@ describe('donations.list', () => {
 		expect(await early.json()).toEqual({ data: [], next_cursor: null });
 		const onTheDay = await call('donations', '/donations?from=2026-09-10&to=2026-09-10', { key });
 		expect(amounts((await onTheDay.json()) as Listed)).toEqual(['25.00', '100.00']);
+	});
+
+	it('lists a received stock and IRA (QCD) gift with its rail, under its campaign, and counts both', async () => {
+		const key = await connect();
+		const coats = await campaign('Winter coats');
+		const stock = await receivedPledge(h.db, coats.formId, 'stock', 951_240);
+		const ira = await receivedPledge(h.db, coats.formId, 'ira_qcd', 480_000);
+
+		const listed = await call(
+			'donations',
+			`/donations?campaign_id=${coats.id}&from=2026-09-10&to=2026-09-10`,
+			{ key }
+		);
+		expect(listed.status).toBe(200);
+		const { data } = (await listed.json()) as Listed;
+		expect(data.map((g) => [g.donation_id, g.method, g.amount, g.campaign_id]).sort()).toEqual(
+			[
+				[stock, 'stock', '9512.40', coats.id],
+				[ira, 'ira_qcd', '4800.00', coats.id]
+			].sort()
+		);
+		const summary = await call('results', `/results?campaign_id=${coats.id}`, { key });
+		expect(await summary.json()).toMatchObject({ total: usd('14312.40'), gift_count: 2 });
+		const donorId = String(data[0]?.donor_id);
+		const file = (await (await call('donor', `/donors/${donorId}`, { key })).json()) as {
+			gifts: { data: { method: string }[] };
+		};
+		expect(file.gifts.data.map((g) => g.method).sort()).toEqual(['ira_qcd', 'stock']);
 	});
 
 	it('refuses a cursor it did not issue and a campaign that is not there', async () => {

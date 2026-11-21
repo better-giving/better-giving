@@ -852,6 +852,26 @@ describe('receipt.template — the employer match note', () => {
 		);
 	});
 
+	// the page states the gift's amount (`filingOf` in packages/app/src/lib/server/matching/views.ts),
+	// and a stock receipt states no dollar value.
+	it('leaves the note and the gift page off a stock receipt, and keeps them on an IRA (QCD) one', async () => {
+		const stock = await rendered({
+			pledge: { method: 'stock', shares: '50 shares of AAPL' },
+			contribution: { ...CONTRIBUTION, totalMinor: 951_240 },
+			giftPageUrl: URL
+		});
+		const shown = stock.html.replace(/<!--[\s\S]*?-->/g, '').replace(/<[^>]*>/g, ' ');
+		for (const arm of [stock.text, stock.html]) {
+			expect(arm).not.toContain(URL);
+			expect(arm).not.toContain('employer');
+		}
+		for (const arm of [stock.text, shown]) expect(arm).not.toMatch(/USD|\$|9,512|\d\.\d\d\b/);
+
+		const ira = await rendered({ pledge: { method: 'ira_qcd' }, giftPageUrl: URL });
+		expect(ira.text).toContain(NOTE);
+		expect(ira.html).toContain(`<a href="${URL}"`);
+	});
+
 	it('keeps the subject it always had', async () => {
 		expect((await rendered({ giftPageUrl: URL })).subject).toBe(
 			'Your donation receipt from Hope Foundation'

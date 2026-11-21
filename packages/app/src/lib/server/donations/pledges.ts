@@ -345,7 +345,8 @@ export type MarkToldResult =
  * the donor's "I've contacted my broker" or "I've asked my custodian": `told_at` stamped where it
  * is still null and the pledge not yet received, by one guarded update that hands back the row it
  * claimed. a second press, or two at once, claim nothing, so only one of them owes the
- * organisation a message; a press after Mark received claims nothing either.
+ * organisation a message; a press after Mark received claims nothing either. a claim whose notice
+ * cannot be written, the donor read having thrown, is handed back before that throw is raised.
  *
  * the id is the capability and the form scopes it: an id on another form's pledge is not found.
  */
@@ -364,16 +365,27 @@ export async function markPledgeTold(
 		const [held] = await db.select({ id: pledge.id }).from(pledge).where(scope).limit(1);
 		return held === undefined ? { found: false } : { found: true, claimed: false };
 	}
-	const donor = (await readContactSummaries(db, [claimed.contactId])).get(claimed.contactId);
-	return {
-		found: true,
-		claimed: true,
-		pledge: {
-			id: claimed.id,
-			reference: claimed.reference,
-			pledged: pledgedOf(claimed),
-			donorName: donor?.displayName ?? 'Unknown donor',
-			donorEmail: donor?.primaryEmail ?? null
+	try {
+		const donor = (await readContactSummaries(db, [claimed.contactId])).get(claimed.contactId);
+		return {
+			found: true,
+			claimed: true,
+			pledge: {
+				id: claimed.id,
+				reference: claimed.reference,
+				pledged: pledgedOf(claimed),
+				donorName: donor?.displayName ?? 'Unknown donor',
+				donorEmail: donor?.primaryEmail ?? null
+			}
+		};
+	} catch (error) {
+		// no notice could be written, so the claim is handed back and the press again tells the
+		// organisation. unconditional: the claim proved this press owns the stamp.
+		try {
+			await db.update(pledge).set({ toldAt: null }).where(eq(pledge.id, claimed.id));
+		} catch {
+			// the pledge keeps a stamp for a notice nobody sent; the throw below is what is logged.
 		}
-	};
+		throw error;
+	}
 }

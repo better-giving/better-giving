@@ -16,6 +16,9 @@ import {
 } from '$lib/server/db/schema';
 import { postableId } from '$lib/server/db/accounts';
 import { mintApiKey, revokeApiKey } from '$lib/server/integrations/keys';
+import { openApiDocument } from '$lib/server/integrations/openapi';
+import { schemaErrors } from '$lib/server/integrations/openapi.testing';
+import { receivedPledge } from '$lib/server/pages/settled-gifts.testing';
 import { post, postingStatements } from '$lib/server/ledger/posting';
 import { mountRoutes, type RouteRequester } from '../route-request.testing';
 import * as surface from './integrations.v1';
@@ -52,6 +55,7 @@ beforeAll(() => {
 
 beforeEach(async () => {
 	for (const table of [
+		'pledge',
 		'api_key',
 		'ledger_entry',
 		'entry_group',
@@ -327,6 +331,40 @@ async function walk(
 }
 
 const idsOf = (pages: readonly Page[]) => pages.flatMap((page) => page.data.map((gift) => gift.id));
+
+describe('a received stock or IRA (QCD) pledge', () => {
+	const FORM_ID = 'frm_receivedpledge01';
+
+	it('is a gift on its own rail in both walks, each as the published Gift describes it', async () => {
+		const key = await apiKey();
+		await run(
+			stmt(
+				`insert or ignore into form (id, name, status, revenue_account_id, currency, min_minor,
+				                             max_minor, suggested_amounts, allowed_origins, created_at,
+				                             updated_at)
+				 values (?, 'General Fund', 'live', ?, 'USD', 500, 1000000, '[2500]', '[]', 0, 0)`,
+				FORM_ID,
+				postableId('donationsDeductible')
+			)
+		);
+		const stock = await receivedPledge(db, FORM_ID, 'stock', 951_240);
+		const ira = await receivedPledge(db, FORM_ID, 'ira_qcd', 480_000);
+		const document = openApiDocument(OWN);
+
+		for (const query of ['', '?updated_since=2026-01-01T00:00:00Z']) {
+			const response = await giftsRoute(new Request(`${GIFTS}${query}`, bearer(key)));
+			expect(response.status).toBe(200);
+			const { data } = (await response.json()) as Page;
+			expect(data.map((g) => [g.donation_id, g.method, g.amount_minor, g.form_id]).sort()).toEqual(
+				[
+					[stock, 'stock', 951_240, FORM_ID],
+					[ira, 'ira_qcd', 480_000, FORM_ID]
+				].sort()
+			);
+			for (const gift of data) expect(schemaErrors(document, 'Gift', gift)).toEqual([]);
+		}
+	});
+});
 
 describe('a walk over every gift, newest first', () => {
 	it('answers each gift once, a page at a time, and one recorded mid-walk behind the cursor too', async () => {
