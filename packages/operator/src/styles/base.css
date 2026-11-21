@@ -145,7 +145,7 @@
 	   selector this sheet and ./adm.css set the code face on, and
 	   packages/app/src/lib/donate/mono-weights.spec.ts fails when one is missing. */
 	:is(code, kbd, samp, pre) :is(b, strong),
-	:is(.adm-code, .adm-url, .adm-chip) :is(b, strong) {
+	:is(.adm-code, .adm-url, .adm-chip, .adm-pledges__ref) :is(b, strong) {
 		/* type-ok: an emphasis inside a run, held to the code face's heaviest file. */
 		font-weight: var(--admin-weight-medium);
 	}
