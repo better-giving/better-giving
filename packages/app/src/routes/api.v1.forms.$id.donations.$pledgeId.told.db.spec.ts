@@ -5,6 +5,7 @@ import { mountRoutes } from '../route-request.testing';
 import * as told from './api.v1.forms.$id.donations.$pledgeId.told';
 import * as surface from './api.v1';
 import { client, first, run, stmt } from '$lib/server/db/database.testing';
+import { readContactSummaries } from '$lib/server/contacts/queries';
 
 // the donor's "I've contacted my broker" / "I've asked my custodian", driven through react router
 // under the `/api/v1` layout so the surface's limit is in front of it, against a real database.
@@ -33,6 +34,13 @@ vi.mock('$lib/server/email/factory', () => ({
 		}
 	})
 }));
+
+// the donor read after a press stamps the pledge: the seam where a second press is let in between
+// the first one's stamp and its mail. it is the real read unless a test says otherwise.
+vi.mock('$lib/server/contacts/queries', async (actual) => {
+	const queries = await actual<typeof import('$lib/server/contacts/queries')>();
+	return { ...queries, readContactSummaries: vi.fn(queries.readContactSummaries) };
+});
 
 const routes = mountRoutes([
 	{ path: 'api/v1', module: surface },
@@ -175,14 +183,33 @@ describe('telling the organisation', () => {
 		expect(mail.sent).toHaveLength(1);
 	});
 
-	it('stamps once and mails once when two presses arrive together', async () => {
-		const [one, two] = [press(), press()];
-		const answers = await Promise.all([one.response, two.response]);
-		await Promise.all([one.settled(), two.settled()]);
+	it('stamps once and mails once when a second press lands between the first one’s stamp and its mail', async () => {
+		const real = vi
+			.mocked(readContactSummaries)
+			.getMockImplementation() as typeof readContactSummaries;
+		let secondAnswer: Response | undefined;
+		let stampedBeforeSecond: number | null | undefined;
+		// the first press has stamped the pledge and is reading the donor for its mail; the second
+		// runs to the end here, so only the guarded update's `told_at is null` stands between them.
+		vi.mocked(readContactSummaries).mockImplementationOnce(async (...args) => {
+			stampedBeforeSecond = (await toldAt(STOCK_ID))?.told_at;
+			const second = press();
+			secondAnswer = await second.response;
+			await second.settled();
+			return real(...args);
+		});
 
-		expect(answers.map((a) => a.status)).toEqual([200, 200]);
-		expect(await Promise.all(answers.map((a) => a.json()))).toEqual([{ ok: true }, { ok: true }]);
+		const firstPress = press();
+		const firstAnswer = await firstPress.response;
+		await firstPress.settled();
+
+		expect(stampedBeforeSecond).toEqual(expect.any(Number));
+		expect(secondAnswer?.status).toBe(200);
+		expect(await secondAnswer?.json()).toEqual({ ok: true });
+		expect(firstAnswer.status).toBe(200);
+		expect((await toldAt(STOCK_ID))?.told_at).toBe(stampedBeforeSecond);
 		expect(mail.sent).toHaveLength(1);
+		expect(mail.sent[0]?.subject).toBe('Maya Okafor says 50 shares of AAPL are on the way');
 	});
 
 	it('answers ok and mails nobody for a pledge staff already marked received', async () => {

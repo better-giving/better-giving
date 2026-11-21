@@ -6,7 +6,6 @@ import { MARK_RECEIVED_FORM_ID } from '$lib/donations/pledge-forms';
 import { WHICH_FORM } from '$lib/forms/definition';
 import { clientAction } from '../../../routes/_app.admin.donations._index';
 import { UNREACHED } from '../unreached';
-import { localDay } from '../local-day';
 import {
 	MarkedReceived,
 	WaitingCard,
@@ -383,14 +382,25 @@ describe('the Mark received dialog', () => {
 		const still = root.querySelector('dialog');
 		expect(still).toBe(dialog);
 		expect(box(still ?? dialog, 'Value received').value).toBe('9,512.40');
-		expect(rowOf(root, 'Maya Okafor')).toBeDefined();
+		const row = rowOf(root, 'Maya Okafor');
+		const again = button(row, `Mark received, Maya Okafor, ${MAYA.pledged}`);
+		expect(again.getAttribute('aria-busy')).not.toBe('true');
+		expect(again.getAttribute('aria-disabled')).not.toBe('true');
 	});
 
 	it('fills in today as the day received', async () => {
+		// local noon, so the literal day holds in any zone the suite runs in. only `Date` is faked:
+		// the screen's own awaits and `vi.waitFor` keep real timers.
+		vi.useFakeTimers({ toFake: ['Date'] });
+		vi.setSystemTime(new Date(2026, 10, 18, 12, 0, 0));
+		onTestFinished(() => {
+			vi.useRealTimers();
+		});
+
 		const { root } = await screen(BOTH, recording);
 		const dialog = await open(root, 'Maya Okafor');
 
-		expect(box(dialog, 'Date received').value).toBe(localDay(new Date()));
+		expect(box(dialog, 'Date received').value).toBe('2026-11-18');
 	});
 
 	it('keeps Cancel from closing it while the press is out, so the refusal lands in it', async () => {
