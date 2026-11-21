@@ -1779,6 +1779,16 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 }
 
 /*
+ * the registry centres a button's content with flex alone (`justify-content` in
+ * ../registry/styles/button-css.css), and a label that wraps fills the box, so its lines align by
+ * `text-align`: the browser's own sheet centres a `<button>`'s, and an `<a>` drawn as one — a pledge
+ * screen's emailed instructions (../views.ts) — inherits the card's `start` (./tokens.css).
+ */
+.ds-btn {
+	text-align: center;
+}
+
+/*
  * the action without the registry's class, drawn here from the same registry variables. every
  * action the element and the react card draw carries it (`REGISTRY_CLASS` in ../parts.ts); the one
  * that does not is an ended campaign's link on to `/` (`EndedCampaignPage` in

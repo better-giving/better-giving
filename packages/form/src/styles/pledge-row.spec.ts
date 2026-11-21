@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { REGISTRY_CLASS } from '../parts';
 
 // node pool: the sheets read as text, as ./press-gap.spec.ts reads them. a pledge's summary row is its
 // label and its value on one line (`.pledge-summary` in ../pledge-screen.ts), and the custodian is a
@@ -57,5 +58,19 @@ describe('a pledge’s summary row', () => {
 describe('a pledge’s detail labels', () => {
 	it('floor the smallest step at 12px', () => {
 		expect(stated('.pledge-details .pledge-label', 'font-size')).toBe('max(12px, var(--_t-xs))');
+	});
+});
+
+// a pledge screen's primary (`REGISTRY_CLASS.action`) and its emailed instructions, an `<a>` with
+// `SECONDARY_BUTTON` in ../views.ts and packages/app/src/lib/donate/takeover.tsx, are both `.ds-btn`.
+// the registry centres a button's content with flex alone, and a label that wraps fills the box, so
+// its lines align by `text-align`: centred on a `<button>` by the browser's own sheet, and the card's
+// `start` (./tokens.css) on the `<a>`.
+describe('a pledge screen’s buttons', () => {
+	it('centre a label that wraps', () => {
+		expect({
+			primary: REGISTRY_CLASS.action.split(' ').includes('ds-btn'),
+			align: stated('.ds-btn', 'text-align')
+		}).toEqual({ primary: true, align: 'center' });
 	});
 });
