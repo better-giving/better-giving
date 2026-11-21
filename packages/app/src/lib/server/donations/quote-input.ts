@@ -897,7 +897,7 @@ const MAX_TICKER = 20;
 const TICKER = z
 	.string({ error: (issue) => `\`ticker\` is ${describe(issue.input)}, which is not a string.` })
 	.trim()
-	.min(1, { error: '`ticker` is empty, and a stock gift names the shares it gives.' })
+	.min(1, { error: '`ticker` is empty, and a stock gift names the stock it gives.' })
 	.max(MAX_TICKER, { error: `\`ticker\` is over the ${MAX_TICKER}-character maximum.` });
 
 const TICKER_FIX =

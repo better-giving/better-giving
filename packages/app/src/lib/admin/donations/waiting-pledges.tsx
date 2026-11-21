@@ -72,7 +72,7 @@ export function MarkedReceived() {
 			{received === undefined ? null : (
 				<StatusWord register="momentary">
 					Marked received. {received.amount}
-					{received.donorName === null ? '' : ` from ${received.donorName}`}, received{' '}
+					{received.donorName === null ? '' : ` from ${received.donorName}`} on{' '}
 					<time dateTime={received.receivedOn}>{received.receivedOn}</time>.
 				</StatusWord>
 			)}

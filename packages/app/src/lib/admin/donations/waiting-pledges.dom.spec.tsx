@@ -423,7 +423,7 @@ describe('the line a landed Mark received leaves', () => {
 		await vi.waitFor(() => expect(root.querySelector('h2')).toBeNull());
 
 		expect(statusOf(root)?.textContent).toBe(
-			'Marked received. $9,512.40 from Maya Okafor, received 2026-11-18.'
+			'Marked received. $9,512.40 from Maya Okafor on 2026-11-18.'
 		);
 		expect(statusOf(root)?.classList.contains('adm-vh')).toBe(false);
 		expect(statusOf(root)?.querySelector('time')?.getAttribute('dateTime')).toBe('2026-11-18');
