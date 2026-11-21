@@ -8929,6 +8929,54 @@ describe('a stock or IRA (QCD) pledge', () => {
 		]);
 	});
 
+	// the review step's rule for the same wait: a puzzle asking the donor is theirs to act on, and no
+	// write is out while it asks, so a spinner on Try again would say the form is working when it is
+	// waiting on them.
+	it('keeps Try again busy until the widget asks for the donor, and again once the save is out', async () => {
+		const notFound = Object.assign(new Error('This gift isn’t saved here.'), {
+			code: 'pledge_not_found'
+		});
+		let minted = 0;
+		let release: () => void = () => {};
+		const card = await onIra({
+			mints: false,
+			ports: {
+				pledges: {
+					id: () => `pledge-${++minted}`,
+					save: (request) =>
+						request.pledgeId === 'pledge-1'
+							? Promise.resolve(IRA_PLEDGE)
+							: new Promise<Quote>((resolve) => {
+									release = () => resolve(savedUnder(request.pledgeId));
+								}),
+					told: () => Promise.reject(notFound)
+				}
+			}
+		});
+		type(custodian(card), 'Fidelity Investments');
+		card.token('tk_first');
+		card.find('[part~="submit"]').click();
+		await settle();
+		primary(card).click();
+		await settle();
+
+		primary(card).click();
+		await settle();
+		expect(primary(card).getAttribute('aria-busy')).toBe('true');
+
+		card.interactive(true);
+		await settle();
+		expect(primary(card).hasAttribute('aria-busy')).toBe(false);
+
+		card.token('tk_solved');
+		await settle();
+		expect(primary(card).getAttribute('aria-busy')).toBe('true');
+
+		release();
+		await settle();
+		expect(primary(card).hasAttribute('aria-busy')).toBe(false);
+	});
+
 	it('shows the lost-pledge notice again when the save made in its place fails', async () => {
 		const notFound = Object.assign(new Error('This gift isn’t saved here.'), {
 			code: 'pledge_not_found'

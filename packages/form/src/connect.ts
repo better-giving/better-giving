@@ -446,7 +446,9 @@ export type CheckoutApi<
 	/**
 	 * the pending screen's primary — "I’ve contacted my broker", "I’ve asked my custodian", or Try
 	 * again over a press that failed. busy while its own write is in flight, which no other control on
-	 * the screen is.
+	 * the screen is, and while a lost pledge's save made again waits on its token — except while the
+	 * challenge drawn beside it is asking the donor to solve something, as `solving` is on the review
+	 * step: no write is out then.
 	 */
 	readonly toldButton: T['button'];
 	readonly consentToggle: T['button'];
@@ -967,7 +969,12 @@ export function connect<
 		}),
 
 		toldButton: button({
-			'aria-busy': snapshot.matches({ pledged: 'telling' }),
+			'aria-busy':
+				snapshot.matches({ pledged: 'telling' }) &&
+				!(
+					snapshot.matches({ pledged: { telling: 'awaitingToken' } }) &&
+					context.challengeInteractive
+				),
 			onClick: () => send({ type: 'TELL_ORGANIZATION' })
 		}),
 
