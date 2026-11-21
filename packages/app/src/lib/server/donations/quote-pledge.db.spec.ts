@@ -9,6 +9,7 @@ import { type PaymentProvider, refusing } from '../payments/provider';
 import { parseContact } from '../contacts/contact-input';
 import { type PledgeToSave, REFERENCE_DRAWS, savePledge } from './pledges';
 import { mintQuote, type QuoteDeps } from './quote';
+import { receivePledge } from './receive-pledge';
 import { replaceTickers } from './tickers';
 import { client, first, run, stmt } from '$lib/server/db/database.testing';
 
@@ -79,13 +80,21 @@ beforeAll(async () => {
 		)
 	);
 	await replaceTickers(db, [
-		{ symbol: 'AAPL', name: 'Apple Inc.', exchange: 'Nasdaq', kind: 'company' }
+		{ symbol: 'AAPL', name: 'Apple Inc.', exchange: 'Nasdaq', kind: 'company' },
+		{ symbol: 'MSFT', name: 'Microsoft Corp', exchange: 'Nasdaq', kind: 'company' }
 	]);
 });
 
 beforeEach(async () => {
 	await client.batch([
+		// a received pledge's gift and its books, written by one case below.
+		stmt('delete from ledger_entry'),
+		stmt('delete from entry_group'),
 		stmt('delete from pledge'),
+		stmt('delete from payment'),
+		stmt('delete from line_item'),
+		stmt('delete from gift_match'),
+		stmt('delete from donation'),
 		stmt('delete from pledge_rail'),
 		stmt('delete from contact'),
 		stmt('delete from org_profile'),
@@ -379,21 +388,100 @@ describe('mintQuote() — a pledge moves no total', () => {
 });
 
 describe('mintQuote() — the same press twice', () => {
-	it('saves one pledge and answers it again, reference and all', async () => {
-		const first = await save(stock());
-		const second = await save(stock({ shares: '75' }));
+	it.each([
+		['stock', stock],
+		['ira_qcd', ira]
+	] as const)('saves one %s pledge and answers it again, reference and all', async (_, make) => {
+		const first = await save(make());
+		const second = await save(make({ note: 'sent again' }));
 
 		expect(second).toEqual(first);
 		expect(await pledges()).toHaveLength(1);
 		expect(await contacts()).toHaveLength(1);
 	});
 
+	it('answers it again after Mark received wrote its gift under the same id', async () => {
+		const first = await save(stock());
+		const received = await receivePledge(db, {
+			pledgeId: PLEDGE_ID,
+			amountMinor: 951_240,
+			dated: new Date('2026-11-18')
+		});
+		expect(received.ok).toBe(true);
+
+		expect(await save(stock())).toEqual(first);
+		expect(await pledges()).toHaveLength(1);
+	});
+
+	it('answers the same donor again whatever case their email is typed in', async () => {
+		const first = await save(stock());
+		const second = await save(stock({ email: 'Maya.Okafor@example.org' }));
+
+		expect(second).toEqual(first);
+	});
+
+	it.each([
+		['other shares', stock({ shares: '75' })],
+		['another ticker', stock({ ticker: 'MSFT' })],
+		['another donor', stock({ email: 'j.whitfield@example.com' })],
+		['the other rail', ira()]
+	] as const)('refuses the id where it is sent again with %s, saving nothing', async (_, body) => {
+		expect((await save(stock())).ok).toBe(true);
+
+		const result = await save(body);
+
+		expect(result).toMatchObject({ ok: false, reason: 'pledge_id_taken' });
+		expect(result).not.toHaveProperty('field');
+		expect(JSON.stringify(result)).not.toContain('maya.okafor');
+		expect(await pledges()).toMatchObject([{ ticker: 'AAPL', shares_millionths: 50_000_000 }]);
+		expect(await contacts()).toHaveLength(1);
+	});
+
+	it.each([
+		['amount', { amountMinor: 20_000 }],
+		['custodian', { custodian: 'Vanguard' }]
+	] as const)(
+		'refuses the id where an IRA (QCD) pledge is sent again with another %s',
+		async (_, over) => {
+			expect((await save(ira())).ok).toBe(true);
+
+			expect(await save(ira(over))).toMatchObject({ ok: false, reason: 'pledge_id_taken' });
+			expect(await pledges()).toMatchObject([{ amount_minor: 10_000 }]);
+		}
+	);
+
 	it('refuses an id another form’s pledge holds, and answers nothing of it', async () => {
 		expect((await save(stock())).ok).toBe(true);
 		const result = await save(stock({ formId: OTHER_FORM_ID }), deps(), OTHER_FORM_ID);
 
-		expect(result).toMatchObject({ ok: false, reason: 'invalid_request' });
+		expect(result).toMatchObject({ ok: false, reason: 'pledge_id_taken' });
 		expect(JSON.stringify(result)).not.toContain('maya.okafor');
+	});
+
+	it('refuses an id a gift holds, writing nothing, so Mark received never meets it', async () => {
+		await run(
+			stmt(
+				`insert into contact (id, kind, display_name, primary_email, created_at, updated_at)
+				 values ('019fb600-0000-7000-8000-000000000002', 'individual', 'James Whitfield',
+				         'j.whitfield@example.com', 0, 0)`
+			)
+		);
+		await run(
+			stmt(
+				`insert into donation (id, contact_id, total_minor, currency, received_at, created_at)
+				 values (?, '019fb600-0000-7000-8000-000000000002', 10000, 'USD', 0, 0)`,
+				PLEDGE_ID
+			)
+		);
+
+		const result = await save(stock());
+
+		expect(result).toMatchObject({ ok: false, reason: 'pledge_id_taken' });
+		expect(await pledges()).toHaveLength(0);
+		expect(await contacts()).toHaveLength(1);
+		expect(
+			await receivePledge(db, { pledgeId: PLEDGE_ID, amountMinor: 951_240, dated: new Date() })
+		).toEqual({ ok: false, reason: 'not_found' });
 	});
 });
 

@@ -192,6 +192,11 @@ export const QUOTE_REFUSALS = [
 	'pledge_detail_invalid',
 	/** a stock pledge on a ticker the deployment's list does not hold. nothing was saved. */
 	'ticker_not_listed',
+	/**
+	 * a pledge whose id names a gift, or a pledge that is not this one sent again. nothing was saved;
+	 * the form mints another id.
+	 */
+	'pledge_id_taken',
 	/** a defect of ours. nothing about the request or the deployment fixes it. */
 	'internal_error'
 ] as const;
@@ -219,7 +224,8 @@ export const QUOTE_REFUSAL_CODES = [
 	'below_minimum',
 	'above_maximum',
 	'pledge_detail_invalid',
-	'ticker_not_listed'
+	'ticker_not_listed',
+	'pledge_id_taken'
 ] as const satisfies readonly ApiErrorCode[];
 
 /** whether a refusal carries an `error` code on the wire, or only a sentence. */
@@ -656,9 +662,10 @@ async function mintPledge(
 		if (saved.reason === 'id_taken') {
 			return refuse(
 				form,
-				'invalid_request',
-				'`pledgeId` already names a pledge on another form, so nothing was saved.',
-				'Mint a fresh UUID for each pledge (`crypto.randomUUID()`).'
+				'pledge_id_taken',
+				'We couldn’t save this gift. Try again.',
+				'`pledgeId` already names a gift or a different pledge, so nothing was saved. Mint a ' +
+					'fresh UUID (`crypto.randomUUID()`) and send the request again.'
 			);
 		}
 		logWriteFailure(saved.detail);

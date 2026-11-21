@@ -100,7 +100,7 @@ describe('receivePledge', () => {
 				amountMinor: 951_240,
 				donorName: 'Maya Okafor',
 				donorEmail: 'maya.okafor@example.org',
-				shares: '50 shares of AAPL'
+				pledge: { method: 'stock', shares: '50 shares of AAPL' }
 			})
 		});
 		expect(await stamp()).toBe(PLEDGE_ID);
@@ -155,7 +155,9 @@ describe('receivePledge', () => {
 		});
 	});
 
-	it('answers write_failed, stamping nothing, where a gift not this pledge’s holds its id', async () => {
+	// a row `savePledge` refuses to save beside (./quote-pledge.db.spec.ts), written by hand here to
+	// make the batch fail on a refusal the pledge's stamp does not answer.
+	it('answers write_failed, stamping nothing, where the batch is refused for another cause', async () => {
 		await run(
 			stmt(
 				`insert into donation (id, contact_id, total_minor, currency, received_at, created_at)

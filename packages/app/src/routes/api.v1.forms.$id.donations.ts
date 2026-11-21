@@ -224,6 +224,8 @@ async function readJsonBody(request: Request): Promise<unknown> {
  *   wrong is the body's, and a ticker the deployment's list does not hold is a well-formed answer
  *   the donor moves. both carry `field`, the box to mark. a pledge rail that is off is
  *   `payments_not_configured`, as any rail this deployment cannot take is.
+ * - 409, a pledge id already naming a gift or a different pledge: a conflict with what this
+ *   deployment holds, with no `field`, since no box the donor fills in is wrong.
  * - 500, a defect of ours. no code, because no screen fixes it: `API_ERROR_CODES` in
  *   `packages/form/src/v1.ts` is a permanent vocabulary whose members each name one, and a member for our
  *   own bug would ask a donation form to render a screen about it. this is also where a gift that
@@ -260,5 +262,6 @@ const REFUSAL_STATUS = {
 	above_maximum: 422,
 	pledge_detail_invalid: 400,
 	ticker_not_listed: 422,
+	pledge_id_taken: 409,
 	internal_error: 500
 } as const satisfies Record<QuoteRefusal, number>;

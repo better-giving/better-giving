@@ -155,21 +155,15 @@ describe('which run an expression reaches', () => {
 		expect(sweepSupporterLeftovers).toHaveBeenCalledExactlyOnceWith(db, SCHEDULED_AT);
 	});
 
-	it.each([
-		['the From address', 'donations@example.org', 'donations@example.org'],
-		['no From address where none is set', undefined, null]
-	] as const)(
-		'refreshes the stock ticker list once a day at 04:20, handing it %s',
-		async (_, from, mailFrom) => {
-			await fires('20 4 * * *', { MAIL_FROM: from } as unknown as typeof env);
+	it('refreshes the stock ticker list once a day at 04:20, handing it no From address', async () => {
+		await fires('20 4 * * *', { MAIL_FROM: 'donations@example.org' } as unknown as typeof env);
 
-			expect(refreshTickers).toHaveBeenCalledExactlyOnceWith(
-				{ db, fetch: expect.any(Function), email: expect.anything(), mailFrom },
-				SCHEDULED_AT
-			);
-			expect(sendDueEntries).not.toHaveBeenCalled();
-		}
-	);
+		expect(refreshTickers).toHaveBeenCalledExactlyOnceWith(
+			{ db, fetch: expect.any(Function), email: expect.anything() },
+			SCHEDULED_AT
+		);
+		expect(sendDueEntries).not.toHaveBeenCalled();
+	});
 
 	it.each([
 		[

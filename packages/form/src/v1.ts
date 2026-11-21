@@ -543,7 +543,8 @@ export type Quote = {
 	 * the answer is the save, and the pending screen is drawn from it once it arrives. nothing
 	 * is charged: `feeMinor` is 0, `totalMinor` is the pledged amount on `ira_qcd` and 0 on `stock`,
 	 * which has no value until the shares arrive, and `paymentToken` is the pledge's id. a resend
-	 * with the same `pledgeId` answers the pledge already saved, whatever else it carries.
+	 * of the same pledge with the same `pledgeId` answers the pledge already saved, whatever else it
+	 * carries; a `pledgeId` naming anything else is `pledge_id_taken`.
 	 */
 	readonly pledge?: Pledge;
 };
@@ -631,7 +632,8 @@ export type QuoteRequest = {
 	 * the id of the pledge a `stock` or `ira_qcd` request saves, minted by the form as a UUID when
 	 * the save of that request starts, before any answer, and sent again on every resend of the same
 	 * request — a resend answers the pledge already saved rather than saving a second, and a changed
-	 * request is minted an id of its own. required on both, absent on every other rail.
+	 * request is minted an id of its own. an id that names a gift or another pledge is refused as
+	 * `pledge_id_taken`. required on both, absent on every other rail.
 	 */
 	readonly pledgeId?: string;
 	/**
@@ -965,6 +967,14 @@ export const API_ERROR_CODES = [
 	 * the told press's pledge id (`PledgeToldAnswer` above) names no pledge on this form. the donor's screen holds a pledge
 	 * this deployment never saved, and saving it again is the way back.
 	 */
-	'pledge_not_found'
+	'pledge_not_found',
+	/**
+	 * a stock or IRA (QCD) request's `pledgeId` already names a gift, or a pledge that is not this
+	 * one, so nothing was saved. a 409 with no `field`: no box the donor fills in is wrong. a resend
+	 * of the same pledge (the same id, form, `method`, `ticker` and `shares` or `amountMinor` and
+	 * `custodian`, and donor `email`) is not this code and answers the pledge already saved. the
+	 * way back is the form's: mint a fresh `pledgeId` and send the request again once.
+	 */
+	'pledge_id_taken'
 ] as const;
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number];

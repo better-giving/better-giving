@@ -8,7 +8,9 @@ import { mountRoutes } from '../route-request.testing';
 import * as donations from './api.v1.forms.$id.donations';
 import * as surface from './api.v1';
 import { countingClient } from '$lib/server/db/counting-client.testing';
-import { first, run, stmt } from '$lib/server/db/database.testing';
+import { createDb } from '$lib/server/db/client';
+import { client, first, run, stmt } from '$lib/server/db/database.testing';
+import { replaceTickers } from '$lib/server/donations/tickers';
 import { readEnv } from '$lib/server/runtime/env';
 import { specRateLimiters } from '$lib/server/runtime/rate-limiter.testing';
 
@@ -369,6 +371,39 @@ describe('POST /api/v1/forms/:id/donations — the status each refusal carries',
 
 			expect(response.status).toBe(422);
 			expect(await response.json()).toMatchObject({ error: 'ticker_not_listed', field: 'ticker' });
+		});
+
+		// past the challenge on a solved ALTCHA payload, as the fund gift at the foot of the file is.
+		it('answers 409 with no field for a pledge id a gift already holds', async () => {
+			await replaceTickers(createDb(client), [
+				{ symbol: 'AAPL', name: 'Apple Inc.', exchange: 'Nasdaq', kind: 'company' }
+			]);
+			await run(
+				stmt(
+					`insert into contact (id, kind, display_name, primary_email, created_at, updated_at)
+					 values ('019fb600-0000-7000-8000-0000000009c1', 'individual', 'James Whitfield',
+					         'j.whitfield@example.com', 0, 0)`
+				)
+			);
+			await run(
+				stmt(
+					`insert into donation (id, contact_id, total_minor, currency, received_at, created_at)
+					 values ('0b5f7a52-3d1e-4c8a-9f2b-6e4d1c0a7b93', '019fb600-0000-7000-8000-0000000009c1',
+					         10000, 'USD', 0, 0)`
+				)
+			);
+			const issued = await env.ALTCHA.challenge();
+			const solution = await solveChallenge({ challenge: issued, deriveKey });
+			const altchaPayload = btoa(JSON.stringify({ challenge: issued, solution }));
+
+			const response = await post(stock({ altchaPayload }));
+
+			expect(response.status).toBe(409);
+			const answered = await response.json();
+			expect(answered).toMatchObject({ error: 'pledge_id_taken' });
+			expect(answered).not.toHaveProperty('field');
+			await run(stmt(`delete from donation where id = '0b5f7a52-3d1e-4c8a-9f2b-6e4d1c0a7b93'`));
+			await run(stmt(`delete from contact where id = '019fb600-0000-7000-8000-0000000009c1'`));
 		});
 	});
 

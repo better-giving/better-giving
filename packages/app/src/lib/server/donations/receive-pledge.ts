@@ -7,6 +7,7 @@ import { readContactSummaries } from '../contacts/queries';
 import { donationRevenueAccount } from '../db/accounts';
 import type { Db } from '../db/client';
 import { sqliteResultCode } from '../db/rejection';
+import type { PledgeReceived } from '../email/receipt';
 import { donation, type NewDonation, type Pledge, pledge } from '../db/schema';
 import { readProgram } from '../programs/queries';
 import { supporterPageCountingOf } from '../supporters/gifts';
@@ -47,8 +48,8 @@ export type ReceivedPledge = {
 	readonly donorName: string | null;
 	readonly donorEmail: string | null;
 	readonly program: string | null;
-	/** the shares on a stock gift, for the receipt's row; `null` on an IRA (QCD) gift. */
-	readonly shares: string | null;
+	/** the rail the pledge was on, and on a stock gift the shares, for the receipt. */
+	readonly pledge: PledgeReceived;
 	readonly tributeKind: string | null;
 	readonly tributeHonoree: string | null;
 	readonly tributeNotifyName: string | null;
@@ -154,8 +155,8 @@ export async function receivePledge(db: Db, arrival: PledgeArrival): Promise<Rec
 		) {
 			return { ok: false, reason: 'already_received' };
 		}
-		// a collision the pledge's own stamp does not answer: the donor's form mints a pledge's id, so
-		// one can name a gift that is not this pledge's. logged, and never told as received.
+		// a refusal the pledge's own stamp does not answer. `savePledge` (./pledges.ts) refuses a
+		// pledge id a gift already holds, so this is a fault: logged, and never told as received.
 		return failed(error);
 	}
 
@@ -177,10 +178,13 @@ function giftOf(
 		amountMinor: arrival.amountMinor,
 		dated: arrival.dated,
 		program: null,
-		shares:
-			row.ticker !== null && row.sharesMillionths !== null
-				? sharesPhrase({ ticker: row.ticker, sharesMillionths: row.sharesMillionths })
-				: null,
+		pledge:
+			row.method === 'stock' && row.ticker !== null && row.sharesMillionths !== null
+				? {
+						method: 'stock',
+						shares: sharesPhrase({ ticker: row.ticker, sharesMillionths: row.sharesMillionths })
+					}
+				: { method: 'ira_qcd' },
 		tributeKind: row.tributeKind,
 		tributeHonoree: row.tributeHonoree,
 		tributeNotifyName: row.tributeNotifyName,
@@ -227,9 +231,10 @@ function failed(error: unknown): ReceivePledgeResult {
 }
 
 /**
- * the donor's receipt for a received pledge, at the value staff entered, and then the notice to the
- * person they asked us to tell, where they named one. both claim their own stamp on the gift
- * before they send, so a second call sends nothing; neither throws.
+ * the donor's receipt for a received pledge — the shares on a stock gift and never the value staff
+ * entered, the amount on an IRA (QCD) gift (`PledgeReceived` in the emails package's receipt) —
+ * and then the notice to the person they asked us to tell, where they named one. both claim their
+ * own stamp on the gift before they send, so a second call sends nothing; neither throws.
  */
 export async function sendReceivedPledgeMail(
 	deps: ReceiptDeps,
@@ -250,7 +255,7 @@ export async function sendReceivedPledgeMail(
 		tribute: projectTribute(gift.tributeKind, gift.tributeHonoree),
 		program: gift.program,
 		crypto: null,
-		...(gift.shares === null ? {} : { shares: gift.shares })
+		pledge: gift.pledge
 	});
 	await sendTributeNotice(deps, {
 		donationId: gift.donationId,

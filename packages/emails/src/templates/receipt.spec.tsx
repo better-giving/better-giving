@@ -564,24 +564,72 @@ describe('receipt.template — a gift given in crypto', () => {
 });
 
 describe('receipt.template — a gift given in stock', () => {
-	const SHARES = '50 shares of AAPL';
+	const STOCK = { method: 'stock', shares: '50 shares of AAPL' } as const;
+	/** what staff entered at Mark received, which the donor values for themselves. */
+	const VALUED: ReceiptContribution = { ...CONTRIBUTION, totalMinor: 951_240 };
 
-	it('states the shares received and their value when received in place of the amount', async () => {
-		for (const arm of await arms({ shares: SHARES })) {
-			expect(arm.indexOf('Date')).toBeLessThan(arm.indexOf('Shares received'));
-			expect(arm.indexOf('Shares received')).toBeLessThan(arm.indexOf('Value when received'));
-			expect(arm).toContain(SHARES);
-			expect(arm).toContain('USD 100.00');
-			expect(arm).not.toMatch(/\bAmount\b/);
+	it('names the shares, the ticker and the date received', async () => {
+		for (const arm of await arms({ pledge: STOCK, contribution: VALUED })) {
+			expect(arm).toContain('Shares received');
+			expect(arm).toContain('50 shares of AAPL');
+			expect(arm).toContain('Date received');
+			expect(arm).toContain('January 5, 2026');
+			expect(arm.indexOf('Date received')).toBeLessThan(arm.indexOf('Shares received'));
+			expect(arm).toContain('No goods or services were provided');
 		}
 	});
 
+	it('states no dollar value anywhere, in either arm', async () => {
+		const { text, html } = await rendered({ pledge: STOCK, contribution: VALUED });
+		// what a reader of the HTML arm sees: react's `<!--$-->` markers and the inline styles'
+		// `line-height:1.55` are not on the page.
+		const shown = html.replace(/<!--[\s\S]*?-->/g, '').replace(/<[^>]*>/g, ' ');
+		for (const arm of [text, shown]) {
+			expect(arm).toContain('50 shares of AAPL');
+			expect(arm).not.toMatch(/USD|\$|9,512|9512|\d\.\d\d\b/);
+			expect(arm).not.toMatch(/Value when received|\bAmount\b|Total/);
+		}
+	});
+
+	it('keeps the subject and the organisation block', async () => {
+		const stock = await rendered({ pledge: STOCK, contribution: VALUED });
+		const card = await rendered();
+		expect(stock.subject).toBe(card.subject);
+		expect(stock.text.slice(stock.text.lastIndexOf('\n--\n'))).toBe(
+			card.text.slice(card.text.lastIndexOf('\n--\n'))
+		);
+	});
+
 	it('lines its rows up in a column the longest label sets, and emphasises the shares', async () => {
-		const { text, html } = await rendered({ shares: SHARES });
+		const { text, html } = await rendered({ pledge: STOCK, contribution: VALUED });
+		expect(text).toContain('\nDate received        January 5, 2026\n');
 		expect(text).toContain('\nShares received      50 shares of AAPL\n');
-		expect(text).toContain('\nValue when received  USD 100.00\n');
-		expect(html).toContain(`<strong>${SHARES}</strong>`);
-		expect(html).not.toContain('<strong>USD 100.00</strong>');
+		expect(html).toContain('<strong>50 shares of AAPL</strong>');
+	});
+});
+
+describe('receipt.template — a gift given from an IRA (QCD)', () => {
+	const IRA = { method: 'ira_qcd' } as const;
+
+	it('states the amount and the date, and that nothing was given in return', async () => {
+		for (const arm of await arms({ pledge: IRA })) {
+			expect(arm).toContain('USD 100.00');
+			expect(arm).toContain('January 5, 2026');
+			expect(arm).toContain('No goods or services were provided in return for this gift.');
+			expect(arm).not.toContain('in exchange for this contribution');
+		}
+	});
+
+	it('keeps every other line of the receipt it would get from any other rail', async () => {
+		const ira = await rendered({ pledge: IRA });
+		const card = await rendered();
+		expect(ira.subject).toBe(card.subject);
+		expect(ira.text).toBe(
+			card.text.replace(
+				'No goods or services were provided to you in exchange for this contribution.',
+				'No goods or services were provided in return for this gift.'
+			)
+		);
 	});
 });
 

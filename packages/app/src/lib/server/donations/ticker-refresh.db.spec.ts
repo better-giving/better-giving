@@ -64,12 +64,22 @@ afterEach(() => {
 });
 
 /** one run at `NOW`, against the stand-in. */
-function refresh(
-	sec: ReturnType<typeof secStandIn>,
-	email: EmailProvider,
-	mailFrom: string | null = null
-): Promise<void> {
-	return refreshTickers({ db, fetch: sec.fetch, email, mailFrom }, NOW);
+function refresh(sec: ReturnType<typeof secStandIn>, email: EmailProvider): Promise<void> {
+	return refreshTickers({ db, fetch: sec.fetch, email }, NOW);
+}
+
+/** a list of `count` companies already held, replaced two days before `NOW`. */
+async function holdList(count: number): Promise<void> {
+	await replaceTickers(
+		db,
+		Array.from({ length: count }, (_, n) => ({
+			symbol: `HELD${n}`,
+			name: `Held ${n} Inc.`,
+			exchange: 'NYSE',
+			kind: 'company' as const
+		}))
+	);
+	await run(stmt('update ticker set replaced_at = ?', NOW.getTime() - 2 * 24 * HOUR));
 }
 
 describe('refreshTickers', () => {
@@ -91,19 +101,6 @@ describe('refreshTickers', () => {
 		await refresh(sec, recordingEmail().email);
 
 		expect(sec.requests).toHaveLength(2);
-		expect(await searchTickers(db, 'OLD', 8)).toEqual([]);
-	});
-
-	it('refreshes where no notifications address is saved, naming the From address as its contact', async () => {
-		await saveProfile(db, { notification_email: '' });
-		const sec = wholeFiles();
-
-		await refresh(sec, recordingEmail().email, 'donations@example.org');
-
-		expect(sec.requests.map((r) => r.headers.get('user-agent'))).toEqual([
-			'better-giving donations@example.org',
-			'better-giving donations@example.org'
-		]);
 		expect(await searchTickers(db, 'OLD', 8)).toEqual([]);
 	});
 
@@ -175,15 +172,74 @@ describe('refreshTickers', () => {
 		expect(sent[0]?.text).toContain('sec.gov answered 403');
 	});
 
-	it('keeps the old list when a file parses to far fewer rows than sec.gov lists', async () => {
-		const sec = secStandIn({ exchange: ok(exchangeFile(6_000)), fund: ok(fundFile(40)) });
+	it('takes a new list holding exactly half the rows of the list held', async () => {
+		await holdList(100);
+		const sec = secStandIn({ exchange: ok(exchangeFile(49)), fund: ok(fundFile(1)) });
 		const { email, sent } = recordingEmail();
 
 		await refresh(sec, email);
 
-		expect((await searchTickers(db, 'OLD', 8)).map((row) => row.symbol)).toEqual(['OLD']);
+		expect(await searchTickers(db, 'HELD0', 8)).toEqual([]);
+		expect(await searchTickers(db, 'F0X', 8)).toHaveLength(1);
+		expect(sent).toEqual([]);
+	});
+
+	it('keeps the list held and alerts when the new list holds one row under half of it', async () => {
+		await holdList(100);
+		const sec = secStandIn({ exchange: ok(exchangeFile(48)), fund: ok(fundFile(1)) });
+		const { email, sent } = recordingEmail();
+
+		await refresh(sec, email);
+
+		expect((await searchTickers(db, 'HELD0', 8)).map((row) => row.symbol)).toEqual(['HELD0']);
+		expect(await searchTickers(db, 'F0X', 8)).toEqual([]);
+		expect(sent.map((message) => [message.to, message.subject])).toEqual([
+			['alerts@example.org', 'The stock ticker list did not refresh']
+		]);
+		expect(sent[0]?.text).toContain('49 tickers');
+		expect(sent[0]?.text).toContain('100');
+	});
+
+	it('logs a refused shrink where no notifications address is saved, mailing nobody', async () => {
+		await saveProfile(db, { notification_email: '' });
+		await holdList(100);
+		const sec = secStandIn({ exchange: ok(exchangeFile(10)), fund: ok(fundFile(1)) });
+		const { email, sent } = recordingEmail();
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+		await refresh(sec, email);
+
+		expect(sent).toEqual([]);
+		expect(logged.mock.calls.map(([line]) => line)).toEqual([
+			'The stock ticker list did not refresh:'
+		]);
+		expect(await searchTickers(db, 'HELD0', 8)).toHaveLength(1);
+	});
+
+	it('takes a small list where none is held', async () => {
+		await run(stmt('delete from ticker'));
+		const sec = secStandIn({ exchange: ok(exchangeFile(2)), fund: ok(fundFile(1)) });
+		const { email, sent } = recordingEmail();
+
+		await refresh(sec, email);
+
+		expect((await searchTickers(db, 'C', 8)).map((row) => row.symbol)).toEqual(['C0', 'C1']);
+		expect(sent).toEqual([]);
+	});
+
+	it.each([
+		['a list is held', async () => {}],
+		['none is held', () => run(stmt('delete from ticker')).then(() => {})]
+	])('refuses an empty file where %s, alerting', async (_, hold) => {
+		await hold();
+		const sec = secStandIn({ exchange: ok(exchangeFile(0)), fund: ok(fundFile(15_000)) });
+		const { email, sent } = recordingEmail();
+
+		await refresh(sec, email);
+
+		expect(await searchTickers(db, 'F0X', 8)).toEqual([]);
 		expect(sent).toHaveLength(1);
-		expect(sent[0]?.text).toContain(FUND_FILE_URL);
+		expect(sent[0]?.text).toContain(EXCHANGE_FILE_URL);
 	});
 
 	it('gives up on a file sec.gov never answers, keeping the old list and alerting', async () => {
@@ -198,7 +254,7 @@ describe('refreshTickers', () => {
 		}) as typeof globalThis.fetch;
 		const { email, sent } = recordingEmail();
 
-		const refreshing = refreshTickers({ db, fetch: stalled, email, mailFrom: null }, NOW);
+		const refreshing = refreshTickers({ db, fetch: stalled, email }, NOW);
 		await vi.waitFor(() => expect(requests).toHaveLength(1));
 		deadline.abort(new DOMException('The operation was aborted due to timeout', 'TimeoutError'));
 		await refreshing;
@@ -227,7 +283,7 @@ describe('refreshTickers', () => {
 		}) as typeof globalThis.fetch;
 		const { email, sent } = recordingEmail();
 
-		const refreshing = refreshTickers({ db, fetch: stallsOnFunds, email, mailFrom: null }, NOW);
+		const refreshing = refreshTickers({ db, fetch: stallsOnFunds, email }, NOW);
 		await vi.waitFor(() => expect(requests).toHaveLength(2));
 		deadline.abort(new DOMException('The operation was aborted due to timeout', 'TimeoutError'));
 		await refreshing;
@@ -238,19 +294,27 @@ describe('refreshTickers', () => {
 		expect(sent[0]?.text).toContain(FUND_FILE_URL);
 	});
 
-	it('fetches nothing and alerts nobody where the stock rail is off', async () => {
+	it('refreshes where the stock rail is off', async () => {
 		await disablePledgeRail(db, 'stock');
-		const sec = secStandIn({
-			exchange: { status: 403, body: {} },
-			fund: { status: 403, body: {} }
-		});
+		const sec = wholeFiles();
 		const { email, sent } = recordingEmail();
 
 		await refresh(sec, email);
 
-		expect(sec.requests).toEqual([]);
+		expect(sec.requests).toHaveLength(2);
+		expect(await searchTickers(db, 'OLD', 8)).toEqual([]);
 		expect(sent).toEqual([]);
+	});
+
+	it('alerts a failure where the stock rail is off', async () => {
+		await disablePledgeRail(db, 'stock');
+		const sec = secStandIn({ exchange: { status: 403, body: {} }, fund: ok(fundFile(15_000)) });
+		const { email, sent } = recordingEmail();
+
+		await refresh(sec, email);
+
 		expect((await searchTickers(db, 'OLD', 8)).map((row) => row.symbol)).toEqual(['OLD']);
+		expect(sent).toHaveLength(1);
 	});
 
 	it('alerts with the cause when the request itself fails, fetching nothing after it', async () => {
@@ -261,7 +325,7 @@ describe('refreshTickers', () => {
 		}) as typeof globalThis.fetch;
 		const { email, sent } = recordingEmail();
 
-		await refreshTickers({ db, fetch: unreachable, email, mailFrom: null }, NOW);
+		await refreshTickers({ db, fetch: unreachable, email }, NOW);
 
 		expect(requests).toEqual([EXCHANGE_FILE_URL]);
 		expect((await searchTickers(db, 'OLD', 8)).map((row) => row.symbol)).toEqual(['OLD']);
@@ -276,18 +340,18 @@ describe('refreshTickers', () => {
 			})) as typeof globalThis.fetch;
 		const { email, sent } = recordingEmail();
 
-		await refreshTickers({ db, fetch: html, email, mailFrom: null }, NOW);
+		await refreshTickers({ db, fetch: html, email }, NOW);
 
 		expect((await searchTickers(db, 'OLD', 8)).map((row) => row.symbol)).toEqual(['OLD']);
 		expect(sent).toHaveLength(1);
 		expect(sent[0]?.text).toContain(EXCHANGE_FILE_URL);
 	});
 
-	it('still asks, naming no contact, where neither a notifications address nor MAIL_FROM is set', async () => {
+	it('still asks, naming no contact, where no notifications address is saved', async () => {
 		await saveProfile(db, { notification_email: '' });
 		const sec = wholeFiles();
 
-		await refresh(sec, recordingEmail().email, null);
+		await refresh(sec, recordingEmail().email);
 
 		expect(sec.requests.map((r) => r.headers.get('user-agent'))).toEqual([
 			'better-giving',
@@ -316,10 +380,7 @@ describe('refreshTickers', () => {
 
 describe('refreshTickersIfNoneHeld', () => {
 	const refreshIfNone = (sec: ReturnType<typeof secStandIn>) =>
-		refreshTickersIfNoneHeld(
-			{ db, fetch: sec.fetch, email: recordingEmail().email, mailFrom: null },
-			NOW
-		);
+		refreshTickersIfNoneHeld({ db, fetch: sec.fetch, email: recordingEmail().email }, NOW);
 
 	it('fetches nothing where a list is held, however old, leaving it to the daily run', async () => {
 		const sec = wholeFiles();
@@ -349,7 +410,7 @@ describe('refreshTickersIfNoneHeld', () => {
 
 		await expect(
 			refreshTickersIfNoneHeld(
-				{ db: unmigrated, fetch: sec.fetch, email: recordingEmail().email, mailFrom: null },
+				{ db: unmigrated, fetch: sec.fetch, email: recordingEmail().email },
 				NOW
 			)
 		).resolves.toBeUndefined();

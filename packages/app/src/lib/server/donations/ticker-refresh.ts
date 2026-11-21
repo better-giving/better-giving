@@ -3,18 +3,24 @@ import type { Db } from '../db/client';
 import { alert } from '../email/alert';
 import type { EmailProvider } from '../email/provider';
 import { readOrgProfile } from '../org/queries';
-import { readPledgeRails } from '../payments/pledge-rails';
-import { replaceTickers, type TickerRow, tickersReplacedAt } from './tickers';
+import {
+	listedOnce,
+	replaceTickers,
+	type TickerRow,
+	tickersHeld,
+	tickersReplacedAt
+} from './tickers';
 
-// the stock step's ticker list, fetched from the SEC's two public files once a day while the stock
-// rail is on and handed whole to `replaceTickers` (./tickers.ts). ../../../cron-runs.ts fires it,
-// and the Stocks Save on /admin/payments fires it once where no list is held yet
+// the stock step's ticker list, fetched from the SEC's two public files once a day whether or not
+// the stock rail is on, and handed whole to `replaceTickers` (./tickers.ts). ../../../cron-runs.ts
+// fires it, and the Stocks Save on /admin/payments fires it once where no list is held yet
 // (`refreshTickersIfNoneHeld`).
 //
 // sec.gov answers 403 to a request whose User-Agent names no contact
 // (https://www.sec.gov/os/accessing-edgar-data), so the contact is the notification address saved
-// in Settings, else `MAIL_FROM`; with neither the run still asks, and a 403 is a failure like any
-// other. its fair-access limit is ten requests a second; this run makes two, one after the other.
+// in Settings; with none the run still asks, and a 403 is a failure like any other, logged by
+// `alert` (../email/alert.ts) and mailed to nobody. its fair-access limit is ten requests a second;
+// this run makes two, one after the other.
 
 export const EXCHANGE_FILE_URL = 'https://www.sec.gov/files/company_tickers_exchange.json';
 export const FUND_FILE_URL = 'https://www.sec.gov/files/company_tickers_mf.json';
@@ -23,8 +29,6 @@ export type TickerRefreshDeps = {
 	readonly db: Db;
 	readonly fetch: typeof globalThis.fetch;
 	readonly email: EmailProvider;
-	/** `MAIL_FROM`, the contact sec.gov is given where no notification address is saved. */
-	readonly mailFrom: string | null;
 };
 
 /**
@@ -40,15 +44,11 @@ const FRESH_FOR_MS = 23 * 60 * 60_000;
  */
 export const TICKER_REFRESH_TIMEOUT_MS = 20_000;
 
-/** one of the two files: where it is, its shape, and the fewest rows a whole copy of it holds. */
+/** one of the two files: where it is and its shape. */
 type SecFile<Row> = {
 	readonly url: string;
 	readonly schema: z.ZodType<{ readonly data: readonly Row[] }>;
-	readonly fewest: number;
 };
-
-// each `fewest` is about half what the file listed on 2026-11-21 (10,399 and 28,670 rows), so a
-// truncated or emptied copy is refused before it can replace a whole list.
 
 /** `{ fields, data }`, each row a tuple in `fields`' order; a company's exchange may be null. */
 const EXCHANGE_FILE: SecFile<[number, string, string, string | null]> = {
@@ -61,8 +61,7 @@ const EXCHANGE_FILE: SecFile<[number, string, string, string | null]> = {
 			z.literal('exchange')
 		]),
 		data: z.array(z.tuple([z.number(), z.string(), z.string(), z.string().nullable()]))
-	}),
-	fewest: 5_000
+	})
 };
 
 const FUND_FILE: SecFile<[number, string, string, string]> = {
@@ -75,8 +74,7 @@ const FUND_FILE: SecFile<[number, string, string, string]> = {
 			z.literal('symbol')
 		]),
 		data: z.array(z.tuple([z.number(), z.string(), z.string(), z.string()]))
-	}),
-	fewest: 14_000
+	})
 };
 
 /** the most parse issues an alert lists: a changed column fails every row the same way. */
@@ -94,29 +92,33 @@ class TickerFileError extends Error {
 	}
 }
 
-/**
- * the daily run: where the stock rail is on, fetches both files and replaces the list. never throws:
- * a failure leaves the list a donor searches as it was and alerts the operator. with the rail off it
- * asks sec.gov nothing, and so has nothing to alert about.
- */
-export async function refreshTickers(deps: TickerRefreshDeps, now: Date): Promise<void> {
-	try {
-		if (!(await readPledgeRails(deps.db)).stock.enabled) return;
-	} catch (error) {
-		await tellOperator(deps, error);
-		return;
+/** a list refused for holding too few tickers beside the one held, in words for the alert. */
+class ShrunkListError extends Error {
+	constructor(fetched: number, held: number) {
+		super(
+			`the files list ${fetched} tickers, under half the ${held} the list already holds, so ` +
+				'that list was kept'
+		);
 	}
-	await refreshFromSec(deps, now);
 }
 
-async function refreshFromSec(deps: TickerRefreshDeps, now: Date): Promise<void> {
+/**
+ * the daily run, whether or not the stock rail is on: fetches both files and replaces the list.
+ * never throws: a failure leaves the list a donor searches as it was and alerts the operator.
+ */
+export async function refreshTickers(deps: TickerRefreshDeps, now: Date): Promise<void> {
 	try {
 		const replacedAt = await tickersReplacedAt(deps.db);
 		if (replacedAt !== null && now.getTime() - replacedAt.getTime() < FRESH_FOR_MS) return;
 		const profile = await readOrgProfile(deps.db);
-		const contact = profile?.notificationEmail ?? deps.mailFrom;
+		const contact = profile?.notificationEmail ?? null;
 		const userAgent = contact === null ? 'better-giving' : `better-giving ${contact}`;
-		await replaceTickers(deps.db, await fetchTickers(deps, userAgent));
+		const fetched = listedOnce(await fetchTickers(deps, userAgent));
+		// a truncated copy parses as well as a whole one: a list under half the one held is refused,
+		// and a first fill, beside nothing, takes whatever the files list.
+		const held = await tickersHeld(deps.db);
+		if (fetched.length * 2 < held) throw new ShrunkListError(fetched.length, held);
+		await replaceTickers(deps.db, fetched);
 	} catch (error) {
 		await tellOperator(deps, error);
 	}
@@ -126,8 +128,7 @@ async function refreshFromSec(deps: TickerRefreshDeps, now: Date): Promise<void>
  * `refreshTickers`, where no list has ever been stored: a stock pledge on a ticker the list does not
  * hold is refused (`mintPledge` in ./quote.ts), so the Stocks Save on /admin/payments starts one
  * rather than leave every stock gift refused until the next 04:20 run. a list already held, however
- * old, is that run's to replace. the Save has just turned the rail on, so the rail is not read
- * again. never throws.
+ * old, is that run's to replace. never throws.
  */
 export async function refreshTickersIfNoneHeld(deps: TickerRefreshDeps, now: Date): Promise<void> {
 	try {
@@ -136,7 +137,7 @@ export async function refreshTickersIfNoneHeld(deps: TickerRefreshDeps, now: Dat
 		await tellOperator(deps, error);
 		return;
 	}
-	await refreshFromSec(deps, now);
+	await refreshTickers(deps, now);
 }
 
 async function fetchTickers(deps: TickerRefreshDeps, userAgent: string): Promise<TickerRow[]> {
@@ -187,12 +188,7 @@ async function fetchFile<Row>(
 		throw new TickerFileError(file.url, `the file changed shape:\n${shown}${more}`);
 	}
 	const rows = parsed.data.data;
-	if (rows.length < file.fewest) {
-		throw new TickerFileError(
-			file.url,
-			`the file lists ${rows.length} rows, fewer than the ${file.fewest} a whole copy holds`
-		);
-	}
+	if (rows.length === 0) throw new TickerFileError(file.url, 'the file lists no rows');
 	return rows;
 }
 

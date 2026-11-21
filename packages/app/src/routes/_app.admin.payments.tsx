@@ -234,10 +234,7 @@ export async function action(args: Route.ActionArgs) {
 		});
 		const { env, deferred } = context.get(platform);
 		deferred.waitUntil(
-			refreshTickersIfNoneHeld(
-				{ db, fetch, email: createEmailProvider(env), mailFrom: env.MAIL_FROM ?? null },
-				new Date()
-			)
+			refreshTickersIfNoneHeld({ db, fetch, email: createEmailProvider(env) }, new Date())
 		);
 		return { pledgeRail: { rail: 'stock' as const, outcome: 'saved' as const } };
 	}

@@ -62,10 +62,7 @@ export const CRON_RUNS: Readonly<Record<string, (env: Env, db: Db, now: Date) =>
 	'45 * * * *': (env, db, now) => owedRefundNotices(env, db, now),
 
 	'20 4 * * *': (env, db, now) =>
-		refreshTickers(
-			{ db, fetch, email: createEmailProvider(env), mailFrom: env.MAIL_FROM ?? null },
-			now
-		),
+		refreshTickers({ db, fetch, email: createEmailProvider(env) }, now),
 
 	// a run of its own rather than a share of the minute run's: it posts nothing, and
 	// ./lib/server/outbox/budget.ts sizes that run's posts.

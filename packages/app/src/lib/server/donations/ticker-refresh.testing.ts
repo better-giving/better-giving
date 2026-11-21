@@ -33,6 +33,6 @@ export function secStandIn(answers: { exchange: SecAnswer; fund: SecAnswer }) {
 	return { fetch, requests };
 }
 
-/** both files whole: more rows than either one's `fewest`. */
+/** both files at about half the rows sec.gov lists. */
 export const wholeFiles = () =>
 	secStandIn({ exchange: ok(exchangeFile(6_000)), fund: ok(fundFile(15_000)) });

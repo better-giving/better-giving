@@ -278,14 +278,15 @@ describe('Mark received', () => {
 		]);
 	});
 
-	it('sends the donor their receipt once, naming the shares and the value entered', async () => {
+	it('sends the donor their receipt once, naming the shares and the day, and no value', async () => {
 		await markReceived(STOCK_RECEIVED);
 
 		expect(sent.map((m) => m.to)).toEqual(['maya.okafor@example.org']);
 		expect(sent[0]?.subject).toBe('Your donation receipt from Cedar Fork Community Pantry Inc.');
-		expect(sent[0]?.text).toContain('50 shares of AAPL');
-		expect(sent[0]?.text).toContain('Value when received  USD 9,512.40');
+		expect(sent[0]?.text).toContain('Shares received      50 shares of AAPL');
+		expect(sent[0]?.text).toMatch(/Date received {8}November \d+, 2026/);
 		expect(sent[0]?.text).toContain('In memory of Ruth Hale');
+		expect(sent[0]?.text).not.toMatch(/USD|\$|9,512/);
 	});
 
 	it('tells the person the donor asked us to tell, once, and keeps who that was on the gift', async () => {
@@ -448,6 +449,10 @@ describe('Mark received', () => {
 			})
 		]);
 		expect(sent.map((m) => m.to)).toEqual(['j.whitfield@example.com']);
+		expect(sent[0]?.subject).toBe('Your donation receipt from Cedar Fork Community Pantry Inc.');
+		expect(sent[0]?.text).toContain('Amount      USD 4,800.00');
+		expect(sent[0]?.text).toContain('November 17, 2026');
+		expect(sent[0]?.text).toContain('No goods or services were provided in return for this gift.');
 	});
 
 	it('refuses a pledge id that names no pledge, and writes nothing', async () => {

@@ -26,7 +26,7 @@ const ROWS_PER_INSERT = Math.floor(
 const blankToNull = (text: string | null): string | null => text?.trim() || null;
 
 /** each symbol once, trimmed and uppercased, its first listing kept; a blank symbol is dropped. */
-function listedOnce(rows: readonly TickerRow[]): TickerRow[] {
+export function listedOnce(rows: readonly TickerRow[]): TickerRow[] {
 	const bySymbol = new Map<string, TickerRow>();
 	for (const row of rows) {
 		const symbol = row.symbol.trim().toUpperCase();
@@ -142,6 +142,11 @@ export async function tickerListed(db: Db, symbol: string): Promise<boolean> {
 		.where(eq(ticker.symbol, symbol))
 		.limit(1);
 	return row !== undefined;
+}
+
+/** how many tickers the list the database holds names: 0 before any list has been stored. */
+export async function tickersHeld(db: Db): Promise<number> {
+	return db.$count(ticker);
 }
 
 /** when the list the database holds replaced the one before, or null before any list has. */

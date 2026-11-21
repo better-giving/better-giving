@@ -1,8 +1,8 @@
 import { receipt } from '@better-giving/emails';
 
-// the receipt for a gift given in stock: the shares stand in the amount's place, with the dollar
-// figure named as its value when received — what staff entered at Mark received. every other part of
-// the receipt is ./receipt.tsx's to show.
+// the receipt for a gift given in stock: the shares stand in the amount's place beside the day they
+// arrived, and no dollar figure prints, though staff entered one at Mark received. every other part
+// of the receipt is ./receipt.tsx's to show.
 export default function StockReceipt() {
 	return receipt.template({
 		org: {
@@ -26,6 +26,6 @@ export default function StockReceipt() {
 		tribute: null,
 		program: null,
 		crypto: null,
-		shares: '50 shares of AAPL'
+		pledge: { method: 'stock', shares: '50 shares of AAPL' }
 	}).node;
 }

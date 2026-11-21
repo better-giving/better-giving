@@ -25,7 +25,8 @@ import { greetingFor } from './greeting';
 // what is on a receipt and why — the content below is researched and settled, not sketched.
 //
 // required on every one: the organization's legal name, the amount, a goods-or-services
-// statement, and the date of the contribution.
+// statement, and the date of the contribution. a gift of stock states its shares in the amount's
+// place and no value (`PledgeReceived`).
 //
 // it is shaped as a record and not as a letter: a greeting, one thank-you naming the
 // organization, then the gift as a labelled block — donor, recipient, date, amount — and the
@@ -150,6 +151,20 @@ export interface CryptoReceived {
 	readonly coinAmount: string;
 }
 
+/**
+ * a gift that arrived as a pledge said it would.
+ *
+ * `stock`: the shares as a donor reads them — `50 shares of AAPL` — printed verbatim, with the day
+ * they arrived and no dollar figure anywhere: the donor values a gift of stock, and
+ * `ReceiptContribution.totalMinor` is the organisation's own record of it, never the donor's.
+ *
+ * `ira_qcd`: the amount and the date as on any gift, with `QCD_GOODS_STATEMENT` as its
+ * goods-or-services sentence.
+ */
+export type PledgeReceived =
+	| { readonly method: 'stock'; readonly shares: string }
+	| { readonly method: 'ira_qcd' };
+
 export interface ReceiptData {
 	readonly org: ReceiptOrg;
 	/** who to address it to. `null` prints a neutral greeting rather than "Dear null". */
@@ -190,11 +205,10 @@ export interface ReceiptData {
 	 */
 	readonly crypto: CryptoReceived | null;
 	/**
-	 * the shares a stock gift arrived as — `50 shares of AAPL` — printed verbatim. given, the amount
-	 * row is labelled for what it is, the value staff recorded when the shares arrived; absent, the
-	 * receipt is the one every other rail gets.
+	 * the pledge a received stock or IRA (QCD) gift was, or absent on every other rail, whose
+	 * receipt is unchanged by it.
 	 */
-	readonly shares?: string;
+	readonly pledge?: PledgeReceived;
 	/**
 	 * the address of the donor's own page for this gift, where the filing details an employer's
 	 * giving portal asks for are printed. given, the receipt closes on `MATCH_NOTE`; absent, it is
@@ -235,7 +249,10 @@ export function template(data: ReceiptData): EmailTemplate {
 	const value = formatMoney(data.contribution.nonDeductibleMinor, data.contribution.currency);
 	const discloses =
 		goods.kind === 'provided' && data.contribution.totalMinor > QUID_PRO_QUO_THRESHOLD_MINOR;
-	const closing = `${goodsStatement(goods, value)} ${KEEP_THIS}`;
+	const pledge = data.pledge ?? null;
+	const statement =
+		pledge?.method === 'ira_qcd' ? QCD_GOODS_STATEMENT : goodsStatement(goods, value);
+	const closing = `${statement} ${KEEP_THIS}`;
 	const subject = `Your donation receipt from ${org.legalName}`;
 	const greeting = greetingFor(data.donorName);
 	const thanks = `Thank you for your gift to ${org.legalName}. ${SUPPORT}`;
@@ -251,13 +268,12 @@ export function template(data: ReceiptData): EmailTemplate {
 	const rows: readonly RecordRow[] = [
 		...(data.donorName === null ? [] : [{ label: RECEIPT_LABELS.donor, value: data.donorName }]),
 		{ label: RECEIPT_LABELS.recipient, value: org.legalName },
-		{ label: RECEIPT_LABELS.date, value: date },
-		...(data.shares === undefined
-			? amountRows(data.crypto, amount)
-			: [
-					{ label: STOCK_LABELS.shares, value: data.shares },
-					{ label: CRYPTO_LABELS.valueWhenReceived, value: amount }
-				]),
+		...(pledge?.method === 'stock'
+			? [
+					{ label: STOCK_LABELS.dateReceived, value: date },
+					{ label: STOCK_LABELS.shares, value: pledge.shares }
+				]
+			: [{ label: RECEIPT_LABELS.date, value: date }, ...amountRows(data.crypto, amount)]),
 		// after the four and never among them: the quartet is what the law asks a receipt for and
 		// its order is settled, and this is a fact about the gift the donor stated and the document
 		// states back. a gift given for nobody drops the row, the way an unnamed donor drops theirs.
@@ -342,8 +358,14 @@ const CRYPTO_LABELS = {
 	valueWhenReceived: 'Value when received'
 } as const;
 
-/** a stock gift's shares, in the row a crypto gift's coin takes, above the same value row. */
-const STOCK_LABELS = { shares: 'Shares received' } as const;
+/** a stock gift's day and shares, in the date's row and the amount's, with no value row. */
+const STOCK_LABELS = { dateReceived: 'Date received', shares: 'Shares received' } as const;
+
+/** the labels only a crypto or stock receipt prints. */
+const RAIL_LABELS: readonly string[] = [
+	...Object.values(CRYPTO_LABELS),
+	...Object.values(STOCK_LABELS)
+];
 
 /**
  * the label column in the text arm, widened by the longest label printed rather than by a guess.
@@ -352,11 +374,8 @@ const STOCK_LABELS = { shares: 'Shares received' } as const;
  * stays where it was.
  */
 function labelWidth(rows: readonly RecordRow[]): number {
-	const valued = rows.some((row) => row.label === CRYPTO_LABELS.valueWhenReceived);
-	const labels = [
-		...Object.values(RECEIPT_LABELS),
-		...(valued ? [...Object.values(CRYPTO_LABELS), ...Object.values(STOCK_LABELS)] : [])
-	];
+	const railed = rows.some((row) => RAIL_LABELS.includes(row.label));
+	const labels = [...Object.values(RECEIPT_LABELS), ...(railed ? RAIL_LABELS : [])];
 	return Math.max(...labels.map((label) => label.length)) + 2;
 }
 
@@ -435,6 +454,13 @@ function goodsStatement(goods: GoodsOrServices, value: string): string {
 			);
 	}
 }
+
+/**
+ * the goods-or-services sentence on a qualified charitable distribution from an IRA, in place of
+ * `goodsStatement`'s: the custodian pays the organisation directly, and the donor's custodian and
+ * preparer read this sentence off the receipt as the acknowledgement that nothing came back.
+ */
+const QCD_GOODS_STATEMENT = 'No goods or services were provided in return for this gift.';
 
 /**
  * the §6115 disclosure itself, printed only when a quid pro quo payment cleared the

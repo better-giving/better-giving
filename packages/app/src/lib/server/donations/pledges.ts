@@ -3,7 +3,7 @@ import type { ParsedContact } from '../contacts/contact-input';
 import { readContactSummaries } from '../contacts/queries';
 import type { Db } from '../db/client';
 import { sqliteResultCode } from '../db/rejection';
-import { pledge } from '../db/schema';
+import { donation, pledge } from '../db/schema';
 import { supporterPageOf } from '../supporters/gifts';
 import { resolveDonor } from './donor';
 import type { NoteOnPage, PledgedInput, Tribute } from './quote-input';
@@ -153,8 +153,9 @@ export type SavedPledge = {
 export type SavePledgeResult =
 	| { readonly ok: true; readonly value: SavedPledge }
 	/**
-	 * `id_taken`: the id names a pledge on another form, which this save neither overwrites nor
-	 * reads back. `failed`: the database refused the write for a reason nothing here can name.
+	 * `id_taken`: the id names a gift, or a pledge that is not this one sent again, which this save
+	 * neither overwrites nor reads back. `failed`: the database refused the write for a reason
+	 * nothing here can name.
 	 */
 	| { readonly ok: false; readonly reason: 'id_taken' | 'failed'; readonly detail: string };
 
@@ -162,13 +163,16 @@ export type SavePledgeResult =
 export const REFERENCE_DRAWS = 5;
 
 /**
- * the pledge and its donor, written in one `batch()` — or, where a pledge already has this id on
- * this form, that pledge as it was saved.
+ * the pledge and its donor, written in one `batch()` — or, where this pledge was saved already
+ * under its id, that pledge as it was saved.
  *
  * the second arm is the double press. the id is the form's, minted once per pending screen, so a
- * resend collides on the primary key and the batch, donor statements included, writes nothing: the
- * first save is the answer, whatever the resend carried. an id on another form's pledge is
- * `id_taken` rather than an answer, since that pledge is not this form's to show.
+ * resend names the pledge saved before, and the first save is the answer. it answers only the same
+ * pledge again (`samePledge`): an id naming a gift, or a pledge with another form, rail, figure or
+ * donor, is `id_taken`, since that row is not this request's to show and Mark received writes the
+ * gift under the pledge's id (./receive-pledge.ts). gift ids are minted by this server, never sent,
+ * so the read before the write is what finds one. two presses at once both pass that read, and the
+ * second's batch, donor statements included, meets the first's primary key and writes nothing.
  *
  * the reference is drawn here, and a draw another pledge already holds (`pledge_reference_idx`) is
  * drawn again, the donor resolved afresh each time. it never throws.
@@ -178,6 +182,8 @@ export async function savePledge(
 	input: PledgeToSave,
 	drawReference: () => string
 ): Promise<SavePledgeResult> {
+	const held = await savedBefore(db, input);
+	if (held !== null) return held;
 	for (let draw = 0; draw < REFERENCE_DRAWS; draw++) {
 		const reference = drawReference();
 		try {
@@ -217,7 +223,9 @@ export async function savePledge(
 			};
 		} catch (error) {
 			const code = sqliteResultCode(error);
-			if (code === 'SQLITE_CONSTRAINT_PRIMARYKEY') return savedBefore(db, input);
+			if (code === 'SQLITE_CONSTRAINT_PRIMARYKEY') {
+				return (await savedBefore(db, input)) ?? failed(error);
+			}
 			// the one unique index a pledge insert can meet, and the donor's statements meet none.
 			if (code === 'SQLITE_CONSTRAINT_UNIQUE') continue;
 			return failed(error);
@@ -230,14 +238,26 @@ export async function savePledge(
 	};
 }
 
-/** the pledge a resend's id already names, where it is this form's. */
-async function savedBefore(db: Db, input: PledgeToSave): Promise<SavePledgeResult> {
+/**
+ * what the id already names: the pledge saved before where it is this one again, `id_taken` where
+ * it is a gift or another pledge, and null where it names nothing yet.
+ */
+async function savedBefore(db: Db, input: PledgeToSave): Promise<SavePledgeResult | null> {
 	try {
-		const [row] = await db.select().from(pledge).where(eq(pledge.id, input.id)).limit(1);
-		if (row === undefined || row.formId !== input.formId) {
-			return { ok: false, reason: 'id_taken', detail: 'the id names a pledge on another form' };
+		const [[gift], [row]] = await Promise.all([
+			db.select({ id: donation.id }).from(donation).where(eq(donation.id, input.id)).limit(1),
+			db.select().from(pledge).where(eq(pledge.id, input.id)).limit(1)
+		]);
+		// a gift collides only where no pledge holds the id: a received pledge's gift carries its own.
+		if (row === undefined) {
+			return gift === undefined
+				? null
+				: { ok: false, reason: 'id_taken', detail: 'the id names a gift' };
 		}
 		const donors = await readContactSummaries(db, [row.contactId]);
+		if (!samePledge(row, donors.get(row.contactId)?.primaryEmail ?? null, input)) {
+			return { ok: false, reason: 'id_taken', detail: 'the id names another pledge' };
+		}
 		return {
 			ok: true,
 			value: {
@@ -250,6 +270,25 @@ async function savedBefore(db: Db, input: PledgeToSave): Promise<SavePledgeResul
 	} catch (error) {
 		return failed(error);
 	}
+}
+
+/** whether a held pledge is the one `input` asks to save: its form, rail, figures and donor. */
+function samePledge(
+	row: typeof pledge.$inferSelect,
+	donorEmail: string | null,
+	input: PledgeToSave
+): boolean {
+	const asked = input.pledged;
+	const sameFigures =
+		asked.method === 'stock'
+			? row.ticker === asked.ticker && row.sharesMillionths === asked.sharesMillionths
+			: row.amountMinor === asked.amountMinor && row.custodian === asked.custodian;
+	return (
+		row.formId === input.formId &&
+		row.method === asked.method &&
+		sameFigures &&
+		donorEmail?.toLowerCase() === input.donor.primaryEmail?.toLowerCase()
+	);
 }
 
 function failed(error: unknown): SavePledgeResult {
