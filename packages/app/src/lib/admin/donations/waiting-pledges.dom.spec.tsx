@@ -1,7 +1,7 @@
 import { act, createElement, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createRoutesStub, data, useLoaderData } from 'react-router';
-import { describe, expect, it, onTestFinished } from 'vitest';
+import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { MARK_RECEIVED_FORM_ID } from '$lib/donations/pledge-forms';
 import { WHICH_FORM } from '$lib/forms/definition';
 import { clientAction } from '../../../routes/_app.admin.donations._index';
@@ -53,15 +53,7 @@ function mount(tree: ReactNode): HTMLElement {
 	return root;
 }
 
-async function settle(): Promise<void> {
-	for (let turn = 0; turn < 3; turn++) {
-		await act(async () => {
-			await new Promise((done) => setTimeout(done, 0));
-		});
-	}
-}
-
-/** what the action does with a press: the waiting list it leaves, and what it answers. */
+/** what the action does with a press: the waiting list it leaves, and what it answers or awaits. */
 type Answer = (body: FormData, waiting: Waiting) => [Waiting, unknown];
 
 /** the action as the route answers a press that records the gift. */
@@ -108,7 +100,7 @@ async function screen(stored: Waiting, answer: Answer) {
 		}
 	]);
 	const root = mount(createElement(Stub, { initialEntries: ['/admin/donations'] }));
-	await settle();
+	await vi.waitFor(() => expect(root.querySelector('section.adm-plane')).not.toBeNull());
 	return { root, posted };
 }
 
@@ -141,10 +133,17 @@ async function type(target: HTMLInputElement, text: string): Promise<void> {
 	});
 }
 
+/** a press, committed; what it sets off is waited for by what it should come to. */
 async function press(target: HTMLElement): Promise<void> {
 	target.focus();
 	await act(async () => target.click());
-	await settle();
+}
+
+/** the dialog's Mark received pressed, and its press waited for until the action has it. */
+async function markReceived(dialog: HTMLDialogElement, posted: readonly FormData[]): Promise<void> {
+	const before = posted.length;
+	await press(button(dialog, 'Mark received'));
+	await vi.waitFor(() => expect(posted).toHaveLength(before + 1));
 }
 
 async function open(root: HTMLElement, donor: string): Promise<HTMLDialogElement> {
@@ -231,29 +230,29 @@ describe('the Mark received dialog', () => {
 		const { root, posted } = await screen(BOTH, recording);
 		const dialog = await open(root, 'Maya Okafor');
 		await fill(dialog);
-		await press(button(dialog, 'Mark received'));
+		await markReceived(dialog, posted);
 
 		expect(posted.map((body) => body.get(WHICH_FORM))).toEqual([MARK_RECEIVED_FORM_ID]);
 		expect(posted[0]?.get('pledge_id')).toBe(MAYA.id);
 		expect(posted[0]?.get('value')).toBe('9,512.40');
 		expect(posted[0]?.get('received_on')).toBe('2026-11-18');
+		await vi.waitFor(() => expect(root.querySelectorAll('li')).toHaveLength(1));
 		expect(root.querySelector('dialog')).toBeNull();
-		expect(root.querySelectorAll('li')).toHaveLength(1);
 		expect(document.activeElement?.textContent).toBe('Waiting to arrive');
 	});
 
 	it('closes onto the gifts table when the last pledge is marked', async () => {
-		const { root } = await screen({ total: 1, pledges: [MAYA] }, recording);
+		const { root, posted } = await screen({ total: 1, pledges: [MAYA] }, recording);
 		const dialog = await open(root, 'Maya Okafor');
 		await fill(dialog);
-		await press(button(dialog, 'Mark received'));
+		await markReceived(dialog, posted);
 
-		expect(root.querySelector('h2')).toBeNull();
+		await vi.waitFor(() => expect(root.querySelector('h2')).toBeNull());
 		expect(document.activeElement).toBe(root.querySelector('section.adm-plane'));
 	});
 
 	it('flags the box a 400 refuses', async () => {
-		const { root } = await screen(BOTH, (_, waiting) => [
+		const { root, posted } = await screen(BOTH, (_, waiting) => [
 			waiting,
 			data(
 				{
@@ -267,50 +266,79 @@ describe('the Mark received dialog', () => {
 		]);
 		const dialog = await open(root, 'Maya Okafor');
 		await fill(dialog);
-		await press(button(dialog, 'Mark received'));
+		await markReceived(dialog, posted);
 
-		const open_ = root.querySelector('dialog');
-		const value = box(open_ ?? dialog, 'Value received');
-		expect(open_).not.toBeNull();
-		expect(value.getAttribute('aria-invalid')).toBe('true');
+		const value = box(dialog, 'Value received');
+		await vi.waitFor(() => expect(value.getAttribute('aria-invalid')).toBe('true'));
+		expect(root.querySelector('dialog')).toBe(dialog);
 		expect(document.getElementById(`${value.id}-err`)?.textContent).toBe('must be more than zero');
 	});
 
+	const ALREADY_RECEIVED =
+		'This gift was already marked received, so nothing was recorded again. Reload the page to see it in the list.';
+	/** the action as the route answers a press on a pledge already received. */
+	const alreadyReceived = (waiting: Waiting): [Waiting, unknown] => [
+		waiting,
+		data(
+			{
+				form: {
+					id: MARK_RECEIVED_FORM_ID,
+					result: { status: 'error', error: { '': [ALREADY_RECEIVED] } }
+				}
+			},
+			{ status: 409 }
+		)
+	];
+	const alertIn = (dialog: Element | null) => dialog?.querySelector('[role="alert"]') ?? null;
+
 	it('stays open over its sentence when the pledge was already received', async () => {
-		const sentence =
-			'This gift was already marked received, so nothing was recorded again. Reload the page to see it in the list.';
-		const { root } = await screen(BOTH, (_, waiting) => [
-			waiting,
-			data(
-				{
-					form: {
-						id: MARK_RECEIVED_FORM_ID,
-						result: { status: 'error', error: { '': [sentence] } }
-					}
-				},
-				{ status: 409 }
-			)
-		]);
+		const { root, posted } = await screen(BOTH, (_, waiting) => alreadyReceived(waiting));
 		const dialog = await open(root, 'Maya Okafor');
 		await fill(dialog);
-		await press(button(dialog, 'Mark received'));
+		await markReceived(dialog, posted);
 
-		const still = root.querySelector('dialog');
-		expect(still).not.toBeNull();
-		expect(still?.querySelector('[role="alert"]')?.textContent).toBe(sentence);
+		await vi.waitFor(() => expect(alertIn(dialog)?.textContent).toBe(ALREADY_RECEIVED));
+		expect(root.querySelector('dialog')).toBe(dialog);
+	});
+
+	it('shows another pledge’s dialog none of the refusal the last one was answered with', async () => {
+		let release: () => void = () => {};
+		const { root, posted } = await screen(BOTH, (body, waiting) => {
+			if (body.get('pledge_id') === MAYA.id) return alreadyReceived(waiting);
+			const [next, said] = recording(body, waiting);
+			return [next, new Promise((done) => (release = () => done(said)))];
+		});
+		const maya = await open(root, 'Maya Okafor');
+		await fill(maya);
+		await markReceived(maya, posted);
+		await vi.waitFor(() => expect(alertIn(maya)?.textContent).toBe(ALREADY_RECEIVED));
+		await press(button(maya, 'Cancel'));
+
+		const james = await open(root, 'James Whitfield');
+		expect(alertIn(james)).toBeNull();
+		await fill(james);
+		await markReceived(james, posted);
+
+		// James's press is still out, and the only answer in hand is Maya's.
+		expect(button(james, 'Mark received').getAttribute('aria-busy')).toBe('true');
+		expect(alertIn(james)).toBeNull();
+
+		await act(async () => release());
+		await vi.waitFor(() => expect(root.querySelector('dialog')).toBeNull());
+		expect(posted.map((body) => body.get('pledge_id'))).toEqual([MAYA.id, JAMES.id]);
 	});
 
 	it('stays open over what it typed when the press never reaches the server', async () => {
-		const { root } = await screen(BOTH, () => {
+		const { root, posted } = await screen(BOTH, () => {
 			throw new TypeError('Failed to fetch');
 		});
 		const dialog = await open(root, 'Maya Okafor');
 		await fill(dialog);
-		await press(button(dialog, 'Mark received'));
+		await markReceived(dialog, posted);
 
+		await vi.waitFor(() => expect(alertIn(dialog)?.textContent).toBe(UNREACHED));
 		const still = root.querySelector('dialog');
-		expect(still).not.toBeNull();
-		expect(still?.querySelector('[role="alert"]')?.textContent).toBe(UNREACHED);
+		expect(still).toBe(dialog);
 		expect(box(still ?? dialog, 'Value received').value).toBe('9,512.40');
 		expect(rowOf(root, 'Maya Okafor')).toBeDefined();
 	});

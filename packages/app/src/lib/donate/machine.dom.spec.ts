@@ -39,6 +39,27 @@ import { createReactPropTypes } from './normalize';
 // under a handle nothing here ever sees — removing the nodes they painted in collects the DOM and
 // tells neither script anything.
 
+// the told press's answers, where a spec sets them: `createPledgeTold` throws one uncoded error for
+// every refusal, so a refusal coded `pledge_not_found` reaches the flow only through this seam, as
+// it does in packages/form/src/element.dom.spec.ts through the element's `told` port.
+const toldSeam = vi.hoisted(() => ({
+	answers: null as ((args: { readonly pledgeId: string }) => Promise<void>)[] | null
+}));
+vi.mock('@better-giving/form/embed/api', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('@better-giving/form/embed/api')>();
+	return {
+		...actual,
+		createPledgeTold: (origin: string | null) => {
+			const real = actual.createPledgeTold(origin);
+			return (args: Parameters<typeof real>[0]) =>
+				toldSeam.answers === null ? real(args) : (toldSeam.answers.shift() ?? real)(args);
+		}
+	};
+});
+afterEach(() => {
+	toldSeam.answers = null;
+});
+
 const FEE_RULES: FeeRules = {
 	card: { percent: 0.029, fixedMinor: 30 },
 	apple_pay: { percent: 0.029, fixedMinor: 30 },
@@ -90,6 +111,9 @@ const WITH_FUND: FormConfig = {
 	providers: [...CONFIG.providers, { name: 'chariot', publishableKey: 'cid_spec' }],
 	paymentMethods: ['card', 'daf']
 };
+
+/** the same deployment, offering an IRA (QCD) pledge beside the card. */
+const WITH_IRA: FormConfig = { ...CONFIG, paymentMethods: ['card', 'ira_qcd'] };
 
 /** Chariot's element, standing in: it keeps the one callback it is handed and nothing else. */
 class StubConnect extends HTMLElement {
@@ -358,6 +382,93 @@ it('draws the challenge on arrival at the details step and resets it on the way 
 
 	expect(toState(actor.getSnapshot()).step).toBe('failed');
 	expect(challenge.resets).toEqual(['widget-1']);
+});
+
+it('saves a pledge the told press could not find again on a fresh token, and resets the widget after', async () => {
+	const { paymentMount, challengeMount, heldChallengeMount } = boxes();
+	const payment = paymentProvider();
+	const challenge = challengeProvider();
+	const timer = clock();
+	const saves: Record<string, unknown>[] = [];
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async (_url: string, init?: RequestInit) => {
+			const request = JSON.parse(String(init?.body)) as Record<string, unknown>;
+			saves.push(request);
+			return Response.json({
+				paymentToken: request.pledgeId,
+				feeMinor: 0,
+				totalMinor: request.amountMinor,
+				pledge: {
+					id: request.pledgeId,
+					method: 'ira_qcd',
+					reference: 'CFCP-IRA-4K9M',
+					receiptTo: request.email,
+					amountMinor: request.amountMinor,
+					custodian: request.custodian,
+					payeeName: 'Helping Hands',
+					ein: '12-3456789',
+					mailingAddress: '412 Alder Lane\nCedar Fork, OR 97330'
+				}
+			});
+		})
+	);
+	const notFound = Object.assign(new Error('This gift isn’t saved here.'), {
+		code: 'pledge_not_found'
+	});
+	const told: string[] = [];
+	toldSeam.answers = [
+		async ({ pledgeId }) => {
+			told.push(pledgeId);
+			throw notFound;
+		},
+		async ({ pledgeId }) => {
+			told.push(pledgeId);
+		}
+	];
+
+	const checkout = startCheckout(WITH_IRA, {
+		paymentMount,
+		challengeMount,
+		heldChallengeMount,
+		resumeToken: null,
+		seams: {
+			payment: { stripe: { load: payment.load, delay: timer.delay } },
+			challenge: { turnstile: { load: challenge.load, delay: timer.delay } }
+		}
+	});
+	onTestFinished(() => checkout.stop());
+	await settle();
+
+	const { actor } = checkout;
+	actor.send({ type: 'CONTINUE' });
+	actor.send({ type: 'SET_CONTACT', email: 'donor@example.org' });
+	actor.send({ type: 'SET_CONTACT', firstName: 'Ada' });
+	actor.send({ type: 'SET_CONTACT', lastName: 'Lovelace' });
+	actor.send({ type: 'CONTINUE' });
+	actor.send({ type: 'SET_METHOD', method: 'ira_qcd' });
+	actor.send({ type: 'SET_CUSTODIAN', custodian: 'Fidelity Investments' });
+	actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'token-1' });
+	actor.send({ type: 'SUBMIT' });
+	await vi.waitFor(() => expect(toState(actor.getSnapshot()).step).toBe('pledged'));
+	expect(challenge.resets).toEqual(['widget-1']);
+
+	actor.send({ type: 'TELL_ORGANIZATION' });
+	await vi.waitFor(() => expect(toState(actor.getSnapshot())).toMatchObject({ refused: true }));
+
+	// the widget's reset answers with a fresh token, and the press saves on it before it tells.
+	actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'token-2' });
+	actor.send({ type: 'TELL_ORGANIZATION' });
+	await vi.waitFor(() => expect(toState(actor.getSnapshot())).toMatchObject({ phase: 'told' }));
+
+	const [first] = saves;
+	expect(saves.map((save) => [save.pledgeId, save.turnstileToken])).toEqual([
+		[first?.pledgeId, 'token-1'],
+		[first?.pledgeId, 'token-2']
+	]);
+	expect(told).toEqual([first?.pledgeId, first?.pledgeId]);
+	// the second save spent a token without leaving the pledge's screen.
+	expect(challenge.resets).toEqual(['widget-1', 'widget-1']);
 });
 
 // a deployment holding no Turnstile pair serves the ALTCHA path instead, and this page reads its

@@ -7,7 +7,7 @@ import { useEffect, useRef, type ReactNode, type RefObject } from 'react';
 import * as copy from './copy';
 import type { FieldBox } from './normalize';
 import { instructionsMailto, pledgeDetails, pledgeSummary } from './pledge';
-import { PledgeBlock, type PledgeScreen } from './pledge-block';
+import { PledgeBlock, type PledgeNotice, type PledgeScreen } from './pledge-block';
 import { Glyph } from './sections/glyph';
 
 // every state that takes the whole card, in the words a donor reads.
@@ -449,16 +449,20 @@ function pledgedScreen(
 	const { pledge } = state;
 	const stock = pledge.method === 'stock';
 	const summary = pledgeSummary(pledge, money);
+	// the notice's words, for the card's live region (`Notice` in ./pledge-block.tsx).
+	const spoken = (notice: PledgeNotice) => `${notice.title}. ${notice.body}`;
 	if (state.phase === 'told') {
+		const told: PledgeNotice = {
+			tone: 'info',
+			title: copy.TOLD_TITLE,
+			body: copy.toldBody(stock, pledge.receiptTo)
+		};
 		return {
 			...BLANK,
 			heading: copy.SUCCESS_HEADING,
+			arrival: spoken(told),
 			pledge: {
-				notice: {
-					tone: 'info',
-					title: copy.TOLD_TITLE,
-					body: copy.toldBody(stock, pledge.receiptTo)
-				},
+				notice: told,
 				summary,
 				details: null,
 				benefits: null
@@ -466,14 +470,17 @@ function pledgedScreen(
 			secondary: { label: copy.DONE, filled: true }
 		};
 	}
+	const refusal: PledgeNotice | null = state.refused
+		? { tone: 'destructive', title: copy.TOLD_REFUSED_TITLE, body: copy.TOLD_REFUSED_BODY }
+		: null;
 	return {
 		...BLANK,
 		heading: stock ? copy.STOCK_PENDING_HEADING : copy.IRA_PENDING_HEADING,
 		body: stock ? copy.STOCK_PENDING_BODY : copy.IRA_PENDING_BODY,
+		// not while the next press is in flight, so a second refusal arrives into a cleared region.
+		announce: refusal === null || state.phase === 'telling' ? '' : spoken(refusal),
 		pledge: {
-			notice: state.refused
-				? { tone: 'destructive', title: copy.TOLD_REFUSED_TITLE, body: copy.TOLD_REFUSED_BODY }
-				: null,
+			notice: refusal,
 			summary,
 			details: pledgeDetails(pledge),
 			benefits: stock ? copy.STOCK_BENEFITS : copy.IRA_BENEFITS

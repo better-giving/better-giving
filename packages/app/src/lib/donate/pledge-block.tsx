@@ -51,9 +51,11 @@ export function BenefitsPanel({
 }
 
 /**
- * one notice, in its tone. the role is the tone's (notice-card-css.usage.md, Accessibility): an error
- * is `alert` and the thank-you's news is `status`, set as the notice is written. always rendered,
- * hidden and role-less while there is none, so the words arrive into a node already there.
+ * one notice, in its tone, and no live region of its own, as `notice` in
+ * packages/form/src/pledge-screen.ts draws the element's. a role set on the commit that shows the
+ * screen is a region created and filled in one breath, which assistive technology drops (./announce.tsx);
+ * its words are said by the card's own region instead (`announce` and `arrival` in `pledgedScreen`,
+ * ./takeover.tsx). always rendered, hidden while there is none.
  */
 function Notice({ id, notice }: { readonly id: string; readonly notice: PledgeNotice | null }) {
 	const titleId = `${id}-title`;
@@ -62,7 +64,6 @@ function Notice({ id, notice }: { readonly id: string; readonly notice: PledgeNo
 			className={
 				notice === null ? 'ds-notice-card' : `ds-notice-card ds-notice-card-${notice.tone}`
 			}
-			role={notice === null ? undefined : notice.tone === 'info' ? 'status' : 'alert'}
 			aria-labelledby={titleId}
 			hidden={notice === null}
 		>

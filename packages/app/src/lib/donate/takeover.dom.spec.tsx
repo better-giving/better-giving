@@ -701,7 +701,7 @@ describe('a saved pledge’s screens', () => {
 		]);
 	}
 
-	/** the notice standing, as its role, its title and its body. */
+	/** the notice standing, as its role (`''` for none), its title and its body. */
 	function notices(root: HTMLElement): string[][] {
 		return [...root.querySelectorAll<HTMLElement>('.ds-notice-card')]
 			.filter((node) => !node.hidden)
@@ -767,11 +767,17 @@ describe('a saved pledge’s screens', () => {
 		expect(heading(root)).toBe('Your stock gift is pending');
 		expect(notices(root)).toEqual([
 			[
-				'alert',
+				'',
 				'We couldn’t tell the organization',
 				'Your gift is saved. Check your connection and try again.'
 			]
 		]);
+		// said by the card's region rather than the notice's, and cleared while the next press is out.
+		const refused = { step: 'pledged', pledge: STOCK, refused: true } as const;
+		expect(takeoverFor({ ...refused, phase: 'pending' }, ORG, money).announce).toBe(
+			'We couldn’t tell the organization. Your gift is saved. Check your connection and try again.'
+		);
+		expect(takeoverFor({ ...refused, phase: 'telling' }, ORG, money).announce).toBe('');
 		// under the benefits panel, directly over the press it asks for again.
 		const notice = root.querySelector('.ds-notice-card-destructive');
 		expect(notice?.previousElementSibling?.classList.contains('pledge-benefits')).toBe(true);
@@ -787,11 +793,17 @@ describe('a saved pledge’s screens', () => {
 		expect(heading(root)).toBe('Thank you');
 		expect(notices(root)).toEqual([
 			[
-				'status',
+				'',
 				'We’ve told the organization',
 				'Your gift counts when the shares arrive. We’ll email a receipt to maya.okafor@example.org then.'
 			]
 		]);
+		expect(
+			takeoverFor({ step: 'pledged', pledge: STOCK, phase: 'told', refused: false }, ORG, money)
+				.arrival
+		).toBe(
+			'We’ve told the organization. Your gift counts when the shares arrive. We’ll email a receipt to maya.okafor@example.org then.'
+		);
 		expect(rows(root, 'pledge-summary')).toEqual([
 			['Shares', '50', null],
 			['Ticker', 'AAPL', null]
@@ -837,7 +849,7 @@ describe('a saved pledge’s screens', () => {
 	it('words the IRA (QCD) error and thank-you in the same notices', () => {
 		const refused = pledged(IRA, 'pending', true);
 		expect(notices(refused).map(([role, title]) => [role, title])).toEqual([
-			['alert', 'We couldn’t tell the organization']
+			['', 'We couldn’t tell the organization']
 		]);
 		expect(primary(refused)).toBe('Try again');
 		expect(refused.querySelector('[disabled]')).toBeNull();
@@ -846,7 +858,7 @@ describe('a saved pledge’s screens', () => {
 		expect(heading(told)).toBe('Thank you');
 		expect(notices(told)).toEqual([
 			[
-				'status',
+				'',
 				'We’ve told the organization',
 				'Your gift counts when it arrives. We’ll email a receipt to maya.okafor@example.org then.'
 			]

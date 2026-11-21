@@ -3449,6 +3449,12 @@ describe('an IRA (QCD) gift', () => {
 		paymentMethods: ['card', 'ira_qcd']
 	};
 
+	/** what the endpoint says of a save it refused with a code of its own. */
+	const CODED_REFUSAL = 'This gift is above the most this form takes. Give $5,000.00 or less.';
+	/** what the card says of a save that may have landed (`PLEDGE_UNSAVED` in @better-giving/form/machine). */
+	const MAY_BE_SAVED =
+		'We couldn’t confirm your gift was saved. Try again; it will not be saved twice.';
+
 	/** the pledge the endpoint saves for a request, under the id the request sent. */
 	function saved(request: Record<string, unknown>) {
 		return {
@@ -3474,7 +3480,7 @@ describe('an IRA (QCD) gift', () => {
 	 * each told press by `told` in turn the same way. every save's body and every told url are kept.
 	 */
 	function deployment(
-		answers: readonly ('save' | 'unsaved' | 'refused')[] = ['save'],
+		answers: readonly ('save' | 'unsaved' | 'refused' | 'lost' | 'coded')[] = ['save'],
 		told: readonly ('ok' | 'down')[] = ['ok']
 	) {
 		const saves: Record<string, unknown>[] = [];
@@ -3498,6 +3504,14 @@ describe('an IRA (QCD) gift', () => {
 						{ status: 422 }
 					);
 				}
+				if (answer === 'coded') {
+					return Response.json(
+						{ error: 'above_maximum', message: CODED_REFUSAL, fix: 'Give less.' },
+						{ status: 422 }
+					);
+				}
+				// a save whose answer never came back, which may still have landed.
+				if (answer === 'lost') throw new TypeError('Failed to fetch');
 				// a save answered without the pledge it saved, which may still have landed.
 				if (answer === 'unsaved') return Response.json({ ...saved(request), pledge: undefined });
 				return Response.json(saved(request));
@@ -3517,6 +3531,13 @@ describe('an IRA (QCD) gift', () => {
 
 	const submit = (root: HTMLElement) => one(root, 'button[part~="submit"]');
 	const custodian = (root: HTMLElement) => input(root, '#custodian');
+
+	/** the promise chains behind a press let run. */
+	async function drain(): Promise<void> {
+		await act(async () => {
+			for (let at = 0; at < 30; at += 1) await Promise.resolve();
+		});
+	}
 
 	/** a control pressed from the keyboard, with the promise chains behind it let run. */
 	async function pressHeld(node: HTMLElement): Promise<void> {
@@ -3611,9 +3632,7 @@ describe('an IRA (QCD) gift', () => {
 		});
 		expect(first?.pledgeId).toMatch(/^[0-9a-f-]{36}$/);
 		expect(takeoverHeading(root).textContent).toBe(copy.FAILED_HEADING);
-		expect(one(screen(root), ':scope > .message').textContent).toBe(
-			'We couldn’t confirm your gift was saved. Try again; it will not be saved twice.'
-		);
+		expect(one(screen(root), ':scope > .message').textContent).toBe(MAY_BE_SAVED);
 
 		await pressHeld(takeoverPrimary(root));
 		await pressHeld(submit(root));
@@ -3621,6 +3640,42 @@ describe('an IRA (QCD) gift', () => {
 		expect(server.saves).toHaveLength(2);
 		expect(server.saves[1]?.pledgeId).toBe(first?.pledgeId);
 		expect(takeoverHeading(root).textContent).toBe('Your IRA (QCD) gift is pending');
+	});
+
+	it('sends a changed request under an id of its own, and the earlier request under its own again', async () => {
+		const server = deployment(['unsaved', 'unsaved', 'save']);
+		const { root } = await pending(server);
+		await pressHeld(takeoverPrimary(root));
+		type(custodian(root), 'Vanguard');
+		await pressHeld(submit(root));
+		await pressHeld(takeoverPrimary(root));
+		type(custodian(root), 'Fidelity Investments');
+		await pressHeld(submit(root));
+
+		const ids = server.saves.map((save) => save.pledgeId);
+		expect(server.saves.map((save) => save.custodian)).toEqual([
+			'Fidelity Investments',
+			'Vanguard',
+			'Fidelity Investments'
+		]);
+		expect(ids[1]).not.toBe(ids[0]);
+		expect(ids[2]).toBe(ids[0]);
+		expect(takeoverHeading(root).textContent).toBe('Your IRA (QCD) gift is pending');
+	});
+
+	it('says the gift may be saved where the save’s answer was lost', async () => {
+		const { root } = await pending(deployment(['lost']));
+
+		expect(takeoverHeading(root).textContent).toBe(copy.FAILED_HEADING);
+		expect(one(screen(root), ':scope > .message').textContent).toBe(MAY_BE_SAVED);
+		expect(said(root)).toBe(MAY_BE_SAVED);
+	});
+
+	it('states the endpoint’s own words where it refused the save with a code', async () => {
+		const { root } = await pending(deployment(['coded']));
+
+		expect(takeoverHeading(root).textContent).toBe(copy.FAILED_HEADING);
+		expect(one(screen(root), ':scope > .message').textContent).toBe(CODED_REFUSAL);
 	});
 
 	it('puts the caret back in the box where the endpoint refused the custodian', async () => {
@@ -3654,15 +3709,21 @@ describe('an IRA (QCD) gift', () => {
 		expect(takeoverHeading(root).textContent).toBe('Thank you');
 		expect(document.activeElement).toBe(takeoverHeading(root));
 		const notice = one(screen(root), '.ds-notice-card-info');
-		expect(notice.getAttribute('role')).toBe('status');
+		// no region of its own: one created and filled in one commit is dropped, so the card's says it.
+		expect(notice.hasAttribute('role')).toBe(false);
 		expect(notice.textContent).toContain(
 			'Your gift counts when it arrives. We’ll email a receipt to donor@example.org then.'
+		);
+		expect(said(root)).toBe(
+			'We’ve told the organization. Your gift counts when it arrives. We’ll email a receipt to donor@example.org then.'
 		);
 		expect(root.querySelector('[disabled]')).toBeNull();
 	});
 
 	it('shows the error notice and Try again where the told press failed, and thanks on the retry', async () => {
-		const { root, server } = await pending(deployment(['save'], ['down', 'ok']));
+		const { root, server } = await pending(deployment(['save'], ['down', 'down', 'ok']));
+		const refused =
+			'We couldn’t tell the organization. Your gift is saved. Check your connection and try again.';
 
 		await pressHeld(takeoverPrimary(root));
 
@@ -3670,13 +3731,21 @@ describe('an IRA (QCD) gift', () => {
 		expect(takeoverHeading(root).textContent).toBe('Your IRA (QCD) gift is pending');
 		const notice = one(screen(root), '.ds-notice-card-destructive');
 		expect(notice.hidden).toBe(false);
-		expect(notice.getAttribute('role')).toBe('alert');
+		expect(notice.hasAttribute('role')).toBe(false);
+		expect(said(root)).toBe(refused);
 		expect(takeoverPrimary(root).textContent).toBe('Try again');
 		expect(root.querySelector('[disabled]')).toBeNull();
 
+		// a second press refused the same way is said again: the region is cleared while it is in flight.
+		press(takeoverPrimary(root));
+		expect(said(root)).toBe('');
+		await drain();
+		expect(server.tolds).toHaveLength(2);
+		expect(said(root)).toBe(refused);
+
 		await pressHeld(takeoverPrimary(root));
 
-		expect(server.tolds).toHaveLength(2);
+		expect(server.tolds).toHaveLength(3);
 		expect(takeoverHeading(root).textContent).toBe('Thank you');
 	});
 

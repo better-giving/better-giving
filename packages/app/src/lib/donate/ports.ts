@@ -37,6 +37,22 @@ import type { CheckoutPorts } from '@better-giving/form/ports';
 const SAME_DEPLOYMENT = '';
 
 /**
+ * a version 4 UUID (RFC 9562), the `pledgeId` a pledge's save carries, as `pledgeUuid` in
+ * packages/form/src/embed/runtime.ts mints it (pinned by ./ports.spec.ts).
+ *
+ * drawn from `crypto.getRandomValues`, the one `Crypto` member an insecure context keeps (MDN,
+ * Crypto.getRandomValues): a deployment may serve this page over http, where `crypto.randomUUID`
+ * does not exist and the press that called it would throw.
+ */
+function pledgeUuid(): string {
+	const bytes = crypto.getRandomValues(new Uint8Array(16));
+	bytes[6] = ((bytes[6] ?? 0) & 0x0f) | 0x40;
+	bytes[8] = ((bytes[8] ?? 0) & 0x3f) | 0x80;
+	const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+	return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+/**
  * the ports one card runs on.
  *
  * the surface is passed in rather than built here, because it is built once per card against a
@@ -55,7 +71,7 @@ export function deploymentPorts(surface: PaymentSurface): CheckoutPorts {
 		employer: createEmployerWrite(SAME_DEPLOYMENT),
 		now: () => Date.now(),
 		pledges: {
-			id: () => crypto.randomUUID(),
+			id: pledgeUuid,
 			save: post,
 			told: createPledgeTold(SAME_DEPLOYMENT)
 		}

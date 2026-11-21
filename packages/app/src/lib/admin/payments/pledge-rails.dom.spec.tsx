@@ -1,7 +1,7 @@
 import { act, createElement, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createRoutesStub, useLoaderData } from 'react-router';
-import { describe, expect, it, onTestFinished } from 'vitest';
+import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { PLEDGE_RAIL_FORMS } from '$lib/payments/pledge-rail-forms';
 import { WHICH_FORM } from '$lib/forms/definition';
 import { PledgeRails, type PledgeRailsProps } from './pledge-rails';
@@ -41,15 +41,6 @@ function mount(tree: ReactNode): HTMLElement {
 	return root;
 }
 
-async function settle(): Promise<void> {
-	await act(async () => {
-		await new Promise((done) => setTimeout(done, 0));
-	});
-	await act(async () => {
-		await new Promise((done) => setTimeout(done, 0));
-	});
-}
-
 /**
  * the two cards over `stored`, which the action's `answer` may rewrite before it answers: a Save
  * that lands stores the rail, as `enablePledgeRail` does.
@@ -73,7 +64,7 @@ async function screen(stored: Rails, answer: (body: FormData, rails: Rails) => [
 		}
 	]);
 	const root = mount(createElement(Stub, { initialEntries: ['/admin/payments'] }));
-	await settle();
+	await vi.waitFor(() => expect(root.querySelectorAll('section')).toHaveLength(2));
 	return { root, posted };
 }
 
@@ -96,6 +87,22 @@ const landing = (body: FormData, rails: Rails): [Rails, unknown] => {
 		return [
 			{ ...rails, stock: { ...rails.stock, enabled: false } },
 			{ pledgeRail: { rail: 'stock', outcome: 'disabled' } }
+		];
+	}
+	if (which === PLEDGE_RAIL_FORMS.iraQcd) {
+		const details = {
+			payee_name: String(body.get('payee_name')),
+			mailing_address: String(body.get('mailing_address'))
+		};
+		return [
+			{ ...rails, ira_qcd: { enabled: true, details } },
+			{ pledgeRail: { rail: 'ira_qcd', outcome: 'saved' } }
+		];
+	}
+	if (which === PLEDGE_RAIL_FORMS.iraQcdOff) {
+		return [
+			{ ...rails, ira_qcd: { ...rails.ira_qcd, enabled: false } },
+			{ pledgeRail: { rail: 'ira_qcd', outcome: 'disabled' } }
 		];
 	}
 	throw new Error(`unexpected press ${String(which)}`);
@@ -131,9 +138,19 @@ async function type(target: HTMLInputElement, text: string): Promise<void> {
 	});
 }
 
+/** a press, committed; what it sets off is waited for by what it should come to. */
 async function press(target: HTMLElement): Promise<void> {
 	await act(async () => target.click());
-	await settle();
+}
+
+/** a press that posts, waited for until the action has answered and the rails are read back. */
+async function pressPosting(target: HTMLElement, posted: readonly FormData[]): Promise<void> {
+	const before = posted.length;
+	await press(target);
+	await vi.waitFor(() => {
+		expect(posted).toHaveLength(before + 1);
+		expect(target.ownerDocument.querySelector('[aria-busy="true"]')).toBeNull();
+	});
 }
 
 async function turnOn(root: HTMLElement, heading: string): Promise<HTMLElement> {
@@ -143,6 +160,10 @@ async function turnOn(root: HTMLElement, heading: string): Promise<HTMLElement> 
 	await press(toggle);
 	return card(root, heading);
 }
+
+/** the card's switch, where the card is collapsed to its one row. */
+const switchOf = (root: HTMLElement, heading: string) =>
+	card(root, heading).querySelector<HTMLInputElement>('[role="switch"]');
 
 const STOCK_BOXES = ['Brokerage name', 'DTC number', 'Account number', 'Account name'];
 
@@ -233,13 +254,14 @@ describe('Save', () => {
 		await type(box(stocks, 'DTC number'), STOCK_DETAILS.dtc_number);
 		await type(box(stocks, 'Account number'), STOCK_DETAILS.account_number);
 		await type(box(stocks, 'Account name'), STOCK_DETAILS.account_name);
-		await press(button(stocks, 'Save'));
+		await pressPosting(button(stocks, 'Save'), posted);
+		await vi.waitFor(() =>
+			expect(card(root, 'Stocks').querySelector('[role="status"]')?.textContent).toBe('Saved')
+		);
 		stocks = card(root, 'Stocks');
 
 		expect(posted.map((body) => body.get(WHICH_FORM))).toEqual([PLEDGE_RAIL_FORMS.stock]);
 		expect(posted[0]?.get('account_name')).toBe(STOCK_DETAILS.account_name);
-		const status = stocks.querySelector('[role="status"]');
-		expect(status?.textContent).toBe('Saved');
 		expect([...stocks.querySelectorAll('button')].map((one) => one.textContent)).toEqual([
 			'Disable stocks'
 		]);
@@ -256,15 +278,63 @@ describe('Save', () => {
 
 describe('Disable', () => {
 	it('leaves no Saved behind on a card reopened after it', async () => {
-		const { root } = await screen(OFF, landing);
+		const { root, posted } = await screen(OFF, landing);
 		let stocks = await turnOn(root, 'Stocks');
 		for (const label of STOCK_BOXES) await type(box(stocks, label), 'filled');
-		await press(button(stocks, 'Save'));
-		await press(button(card(root, 'Stocks'), 'Disable stocks'));
+		await pressPosting(button(stocks, 'Save'), posted);
+		await vi.waitFor(() => expect(card(root, 'Stocks').textContent).toContain('Saved'));
+		await pressPosting(button(card(root, 'Stocks'), 'Disable stocks'), posted);
+		await vi.waitFor(() => expect(switchOf(root, 'Stocks')).not.toBeNull());
 		stocks = await turnOn(root, 'Stocks');
 
+		expect(posted.map((body) => body.get(WHICH_FORM))).toEqual([
+			PLEDGE_RAIL_FORMS.stock,
+			PLEDGE_RAIL_FORMS.stockOff
+		]);
 		expect(stocks.querySelector('[role="status"]')?.textContent).toBe('');
 		expect(button(stocks, 'Save').type).toBe('submit');
+	});
+
+	it('only closes a rail switched on and never saved, posting nothing', async () => {
+		const { root, posted } = await screen(OFF, landing);
+		for (const [heading, disable] of [
+			['Stocks', 'Disable stocks'],
+			['IRA (QCD)', 'Disable IRA (QCD)']
+		] as const) {
+			const opened = await turnOn(root, heading);
+			const press_ = button(opened, disable);
+			press_.focus();
+			await press(press_);
+
+			const toggle = switchOf(root, heading);
+			expect(toggle?.checked, heading).toBe(false);
+			expect(document.activeElement, heading).toBe(toggle);
+		}
+		expect(posted).toHaveLength(0);
+	});
+
+	it('saves IRA (QCD) with its payee and address, then disables it', async () => {
+		const { root, posted } = await screen(OFF, landing);
+		const ira = await turnOn(root, 'IRA (QCD)');
+		await type(box(ira, 'Payee name'), 'Cedar Fork Community Pantry Inc.');
+		await type(box(ira, 'Mailing address'), '412 Alder Lane, Suite 3\nCedar Fork, OR 97330');
+		await pressPosting(button(ira, 'Save'), posted);
+		await vi.waitFor(() =>
+			expect(card(root, 'IRA (QCD)').querySelector('[role="status"]')?.textContent).toBe('Saved')
+		);
+
+		expect(posted[0]?.get(WHICH_FORM)).toBe(PLEDGE_RAIL_FORMS.iraQcd);
+		expect(posted[0]?.get('payee_name')).toBe('Cedar Fork Community Pantry Inc.');
+		expect(posted[0]?.get('mailing_address')).toBe('412 Alder Lane, Suite 3\nCedar Fork, OR 97330');
+		expect(card(root, 'IRA (QCD)').querySelector('.adm-hint')?.textContent).toBe(
+			'Donors pledge a gift from their IRA and are shown who to make the check out to. You mark each gift received when the check arrives.'
+		);
+
+		await pressPosting(button(card(root, 'IRA (QCD)'), 'Disable IRA (QCD)'), posted);
+		await vi.waitFor(() => expect(switchOf(root, 'IRA (QCD)')?.checked).toBe(false));
+		expect(posted[1]?.get(WHICH_FORM)).toBe(PLEDGE_RAIL_FORMS.iraQcdOff);
+		// the other rail was never touched.
+		expect(switchOf(root, 'Stocks')?.checked).toBe(false);
 	});
 
 	it('posts through its own press, collapses the card, and keeps the details', async () => {
@@ -277,11 +347,11 @@ describe('Disable', () => {
 
 		const disable = button(stocks, 'Disable stocks');
 		disable.focus();
-		await press(disable);
+		await pressPosting(disable, posted);
 
 		expect(posted.map((body) => body.get(WHICH_FORM))).toEqual([PLEDGE_RAIL_FORMS.stockOff]);
-		const off = card(root, 'Stocks');
-		const toggle = off.querySelector<HTMLInputElement>('[role="switch"]');
+		await vi.waitFor(() => expect(switchOf(root, 'Stocks')).not.toBeNull());
+		const toggle = switchOf(root, 'Stocks');
 		expect(toggle?.checked).toBe(false);
 		expect(document.activeElement).toBe(toggle);
 

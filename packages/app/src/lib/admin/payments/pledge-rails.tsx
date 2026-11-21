@@ -19,7 +19,7 @@ import { boxProps, resultFor, useAdminForm, whichForm } from '../use-admin-form'
 // action answers each press). a rail that is off is one row: its heading and a switch. turning the
 // switch on only opens the card; nothing is live until Save lands with every box filled. Disable is
 // a plain button posting through its own fetcher, never a submit of the Save form, and it keeps the
-// details the rail was saved with.
+// details the rail was saved with; on a card switched on and never saved it closes the card alone.
 
 /** one rail as the loader hands it: whether donors are offered it, and each box's stored value. */
 export type PledgeRail<Details> = {
@@ -236,6 +236,10 @@ function RailCard({
 						onClick={() => {
 							setTurnedOn(false);
 							setSpent(save.data);
+							// a rail switched on and never saved is off on the server already: the press
+							// closes the card and posts nothing. one whose Save is out is posted, since
+							// that Save may land.
+							if (!enabled && !busy) return;
 							const body = new FormData();
 							const which = whichForm(offForm.id);
 							body.set(which.name, which.value);

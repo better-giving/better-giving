@@ -211,6 +211,8 @@ export function startCheckout(
 	let challenge: ReturnType<typeof createChallenge> | null = null;
 	/** the step the last reading was on, which is what makes a reading a transition. */
 	let previous: State['step'] | null = null;
+	/** whether the last reading was a pledge's second save, which spends a token too. */
+	let resaving = false;
 
 	const read = (): void => {
 		const snapshot = actor.getSnapshot();
@@ -248,6 +250,11 @@ export function startCheckout(
 
 		if (previous === 'working' && state.step !== 'working') challenge?.reset();
 		previous = state.step;
+		// the same for the save a told press makes again on the pending screen, which spends one
+		// without leaving `pledged` (`telling` in @better-giving/form/machine).
+		const saving = snapshot.matches({ pledged: { telling: 'saving' } });
+		if (resaving && !saving) challenge?.reset();
+		resaving = saving;
 	};
 
 	const subscription = actor.subscribe(read);

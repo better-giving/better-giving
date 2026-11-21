@@ -51,10 +51,14 @@ const MARK_RECEIVED_FORM = defineForm({ id: MARK_RECEIVED_FORM_ID, schema: MARK_
 export function WaitingCard({ waiting }: WaitingCardProps) {
 	const headingId = useId();
 	const fetcher = useFetcher<ReceivedAnswer>();
-	// the pledge whose dialog is up, and the one the last press was about: an answer is shown only
-	// in the dialog of the pledge it answered.
+	// the pledge whose dialog is up, and the one the last press was about with the answer in hand as
+	// it was made: an answer is shown only in the dialog of the pledge it answered, and the answer in
+	// hand at the press is the press before it, which may have been another pledge's.
 	const [opened, setOpened] = useState<string | null>(null);
-	const [pressed, setPressed] = useState<string | null>(null);
+	const [pressed, setPressed] = useState<{
+		readonly pledgeId: string;
+		readonly over: ReceivedAnswer | undefined;
+	} | null>(null);
 
 	// a landed press closes its dialog on the render the revalidated list drops the pledge.
 	const landed = fetcher.state === 'idle' ? fetcher.data?.received?.pledgeId : undefined;
@@ -104,8 +108,12 @@ export function WaitingCard({ waiting }: WaitingCardProps) {
 					key={pledge.id}
 					pledge={pledge}
 					fetcher={fetcher}
-					answer={pressed === pledge.id ? fetcher.data : undefined}
-					onPress={() => setPressed(pledge.id)}
+					answer={
+						pressed?.pledgeId === pledge.id && fetcher.data !== pressed.over
+							? fetcher.data
+							: undefined
+					}
+					onPress={() => setPressed({ pledgeId: pledge.id, over: fetcher.data })}
 					onClose={() => setOpened(null)}
 					// the pressed row's button goes with the pledge it marked: back to this card while it
 					// stands, else to the gifts table, the screen's one scroll plane.
@@ -126,7 +134,7 @@ export function WaitingCard({ waiting }: WaitingCardProps) {
 type MarkReceivedDialogProps = {
 	readonly pledge: WaitingPledge;
 	readonly fetcher: FetcherWithComponents<ReceivedAnswer>;
-	/** the last answer, where it was about this pledge. */
+	/** the last answer, where it answered a press on this pledge. */
 	readonly answer: ReceivedAnswer | undefined;
 	readonly onPress: () => void;
 	readonly onClose: () => void;
