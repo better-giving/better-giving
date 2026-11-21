@@ -6,8 +6,11 @@ import {
 	type EmployerAnswer,
 	FIXTURE_NAMES,
 	FIXTURES,
+	pledgeStock,
+	TOLD_ANSWERS,
 	type DepositEnding,
-	type FixtureName
+	type FixtureName,
+	type ToldAnswer
 } from './fixtures';
 import { remember, remembered } from './state';
 
@@ -38,14 +41,16 @@ function need<T extends HTMLElement>(id: string, kind: new () => T): T {
 
 const stage = need('stage', HTMLElement);
 
-// `?deposit=` and `?employer=` have no control on the panel: each is read once, at registration,
-// because the runtime is.
+// `?deposit=`, `?employer=` and `?told=` have no control on the panel: each is read once, at
+// registration, because the runtime is.
 const wantedEnding = remembered('deposit');
 const ending: DepositEnding = DEPOSIT_ENDINGS.find((one) => one === wantedEnding) ?? 'received';
 const wantedAnswer = remembered('employer');
 const employer: EmployerAnswer = EMPLOYER_ANSWERS.find((one) => one === wantedAnswer) ?? 'saved';
+const wantedTold = remembered('told');
+const told: ToldAnswer = TOLD_ANSWERS.find((one) => one === wantedTold) ?? 'told';
 
-defineDonateForm(devRuntime(ending, employer));
+defineDonateForm(devRuntime(ending, employer, told));
 const element = document.createElement(DONATE_FORM_TAG);
 
 // --- the seed ---
@@ -137,6 +142,11 @@ picker.addEventListener('change', () => {
 	remember('fixture', picker.value);
 	show(picker.value);
 });
+
+// the stock pledge's one sender until the first step's unit panel draws a ticker: on the `pledges`
+// fixture's details step, with the three boxes filled in, it saves 50 shares of AAPL and the card
+// turns to the stock pending screen. anywhere else the flow takes no such press and nothing moves.
+need('pledge-stock', HTMLButtonElement).addEventListener('click', pledgeStock);
 
 need('reboot', HTMLButtonElement).addEventListener('click', () => {
 	const id = element.getAttribute('form') ?? '';

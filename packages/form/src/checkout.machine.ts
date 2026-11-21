@@ -108,7 +108,8 @@ import {
 	type PayerDraft
 } from './value';
 import { employerAnswer, giftToken } from './employer';
-import { isChariotRail } from './embed/rails';
+import { isChariotRail, isPledgeRail } from './embed/rails';
+import { pledgeIsUsable } from './pledge';
 import {
 	DONATION_STATES,
 	FREQUENCIES,
@@ -119,6 +120,7 @@ import {
 	type PaymentMethod,
 	type Quote,
 	type QuoteRequest,
+	type StockPledgeRequest,
 	type TributeKind
 } from './v1';
 
@@ -349,7 +351,23 @@ export type CheckoutContext = {
 	 * since one landed.
 	 */
 	readonly employerWriteRefusal: Exclude<EmployerRefusal, 'blank'> | null;
+	/**
+	 * the id the pledge this card saves is saved under, minted by the first save and sent again on
+	 * every save after it, so a resend answers the pledge already saved rather than saving a second
+	 * (`QuoteRequest.pledgeId` in ./v1.ts). kept for the card's life: a save whose answer was lost may
+	 * have landed, and the next press must name that pledge.
+	 */
+	readonly pledgeId: string | null;
+	/** the shares a stock pledge gives, from the `PLEDGE_STOCK` that started it. */
+	readonly stock: StockPick | null;
+	/** the endpoint refused the custodian a save named (`pledge_detail_invalid`), until it is retyped. */
+	readonly custodianRefused: boolean;
+	/** the last told press did not reach the organisation, until one does. */
+	readonly toldRefused: boolean;
 };
+
+/** a stock pledge's ticker and shares, as `StockPledgeRequest` in ./v1.ts carries them. */
+export type StockPick = { readonly ticker: string; readonly shares: string };
 
 /**
  * `refused` is the last write answered no or never reached the deployment, and `unconfirmed` the last
@@ -453,6 +471,16 @@ export type CheckoutEvent =
 	 * rail it is not a report from a provider's frame and is answered on the review step alone.
 	 */
 	| { readonly type: 'SET_COIN'; readonly coin: string | null }
+	/** the IRA custodian an `ira_qcd` pledge names, as the donor types it on the review step. */
+	| { readonly type: 'SET_CUSTODIAN'; readonly custodian: string }
+	/**
+	 * the donor pledging shares of a ticker, from the details step: the press that saves a stock
+	 * pledge, as `SUBMIT` saves an IRA (QCD) one. a stock gift has no row on the review step — the
+	 * ticker is picked on the first step — so the save is the details step's own press.
+	 */
+	| ({ readonly type: 'PLEDGE_STOCK' } & StockPick)
+	/** "I’ve contacted my broker", "I’ve asked my custodian", and the Try again after either fails. */
+	| { readonly type: 'TELL_ORGANIZATION' }
 	| { readonly type: 'PAYMENT_UNAVAILABLE'; readonly failure: Failure }
 	| { readonly type: 'CHALLENGE_UNAVAILABLE'; readonly failure: Failure }
 	| { readonly type: 'REPEATING_UNAVAILABLE' }
@@ -558,6 +586,14 @@ const CHECK_UNFINISHED =
 const GENERIC_FAILURE = 'This gift was not started, and nothing was charged. Try again.';
 
 /**
+ * what a donor is told when a pledge's save answered without the pledge. it may have been saved, and
+ * a Try again sends the same `pledgeId`, which the endpoint answers with that pledge rather than a
+ * second one.
+ */
+const PLEDGE_UNSAVED =
+	'We couldn’t confirm your gift was saved. Try again; it will not be saved twice.';
+
+/**
  * what a donor is told when their fund's approval expired before the grant was created.
  *
  * the server's own sentence names the session and is written for whoever reads the log; this one
@@ -581,6 +617,13 @@ function errorCode(error: unknown): string | undefined {
 	if (typeof error !== 'object' || error === null) return undefined;
 	const { code } = error as { code?: unknown };
 	return typeof code === 'string' ? code : undefined;
+}
+
+/** the box a `pledge_detail_invalid` refusal named, where it named one (`ApiError.field` in ./v1.ts). */
+function errorField(error: unknown): string | undefined {
+	if (typeof error !== 'object' || error === null) return undefined;
+	const { field } = error as { field?: unknown };
+	return typeof field === 'string' ? field : undefined;
 }
 
 /** the floor a `below_minimum` refusal named, where it named one (`EmbedFailure` in ./embed/api.ts). */
@@ -676,6 +719,37 @@ function quoteRequest(context: CheckoutContext, payer: Payer): QuoteRequest {
 					authorizedMinor: context.authorization.authorizedMinor
 				}),
 		...challengeField(context)
+	};
+}
+
+/**
+ * what one press sends to `POST /api/v1/forms/:id/donations`: a quote to mint on a processor's rail,
+ * or a pledge to save on a pledge rail (`PLEDGE_RAILS` in ./embed/rails.ts), each through its own
+ * port.
+ */
+type Minting =
+	| { readonly kind: 'quote'; readonly body: QuoteRequest }
+	| { readonly kind: 'pledge'; readonly body: QuoteRequest | StockPledgeRequest };
+
+function minting(context: CheckoutContext, payer: Payer): Minting {
+	if (!isPledgeRail(payer.method)) return { kind: 'quote', body: quoteRequest(context, payer) };
+	if (context.pledgeId === null) throw new Error('unreachable: `quoting` mints the id on entry');
+	// the donor fields, the note, the cause and the tribute ride as on every gift. a pledge covers
+	// no fee, because nothing is charged.
+	const gift = quoteRequest(context, payer);
+	const pledgeId = context.pledgeId;
+	if (payer.method === 'ira_qcd') {
+		return {
+			kind: 'pledge',
+			body: { ...gift, coversFee: false, pledgeId, custodian: payer.custodian ?? '' }
+		};
+	}
+	if (context.stock === null)
+		throw new Error('unreachable: a stock payer is set by `PLEDGE_STOCK`');
+	const { amountMinor: _amount, coversFee: _covers, method: _method, ...rest } = gift;
+	return {
+		kind: 'pledge',
+		body: { ...rest, method: 'stock', pledgeId, ...context.stock }
 	};
 }
 
@@ -902,6 +976,27 @@ export function venmoIsOffered(snapshot: { readonly context: CheckoutContext }):
 }
 
 /**
+ * whether a gift may be pledged on `rail`: a form offering it, on a gift the donor has made one-time,
+ * on a surface given the pledge ports (`CheckoutPorts.pledges` in ./ports.ts).
+ *
+ * neither pledge rail takes a gift that repeats (`FormConfig.paymentMethods` in ./v1.ts), so the IRA
+ * (QCD) row leaves the payment box with a repeating cadence, read off the cadence as it is being
+ * picked for the reason `cryptoIsOffered` above gives. exported for both surfaces that run this flow,
+ * which tell their payment surface on every reading.
+ */
+export function pledgeIsOffered(
+	snapshot: { readonly context: CheckoutContext },
+	rail: 'stock' | 'ira_qcd'
+): boolean {
+	const { config, draft, ports } = snapshot.context;
+	return (
+		draft.frequency === 'one_time' &&
+		config.paymentMethods.includes(rail) &&
+		ports.pledges !== undefined
+	);
+}
+
+/**
  * whether the review step offers the gift as one-time in place of the repeating one committed to:
  * no processor that takes a repeating gift is up (`repeatingUnavailable` on the context) and one
  * taking a one-time gift is.
@@ -1102,8 +1197,22 @@ export const checkoutMachine = setup({
 		 * mints one intent. a donor who backs out and presses again has made a second attempt and
 		 * mints a second intent; see the header.
 		 */
-		mintQuote: fromPromise<Quote, { ports: CheckoutPorts; request: QuoteRequest }>(({ input }) =>
-			input.ports.quote(input.request)
+		mintQuote: fromPromise<Quote, { ports: CheckoutPorts; request: Minting }>(({ input }) => {
+			const { ports, request } = input;
+			if (request.kind === 'quote') return ports.quote(request.body);
+			if (ports.pledges === undefined) {
+				throw new Error('unreachable: a pledge rail is offered only where its ports are given');
+			}
+			return ports.pledges.save(request.body);
+		}),
+		/** `POST /api/v1/forms/:id/donations/:pledgeId/told`, from the pending screen's primary. */
+		tellOrganization: fromPromise<void, { ports: CheckoutPorts; formId: string; pledgeId: string }>(
+			({ input: { ports, ...input } }) => {
+				if (ports.pledges === undefined) {
+					throw new Error('unreachable: a pledge is saved only where its ports are given');
+				}
+				return ports.pledges.told(input);
+			}
 		),
 		confirmPayment: fromPromise<ConfirmOutcome, { ports: CheckoutPorts; input: ConfirmInput }>(
 			({ input }) => input.ports.confirm(input.input)
@@ -1162,6 +1271,13 @@ export const checkoutMachine = setup({
 			event.step === params.to &&
 			stepIsReachable(context, params.from, params.to),
 
+		/** a stock pledge may be saved from here: the rail offered, and every field a receipt needs. */
+		stockCanPledge: ({ context }) =>
+			pledgeIsOffered({ context }, 'stock') && payerFieldsAreGiven(context),
+
+		/** the press being retried was a stock pledge's, which is made from the details step. */
+		pledgesStock: ({ context }) => context.payerDraft.method === 'stock',
+
 		/** the donor has filled in everything a typed rail needs before an intent can be minted. */
 		payerIsComplete: ({ context }) => payerIsComplete(context),
 
@@ -1190,6 +1306,23 @@ export const checkoutMachine = setup({
 			quoteIsUsable(params.quote, context.fv.amountMinor) &&
 			depositIsUsable(params.quote),
 
+		/**
+		 * a pledge saved: the answer carries the pledge this save named, whole (`pledgeIsUsable` in
+		 * ./pledge.ts). nothing is charged and nothing is confirmed after it.
+		 */
+		quoteIsPledge: ({ context }, params: { quote: Quote }): boolean => {
+			const method = context.payer?.method;
+			return (
+				method !== undefined &&
+				isPledgeRail(method) &&
+				context.pledgeId !== null &&
+				pledgeIsUsable(params.quote.pledge, method, context.pledgeId)
+			);
+		},
+
+		/** the press was a pledge's save, so an answer that is not its pledge is no pledge at all. */
+		savesPledge: ({ context }) => context.payer !== null && isPledgeRail(context.payer.method),
+
 		/** a reading of the gift paid to an address, answered with one of `DONATION_STATES`. */
 		depositReads: ({ event }, params: { state: DonationStatus['state'] }): boolean =>
 			'output' in event && depositState(event.output) === params.state,
@@ -1212,6 +1345,13 @@ export const checkoutMachine = setup({
 			const code = 'error' in event ? coinRefusalOf(context, event.error)?.code : undefined;
 			return code === 'below_minimum' || code === 'above_maximum';
 		},
+
+		/** an IRA (QCD) save refused for its custodian, which the review step's box is where it is fixed. */
+		refusesCustodian: ({ context, event }) =>
+			'error' in event &&
+			context.payer?.method === 'ira_qcd' &&
+			errorCode(event.error) === 'pledge_detail_invalid' &&
+			errorField(event.error) === 'custodian',
 
 		/** a `crypto` quote refused for the coin, which the review step's coin list is where it is fixed. */
 		refusesCoin: ({ context, event }) =>
@@ -1477,7 +1617,11 @@ export const checkoutMachine = setup({
 		repeatingUnavailable: false,
 		employer: '',
 		employerRefusal: null,
-		employerWriteRefusal: null
+		employerWriteRefusal: null,
+		pledgeId: null,
+		stock: null,
+		custodianRefused: false,
+		toldRefused: false
 	}),
 	// four reports from surfaces that resolve on their own schedule. none of them is a step in the
 	// flow and none moves it from here, so all four are accepted wherever the machine happens to be.
@@ -1777,6 +1921,19 @@ export const checkoutMachine = setup({
 				// with no address for the receipt it produces.
 				CONTINUE: { guard: 'payerFieldsAreGiven', target: 'give' },
 				/**
+				 * a stock pledge saved from here, through `holding` as the review step's press is, so it
+				 * waits on a challenge token it may spend. the rail is set with the shares: a stock gift
+				 * has no row in the payment box for a donor to open.
+				 */
+				PLEDGE_STOCK: {
+					guard: 'stockCanPledge',
+					target: 'holding',
+					actions: assign({
+						stock: ({ event }) => ({ ticker: event.ticker, shares: event.shares }),
+						payerDraft: ({ context }) => ({ ...context.payerDraft, method: 'stock' as const })
+					})
+				},
+				/**
 				 * the marks: the amount step behind, the review step ahead.
 				 *
 				 * `BACK` is not handled here. the way back off a numbered step is a mark, and the
@@ -1825,6 +1982,15 @@ export const checkoutMachine = setup({
 							coin: event.coin ?? undefined
 						}),
 						coinRefusal: null
+					})
+				},
+				SET_CUSTODIAN: {
+					actions: assign({
+						payerDraft: ({ context, event }) => ({
+							...context.payerDraft,
+							custodian: event.custodian
+						}),
+						custodianRefused: false
 					})
 				},
 				// handled on this step alone, which is where the control that sends it lives. a donor
@@ -1997,14 +2163,37 @@ export const checkoutMachine = setup({
 		 * to bypass. It bounds the double press, not the determined caller — see the header.
 		 */
 		quoting: {
-			entry: assign({ sentToken: ({ context }) => context.turnstileToken }),
+			entry: assign({
+				sentToken: ({ context }) => context.turnstileToken,
+				// minted by the first save on a pledge rail and kept from there (`pledgeId` on the context).
+				pledgeId: ({ context }) =>
+					context.pledgeId ??
+					(context.payer !== null && isPledgeRail(context.payer.method)
+						? (context.ports.pledges?.id() ?? null)
+						: null)
+			}),
 			invoke: {
 				src: 'mintQuote',
 				input: ({ context }) => {
 					if (context.payer === null) throw new Error('unreachable: guarded by payerIsComplete');
-					return { ports: context.ports, request: quoteRequest(context, context.payer) };
+					return { ports: context.ports, request: minting(context, context.payer) };
 				},
 				onDone: [
+					{
+						guard: { type: 'quoteIsPledge', params: ({ event }) => ({ quote: event.output }) },
+						target: 'pledged',
+						actions: assign({ quote: ({ event }) => event.output })
+					},
+					{
+						guard: 'savesPledge',
+						target: 'failed',
+						actions: assign({
+							failure: (): Failure => ({
+								message: PLEDGE_UNSAVED,
+								fix: 'POST /api/v1/forms/:id/donations answered a pledge save without the pledge it saved. Check that the answer carries `pledge` with the id the request sent and every field `Pledge` in packages/form/src/v1.ts names.'
+							})
+						})
+					},
 					{
 						// the grant is created inside this same request, so a usable answer is the gift
 						// made — pending until the fund pays it, which is `processing`'s own claim.
@@ -2043,6 +2232,11 @@ export const checkoutMachine = setup({
 						actions: assign({
 							coinRefusal: ({ context, event }) => coinRefusalOf(context, event.error)
 						})
+					},
+					{
+						guard: 'refusesCustodian',
+						target: 'give',
+						actions: assign({ custodianRefused: true })
 					},
 					{
 						guard: 'refusesCoin',
@@ -2410,6 +2604,48 @@ export const checkoutMachine = setup({
 		},
 
 		/**
+		 * a stock or IRA (QCD) pledge is saved, and the donor is shown where their broker or custodian
+		 * sends it.
+		 *
+		 * the save is the answer that landed here: nothing is charged and nothing is confirmed after it,
+		 * and the gift counts once the organisation's staff mark it received. what is left on this
+		 * screen is the donor saying they have asked for the transfer, which tells the organisation
+		 * (`TELL_ORGANIZATION`). terminal without being `final`, for `success`'s reason below.
+		 *
+		 * a told press that fails goes back to `pending` with the refusal standing, and the press is
+		 * the same event again. the pledge is saved either way, which is what the refusal says.
+		 */
+		pledged: {
+			initial: 'pending',
+			states: {
+				pending: {
+					on: { TELL_ORGANIZATION: { target: 'telling' } }
+				},
+				telling: {
+					invoke: {
+						src: 'tellOrganization',
+						input: ({ context }) => {
+							if (context.pledgeId === null) {
+								throw new Error('unreachable: a pledge is shown only once it is saved');
+							}
+							return {
+								ports: context.ports,
+								formId: context.config.formId,
+								pledgeId: context.pledgeId
+							};
+						},
+						onDone: { target: 'told', actions: assign({ toldRefused: false }) },
+						onError: { target: 'pending', actions: assign({ toldRefused: true }) }
+					},
+					after: {
+						portTimeout: { target: 'pending', actions: assign({ toldRefused: true }) }
+					}
+				},
+				told: {}
+			}
+		},
+
+		/**
 		 * a confirmation was sent and nobody can say what became of it.
 		 *
 		 * the state that stops a second charge, and the reason `failed` is reachable only from a
@@ -2673,6 +2909,7 @@ export const checkoutMachine = setup({
 					{ guard: 'grantIsHeld', target: 'resending' },
 					{ guard: not('amountIsDecided'), target: 'amount' },
 					{ guard: not('payerFieldsAreGiven'), target: 'details' },
+					{ guard: 'pledgesStock', target: 'details' },
 					{ target: 'give' }
 				]
 			}

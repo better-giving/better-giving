@@ -36,10 +36,15 @@ const form = ['./tokens.css', './parts.css', './layout.css', './motion.css'].fla
 );
 
 /** a selector branch that reaches the registry's press: its class, or the action, which carries it. */
-const reachesThePress = (branch: string): boolean =>
-	/\.ds-btn\b/.test(branch) ||
-	(/\[part~='action'\]/.test(branch) &&
-		!/\[part~='action'\]:where\(:not\(\.ds-btn\)\)/.test(branch));
+const reachesThePress = (branch: string): boolean => {
+	// a branch that leaves out whatever carries the registry's class never reaches its press.
+	const reaching = branch.replaceAll(':where(:not(.ds-btn))', '');
+	return (
+		/\.ds-btn\b/.test(reaching) ||
+		(/\[part~='action'\]/.test(branch) &&
+			!/\[part~='action'\]:where\(:not\(\.ds-btn\)\)/.test(branch))
+	);
+};
 
 describe('the space between a mark and its words', () => {
 	const TIERS = ['.ds-btn', '.ds-btn-sm', '.ds-btn-md', '.ds-btn-lg', '.ds-btn-field'];

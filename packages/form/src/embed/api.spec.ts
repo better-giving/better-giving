@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createEmployerWrite, createQuote, createStatusRead } from './api';
+import { createEmployerWrite, createPledgeTold, createQuote, createStatusRead } from './api';
 
 // the write both surfaces spend, asserted where it lives rather than through either of them.
 //
@@ -315,5 +315,53 @@ describe('the employer write the thank-you makes', () => {
 			'could not tell which deployment it was served from'
 		);
 		expect(fetched).not.toHaveBeenCalled();
+	});
+});
+
+describe('a pledge’s save and its told press', () => {
+	// the box the endpoint refused is what puts the donor back on it rather than on the failure screen.
+	it('carries the box a pledge’s refusal names', async () => {
+		stubFetch(
+			json(
+				{
+					error: 'pledge_detail_invalid',
+					message: 'Enter the custodian holding your IRA.',
+					field: 'custodian'
+				},
+				422
+			)
+		);
+
+		const failure = await refusal(
+			createQuote(DEPLOYMENT)({ ...SUBMISSION, method: 'ira_qcd', pledgeId: 'p1', custodian: '' })
+		);
+
+		expect(failure).toMatchObject({ code: 'pledge_detail_invalid', field: 'custodian' });
+	});
+
+	it('posts the told press to the pledge on the deployment, with no body and no credential', async () => {
+		const fetched = stubFetch(json({ ok: true }));
+
+		await expect(
+			createPledgeTold(DEPLOYMENT)({ formId: 'frm_a8x2k9', pledgeId: 'p 1' })
+		).resolves.toBeUndefined();
+		expect(fetched).toHaveBeenCalledWith(
+			'https://donate.example/api/v1/forms/frm_a8x2k9/donations/p%201/told',
+			expect.objectContaining({ method: 'POST', credentials: 'omit' })
+		);
+		const init = fetched.mock.calls[0]?.[1] as RequestInit | undefined;
+		expect(init).toBeDefined();
+		expect(init?.body).toBeUndefined();
+	});
+
+	it.each([
+		['a refusal', () => json({ error: 'pledge_not_found', message: 'No such pledge.' }, 404)],
+		['a success that is not ours', () => json({ ok: false })],
+		['a body that is not JSON', () => new Response('<html>', { status: 200 })]
+	])('refuses %s', async (_case, response) => {
+		stubFetch(response());
+		await expect(
+			createPledgeTold(DEPLOYMENT)({ formId: 'frm_a8x2k9', pledgeId: 'p1' })
+		).rejects.toThrow('/told');
 	});
 });

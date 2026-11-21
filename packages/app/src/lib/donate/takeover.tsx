@@ -403,6 +403,12 @@ export function takeoverFor(
 				? { ...BLANK, heading: copy.RESUMING_HEADING, body: copy.RESUMING_BODY }
 				: { ...BLANK, heading: copy.CONFIRMING_HEADING, body: copy.CONFIRMING_BODY };
 
+		// a saved stock or IRA (QCD) pledge, which this page cannot reach: it hands the flow no pledge
+		// ports (`CheckoutPorts.pledges` in @better-giving/form/ports), and no pledge rail is offered
+		// without them (`pledgeIsOffered` in @better-giving/form/machine).
+		case 'pledged':
+			return BLANK;
+
 		// the three the card renders as a numbered step rather than as a takeover.
 		case 'amount':
 		case 'details':

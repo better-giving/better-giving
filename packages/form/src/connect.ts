@@ -54,6 +54,7 @@ import {
 	type NumberedStep
 } from './checkout.machine';
 import {
+	custodianIsMissing,
 	methodIsChargeable,
 	missingAmountDecisions,
 	missingPayerFields,
@@ -70,12 +71,14 @@ import { employerAnswer } from './employer';
 import {
 	FREQUENCIES,
 	FREQUENCY_LABELS,
+	MAX_CUSTODIAN,
 	MAX_EMPLOYER,
 	NO_PROGRAM_LABEL,
 	TRIBUTE_KIND_LABELS,
 	TRIBUTE_KINDS,
 	type Deposit,
 	type Frequency,
+	type Pledge,
 	type PaymentMethod,
 	type Quote,
 	type TributeKind
@@ -239,6 +242,13 @@ export type State =
 			 * the answer to rather than an audience of.
 			 */
 			readonly solving: boolean;
+			/**
+			 * the donor is on the `ira_qcd` rail with no custodian named, which a press is refused for
+			 * (`custodianIsMissing` in ./value.ts). a renderer marks the box off this once a press asks.
+			 */
+			readonly custodianMissing: boolean;
+			/** the endpoint refused the custodian the last save named, until the donor retypes it. */
+			readonly custodianRefused: boolean;
 	  }
 	| {
 			readonly step: 'confirm';
@@ -316,6 +326,18 @@ export type State =
 			readonly closed: boolean;
 	  }
 	| { readonly step: 'depositExpired' }
+	| {
+			readonly step: 'pledged';
+			/** the pledge as saved, which is everything its screens show. */
+			readonly pledge: Pledge;
+			/**
+			 * `pending` is the instructions standing, `telling` the told press in flight, and `told` the
+			 * organisation told — the screen that thanks the donor.
+			 */
+			readonly phase: 'pending' | 'telling' | 'told';
+			/** the last told press did not reach the organisation; the pledge is saved regardless. */
+			readonly refused: boolean;
+	  }
 	| { readonly step: 'verificationExpired' }
 	| ({
 			readonly step: 'success';
@@ -406,6 +428,17 @@ export type CheckoutApi<
 	 * list, which is a way of choosing from this list rather than a different list.
 	 */
 	readonly coinSelect: T['select'];
+	/**
+	 * the IRA custodian an `ira_qcd` pledge names, required and held to the endpoint's cap. which box
+	 * a press was refused for is `custodianMissing` and `custodianRefused` on the review step's state.
+	 */
+	readonly custodianField: T['field'];
+	/**
+	 * the pending screen's primary — "I’ve contacted my broker", "I’ve asked my custodian", or Try
+	 * again over a press that failed. busy while its own write is in flight, which no other control on
+	 * the screen is.
+	 */
+	readonly toldButton: T['button'];
 	readonly consentToggle: T['button'];
 	readonly feeToggle: T['button'];
 	readonly submitButton: T['button'];
@@ -483,6 +516,7 @@ export const TOP_LEVEL_STATES = [
 	'awaitingVerification',
 	'awaitingDeposit',
 	'depositExpired',
+	'pledged',
 	'verificationExpired',
 	'success',
 	'failed'
@@ -598,6 +632,18 @@ export function toState(snapshot: CheckoutSnapshot): State {
 		}
 		case 'depositExpired':
 			return { step: 'depositExpired' };
+		case 'pledged': {
+			// reached only past `quoteIsPledge`, which a quote without its pledge never passes.
+			const pledge = context.quote?.pledge;
+			if (pledge === undefined) return working('quoting');
+			const phases = ['pending', 'telling', 'told'] as const;
+			return {
+				step: 'pledged',
+				pledge,
+				phase: phases.find((phase) => snapshot.matches({ pledged: phase })) ?? 'pending',
+				refused: context.toldRefused
+			};
+		}
 		case 'awaitingVerification':
 			return { step: 'awaitingVerification', deadline: context.verificationDeadline };
 		case 'failed':
@@ -618,6 +664,8 @@ export function toState(snapshot: CheckoutSnapshot): State {
 						payerComplete: payerIsComplete(context),
 						oneTimeInstead: oneTimeIsOfferedInstead(snapshot),
 						solving: step === 'holding' && context.challengeInteractive,
+						custodianMissing: custodianIsMissing(context.payerDraft),
+						custodianRefused: context.custodianRefused,
 						...(context.payerDraft.method === undefined
 							? {}
 							: { method: context.payerDraft.method })
@@ -895,6 +943,19 @@ export function connect<
 				})),
 			onChange: (value: string) =>
 				send({ type: 'SET_COIN', coin: value === NO_COIN ? null : value })
+		}),
+
+		custodianField: normalize.field({
+			name: 'custodian',
+			required: true,
+			maxLength: MAX_CUSTODIAN,
+			value: payerDraft.custodian ?? '',
+			onChange: (custodian: string) => send({ type: 'SET_CUSTODIAN', custodian })
+		}),
+
+		toldButton: button({
+			'aria-busy': snapshot.matches({ pledged: 'telling' }),
+			onClick: () => send({ type: 'TELL_ORGANIZATION' })
 		}),
 
 		continueButton: button({ onClick: () => send({ type: 'CONTINUE' }) }),

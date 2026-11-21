@@ -1,3 +1,4 @@
+import type { CheckoutEvent } from '../src/checkout.machine';
 import type { FormRuntime } from '../src/element';
 import { EmbedFailure } from '../src/embed/api';
 import { createPaymentSurface } from '../src/embed/surface';
@@ -13,15 +14,18 @@ import {
 	type PayableCoin,
 	type PaymentMethod,
 	type Program,
-	type Provider
+	type Provider,
+	type Quote,
+	type QuoteRequest,
+	type StockPledgeRequest
 } from '../src/v1';
 
-// the thirteen configurations ./main.ts can put the element on, and the runtime that serves them.
+// the fourteen configurations ./main.ts can put the element on, and the runtime that serves them.
 //
 // nothing here reaches the network, and that is the whole premise of the page rather than a
 // convenience: `loadConfig` answers from this file, `checkout` never lets Stripe.js be asked for —
-// a stub on every fixture but `crypto`, and on that one the real surface with the Stripe half's
-// loader answering nothing — and no fixture names a `turnstileSiteKey`, which is what keeps
+// a stub on every fixture but `crypto` and `pledges`, and on those the real surface with the Stripe
+// half's loader answering nothing — and no fixture names a `turnstileSiteKey`, which is what keeps
 // ../src/embed/turnstile.ts from loading a widget. a contributor needs no deployment, no database
 // and no vendor account.
 //
@@ -311,6 +315,21 @@ const CRYPTO: ServedConfig = {
 	coins: COINS
 };
 
+/**
+ * card beside both pledge rails, in the identity the design package's frames are drawn in, so each
+ * pledge screen can be put beside its frame. IRA (QCD) is a row on the review step; stock is saved
+ * from the details step by the panel's Pledge stock, the one sender of that event until the first
+ * step's unit panel draws a ticker.
+ */
+const PLEDGES: ServedConfig = {
+	...DEFAULT,
+	formId: 'frm_pledges',
+	suggestedAmountsMinor: [10_000],
+	paymentMethods: ['card', 'ira_qcd', 'stock'],
+	orgLegalName: 'Cedar Fork Community Pantry Inc.',
+	ein: '47-3829105'
+};
+
 /** the body the `slow` fixture answers with once it has finished being slow. */
 const SLOW: ServedConfig = { ...DEFAULT, formId: 'frm_slow' };
 
@@ -334,6 +353,7 @@ export const FIXTURE_NAMES = [
 	'pinned',
 	'choice',
 	'crypto',
+	'pledges',
 	'one',
 	'five',
 	'seven',
@@ -387,6 +407,11 @@ export const FIXTURES: Readonly<Record<FixtureName, Fixture>> = {
 		formId: CRYPTO.formId,
 		note: 'Card and crypto, five coins. ?deposit= picks the ending: received (default), expired or late. The coin named fail is refused as under its minimum.',
 		load: async () => CRYPTO
+	},
+	pledges: {
+		formId: PLEDGES.formId,
+		note: 'Card, IRA (QCD) and stock. Open IRA (QCD) on the review step; on the details step, Pledge stock below saves 50 shares of AAPL. ?told=refused fails the first “I’ve …” press, for the error notice.',
+		load: async () => PLEDGES
 	},
 	one: {
 		formId: PRESETS_1.formId,
@@ -446,6 +471,63 @@ export const EMPLOYER_ANSWERS = ['saved', 'refused', 'absent'] as const;
 export type EmployerAnswer = (typeof EMPLOYER_ANSWERS)[number];
 
 const EMPLOYER_WRITE_MS = 600;
+
+/**
+ * how a pledge's told press answers, which `?told=` on the page picks (./main.ts): `told` answers it,
+ * and `refused` fails the first press and answers the next, so the error notice and the thank-you
+ * after it are both on the page. each after `EMPLOYER_WRITE_MS`, so the busy press can be seen.
+ */
+export const TOLD_ANSWERS = ['told', 'refused'] as const;
+export type ToldAnswer = (typeof TOLD_ANSWERS)[number];
+
+/** the flow's `send`, held from the last checkout that handed it over (`steer` below). */
+let steering: ((event: CheckoutEvent) => void) | null = null;
+
+/** the panel's Pledge stock: 50 shares of AAPL, saved from the details step the flow is on. */
+export function pledgeStock(): void {
+	steering?.({ type: 'PLEDGE_STOCK', ticker: 'AAPL', shares: '50' });
+}
+
+/** the pledge a save answers with, in the frames' own values, under the id the save sent. */
+function savedPledge(request: QuoteRequest | StockPledgeRequest): Quote {
+	const id = request.pledgeId ?? 'dev-pledge';
+	if (request.method === 'stock' && 'ticker' in request) {
+		return {
+			paymentToken: id,
+			feeMinor: 0,
+			totalMinor: 0,
+			pledge: {
+				id,
+				method: 'stock',
+				reference: `CFCP-${request.ticker}-7Q2D`,
+				receiptTo: request.email,
+				ticker: request.ticker,
+				shares: request.shares,
+				deliverTo: 'Harbor Street Securities',
+				dtcNumber: '0164',
+				accountNumber: 'Z12-345678',
+				accountName: 'Cedar Fork Community Pantry Inc.'
+			}
+		};
+	}
+	const amountMinor = 'amountMinor' in request ? request.amountMinor : 0;
+	return {
+		paymentToken: id,
+		feeMinor: 0,
+		totalMinor: amountMinor,
+		pledge: {
+			id,
+			method: 'ira_qcd',
+			reference: 'CFCP-IRA-4K9M',
+			receiptTo: request.email,
+			amountMinor,
+			custodian: request.custodian ?? '',
+			payeeName: 'Cedar Fork Community Pantry Inc.',
+			ein: '47-3829105',
+			mailingAddress: '412 Alder Lane, Suite 3\nCedar Fork, OR 97330'
+		}
+	};
+}
 
 /** the gift page a dev quote names. it is on no server: the link is there to be looked at. */
 const DEV_GIFT_URL = 'https://giving.example.org/gift/dev-7Qk3-mVx9Lr2NpA4';
@@ -515,8 +597,15 @@ function deposit(
  * review step would read as broken rather than as unwired. this is the same arithmetic the card
  * already shows in its fee row, so the two agree and no correction screen is reached.
  */
-function ports(config: FormConfig, ending: DepositEnding, employer: EmployerAnswer): CheckoutPorts {
+function ports(
+	config: FormConfig,
+	ending: DepositEnding,
+	employer: EmployerAnswer,
+	told: ToldAnswer
+): CheckoutPorts {
 	let minted = 0;
+	let pledged = 0;
+	let refusing = told === 'refused';
 	const gift = employer === 'absent' ? {} : { giftUrl: DEV_GIFT_URL };
 	/** readings made per donation id, so each address counts to its ending from zero. */
 	const readings = new Map<string, number>();
@@ -552,6 +641,16 @@ function ports(config: FormConfig, ending: DepositEnding, employer: EmployerAnsw
 			await after(EMPLOYER_WRITE_MS, undefined);
 			if (employer === 'refused')
 				throw new Error('the refused answer in packages/form/dev/fixtures.ts');
+		},
+		pledges: {
+			id: () => `dev-pledge-${(pledged += 1)}`,
+			save: async (request) => savedPledge(request),
+			told: async () => {
+				await after(EMPLOYER_WRITE_MS, undefined);
+				if (!refusing) return;
+				refusing = false;
+				throw new Error('the refused told answer in packages/form/dev/fixtures.ts');
+			}
 		}
 	};
 }
@@ -559,11 +658,10 @@ function ports(config: FormConfig, ending: DepositEnding, employer: EmployerAnsw
 /**
  * the three functions the element is registered with.
  *
- * `checkout` and `challenge` are the stubs ../src/element.browser.spec.ts registers, and they are
- * why this page loads no third-party script: the payment surface and the anti-abuse widget are the
- * two things that would, and neither is built. nothing is painted into either mount, so the payment
- * box stays closed and no challenge token is ever minted — which the quote above is untroubled by,
- * the token being optional on the request.
+ * `checkout` and `challenge` are stubs in the shape ../src/element.browser.spec.ts registers, and
+ * they are why this page loads no third-party script: the payment surface and the anti-abuse widget
+ * are the two things that would, and neither is built. nothing is painted into either mount, so the
+ * payment box stays closed; the challenge mints a dev token of its own, which a press waits on.
  *
  * the one thing added to those stubs is the rail report. a payment surface tells the card which
  * rail the donor's own fields are showing, and with no fields there is nobody to say — so the
@@ -572,13 +670,18 @@ function ports(config: FormConfig, ending: DepositEnding, employer: EmployerAnsw
  * deployment offers is reported once instead, through the same callback a real surface reports it
  * through.
  *
- * `crypto` is the exception, composed the way ../src/embed/runtime.ts composes it so the coin row,
- * its list and the monthly cadence taking it away are the shipped code. its Stripe half is handed a
- * loader that answers nothing, which that adapter reads as fields that never came up and
- * ../src/embed/surface.ts withholds, since the crypto half never reports the same — so the card row
- * is counted in the box's header and never drawn.
+ * `crypto` and `pledges` are the exceptions, composed the way ../src/embed/runtime.ts composes them
+ * so the coin row and the IRA (QCD) row, what each holds and the monthly cadence taking them away
+ * are the shipped code. the Stripe half is handed a loader that answers nothing, which that adapter
+ * reads as fields that never came up and ../src/embed/surface.ts withholds, since the other half
+ * never reports the same — so the card row is counted in the box's header and never drawn. `pledges`
+ * also hands the panel its hold on the flow (`steer`), which is how Pledge stock reaches it.
  */
-export function devRuntime(ending: DepositEnding, employer: EmployerAnswer): FormRuntime {
+export function devRuntime(
+	ending: DepositEnding,
+	employer: EmployerAnswer,
+	told: ToldAnswer
+): FormRuntime {
 	return {
 		loadConfig: async (formId) => {
 			const fixture = Object.values(FIXTURES).find((one) => one.formId === formId);
@@ -590,12 +693,19 @@ export function devRuntime(ending: DepositEnding, employer: EmployerAnswer): For
 			}
 			return fixture.load();
 		},
-		checkout: (config, mount, onRail, onUnavailable, _boot, fund, coins) => {
-			if (config.formId === CRYPTO.formId) {
-				const surface = createPaymentSurface(config, mount, onRail, onUnavailable, fund, coins, {
-					stripe: { load: async () => null }
-				});
-				const fake = ports(config, ending, employer);
+		checkout: (config, mount, onRail, onUnavailable, _boot, fund, coins, ira) => {
+			if (config.formId === CRYPTO.formId || config.formId === PLEDGES.formId) {
+				const surface = createPaymentSurface(
+					config,
+					mount,
+					onRail,
+					onUnavailable,
+					fund,
+					coins,
+					{ stripe: { load: async () => null } },
+					ira
+				);
+				const fake = ports(config, ending, employer, told);
 				const quote: CheckoutPorts['quote'] = async (request) => {
 					const answered = await fake.quote(request);
 					surface.quoted(request, answered);
@@ -610,6 +720,10 @@ export function devRuntime(ending: DepositEnding, employer: EmployerAnswer): For
 					offerFund: surface.offerFund,
 					offerCrypto: surface.offerCrypto,
 					offerVenmo: surface.offerVenmo,
+					offerIra: surface.offerIra,
+					steer: (send) => {
+						steering = send;
+					},
 					rows: surface.rows,
 					repeatingUnavailable: surface.repeatingUnavailable,
 					stop: surface.stop
@@ -619,7 +733,7 @@ export function devRuntime(ending: DepositEnding, employer: EmployerAnswer): For
 			// arrives: a rail named inside this call would reach a machine that does not exist yet.
 			queueMicrotask(() => onRail(config.paymentMethods[0] ?? null));
 			return {
-				input: { config, ports: ports(config, ending, employer) },
+				input: { config, ports: ports(config, ending, employer, told) },
 				cadence: () => {},
 				offerFund: () => {},
 				offerCrypto: () => {},
@@ -630,6 +744,14 @@ export function devRuntime(ending: DepositEnding, employer: EmployerAnswer): For
 				stop: () => {}
 			};
 		},
-		challenge: () => ({ reset: () => {}, stop: () => {} })
+		// a token as the widget is drawn and again on every reset, the way the ordinary widget mints
+		// one: a press waits on a fresh token (`holding` in ../src/checkout.machine.ts), and with none
+		// it would wait out `PORT_TIMEOUT_MS` and land on the failure screen.
+		challenge: (_config, _mount, onToken) => {
+			let tokens = 0;
+			const mint = () => queueMicrotask(() => onToken(`tk_dev_${(tokens += 1)}`));
+			mint();
+			return { reset: mint, stop: () => {} };
+		}
 	};
 }

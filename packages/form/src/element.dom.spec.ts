@@ -11,7 +11,12 @@ import {
 import manifestText from '../custom-elements.json?raw';
 import { CARD_THEME, PART_NAMES, REGISTRY_CLASS, ROLE_TOKENS, STATE_TOKENS } from './parts';
 import type { CheckoutPorts, FundReports } from './ports';
-import { DEPOSIT_POLL_MS, type Failure, PORT_TIMEOUT_MS } from './checkout.machine';
+import {
+	type CheckoutEvent,
+	DEPOSIT_POLL_MS,
+	type Failure,
+	PORT_TIMEOUT_MS
+} from './checkout.machine';
 import {
 	PAYMENT_METHODS,
 	type FormConfig,
@@ -19,7 +24,8 @@ import {
 	type PaymentMethod,
 	type Program,
 	type Quote,
-	type QuoteRequest
+	type QuoteRequest,
+	type StockPledgeRequest
 } from './v1';
 import { DEFAULT_SHAPE } from './views';
 import { EMPLOYER_CLASS } from './employer-ask';
@@ -114,6 +120,8 @@ type Mounted = {
 	rows(count: number): void;
 	/** the payment surface saying no processor still up takes a repeating gift. */
 	repeatingUnavailable(): void;
+	/** an event sent through the runtime's hold on the flow (`FormCheckout.steer` in ./element.ts). */
+	steer(event: CheckoutEvent): void;
 };
 
 function view(
@@ -128,6 +136,7 @@ function view(
 	| 'fund'
 	| 'rows'
 	| 'repeatingUnavailable'
+	| 'steer'
 > {
 	const shadow = host.shadowRoot;
 	if (shadow === null) throw new Error('the element has not upgraded');
@@ -191,6 +200,8 @@ type Options = {
 	readonly cryptoOffers?: (offered: boolean) => void;
 	/** every reading of whether Venmo is offered, in the order the card told the payment surface. */
 	readonly venmoOffers?: (offered: boolean) => void;
+	/** every reading of whether IRA (QCD) is offered, in the order the card told the payment surface. */
+	readonly iraOffers?: (offered: boolean) => void;
 	/** how many options the payment box lists when the card first asks; one where unsaid. */
 	readonly rowCount?: number;
 	readonly attributes?: Readonly<Record<string, string>>;
@@ -227,6 +238,7 @@ async function mount(options: Options = {}): Promise<Mounted> {
 	let reports: FundReports | null = null;
 	let counted: (count: number) => void = () => {};
 	let repeating: () => void = () => {};
+	let steering: (event: CheckoutEvent) => void = () => {};
 	defineDonateForm(
 		{
 			loadConfig: options.loadConfig ?? (async () => options.config ?? CONFIG),
@@ -252,11 +264,12 @@ async function mount(options: Options = {}): Promise<Mounted> {
 					redraw: (node) => options.redraws?.(node)
 				};
 			},
-			checkout: (config, mount, onRail, onUnavailable, boot, fund, coins) => {
+			checkout: (config, mount, onRail, onUnavailable, boot, fund, coins, ira) => {
 				reports = fund;
-				// stood in the payment node the way the crypto option stands it, so it is in the document
-				// and can hold the caret.
+				// stood in the payment node the way the crypto and IRA (QCD) options stand them, so each
+				// is in the document and can hold the caret.
 				mount.appendChild(coins);
+				if (ira !== undefined) mount.appendChild(ira);
 				options.mounted?.(mount);
 				options.boots?.(boot);
 				report = onRail;
@@ -271,6 +284,10 @@ async function mount(options: Options = {}): Promise<Mounted> {
 					offerFund: (offered) => options.offers?.(offered),
 					offerCrypto: (offered) => options.cryptoOffers?.(offered),
 					offerVenmo: (offered) => options.venmoOffers?.(offered),
+					offerIra: (offered) => options.iraOffers?.(offered),
+					steer: (send) => {
+						steering = send;
+					},
 					rows: (listener) => {
 						counted = listener;
 						listener(options.rowCount ?? 1);
@@ -303,7 +320,8 @@ async function mount(options: Options = {}): Promise<Mounted> {
 			return reports;
 		},
 		rows: (count) => counted(count),
-		repeatingUnavailable: () => repeating()
+		repeatingUnavailable: () => repeating(),
+		steer: (event) => steering(event)
 	};
 }
 
@@ -8380,5 +8398,407 @@ describe('the employer ask on the thank-you', () => {
 		const card = await atSubmitted({ ports: { employer: async () => {} } });
 		expect(card.find('.employer').hidden).toBe(true);
 		expect(shows(card, '.takeover > .foot > [part~="action-quiet"]')).toBe('Back to start');
+	});
+});
+
+describe('a stock or IRA (QCD) pledge', () => {
+	const PLEDGES: FormConfig = {
+		...CONFIG,
+		orgLegalName: 'Cedar Fork Community Pantry Inc.',
+		paymentMethods: ['card', 'ira_qcd', 'stock']
+	};
+	const IRA_PLEDGE: Quote = {
+		paymentToken: 'pledge-1',
+		feeMinor: 0,
+		totalMinor: 2500,
+		pledge: {
+			id: 'pledge-1',
+			method: 'ira_qcd',
+			reference: 'CFCP-IRA-4K9M',
+			receiptTo: 'maya.okafor@example.org',
+			amountMinor: 2500,
+			custodian: 'Fidelity Investments',
+			payeeName: 'Cedar Fork Community Pantry Inc.',
+			ein: '47-3829105',
+			mailingAddress: '412 Alder Lane, Suite 3\nCedar Fork, OR 97330'
+		}
+	};
+	const STOCK_PLEDGE: Quote = {
+		paymentToken: 'pledge-1',
+		feeMinor: 0,
+		totalMinor: 0,
+		pledge: {
+			id: 'pledge-1',
+			method: 'stock',
+			reference: 'CFCP-AAPL-7Q2D',
+			receiptTo: 'maya.okafor@example.org',
+			ticker: 'AAPL',
+			shares: '50',
+			deliverTo: 'Harbor Street Securities',
+			dtcNumber: '0164',
+			accountNumber: 'Z12-345678',
+			accountName: 'Cedar Fork Community Pantry Inc.'
+		}
+	};
+	const NOT_ADVICE =
+		'This is general information, not tax advice. Talk to your tax adviser about your own situation.';
+
+	type PledgeOptions = Options & {
+		readonly saved?: Quote;
+		readonly told?: () => Promise<void>;
+		readonly saves?: (QuoteRequest | StockPledgeRequest)[];
+	};
+	const pledging = (options: PledgeOptions = {}): Options => ({
+		config: PLEDGES,
+		...options,
+		ports: {
+			pledges: {
+				id: () => 'pledge-1',
+				save: async (request) => {
+					options.saves?.push(request);
+					return options.saved ?? IRA_PLEDGE;
+				},
+				told: options.told ?? (async () => {})
+			},
+			...options.ports
+		}
+	});
+
+	/** the IRA (QCD) option's own root, standing in the payment node. */
+	const panel = (card: Mounted): ShadowRoot => {
+		const host = [...card.host.querySelectorAll('*')].find((node) =>
+			node.shadowRoot?.querySelector('#custodian')
+		);
+		if (host?.shadowRoot == null) throw new Error('no IRA (QCD) panel was handed to the runtime');
+		return host.shadowRoot;
+	};
+	const custodian = (card: Mounted) => panel(card).querySelector('#custodian') as HTMLInputElement;
+
+	/** the review step with the IRA (QCD) option open. */
+	const onIra = async (options: PledgeOptions = {}) => {
+		const card = await atReviewBeforeRail(pledging(options));
+		card.rail('ira_qcd');
+		return card;
+	};
+	/** the IRA (QCD) pending screen, its pledge saved. */
+	const iraPending = async (options: PledgeOptions = {}) => {
+		const card = await onIra(options);
+		type(custodian(card), 'Fidelity Investments');
+		card.find('[part~="submit"]').click();
+		await settle();
+		return card;
+	};
+	/** the stock pending screen, saved from the details step the way step 1 will send it. */
+	const stockPending = async (options: PledgeOptions = {}) => {
+		const card = await atDetailsStep(pledging({ saved: STOCK_PLEDGE, ...options }));
+		type(card.find('#email'), 'maya.okafor@example.org');
+		type(card.find('#first-name'), 'Maya');
+		type(card.find('#last-name'), 'Okafor');
+		card.steer({ type: 'PLEDGE_STOCK', ticker: 'AAPL', shares: '50' });
+		await settle();
+		return card;
+	};
+	const heading = (card: Mounted) => card.text('.takeover [part~="heading"]');
+	/** each list on the pledge block as its rows' words, label then value. */
+	const rows = (card: Mounted, list: string) =>
+		card
+			.all(`.pledge ${list} .pledge-row`)
+			.map((row) => [row.querySelector('dt')?.textContent, row.querySelector('dd')?.textContent]);
+	const copies = (card: Mounted) =>
+		card.all('.pledge .copy').map((button) => button.getAttribute('aria-label'));
+	/** the one notice standing on the block, as its role and its words. */
+	const notice = (card: Mounted) => {
+		const shown = card.all('.pledge .ds-notice-card').filter((node) => !node.hidden);
+		return shown.map((node) => ({
+			role: node.getAttribute('role'),
+			title: node.querySelector('.ds-notice-card-title')?.textContent,
+			body: node.querySelector('.ds-notice-card-body')?.textContent
+		}));
+	};
+	const benefits = (card: Mounted) =>
+		card
+			.all('.pledge .benefits > *')
+			.filter((node) => node.closest('[hidden]') === null)
+			.map((node) => node.textContent);
+	const emailLink = (card: Mounted) => card.find('.takeover > .foot > a');
+	/** no control on the card or in the IRA panel is rendered `disabled`. */
+	const disabled = (card: Mounted) => [
+		...card.all('[disabled]'),
+		...panel(card).querySelectorAll('[disabled]')
+	];
+
+	it('offers the IRA (QCD) option on a one-time gift only', async () => {
+		const offers: boolean[] = [];
+		const card = await onIra({ iraOffers: (offered) => offers.push(offered) });
+		expect(offers.at(-1)).toBe(true);
+
+		dot(card, 1).click();
+		press(card.all('[part~="frequency-option"] input')[1] as HTMLElement);
+		expect(offers.at(-1)).toBe(false);
+	});
+
+	it('shows the gift alone in the receipt, the custodian box and the benefits, and Continue', async () => {
+		const card = await onIra();
+
+		expect(shows(card, '.step-give .row:first-child')).toBe('One-time gift$25.00');
+		expect(card.find('.step-give .row.fee').hidden).toBe(true);
+		expect(card.find('.step-give .row.total').hidden).toBe(true);
+		expect(shows(card, '.step-give .aside')).toBe('');
+		expect(shows(card, '[part~="submit"] .action-label')).toBe('Continue');
+		expect(panel(card).querySelector('label[for="custodian"]')?.textContent).toBe('Custodian');
+		expect(
+			[...panel(card).querySelectorAll('.benefits > *')].map((node) => node.textContent)
+		).toEqual([
+			'Benefits of giving from an IRA',
+			'If you are 70½ or older, you can give up to the annual QCD limit straight from your IRA. It counts toward your required minimum distribution and isn’t added to your taxable income.',
+			NOT_ADVICE
+		]);
+		expect(custodian(card).maxLength).toBe(200);
+		expect(disabled(card)).toEqual([]);
+	});
+
+	it('keeps the fee switch for a card gift on the same form', async () => {
+		const card = await atReviewBeforeRail(pledging());
+		card.rail('card');
+		expect(card.find('.step-give .row.fee').hidden).toBe(false);
+		expect(shows(card, '[part~="submit"] .action-label')).toBe('Donate $26.06');
+	});
+
+	it('saves nothing on a Continue with no custodian, says so under the box and puts the caret in it', async () => {
+		const saves: (QuoteRequest | StockPledgeRequest)[] = [];
+		const card = await onIra({ saves });
+		const problem = panel(card).querySelector('#custodian-problem') as HTMLElement;
+		expect(problem.hidden).toBe(true);
+
+		card.find('[part~="submit"]').click();
+		await settle();
+
+		expect(saves).toEqual([]);
+		expect(problem.hidden).toBe(false);
+		expect(problem.textContent).toBe('Enter your IRA custodian’s name');
+		expect(custodian(card).getAttribute('aria-invalid')).toBe('true');
+		expect(custodian(card).getAttribute('aria-describedby')).toBe('custodian-problem');
+		expect(panel(card).activeElement).toBe(custodian(card));
+		expect(card.find('#payment-problem').hidden).toBe(true);
+
+		type(custodian(card), 'Fidelity Investments');
+		expect(problem.hidden).toBe(true);
+		expect(custodian(card).hasAttribute('aria-invalid')).toBe(false);
+	});
+
+	it('marks the custodian and puts the caret in its box when the endpoint refuses it', async () => {
+		const refusal = Object.assign(new Error('Enter the custodian holding your IRA.'), {
+			code: 'pledge_detail_invalid',
+			field: 'custodian'
+		});
+		const card = await onIra({
+			ports: {
+				pledges: {
+					id: () => 'pledge-1',
+					save: () => Promise.reject(refusal),
+					told: async () => {}
+				}
+			}
+		});
+		type(custodian(card), 'Fidelity');
+		card.find('[part~="submit"]').click();
+		await settle();
+
+		const problem = panel(card).querySelector('#custodian-problem') as HTMLElement;
+		expect(card.find('.step-give').hidden).toBe(false);
+		expect(problem.hidden).toBe(false);
+		expect(problem.textContent).toBe('Enter your IRA custodian’s name');
+		expect(panel(card).activeElement).toBe(custodian(card));
+	});
+
+	it('shows the IRA (QCD) instructions word for word, with the caret on the heading', async () => {
+		const card = await iraPending();
+
+		expect(heading(card)).toBe('Your IRA (QCD) gift is pending');
+		expect(card.shadow.activeElement).toBe(card.find('.takeover [part~="heading"]'));
+		expect(shows(card, '.takeover > .prose')).toBe(
+			'Ask your custodian to send this gift using the details below. Your gift counts when it arrives.'
+		);
+		expect(rows(card, '.pledge-summary')).toEqual([
+			['Amount', '$25.00'],
+			['Custodian', 'Fidelity Investments']
+		]);
+		expect(rows(card, '.pledge-details')).toEqual([
+			['Payee name', 'Cedar Fork Community Pantry Inc.'],
+			['EIN', '47-3829105'],
+			['Mailing address', '412 Alder Lane, Suite 3, Cedar Fork, OR 97330'],
+			['Reference', 'CFCP-IRA-4K9M']
+		]);
+		expect(copies(card)).toEqual(['Copy EIN', 'Copy mailing address', 'Copy reference']);
+		expect(benefits(card)).toEqual([
+			'Benefits of giving from an IRA',
+			'If you are 70½ or older, you can give up to the annual QCD limit straight from your IRA. It counts toward your required minimum distribution and isn’t added to your taxable income.',
+			NOT_ADVICE
+		]);
+		expect(notice(card)).toEqual([]);
+		expect(shows(card, '.takeover > [part~="action"] .action-label')).toBe(
+			'I’ve asked my custodian'
+		);
+		expect(emailLink(card).textContent).toBe('Email these instructions');
+		expect(emailLink(card).getAttribute('href')).toMatch(
+			/^mailto:\?subject=IRA%20\(QCD\)%20gift%20to%20Cedar%20Fork%20Community%20Pantry%20Inc\.%2C%20reference%20CFCP-IRA-4K9M&body=/
+		);
+		expect(card.find('.receipt-slot').hidden).toBe(true);
+		expect(disabled(card)).toEqual([]);
+	});
+
+	it('copies a value and says so on its control and on the region', async () => {
+		const written: string[] = [];
+		vi.stubGlobal('navigator', {
+			...navigator,
+			clipboard: { writeText: async (text: string) => void written.push(text) }
+		});
+		const card = await iraPending();
+		const copy = card.find('.pledge [aria-label="Copy reference"]');
+
+		copy.click();
+		await settle();
+		await settle();
+
+		expect(written).toEqual(['CFCP-IRA-4K9M']);
+		expect(copy.dataset.outcome).toBe('copied');
+		expect(copy.getAttribute('aria-describedby')).toBe(copy.parentElement?.querySelector('dd')?.id);
+		expect(card.text('[role="status"]')).toBe('Reference copied.');
+	});
+
+	it('says a refused copy on the region and selects the value instead', async () => {
+		vi.stubGlobal('navigator', {
+			...navigator,
+			clipboard: { writeText: () => Promise.reject(new Error('denied')) }
+		});
+		const card = await iraPending();
+		const copy = card.find('.pledge [aria-label="Copy EIN"]');
+
+		copy.click();
+		await settle();
+		await settle();
+
+		expect(copy.dataset.outcome).toBe('failed');
+		expect(card.text('[role="status"]')).toBe('EIN not copied. It is selected so you can copy it.');
+	});
+
+	it('shows the error notice and Try again when the organisation could not be told', async () => {
+		let answer: () => Promise<void> = () => Promise.reject(new TypeError('Failed to fetch'));
+		const card = await iraPending({ told: () => answer() });
+
+		primary(card).click();
+		await settle();
+
+		expect(heading(card)).toBe('Your IRA (QCD) gift is pending');
+		expect(notice(card)).toEqual([
+			{
+				role: 'alert',
+				title: 'We couldn’t tell the organization',
+				body: 'Your gift is saved. Check your connection and try again.'
+			}
+		]);
+		expect(shows(card, '.takeover > [part~="action"] .action-label')).toBe('Try again');
+		expect(emailLink(card).textContent).toBe('Email these instructions');
+		expect(disabled(card)).toEqual([]);
+
+		answer = async () => {};
+		primary(card).click();
+		await settle();
+		expect(heading(card)).toBe('Thank you');
+	});
+
+	it('thanks the donor once the organisation is told, and Done starts a new gift', async () => {
+		const boots: FormBoot[] = [];
+		const card = await iraPending({ boots: (boot) => boots.push(boot) });
+
+		primary(card).click();
+		await settle();
+
+		expect(heading(card)).toBe('Thank you');
+		expect(card.shadow.activeElement).toBe(card.find('.takeover [part~="heading"]'));
+		expect(notice(card)).toEqual([
+			{
+				role: 'status',
+				title: 'We’ve told the organization',
+				body: 'Your gift counts when it arrives. We’ll email a receipt to maya.okafor@example.org then.'
+			}
+		]);
+		expect(rows(card, '.pledge-summary')).toEqual([
+			['Amount', '$25.00'],
+			['Custodian', 'Fidelity Investments']
+		]);
+		expect(card.find('.pledge .pledge-details').hidden).toBe(true);
+		expect(card.find('.pledge-benefits').hidden).toBe(true);
+		expect(card.find('.takeover > [part~="action"]').hidden).toBe(true);
+		expect(emailLink(card).hidden).toBe(true);
+		expect(shows(card, '.takeover > .foot > button')).toBe('Done');
+		expect(disabled(card)).toEqual([]);
+
+		card.find('.takeover > .foot > button').click();
+		await settle();
+		expect(boots).toEqual(['first', 'again']);
+	});
+
+	it('shows the stock instructions word for word', async () => {
+		const card = await stockPending();
+
+		expect(heading(card)).toBe('Your stock gift is pending');
+		expect(shows(card, '.takeover > .prose')).toBe(
+			'Ask your broker to transfer these shares using the details below. Your gift counts when they arrive.'
+		);
+		expect(rows(card, '.pledge-summary')).toEqual([
+			['Shares', '50'],
+			['Ticker', 'AAPL']
+		]);
+		expect(rows(card, '.pledge-details')).toEqual([
+			['Deliver to', 'Harbor Street Securities'],
+			['DTC number', '0164'],
+			['Account number', 'Z12-345678'],
+			['Account name', 'Cedar Fork Community Pantry Inc.'],
+			['Reference', 'CFCP-AAPL-7Q2D']
+		]);
+		expect(copies(card)).toEqual(['Copy DTC number', 'Copy account number', 'Copy reference']);
+		expect(benefits(card)).toEqual([
+			'Benefits of donating appreciated stock',
+			'Give shares you have held for more than a year and you may deduct their full market value, without paying the capital gains tax you would owe if you sold them.',
+			NOT_ADVICE
+		]);
+		expect(shows(card, '.takeover > [part~="action"] .action-label')).toBe(
+			'I’ve contacted my broker'
+		);
+		expect(emailLink(card).textContent).toBe('Email these instructions');
+	});
+
+	it('shows the stock error notice, and the stock thank-you', async () => {
+		let answer: () => Promise<void> = () => Promise.reject(new TypeError('Failed to fetch'));
+		const card = await stockPending({ told: () => answer() });
+
+		primary(card).click();
+		await settle();
+		expect(notice(card)).toEqual([
+			{
+				role: 'alert',
+				title: 'We couldn’t tell the organization',
+				body: 'Your gift is saved. Check your connection and try again.'
+			}
+		]);
+		expect(shows(card, '.takeover > [part~="action"] .action-label')).toBe('Try again');
+
+		answer = async () => {};
+		primary(card).click();
+		await settle();
+		expect(heading(card)).toBe('Thank you');
+		expect(notice(card)).toEqual([
+			{
+				role: 'status',
+				title: 'We’ve told the organization',
+				body: 'Your gift counts when the shares arrive. We’ll email a receipt to maya.okafor@example.org then.'
+			}
+		]);
+		expect(rows(card, '.pledge-summary')).toEqual([
+			['Shares', '50'],
+			['Ticker', 'AAPL']
+		]);
+		expect(shows(card, '.takeover > .foot > button')).toBe('Done');
 	});
 });

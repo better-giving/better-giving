@@ -7,7 +7,7 @@ const SVG = 'http://www.w3.org/2000/svg';
 /**
  * lucide's icons (https://lucide.dev, ISC), by their key here and lucide's name beside it where the two
  * differ:`chevron` (`chevron-down`), `search`, `tick` (`check`), `copy`, `alert` (`circle-alert`),
- * `help` (`circle-help`), `done` (`circle-check`), `arrow-right`, `mail`, `link` and `play`, each
+ * `info`, `help` (`circle-help`), `done` (`circle-check`), `arrow-right`, `mail`, `link` and `play`, each
  * drawn in `currentColor` at its source's own stroke. a circle or a rect is written as the path it describes.
  *
  * exported as data as well as through `glyph` below: the deployment's donor page draws its blocks
@@ -23,6 +23,8 @@ export const GLYPHS = {
 		'M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2'
 	],
 	alert: ['M2 12a10 10 0 1 0 20 0a10 10 0 1 0 -20 0', 'M12 8v4', 'M12 16h.01'],
+	// the info-tone notice's mark, as the registry's notice card names it (notice-card-css.usage.md).
+	info: ['M2 12a10 10 0 1 0 20 0a10 10 0 1 0 -20 0', 'M12 16v-4', 'M12 8h.01'],
 	// the question the mark on the network row answers, which is not the danger mark: the caution it
 	// opens is there to be read, and the danger mark on a row nothing has gone wrong on reads as a
 	// failure already on the card.

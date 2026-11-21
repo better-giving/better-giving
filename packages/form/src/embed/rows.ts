@@ -1,5 +1,5 @@
-// the rows the payment box lists outside the provider's frame: one per PayPal rail, the fund's, and
-// the crypto option's.
+// the rows the payment box lists outside the provider's frame: one per PayPal rail, the fund's, the
+// IRA (QCD) option's and the crypto option's.
 //
 // the provider paints its own rails as rows inside its frame (`layout` in ./stripe.ts), and a donor
 // reads the box as one list, so the options the other adapters draw are rows of the same shape: the
@@ -22,7 +22,7 @@
 import rowStyles from '../styles/rows.css?inline';
 
 /** which mark a row carries. */
-export type RowMark = 'paypal' | 'venmo' | 'fund' | 'crypto';
+export type RowMark = 'paypal' | 'venmo' | 'fund' | 'crypto' | 'ira';
 
 /** one row, as the adapter that drew it and the composer that coordinates it hold it. */
 export type Row = {
@@ -78,8 +78,15 @@ const PINNED =
 /** one path of a drawn glyph, as its source file states it. */
 type GlyphPath = { readonly d: string; readonly fill: string };
 
-/** a glyph as its source file draws it: the file's own viewBox and paths, in order, each with its fill. */
-type Glyph = { readonly viewBox: string; readonly paths: readonly GlyphPath[] };
+/**
+ * a glyph as its source file draws it: the file's own viewBox and paths, in order, each with its fill.
+ * `stroked` is a line icon's, drawn in `currentColor` at its source's own stroke (../glyph.ts).
+ */
+type Glyph = {
+	readonly viewBox: string;
+	readonly paths: readonly GlyphPath[];
+	readonly stroked?: true;
+};
 
 /**
  * each row's mark as the company behind the rail publishes it,
@@ -137,6 +144,21 @@ const BRAND_MARKS: Readonly<Record<RowMark, Glyph>> = {
 			{ fill: '#000000', d: 'M15 15h34v34H15z' }
 		]
 	},
+	// lucide's `piggy-bank` (https://lucide.dev, ISC), the mark the design draws on this row: no
+	// processor stands behind an IRA (QCD) gift, so the mark is the form's own rather than a brand's,
+	// in the head's ink as the fund's is.
+	ira: {
+		viewBox: '0 0 24 24',
+		stroked: true,
+		paths: [
+			{
+				fill: 'none',
+				d: 'M11 17h3v2a1 1 0 0 0 1 1h2a1 1 0 0 0 1-1v-3a3.16 3.16 0 0 0 2-2h1a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1h-1a5 5 0 0 0-2-4V3a4 4 0 0 0-3.2 1.6l-.3.4H11a6 6 0 0 0-6 6v1a5 5 0 0 0 2 4v3a1 1 0 0 0 1 1h2a1 1 0 0 0 1-1z'
+			},
+			{ fill: 'none', d: 'M16 10h.01' },
+			{ fill: 'none', d: 'M2 8v1a2 2 0 0 0 2 2h1' }
+		]
+	},
 	fund: {
 		viewBox: '0 0 33 33',
 		paths: [
@@ -169,6 +191,12 @@ function drawGlyph(doc: Document, glyph: Glyph): SVGElement {
 	svg.setAttribute('viewBox', glyph.viewBox);
 	svg.setAttribute('aria-hidden', 'true');
 	svg.setAttribute('focusable', 'false');
+	if (glyph.stroked === true) {
+		svg.setAttribute('stroke', 'currentColor');
+		svg.setAttribute('stroke-width', '2');
+		svg.setAttribute('stroke-linecap', 'round');
+		svg.setAttribute('stroke-linejoin', 'round');
+	}
 	for (const { d, fill } of glyph.paths) {
 		const path = doc.createElementNS(SVG, 'path');
 		path.setAttribute('d', d);

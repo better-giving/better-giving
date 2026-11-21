@@ -26,6 +26,7 @@ import {
 	cryptoIsOffered,
 	fundIsOffered,
 	openFund,
+	pledgeIsOffered,
 	venmoIsOffered,
 	type CheckoutContext,
 	type CheckoutEvent,
@@ -49,6 +50,7 @@ import buttonStyles from './registry/styles/button-css.css?inline';
 import checkboxStyles from './registry/styles/checkbox-css.css?inline';
 import fieldStyles from './registry/styles/field-css.css?inline';
 import spinnerStyles from './registry/styles/spinner-css.css?inline';
+import noticeStyles from './registry/styles/notice-card-css.css?inline';
 import tokens from './styles/tokens.css?inline';
 import partStyles from './styles/parts.css?inline';
 import layoutStyles from './styles/layout.css?inline';
@@ -122,6 +124,23 @@ export type FormCheckout = {
 	 * `venmoIsOffered` in ./checkout.machine.ts is the answer; PayPal's own option is not narrowed.
 	 */
 	readonly offerVenmo: (offered: boolean) => void;
+	/**
+	 * whether the payment box lists the IRA (QCD) option, told on every reading; absent on a runtime
+	 * that draws none.
+	 *
+	 * `pledgeIsOffered` in ./checkout.machine.ts is the answer; the option stands the box and the
+	 * benefits panel the card built (`ira` on `CardView` in ./views.ts) in a row of its own.
+	 */
+	readonly offerIra?: (offered: boolean) => void;
+	/**
+	 * the flow's own `send`, handed to a runtime that drives it from a control outside the card;
+	 * absent on every runtime a deployment serves.
+	 *
+	 * the dev page's stock pledge is the one such control (packages/form/dev): `PLEDGE_STOCK` is sent by
+	 * no screen until the first step's unit panel draws a ticker, and the stock screens are drawn from
+	 * the element itself rather than from a copy of it.
+	 */
+	readonly steer?: (send: (event: CheckoutEvent) => void) => void;
 	/**
 	 * how many options the payment box lists, handed to `listener` now and on every change.
 	 *
@@ -260,7 +279,8 @@ export type FormRuntime = {
 	 * `coins` is the coin list a `crypto` gift is chosen in, which the card built and keeps patched.
 	 * handed over rather than built by the runtime, for the reason `mount` is passed: the card owns
 	 * what the list says and where a refusal about the coin sends the caret, and the runtime only
-	 * stands it in the payment box.
+	 * stands it in the payment box. `ira` is the IRA (QCD) option's box and benefits panel, handed over
+	 * for the same reason; a caller handing none is one whose payment box draws no IRA (QCD) option.
 	 */
 	readonly checkout: (
 		config: FormConfig,
@@ -269,7 +289,8 @@ export type FormRuntime = {
 		onUnavailable: (failure: Failure) => void,
 		boot: FormBoot,
 		fund: FundReports,
-		coins: HTMLElement
+		coins: HTMLElement,
+		ira?: HTMLElement
 	) => FormCheckout;
 
 	/**
@@ -400,7 +421,7 @@ function sheetsFor(doc: Document): readonly CSSStyleSheet[] {
 	// placed.
 	const shadow = [
 		build(tokens),
-		build(`${buttonStyles}\n${fieldStyles}\n${checkboxStyles}\n${spinnerStyles}`),
+		build(`${buttonStyles}\n${fieldStyles}\n${checkboxStyles}\n${spinnerStyles}\n${noticeStyles}`),
 		build(partStyles),
 		build(layoutStyles),
 		build(motionStyles)
@@ -1241,7 +1262,8 @@ export function donateFormClass(runtime: FormRuntime): CustomElementConstructor 
 					approved: (authorization) => fundSays({ type: 'FUND_APPROVED', ...authorization }),
 					closed: () => fundSays({ type: 'FUND_CLOSED' })
 				},
-				view.coins
+				view.coins,
+				view.ira
 			);
 			this.#checkout = checkout;
 			checkout.rows((count) => view.paymentRows(count));
@@ -1262,6 +1284,7 @@ export function donateFormClass(runtime: FormRuntime): CustomElementConstructor 
 				actor.send({ type: 'SET_CHALLENGE_INTERACTIVE', interactive: needed });
 			fundSays = (event) => actor.send(event);
 			opened = () => openFund(actor);
+			checkout.steer?.((event) => actor.send(event));
 
 			/** the step the last reading was on, which is what makes a reading a transition. */
 			let previous: State['step'] | null = null;
@@ -1276,6 +1299,7 @@ export function donateFormClass(runtime: FormRuntime): CustomElementConstructor 
 				checkout.offerFund(fundIsOffered(snapshot));
 				checkout.offerCrypto(cryptoIsOffered(snapshot));
 				checkout.offerVenmo(venmoIsOffered(snapshot));
+				checkout.offerIra?.(pledgeIsOffered(snapshot, 'ira_qcd'));
 				view.update(api);
 				const { step } = api.state;
 

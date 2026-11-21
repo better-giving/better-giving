@@ -290,6 +290,46 @@ describe('the employer write the shipped ports make', () => {
 	});
 });
 
+describe('the pledge ports the shipped runtime makes', () => {
+	const pledges = () =>
+		createFormRuntime(DEPLOYMENT, document).checkout(
+			{
+				formId: 'frm_a8x2k9',
+				providers: [{ name: 'stripe', publishableKey: 'pk_live_x' }],
+				currency: 'USD',
+				minAmountMinor: 500,
+				paymentMethods: ['card', 'ira_qcd']
+			} as never,
+			document.createElement('div'),
+			() => {},
+			() => {},
+			'first',
+			NO_FUND,
+			document.createElement('div'),
+			document.createElement('div')
+		).input.ports.pledges;
+
+	it('mints a fresh UUID for each pledge', () => {
+		const ports = pledges();
+		const first = ports?.id();
+		expect(first).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+		expect(ports?.id()).not.toBe(first);
+	});
+
+	it('saves to the donations write and tells on the pledge, on the deployment that served it', async () => {
+		const fetched = stubFetch(json({ ok: true }));
+		const ports = pledges();
+
+		await ports?.told({ formId: 'frm_a8x2k9', pledgeId: 'p1' });
+		await ports?.save({ formId: 'frm_a8x2k9' } as never).catch(() => {});
+
+		expect(fetched.mock.calls.map((call) => call[0])).toEqual([
+			`${DEPLOYMENT}/api/v1/forms/frm_a8x2k9/donations/p1/told`,
+			`${DEPLOYMENT}/api/v1/forms/frm_a8x2k9/donations`
+		]);
+	});
+});
+
 describe('the clock the shipped ports read', () => {
 	// the clock is a port so a ten-day window can be asserted in a millisecond, but the shipped
 	// one has to be the real clock or every deadline the flow reads is wrong.

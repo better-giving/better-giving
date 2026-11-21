@@ -197,6 +197,12 @@ export type PayerDraft = {
 	 * finds the coin they picked still in it.
 	 */
 	readonly coin?: string | undefined;
+	/**
+	 * the IRA custodian an `ira_qcd` pledge names, as the donor typed it.
+	 *
+	 * kept whichever rail the donor stands on, for the coin's reason above.
+	 */
+	readonly custodian?: string | undefined;
 	readonly email?: string | undefined;
 	readonly firstName?: string | undefined;
 	readonly lastName?: string | undefined;
@@ -216,6 +222,8 @@ export type Payer = {
 	readonly method: PaymentMethod;
 	/** present exactly on a `crypto` payer, which `completePayer` refuses without one. */
 	readonly coin?: string;
+	/** present exactly on an `ira_qcd` payer, trimmed, which `completePayer` refuses without one. */
+	readonly custodian?: string;
 	readonly email: string;
 	readonly firstName: string;
 	readonly lastName: string;
@@ -469,16 +477,30 @@ export function missingPayerFields(draft: PayerDraft): readonly PayerField[] {
  * function accepted on a wallet rail would mint an intent on a rail nothing here can spend.
  *
  * a `crypto` payer also needs a coin the served config lists: the quote mints an address for exactly
- * one coin, and a press with none picked has nothing to mint one for.
+ * one coin, and a press with none picked has nothing to mint one for. an `ira_qcd` payer needs the
+ * custodian its pledge names (`custodianIsMissing` below).
  */
 export function completePayer(draft: PayerDraft, config: FormConfig): Payer | null {
 	const { method } = draft;
 	if (method === undefined || !methodIsChargeable(draft, config)) return null;
+	if (method === 'ira_qcd') {
+		if (custodianIsMissing(draft)) return null;
+		const payer = payerOn(method, draft);
+		return payer === null ? null : { ...payer, custodian: (draft.custodian ?? '').trim() };
+	}
 	if (method !== 'crypto') return payerOn(method, draft);
 	const coin = config.coins?.find((offered) => offered.coin === draft.coin)?.coin;
 	if (coin === undefined) return null;
 	const payer = payerOn(method, draft);
 	return payer === null ? null : { ...payer, coin };
+}
+
+/**
+ * whether a donor on the `ira_qcd` rail has named no custodian, which is the one box that rail asks
+ * for on the review step. trimmed, for the note's reason in `missingAmountDecisions` above.
+ */
+export function custodianIsMissing(draft: PayerDraft): boolean {
+	return draft.method === 'ira_qcd' && (draft.custodian ?? '').trim().length === 0;
 }
 
 /**

@@ -27,7 +27,7 @@
 // surface owns — so what a port is stays one declaration rather than one per surface, and the ban
 // above is the same ban on both.
 
-import type { DonationStatus, PaymentMethod, Quote, QuoteRequest } from './v1';
+import type { DonationStatus, PaymentMethod, Quote, QuoteRequest, StockPledgeRequest } from './v1';
 
 /**
  * how far a confirmation got, as the machine needs to distinguish it.
@@ -132,7 +132,7 @@ export type ConfirmInput = {
 };
 
 /**
- * the outside world, in five functions and one optional sixth.
+ * the outside world, in five functions and two optional ports beside them.
  *
  * small on purpose. Every function added here is one more thing a headless adapter must
  * implement and one more thing the spec must stand in for; the flow needs exactly these, and
@@ -217,6 +217,34 @@ export type CheckoutPorts = {
 		},
 		signal: AbortSignal
 	): Promise<void>;
+
+	/**
+	 * the two pledge rails' half of the world, absent on a surface that offers neither.
+	 *
+	 * optional for the employer port's reason: a surface leaving it out loses the IRA (QCD) and stock
+	 * rails and nothing else (`pledgeIsOffered` in ./checkout.machine.ts).
+	 */
+	readonly pledges?: PledgePorts;
+};
+
+/**
+ * what a stock or IRA (QCD) pledge reaches the world through.
+ *
+ * `id` mints the `pledgeId` a save carries, once per pledge: every resend of that save carries the
+ * same one, which the endpoint answers with the pledge already saved (`QuoteRequest.pledgeId` in
+ * ./v1.ts). a UUID, which `crypto.randomUUID()` is in a browser.
+ *
+ * `save` is `POST /api/v1/forms/:id/donations` with a pledge's body, timed out by the machine as
+ * `quote` is. its answer is a `Quote` carrying `pledge`, which the machine checks before any screen
+ * draws a value from it.
+ *
+ * `told` is `POST /api/v1/forms/:id/donations/:pledgeId/told`, the donor saying they have asked their
+ * broker or custodian to send the gift. it resolves on `{ ok: true }` and rejects on anything else.
+ */
+export type PledgePorts = {
+	id(): string;
+	save(request: QuoteRequest | StockPledgeRequest): Promise<Quote>;
+	told(input: { readonly formId: string; readonly pledgeId: string }): Promise<void>;
 };
 
 /**
