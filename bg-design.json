@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "dir": "packages/operator/src/registry",
-  "registryVersion": "4.4.0",
+  "registryVersion": "4.6.0",
   "items": {
     "app-shell-css": {
       "version": "2.0.0",
@@ -11,10 +11,10 @@
       }
     },
     "avatar-css": {
-      "version": "1.0.1",
+      "version": "1.2.0",
       "files": {
-        "styles/avatar-css.css": "e27bcf235efe58c1e3b824d2be3810b85422c75668bb6790dff2e11e10227a31",
-        "styles/avatar-css.usage.md": "17e0866bce99cab5e4980ab29a339c16d77f5b5138eb20f61000727c911d6be7"
+        "styles/avatar-css.css": "f42974a13226e7a17bcbcd973edea2ad3b72e96df541fb16f7c52fadd6a2770e",
+        "styles/avatar-css.usage.md": "a67f6e5aa62f720de4ca896a90930d2bf5b7539d29ac93938e35809090ac2a49"
       }
     },
     "badge-css": {

@@ -12,6 +12,7 @@
    group reads for the quarter each avatar overlaps the one before it. */
 .ds-avatar {
   --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
+  --ds-avatar-ring-w: 2px;
   --ds-text-xs: calc(0.75 * var(--ds-rem, 1rem));
   --ds-font-weight-bold: 700;
   --ds-avatar: calc(var(--ds-spacing) * 8);
@@ -35,6 +36,10 @@
   text-transform: uppercase;
   text-decoration: none;
   vertical-align: middle;
+}
+.ds-avatar-xs {
+  --ds-avatar-ring-w: 1.5px;
+  --ds-avatar: calc(var(--ds-spacing) * 3.5);
 }
 .ds-avatar-sm {
   --ds-avatar: calc(var(--ds-spacing) * 6);
@@ -69,6 +74,16 @@
   background-color: var(--gray-1);
 }
 
+/* xs, 14px, is only a logo tile: the page fill, the image contained, no
+   hairline (it would eat 2px of 14; the group's 1.5px ring separates the
+   discs); the markup carries no initials or glyph, and its font size inherits,
+   like React's. after the logo rule, so it wins */
+.ds-avatar-xs {
+  border-width: 0;
+  background-color: var(--gray-1);
+  font-size: inherit;
+}
+
 /* no name: lucide's user-round at 55% */
 .ds-avatar > svg {
   inline-size: 55%;
@@ -84,7 +99,8 @@
   border-radius: inherit;
   object-fit: cover;
 }
-.ds-avatar-logo .ds-avatar-img {
+.ds-avatar-logo .ds-avatar-img,
+.ds-avatar-xs .ds-avatar-img {
   object-fit: contain;
 }
 
@@ -124,20 +140,30 @@
   }
 }
 
-/* the stack: each avatar a quarter over the one before, a 2px ring of the
-   surface it sits on between them (--ds-avatar-ring: --background, or --card
-   on a card) */
+/* the stack: each avatar a quarter over the one before, a ring of the
+   surface it sits on between them, --ds-avatar-ring-w wide. the ring reads
+   --ds-avatar-ring-on, which the host sets (a pill, a primary button whose
+   fill changes by state) or the group sets to --card on a card; unset it is
+   --background. --ds-avatar-ring, the name before, still works as the
+   fallback. */
 .ds-avatar-group {
-  --ds-avatar-ring: var(--background);
   display: inline-flex;
   align-items: safe center;
   vertical-align: middle;
 }
 .ds-avatar-group > .ds-avatar {
-  box-shadow: 0 0 0 2px var(--ds-avatar-ring);
+  box-shadow: 0 0 0 var(--ds-avatar-ring-w)
+    var(--ds-avatar-ring-on, var(--ds-avatar-ring, var(--background)));
 }
 .ds-avatar-group > .ds-avatar:not(:first-child) {
   margin-inline-start: calc(var(--ds-avatar) * -0.25);
+}
+/* forced colors drop the shadow: each avatar gets a 1px outline instead
+   (a focus or held-open outline above is more specific and wins) */
+@media (forced-colors: active) {
+  .ds-avatar-group > .ds-avatar {
+    outline: 1px solid CanvasText;
+  }
 }
 /* the overflow chip, "+9" */
 .ds-avatar-more {
