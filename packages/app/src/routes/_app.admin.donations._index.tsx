@@ -234,10 +234,10 @@ export async function action({ context, request }: Route.ActionArgs) {
 		giftOrigin: giftLinkOrigin(env, new URL(request.url))
 	});
 	if (!received.ok) {
-		// the mail an earlier press may not have sent, before the press is answered: `sendReceipt`
-		// claims the gift's stamp, so a receipt that went is not sent again.
+		// the mail an earlier press may not have sent, after the response like the first press's:
+		// `sendReceipt` claims the gift's stamp, so a receipt that went is not sent again.
 		if (received.reason === 'already_received') {
-			await sendReceivedPledgeMail(mailDeps(), received.gift);
+			deferred.waitUntil(sendReceivedPledgeMail(mailDeps(), received.gift));
 		}
 		const [status, sentence] = MARK_RECEIVED_REFUSALS[received.reason];
 		return invalid(status, submission.reject({ formErrors: [sentence] }));

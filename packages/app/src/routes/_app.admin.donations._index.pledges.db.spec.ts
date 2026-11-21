@@ -23,13 +23,16 @@ const sent = vi.hoisted(() => [] as { to: string; subject: string; text: string 
 const mail = vi.hoisted(() => ({
 	answer: { ok: true } as
 		| { ok: true }
-		| { ok: false; reason: string; detail: string; indeterminate: boolean }
+		| { ok: false; reason: string; detail: string; indeterminate: boolean },
+	/** a slow transport: every send waits on this before it answers. */
+	held: Promise.resolve()
 }));
 
 // the mail transport, captured. the receipt itself is rendered for real from the org profile.
 vi.mock('$lib/server/email/factory', () => ({
 	createEmailProvider: () => ({
 		async send(message: { to: string; subject: string; html: string; text: string }) {
+			await mail.held;
 			sent.push(message);
 			return mail.answer;
 		}
@@ -71,6 +74,7 @@ beforeAll(async () => {
 beforeEach(async () => {
 	sent.length = 0;
 	mail.answer = { ok: true };
+	mail.held = Promise.resolve();
 	for (const table of [
 		'ledger_entry',
 		'entry_group',
@@ -176,13 +180,13 @@ async function drawn(): Promise<Drawn> {
 	return (await response.json()) as Drawn;
 }
 
-/** one Mark received press, its after-response work waited for. */
-async function markReceived(boxes: Record<string, string>): Promise<Response> {
+/** one Mark received press, answered, its after-response work left to `settled`. */
+function pressMarkReceived(boxes: Record<string, string>) {
 	const body = new FormData();
 	body.set('__form_id__', 'pledge-received');
 	for (const [name, value] of Object.entries(boxes)) body.set(name, value);
 	const deferred = createDeferredWork();
-	const response = await request(
+	const response = request(
 		new Request(`${ORIGIN}${SCREEN}`, {
 			method: 'POST',
 			headers: { cookie: session, origin: ORIGIN },
@@ -190,7 +194,14 @@ async function markReceived(boxes: Record<string, string>): Promise<Response> {
 		}),
 		{ env: bindings, deferred }
 	);
-	await deferred.settled();
+	return { response, settled: () => deferred.settled() };
+}
+
+/** one Mark received press, its after-response work waited for. */
+async function markReceived(boxes: Record<string, string>): Promise<Response> {
+	const press = pressMarkReceived(boxes);
+	const response = await press.response;
+	await press.settled();
 	return response;
 }
 
@@ -448,6 +459,32 @@ describe('Mark received', () => {
 
 		expect(sent.map((m) => m.to)).toEqual(['maya.okafor@example.org']);
 		expect(sent[0]?.text).toContain('Shares received      50 shares of AAPL');
+	});
+
+	it('answers a press again before a slow transport sends the receipt it still owes, and sends it once', async () => {
+		mail.answer = {
+			ok: false,
+			reason: 'timeout',
+			detail: 'the host went quiet',
+			indeterminate: true
+		};
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+		await markReceived(STOCK_RECEIVED);
+		logged.mockRestore();
+		mail.answer = { ok: true };
+		sent.length = 0;
+		const { promise: transportAnswers, resolve: answerTransport } = Promise.withResolvers<void>();
+		mail.held = transportAnswers;
+
+		const again = pressMarkReceived(STOCK_RECEIVED);
+		const twice = pressMarkReceived(STOCK_RECEIVED);
+		const answers = [await again.response, await twice.response];
+
+		expect(answers.map((a) => a.status)).toEqual([409, 409]);
+		expect(sent).toEqual([]);
+		answerTransport();
+		await Promise.all([again.settled(), twice.settled()]);
+		expect(sent.map((m) => m.to)).toEqual(['maya.okafor@example.org']);
 	});
 
 	it.each([

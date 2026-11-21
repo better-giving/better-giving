@@ -18,7 +18,8 @@ import { replaceTickers, searchTickers } from './tickers';
 // answers each of the two files from what the case hands it (./ticker-refresh.testing.ts).
 
 const NOW = new Date('2026-11-21T04:20:00.000Z');
-const HOUR = 60 * 60_000;
+const MINUTE = 60_000;
+const HOUR = 60 * MINUTE;
 
 function recordingEmail() {
 	const sent: EmailMessage[] = [];
@@ -83,8 +84,8 @@ async function holdList(count: number): Promise<void> {
 }
 
 describe('refreshTickers', () => {
-	it('fetches nothing when the list held was replaced under twelve hours ago', async () => {
-		await holdOldList(12 * HOUR - 60_000);
+	it('fetches nothing when the list held was replaced nine minutes ago', async () => {
+		await holdOldList(9 * MINUTE);
 		const sec = wholeFiles();
 		const { email, sent } = recordingEmail();
 
@@ -92,6 +93,26 @@ describe('refreshTickers', () => {
 
 		expect(sec.requests).toEqual([]);
 		expect(sent).toEqual([]);
+	});
+
+	it('refreshes a list replaced eleven minutes ago', async () => {
+		await holdOldList(11 * MINUTE);
+		const sec = wholeFiles();
+
+		await refresh(sec, recordingEmail().email);
+
+		expect(sec.requests).toHaveLength(2);
+		expect(await searchTickers(db, 'OLD', 8)).toEqual([]);
+	});
+
+	it('refreshes on the run after a Stocks Save filled the list the evening before', async () => {
+		await holdOldList(10 * HOUR + 20 * MINUTE);
+		const sec = wholeFiles();
+
+		await refresh(sec, recordingEmail().email);
+
+		expect(sec.requests).toHaveLength(2);
+		expect(await searchTickers(db, 'OLD', 8)).toEqual([]);
 	});
 
 	it('refreshes on the next day’s run, the list having been stored a little after the last run fired', async () => {

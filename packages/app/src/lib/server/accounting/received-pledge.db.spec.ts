@@ -18,8 +18,8 @@ import { all, client, run, stmt } from '$lib/server/db/database.testing';
 // ./quickbooks.ts reads a payment's method: a received pledge's entry debits 1010 Bank / Cash as a
 // cheque's does, so it goes over the way a gift in hand does, into the company's Undeposited Funds.
 //
-// `SPEC_RATE_LIMITS` in $lib/server/runtime/rate-limiter.testing.ts sets `unstubGlobals`, so the
-// stubbed `fetch` is taken back before the next case.
+// ../../../../vitest.config.ts sets `unstubGlobals`, so the stubbed `fetch` is taken back before the
+// next case.
 
 const FORM_ID = 'frm_pledgetobooks0001';
 const CONFIGURED = {

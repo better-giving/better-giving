@@ -32,12 +32,11 @@ export type TickerRefreshDeps = {
 };
 
 /**
- * a list younger than this is not fetched again, so a redeploy around 04:20 does not fetch twice.
- * half a day, not just under one: a Stocks Save's first fill (`refreshTickersIfNoneHeld`) lands at
- * any hour, and a list stored at 05:30 must not make the next 04:20 run skip and leave it two days
- * old.
+ * a list younger than this is not fetched again, so a restart around 04:20 does not fetch twice.
+ * minutes, not hours: a Stocks Save's first fill (`refreshTickersIfNoneHeld`) lands at any hour,
+ * and the next 04:20 run must refresh it however late the evening before it was stored.
  */
-const FRESH_FOR_MS = 12 * 60 * 60_000;
+const FRESH_FOR_MS = 10 * 60_000;
 
 /**
  * how long both files together, bodies included, are given before the run is treated as an answer

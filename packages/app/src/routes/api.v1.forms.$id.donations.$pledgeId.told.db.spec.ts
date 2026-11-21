@@ -235,6 +235,25 @@ describe('telling the organisation', () => {
 		]);
 	});
 
+	it('answers a failed read with a refusal the pending screen can read, carrying the form’s CORS, and logs why', async () => {
+		const failure = new Error('SQLITE_BUSY');
+		vi.mocked(readContactSummaries).mockRejectedValueOnce(failure);
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+		const { response, settled } = press();
+		const answer = await response;
+		await settled();
+
+		expect(answer.status).toBe(500);
+		expect(answer.headers.get('access-control-allow-origin')).toBe(ALLOWED);
+		expect(await answer.json()).toEqual({
+			message: 'We couldn’t tell the organisation about this gift. Try again in a moment.',
+			fix: 'This is a fault in this deployment rather than anything about the request. The app’s log has the cause: `docker compose logs app`.'
+		});
+		expect(logged).toHaveBeenCalledWith(expect.stringContaining('told'), failure);
+		expect(mail.sent).toHaveLength(0);
+	});
+
 	it('answers ok and mails nobody for a pledge staff already marked received', async () => {
 		await client.batch([
 			stmt(

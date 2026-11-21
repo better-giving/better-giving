@@ -1,4 +1,5 @@
 import type { ApiError, PledgeToldAnswer } from '@better-giving/form/v1';
+import { LOGS_SAY_WHY } from '$lib/deployment-logs';
 import { corsHeaders, preflightResponse } from '$lib/server/api/cors';
 import { sendPledgeTold } from '$lib/server/donations/pledge-told';
 import { markPledgeTold } from '$lib/server/donations/pledges';
@@ -39,7 +40,15 @@ export async function action({ context, params, request }: Route.ActionArgs): Pr
 	const { env, deferred } = context.get(platform);
 	const headers = corsHeaders(request, await readFormOrigins(db, params.id));
 
-	const marked = await markPledgeTold(db, { id: params.pledgeId, formId: params.id }, new Date());
+	const marked = await markPledgeTold(
+		db,
+		{ id: params.pledgeId, formId: params.id },
+		new Date()
+	).catch((error: unknown) => {
+		console.error('a pledge could not be marked told:', error);
+		return null;
+	});
+	if (marked === null) return notMarked(headers);
 	if (!marked.found) {
 		return Response.json(
 			{
@@ -55,6 +64,21 @@ export async function action({ context, params, request }: Route.ActionArgs): Pr
 		deferred.waitUntil(sendPledgeTold({ db, email }, marked.pledge));
 	}
 	return Response.json({ ok: true } satisfies PledgeToldAnswer, { headers });
+}
+
+/**
+ * a press the database failed, already logged: a 500 with no `error`, as the submission answers its
+ * own `internal_error` (./api.v1.forms.$id.donations.ts), and with the form's CORS so the pending
+ * screen can read it.
+ */
+function notMarked(headers: HeadersInit): Response {
+	return Response.json(
+		{
+			message: 'We couldn’t tell the organisation about this gift. Try again in a moment.',
+			fix: `This is a fault in this deployment rather than anything about the request. ${LOGS_SAY_WHY}`
+		},
+		{ status: 500, headers }
+	);
 }
 
 /** the preflight, from the form's own list as its siblings answer one; every other method a 405. */
