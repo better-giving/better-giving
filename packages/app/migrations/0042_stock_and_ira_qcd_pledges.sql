@@ -15,8 +15,9 @@
 --
 -- `STRICT` is hand-written onto all three tables, `__new_payment` included.
 --
--- every CHECK on `__new_payment` is unqualified, since `ALTER TABLE ... RENAME TO` does not rewrite
--- the `"__new_payment".` drizzle wrote and sqlite 3.43 refuses the rename over it.
+-- every CHECK on `__new_payment` is unqualified, the spelling migrations/0003 left on `payment`. the
+-- rebuild needs neither spelling: on this client (sqlite 3.45.1) `ALTER TABLE ... RENAME TO` also
+-- rewrites a CHECK that still says `"__new_payment".` (CONTRIBUTING.md -> Migrations).
 --
 -- the copy names only columns the old table has: every column on it, and no new one.
 --
@@ -38,7 +39,7 @@ CREATE TABLE `pledge` (
 	`amount_minor` integer,
 	`told_at` integer,
 	`donation_id` text,
-	`form_id` text,
+	`form_id` text NOT NULL,
 	`origin` text,
 	`program_id` text,
 	`supporter_page_id` text,

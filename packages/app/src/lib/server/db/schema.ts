@@ -4022,7 +4022,10 @@ export const pledge = sqliteTable(
 		toldAt: at('told_at'),
 		/** the gift this pledge became at Mark received, and null while it is waiting. */
 		donationId: text('donation_id').references(() => donation.id),
-		formId: text('form_id').references(() => form.id),
+		/** required, since the told press finds a pledge under its form (../donations/pledges.ts). */
+		formId: text('form_id')
+			.notNull()
+			.references(() => form.id),
 		origin: text('origin'),
 		programId: text('program_id').references(() => program.id),
 		supporterPageId: text('supporter_page_id').references(() => supporterPage.id),

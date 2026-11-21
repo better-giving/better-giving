@@ -10,11 +10,25 @@ import { rejectionCode } from './rejection.testing';
 
 const SQLITE_CONSTRAINT_CHECK = 'SQLITE_CONSTRAINT_CHECK';
 const SQLITE_CONSTRAINT_UNIQUE = 'SQLITE_CONSTRAINT_UNIQUE';
+const SQLITE_CONSTRAINT_NOTNULL = 'SQLITE_CONSTRAINT_NOTNULL';
 
 const CONTACT_ID = '019fb500-0000-7000-8000-000000000001';
 const DONATION_ID = '019fb500-0000-7000-8000-000000000002';
+const FORM_ID = '019fb500-0000-7000-8000-000000000003';
 
 beforeAll(async () => {
+	const account = await first<{ id: string }>(
+		stmt(`select id from account where is_postable = 1 and code = '4110'`)
+	);
+	await run(
+		stmt(
+			`insert into form (id, name, status, revenue_account_id, currency, min_minor, max_minor,
+			                   suggested_amounts, allowed_origins, created_at, updated_at)
+			 values (?, 'General Fund', 'live', ?, 'USD', 500, 1000000, '[2500]', '[]', 0, 0)`,
+			FORM_ID,
+			account?.id ?? ''
+		)
+	);
 	await run(
 		stmt(
 			`insert into contact (id, kind, display_name, created_at, updated_at)
@@ -104,12 +118,13 @@ const insertPledge = (opts: {
 	sharesMillionths?: number | null;
 	custodian?: string | null;
 	amountMinor?: number | null;
+	formId?: string | null;
 }) =>
 	run(
 		stmt(
 			`insert into pledge (id, method, contact_id, currency, reference, ticker, shares_millionths,
-			                     custodian, amount_minor, created_at)
-			 values (?, ?, ?, 'USD', ?, ?, ?, ?, ?, 0)`,
+			                     custodian, amount_minor, form_id, created_at)
+			 values (?, ?, ?, 'USD', ?, ?, ?, ?, ?, ?, 0)`,
 			opts.id,
 			opts.method,
 			CONTACT_ID,
@@ -117,7 +132,8 @@ const insertPledge = (opts: {
 			opts.ticker ?? null,
 			opts.sharesMillionths ?? null,
 			opts.custodian ?? null,
-			opts.amountMinor ?? null
+			opts.amountMinor ?? null,
+			opts.formId === undefined ? FORM_ID : opts.formId
 		)
 	);
 
@@ -132,6 +148,21 @@ describe('pledge', () => {
 				stockPledge('019fb500-0000-7000-8000-000000000102', 'CFCP-AAPL-7Q2D')
 			)
 		).toContain(SQLITE_CONSTRAINT_UNIQUE);
+	});
+
+	it('refuses a pledge on no form, which the told press could never find', async () => {
+		expect(
+			await rejectionCode(() =>
+				insertPledge({
+					id: '019fb500-0000-7000-8000-000000000108',
+					method: 'stock',
+					reference: 'CFCP-AAPL-6U7H',
+					ticker: 'AAPL',
+					sharesMillionths: 50_000_000,
+					formId: null
+				})
+			)
+		).toContain(SQLITE_CONSTRAINT_NOTNULL);
 	});
 
 	it('refuses a reference in lowercase, which would read back as a second spelling', async () => {

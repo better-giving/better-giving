@@ -1,6 +1,6 @@
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createDb, type Db } from '../db/client';
-import { client, run, stmt } from '../db/database.testing';
+import { client, first, run, stmt } from '../db/database.testing';
 import { listWaitingPledges, WAITING_PLEDGE_LIMIT } from './pledges';
 
 // the Gifts screen's "Waiting to arrive" read, against a real database.
@@ -10,9 +10,22 @@ let db: Db;
 const MAYA = '019fb600-0000-7000-8000-000000000001';
 const JAMES = '019fb600-0000-7000-8000-000000000002';
 const RECEIVED_GIFT = '019fb600-0000-7000-8000-000000000003';
+const FORM_ID = '019fb600-0000-7000-8000-000000000004';
 
 beforeAll(async () => {
 	db = createDb(client);
+	const account = await first<{ id: string }>(
+		stmt(`select id from account where is_postable = 1 and code = '4110'`)
+	);
+	await run(
+		stmt(
+			`insert into form (id, name, status, revenue_account_id, currency, min_minor, max_minor,
+			                   suggested_amounts, allowed_origins, created_at, updated_at)
+			 values (?, 'General Fund', 'live', ?, 'USD', 500, 1000000, '[2500]', '[]', 0, 0)`,
+			FORM_ID,
+			account?.id ?? ''
+		)
+	);
 	await run(
 		stmt(
 			`insert into contact (id, kind, display_name, primary_email, created_at, updated_at)
@@ -46,13 +59,14 @@ const stockPledge = (opts: {
 	run(
 		stmt(
 			`insert into pledge (id, method, contact_id, currency, reference, ticker, shares_millionths,
-			                     told_at, donation_id, created_at)
-			 values (?, 'stock', ?, 'USD', ?, 'AAPL', 50000000, ?, ?, ?)`,
+			                     told_at, donation_id, form_id, created_at)
+			 values (?, 'stock', ?, 'USD', ?, 'AAPL', 50000000, ?, ?, ?, ?)`,
 			opts.id,
 			MAYA,
 			opts.reference,
 			opts.toldAt ?? null,
 			opts.donationId ?? null,
+			FORM_ID,
 			opts.createdAt
 		)
 	);
@@ -60,11 +74,13 @@ const stockPledge = (opts: {
 const iraPledge = (opts: { id: string; reference: string; createdAt: number }) =>
 	run(
 		stmt(
-			`insert into pledge (id, method, contact_id, currency, reference, custodian, amount_minor, created_at)
-			 values (?, 'ira_qcd', ?, 'USD', ?, 'Fidelity Investments', 500000, ?)`,
+			`insert into pledge (id, method, contact_id, currency, reference, custodian, amount_minor,
+			                     form_id, created_at)
+			 values (?, 'ira_qcd', ?, 'USD', ?, 'Fidelity Investments', 500000, ?, ?)`,
 			opts.id,
 			JAMES,
 			opts.reference,
+			FORM_ID,
 			opts.createdAt
 		)
 	);
@@ -132,11 +148,13 @@ describe('listWaitingPledges', () => {
 		await client.batch(
 			ids.map((id, n) =>
 				stmt(
-					`insert into pledge (id, method, contact_id, currency, reference, ticker, shares_millionths, created_at)
-					 values (?, 'stock', ?, 'USD', ?, 'AAPL', 50000000, ?)`,
+					`insert into pledge (id, method, contact_id, currency, reference, ticker, shares_millionths,
+					                     form_id, created_at)
+					 values (?, 'stock', ?, 'USD', ?, 'AAPL', 50000000, ?, ?)`,
 					id,
 					MAYA,
 					`CFCP-AAPL-${String(n).padStart(4, '0')}`,
+					FORM_ID,
 					1_794_000_000_000 + n
 				)
 			)
