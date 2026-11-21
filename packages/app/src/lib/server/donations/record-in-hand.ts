@@ -233,9 +233,9 @@ export function inHandWrites(db: Db, gift: InHandWrite): Writes {
 	};
 
 	// foreign-key order, after the donor and the gift: what names the gift and its employer match row
-	// (../matching/match.ts), then the books, then what the
-	// books owe QuickBooks — `quickbooks_sync.entry_group_id` points at the group above it — then
-	// what the gift owes each listening Zap and destination, about the payment above.
+	// (../matching/match.ts), then the books, then what the books owe QuickBooks
+	// (`quickbooks_sync.entry_group_id` points at the group above it), then what the gift owes each
+	// listening Zap and destination, about the payment above.
 	return [
 		db.insert(lineItem).values(lineRow),
 		db.insert(payment).values(paymentRow),

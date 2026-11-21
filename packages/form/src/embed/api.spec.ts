@@ -365,7 +365,7 @@ describe('a pledge’s save and its told press', () => {
 		).rejects.toThrow('/told');
 	});
 
-	// the code is what makes the next press save the pledge again before it tells (`pledgeLost` in
+	// the code is what makes the next press save the pledge again before it tells (`pledgeIsLost` in
 	// ../checkout.machine.ts).
 	it('carries the endpoint’s own code with a told refusal', async () => {
 		stubFetch(json({ error: 'pledge_not_found', message: 'No such pledge.' }, 404));

@@ -5,8 +5,8 @@ import { type TickerKind, ticker } from '../db/schema';
 // the stock step's ticker list: every symbol the SEC's two public files name, stored here so a
 // donor's search never reaches sec.gov. the job that fetches the files hands the whole list to
 // `replaceTickers`; a donor's typing runs `searchTickers`, and a stock pledge's ticker is checked by
-// `tickerListed`. `ticker` in ../db/schema.ts argues the
-// table, and migrations/0043_stock_tickers.sql the full-text table beside it.
+// `tickerListed`. `ticker` in ../db/schema.ts argues the table, and
+// migrations/0043_stock_tickers.sql the full-text table beside it.
 
 export type TickerRow = {
 	/** uppercase, class shares in the SEC's dash form: `BRK-B`. */

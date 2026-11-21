@@ -723,11 +723,10 @@ export function matchArrived(employer: string | null, day: string): string {
 	return `${employer ?? 'Your employer'}’s match arrived on ${day}. Thank you.`;
 }
 
-/**
- * a stock or IRA (QCD) pledge, as packages/form/src/views.ts and pledge-screen.ts word it for the
- * element: the IRA (QCD) option on the review step, and the pending screen and the thank-you a saved
- * pledge is shown on.
- */
+// a stock or IRA (QCD) pledge, as packages/form/src/views.ts and pledge-screen.ts word it for the
+// element: the IRA (QCD) option on the review step, and the pending screen and the thank-you a saved
+// pledge is shown on.
+
 export const CUSTODIAN_LABEL = 'Custodian';
 /** under the box over a Continue with no custodian, and over a custodian the endpoint refused. */
 export const CUSTODIAN_PROBLEM = 'Enter your IRA custodian’s name';

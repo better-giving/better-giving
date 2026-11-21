@@ -197,7 +197,7 @@ export type CheckoutPorts = {
 	/**
 	 * `POST /api/v1/forms/:id/gifts/:token/employer` — the employer the donor named on the thank-you.
 	 *
-	 * optional, and the one port that is: it spends nothing and is asked after the gift is made, so a
+	 * optional, as `pledges` below is: it spends nothing and is asked after the gift is made, so a
 	 * surface that leaves it out loses the employer ask and nothing else (`asksForEmployer` in
 	 * ./checkout.machine.ts). `employer` arrives as `employerAnswer` in ./employer.ts reads it: with no
 	 * control character, trimmed and within `MAX_EMPLOYER` (./v1.ts). it is free text a donor typed,

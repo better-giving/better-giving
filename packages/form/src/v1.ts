@@ -964,8 +964,8 @@ export const API_ERROR_CODES = [
 	 */
 	'ticker_not_listed',
 	/**
-	 * the told press's pledge id (`PledgeToldAnswer` above) names no pledge on this form. the donor's screen holds a pledge
-	 * this deployment never saved, and saving it again is the way back.
+	 * the told press's pledge id (`PledgeToldAnswer` above) names no pledge on this form. the donor's
+	 * screen holds a pledge this deployment never saved, and saving it again is the way back.
 	 */
 	'pledge_not_found',
 	/**

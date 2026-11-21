@@ -108,8 +108,8 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 			amount: formatMinor(d.totalMinor, d.currency),
 			// money arriving in hand and a received pledge are stored as the day typed, at that day's
 			// UTC midnight (`recordGiftInHand` in `$lib/server/donations/record-in-hand.ts`, `receivePledge`
-			// in `$lib/server/donations/receive-pledge.ts`), so its day is UTC's
-			// and crosses as the ISO day. every other gift is an instant, crossed whole and written
+			// in `$lib/server/donations/receive-pledge.ts`), so its day is UTC's and crosses as the ISO
+			// day. every other gift is an instant, crossed whole and written
 			// in the viewer's zone by `LocalTime` ($lib/admin/viewer-time.react.tsx).
 			...(isDatedByDay(d.rail?.method)
 				? { receivedOn: d.receivedAt.toISOString().slice(0, 10) }

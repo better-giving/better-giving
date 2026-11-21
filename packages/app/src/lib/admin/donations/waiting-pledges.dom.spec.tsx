@@ -14,10 +14,10 @@ import {
 } from './waiting-pledges';
 
 // the "Waiting to arrive" card and its Mark received dialog, mounted under the Gifts screen's index
-// route with its outcome line above and a stand-in for the gifts table's scroll plane beside it. each press goes through the
-// route's `clientAction`, whose server action answers as the test says, and the loader reads the
-// waiting list back, so a press that lands redraws the
-// card from what is still waiting. happy-dom implements `showModal()` as a flag with no top layer,
+// route with its outcome line above and a stand-in for the gifts table's scroll plane beside it.
+// each press goes through the route's `clientAction`, whose server action answers as the test says,
+// and the loader reads the waiting list back, so a press that lands redraws the card from what is
+// still waiting. happy-dom implements `showModal()` as a flag with no top layer,
 // so focus is asserted only where this card and the Modal move it themselves.
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;

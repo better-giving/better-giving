@@ -6,8 +6,8 @@ import type { PledgeRow } from './pledge';
 import { Glyph } from './sections/glyph';
 
 // a saved pledge's block on the full-card screen, and the IRA (QCD) option's box and benefits panel,
-// in packages/form/src/pledge-screen.ts's and ira-panel.ts's trees, so the form's sheets that draw the
-// element's draw these (`.pledge`, `.pledge-list`, `.benefits` and `.ira-panel` in
+// in the trees of packages/form/src/pledge-screen.ts and ira-panel.ts, so the sheets that draw the
+// element's draw these too (`.pledge`, `.pledge-list`, `.benefits` and `.ira-panel` in
 // packages/form/src/styles/parts.css and layout.css; the notice is the registry's notice-card-css).
 //
 // the order is the screen's: the info notice heads the thank-you, and the error notice stands under

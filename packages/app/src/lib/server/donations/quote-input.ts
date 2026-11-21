@@ -744,7 +744,7 @@ const COVERS_FEE_FIX =
 
 /**
  * who is giving and what they said about the gift — every field a gift carries whichever rail it is
- * on, read in the order `parseQuoteRequest` has always read them, so a pledge and a payment are
+ * on, read in the order `parseQuoteRequest` reads them, so a pledge and a payment are
  * refused alike for the same field.
  */
 function parseGiver(

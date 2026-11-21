@@ -85,8 +85,8 @@ export async function loader({ context, params }: Route.LoaderArgs) {
 			amountMinor: gift.amountMinor,
 			currency: gift.currency,
 			// money arriving in hand, or a pledge marked received, is stored as the day typed, at that
-			// day's UTC midnight (`isDatedByDay`), so its day
-			// is UTC's and crosses as the ISO day — the gifts list's reading of the same column.
+			// day's UTC midnight (`isDatedByDay`), so its day is UTC's and crosses as the ISO day, the gifts
+			// list's reading of the same column.
 			...(isDatedByDay(gift.method)
 				? { receivedOn: gift.receivedAt.toISOString().slice(0, 10) }
 				: { receivedAt: gift.receivedAt.toISOString() }),

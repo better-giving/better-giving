@@ -769,8 +769,8 @@ export function renderableConfig(result: PublishedConfigResult): PublishedConfig
 
 /**
  * a rail a donor can pay with on the form as it is drawn. stock is served while Payments has it on
- * and a ticker list is held, but no screen in packages/form/src sends `PLEDGE_STOCK` (packages/form/src/element.ts), so a
- * config offering stock alone is a form with nothing to press.
+ * and a ticker list is held, but no screen in packages/form/src sends `PLEDGE_STOCK`
+ * (packages/form/src/element.ts), so a config offering stock alone is a form with nothing to press.
  */
 function isDrawnRail(rail: PaymentMethod): boolean {
 	return rail !== 'stock';
