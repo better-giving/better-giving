@@ -1,5 +1,5 @@
-import { IN_HAND_METHOD_LABELS, IN_HAND_METHODS, type InHandMethod } from '../../donations/methods';
-import type { PaymentMethod } from '../db/schema';
+import { IN_HAND_METHOD_LABELS, IN_HAND_METHODS } from '../../donations/methods';
+import { type PaymentMethod, PLEDGE_METHODS } from '../db/schema';
 
 /**
  * what each rail is called on an /admin screen: the gifts list and a gift's own page.
@@ -26,10 +26,21 @@ export const RAIL_LABELS: Record<PaymentMethod, string> = {
 	paypal: 'PayPal',
 	venmo: 'Venmo',
 	daf: 'Donor-advised fund',
-	crypto: 'Crypto'
+	crypto: 'Crypto',
+	stock: 'Stocks',
+	ira_qcd: 'IRA (QCD)'
 };
 
-/** whether the gift's money arrived in hand, which dates it by a day rather than an instant. */
-export function isInHand(method: PaymentMethod | null | undefined): method is InHandMethod {
-	return (IN_HAND_METHODS as readonly (PaymentMethod | null | undefined)[]).includes(method);
+/**
+ * whether the gift is dated by a day rather than an instant: money staff entered in hand, or a stock
+ * or IRA (QCD) pledge they marked received (../donations/receive-pledge.ts). both store the day
+ * typed at that day's UTC midnight.
+ */
+export function isDatedByDay(method: PaymentMethod | null | undefined): boolean {
+	return DATED_BY_DAY.includes(method);
 }
+
+const DATED_BY_DAY: readonly (PaymentMethod | null | undefined)[] = [
+	...IN_HAND_METHODS,
+	...PLEDGE_METHODS
+];

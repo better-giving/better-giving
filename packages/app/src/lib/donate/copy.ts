@@ -345,6 +345,10 @@ function waitingOn(method: PaymentMethod | undefined): Waiting {
 		// sent from the donor's own wallet, so no window or bank is waited on and none is named.
 		case 'crypto':
 			return { kind: 'unknown' };
+		// sent later by the donor's broker or custodian, and nothing on this page waits on either.
+		case 'stock':
+		case 'ira_qcd':
+			return { kind: 'unknown' };
 	}
 }
 
@@ -717,4 +721,94 @@ export function orgCanSee(org: string): string {
 /** the matched row; a match staff recorded with no employer named reads as the donor's employer. */
 export function matchArrived(employer: string | null, day: string): string {
 	return `${employer ?? 'Your employer'}’s match arrived on ${day}. Thank you.`;
+}
+
+// a stock or IRA (QCD) pledge, as packages/form/src/views.ts and pledge-screen.ts word it for the
+// element: the IRA (QCD) option on the review step, and the pending screen and the thank-you a saved
+// pledge is shown on.
+
+export const CUSTODIAN_LABEL = 'Custodian';
+/** under the box over a Continue with no custodian, and over a custodian the endpoint refused. */
+export const CUSTODIAN_PROBLEM = 'Enter your IRA custodian’s name';
+
+/**
+ * a benefits panel's words, word for word as the PM and legal approved them and as `BENEFITS` in
+ * packages/form/src/pledge-screen.ts states them: a claim changes only with their approval, and
+ * neither panel states a figure.
+ */
+export type Benefits = { readonly title: string; readonly body: string; readonly fine: string };
+export const STOCK_BENEFITS: Benefits = {
+	title: 'Benefits of donating appreciated stock',
+	body: 'If you itemize and give shares you have held for more than a year, you may be able to deduct their market value on the day of the gift, and you generally avoid the capital gains tax you would owe if you sold them. Deduction limits apply.',
+	fine: 'This is general information, not tax advice. Talk to your tax adviser about your own situation.'
+};
+export const IRA_BENEFITS: Benefits = {
+	title: 'Benefits of giving from an IRA',
+	body: 'If you are 70½ or older, you can give up to the IRS yearly limit from your traditional IRA. Your IRA custodian must pay us directly, not you and not a donor-advised fund. It can count toward any required minimum distribution and isn’t added to your taxable income (you can’t also deduct it).',
+	fine: 'This is general information, not tax advice. Talk to your tax adviser or IRA custodian about your own situation.'
+};
+
+export const STOCK_PENDING_HEADING = 'Your stock gift is pending';
+export const STOCK_PENDING_BODY =
+	'Ask your broker to transfer these shares using the details below. Your gift counts when they arrive.';
+export const STOCK_TOLD = 'I’ve contacted my broker';
+export const IRA_PENDING_HEADING = 'Your IRA (QCD) gift is pending';
+export const IRA_PENDING_BODY =
+	'Ask your custodian to send this gift using the details below. Your gift counts when it arrives.';
+export const IRA_TOLD = 'I’ve asked my custodian';
+export const EMAIL_INSTRUCTIONS = 'Email these instructions';
+export const TOLD_REFUSED_TITLE = 'We couldn’t tell the organization';
+export const TOLD_REFUSED_BODY = 'Your gift is saved. Check your connection and try again.';
+/** the refusal's body where the endpoint held no pledge under its id, so the gift is not saved. */
+export const TOLD_LOST_BODY =
+	'We couldn’t find your gift. Press Try again to save it again under a new reference.';
+export const RESAVED_TITLE = 'We saved your gift again';
+export function resavedBody(reference: string): string {
+	return `Your new reference is ${reference}. Use it for your transfer.`;
+}
+export const TOLD_TITLE = 'We’ve told the organization';
+/**
+ * the receipt goes to the pledge's own address once staff mark the gift received. a blank address
+ * promises no receipt, and the body is the arrival sentence alone (`pledgedScreen` in
+ * packages/form/src/views.ts).
+ */
+export function toldBody(stock: boolean, receiptTo: string): string {
+	const counts = `Your gift counts when ${stock ? 'the shares arrive' : 'it arrives'}.`;
+	const address = receiptTo.trim();
+	return address === '' ? counts : `${counts} We’ll email a receipt to ${address} then.`;
+}
+export const DONE = 'Done';
+
+/** each row's label on a pledge's lists (./pledge.ts). */
+export const PLEDGE_LABELS = {
+	shares: 'Shares',
+	ticker: 'Ticker',
+	amount: 'Amount',
+	custodian: 'Custodian',
+	deliverTo: 'Deliver to',
+	dtcNumber: 'DTC number',
+	accountNumber: 'Account number',
+	accountName: 'Account name',
+	payeeName: 'Payee name',
+	ein: 'EIN',
+	mailingAddress: 'Mailing address',
+	reference: 'Reference'
+} as const;
+/** what a row's Copy is named for (`Copy {noun}`), on a value a donor hands on. */
+export function copyNamed(noun: string): string {
+	return `Copy ${noun}`;
+}
+/** said on the card's region as a Copy reports, in the address screen's two sentences. */
+export function pledgeCopied(noun: string): string {
+	return `${capitalised(noun)} copied.`;
+}
+export function pledgeNotCopied(noun: string): string {
+	return `${capitalised(noun)} not copied. It is selected so you can copy it.`;
+}
+function capitalised(noun: string): string {
+	return `${noun.charAt(0).toUpperCase()}${noun.slice(1)}`;
+}
+/** the emailed instructions' subject. */
+export function instructionsSubject(stock: boolean, org: string, reference: string): string {
+	return `${stock ? 'Stock' : 'IRA (QCD)'} gift to ${org}, reference ${reference}`;
 }

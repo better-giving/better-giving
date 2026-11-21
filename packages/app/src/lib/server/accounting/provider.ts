@@ -170,7 +170,8 @@ export type AccountingResult<T> = { readonly ok: true; readonly value: T } | Acc
  *
  *   stripeBalance, paypalBalance, chariotBalance, nowpaymentsBalance
  *                    — what that processor holds for the organisation until it pays out.
- *   undepositedFunds — a gift received in hand, cash or a cheque, until somebody banks it.
+ *   undepositedFunds — a gift received in hand, cash or a cheque, or a stock or IRA (QCD) pledge
+ *                      marked received (../donations/receive-pledge.ts), until somebody banks it.
  *
  * **none of them is the bank.** this app hears no payout, so nothing it sends can say money reached
  * a bank account: the bookkeeper records each payout off the bank feed as a transfer out of the

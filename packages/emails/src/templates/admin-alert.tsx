@@ -89,7 +89,7 @@ function factLines(facts: readonly AlertFact[]): string[] {
  * one paragraph broken by `<br>` rather than a list: a client that drops the styling still leaves
  * one fact per line, and a `<ul>` would add a bullet to a value somebody is about to copy.
  */
-function Facts({ facts }: { readonly facts: readonly AlertFact[] }) {
+export function Facts({ facts }: { readonly facts: readonly AlertFact[] }) {
 	return (
 		<p style={FACTS_STYLE}>
 			{factLines(facts).map((line, index) => (

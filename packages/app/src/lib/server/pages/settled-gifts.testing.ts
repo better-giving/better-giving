@@ -1,8 +1,11 @@
 import { parseContact } from '../contacts/contact-input';
 import { postableId } from '../db/accounts';
 import type { Db } from '../db/client';
+import type { PledgeMethod } from '../db/schema';
 import type { SettleDeps } from '../donations/delivery';
+import { savePledge } from '../donations/pledges';
 import type { NoteOnPage } from '../donations/quote-input';
+import { receivePledge } from '../donations/receive-pledge';
 import { recordAuthorizedGift, recordDonation } from '../donations/record';
 import { recordReversal } from '../donations/reverse';
 import { settleDelivery, settleTransaction } from '../donations/settle';
@@ -21,7 +24,8 @@ import { run, stmt } from '$lib/server/db/database.testing';
 
 // gifts through a form, put in the books by the path production writes them by — quoted by
 // `recordDonation`, settled by `settleTransaction`, refunded by `recordReversal`, collected by
-// `settleDelivery` — for a spec that reads what those writers post. every gift is in USD unless a
+// `settleDelivery`, a pledge saved by `savePledge` and received by `receivePledge` — for a spec that
+// reads what those writers post. every gift is in USD unless a
 // one-off's `currency` says otherwise, and every one needs an `org_profile` row, which its receipt
 // reads. not a spec itself: no project's `include` matches this name.
 
@@ -148,6 +152,75 @@ export async function noteGift(
 		throw new Error(`the fixture gift did not settle: ${settled.detail}`);
 	}
 	return { txn, donationId };
+}
+
+/** how far above what `receivedPledge` marks received its IRA (QCD) pledge was for. */
+const IRA_PLEDGED_ABOVE_RECEIVED = 50_000;
+
+/**
+ * a stock or IRA (QCD) pledge from the returning donor through `formId`, saved by `savePledge` and
+ * left waiting: it is no gift until `receivePledge` marks it received. an IRA pledge is for
+ * `pledgedMinor`; a stock pledge states 50 shares and no amount. its id, which is its gift's id once
+ * received.
+ */
+export async function waitingPledge(
+	db: Db,
+	formId: string,
+	method: PledgeMethod,
+	pledgedMinor = 300_000
+): Promise<string> {
+	sequence += 1;
+	const id = crypto.randomUUID();
+	const donor = parseContact({
+		kind: 'individual',
+		first_name: 'Ada',
+		last_name: 'Okafor',
+		primary_email: 'ada@example.org'
+	});
+	if (!donor.ok) throw new Error('the fixture donor did not parse');
+	const saved = await savePledge(
+		db,
+		{
+			id,
+			formId,
+			origin: null,
+			currency: 'USD',
+			pledged:
+				method === 'stock'
+					? { method, ticker: 'AAPL', sharesMillionths: 50_000_000 }
+					: { method, amountMinor: pledgedMinor, custodian: 'Fidelity Investments' },
+			donor: donor.value,
+			consentedToContact: false,
+			note: undefined,
+			noteOnPage: undefined,
+			tribute: null,
+			programId: null
+		},
+		() => `CFCP-GOAL-${sequence}`
+	);
+	if (!saved.ok) throw new Error(`the fixture pledge was not saved: ${saved.detail}`);
+	return id;
+}
+
+/**
+ * `waitingPledge`, marked received by `receivePledge` at `amountMinor` on the settled day. an IRA
+ * pledge was for `IRA_PLEDGED_ABOVE_RECEIVED` more than that, so a read of the pledged amount where
+ * the received one is owed shows. its gift's id, which is the pledge's.
+ */
+export async function receivedPledge(
+	db: Db,
+	formId: string,
+	method: PledgeMethod,
+	amountMinor: number
+): Promise<string> {
+	const id = await waitingPledge(db, formId, method, amountMinor + IRA_PLEDGED_ABOVE_RECEIVED);
+	const received = await receivePledge(db, {
+		pledgeId: id,
+		amountMinor,
+		dated: new Date('2026-09-10T00:00:00.000Z')
+	});
+	if (!received.ok) throw new Error(`the fixture pledge was not received: ${received.reason}`);
+	return id;
 }
 
 /** part or all of the charge on `txn` refunded, as the processor reads the refund back. */

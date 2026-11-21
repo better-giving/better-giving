@@ -29,7 +29,9 @@ const CONFIG: FormConfig = {
 		paypal: { percent: 0.0349, fixedMinor: 49 },
 		venmo: { percent: 0.0349, fixedMinor: 49 },
 		daf: { percent: 0.029, fixedMinor: 0, roundUpMinor: 100 },
-		crypto: { percent: 0.01, fixedMinor: 0 }
+		crypto: { percent: 0.01, fixedMinor: 0 },
+		stock: { percent: 0, fixedMinor: 0 },
+		ira_qcd: { percent: 0, fixedMinor: 0 }
 	},
 	locale: 'en-US',
 	orgLegalName: 'Acme Relief Fund',
@@ -841,5 +843,73 @@ describe('the employer ask projection', () => {
 		await settle();
 		(get().skipEmployerButton as { onClick: () => void }).onClick();
 		expect(get().state).toMatchObject({ employer: { phase: 'skipped' } });
+	});
+});
+
+describe('the pledge projection', () => {
+	const PLEDGE_CONFIG: FormConfig = { ...CONFIG, paymentMethods: ['card', 'ira_qcd'] };
+	const pledges = (told: () => Promise<void>): Partial<CheckoutPorts> => ({
+		pledges: {
+			id: () => 'pledge-1',
+			save: async () => ({
+				paymentToken: 'pledge-1',
+				feeMinor: 0,
+				totalMinor: 2500,
+				pledge: {
+					id: 'pledge-1',
+					method: 'ira_qcd',
+					reference: 'CFCP-IRA-4K9M',
+					receiptTo: 'donor@example.org',
+					amountMinor: 2500,
+					custodian: 'Fidelity Investments',
+					payeeName: 'Acme Relief Fund',
+					ein: '12-3456789',
+					mailingAddress: '412 Alder Lane'
+				}
+			}),
+			told
+		}
+	});
+
+	it('wires the custodian box to the flow, with the endpoint’s cap on it', () => {
+		const { get } = api(submittedOn('ira_qcd'), {
+			config: PLEDGE_CONFIG,
+			ports: pledges(async () => {})
+		});
+		expect(get().custodianField).toMatchObject({
+			name: 'custodian',
+			required: true,
+			maxLength: 200,
+			value: ''
+		});
+		expect(get().state).toMatchObject({ step: 'give', custodianMissing: true });
+
+		(get().custodianField as { onChange: (value: string) => void }).onChange('Fidelity');
+		expect(get().custodianField).toMatchObject({ value: 'Fidelity' });
+		expect(get().state).toMatchObject({ step: 'give', custodianMissing: false });
+	});
+
+	it('reports the told press busy while it is in flight, and never disabled', async () => {
+		let answer: () => void = () => {};
+		const { get } = api(
+			(send) => {
+				submittedOn('ira_qcd')(send);
+				send({ type: 'SET_CUSTODIAN', custodian: 'Fidelity Investments' } as never);
+				send({ type: 'SUBMIT' } as never);
+			},
+			{
+				config: PLEDGE_CONFIG,
+				ports: pledges(() => new Promise((resolve) => (answer = resolve)))
+			}
+		);
+		await settle();
+		expect(get().toldButton).toMatchObject({ 'aria-busy': false });
+		expect(get().toldButton).not.toHaveProperty('disabled');
+
+		(get().toldButton as { onClick: () => void }).onClick();
+		expect(get().toldButton).toMatchObject({ 'aria-busy': true });
+		answer();
+		await settle();
+		expect(get().state).toMatchObject({ step: 'pledged', phase: 'told' });
 	});
 });

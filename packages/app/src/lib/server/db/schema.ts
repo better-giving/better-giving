@@ -67,9 +67,11 @@ import type { PostableAccountId } from './postable';
 //   time   -> integer unix milliseconds UTC on every `_at` column. `created_at` is
 //             system time; ledger/settlement rows additionally carry `occurred_at`
 //             (business time). never text ISO-8601.
-//   ids    -> text uuidv7 generated app-side by the `id()` helper below, with one
-//             exception: `form.id` is a prefixed random string, for the reasons on the
-//             `formId` helper. sqlite has
+//   ids    -> text uuidv7 generated app-side by the `id()` helper below, with two
+//             exceptions: `form.id` is a prefixed random string, for the reasons on the
+//             `formId` helper, and `pledge.id` is the uuid the donor's form minted, which
+//             the gift a received pledge becomes takes as its `donation.id`
+//             (../donations/receive-pledge.ts). sqlite has
 //             no gen_random_uuid(), so generation is ours either way; v7 is
 //             time-ordered, which keeps index locality on the append-only tables.
 //             text(36), not blob(16) — legibility beats index size at nonprofit scale.
@@ -1561,6 +1563,10 @@ export type PaymentDirection = (typeof PAYMENT_DIRECTIONS)[number];
  * `crypto` is a coin the donor sent to an address, whichever coin it was. the coin itself is
  * `payment.coin`, not a member here: the list of coins is the processor's and moves weekly, and
  * every member of this list is a rebuild of `payment`.
+ *
+ * `stock` is shares a broker transferred, and `ira_qcd` a qualified charitable distribution an IRA
+ * custodian paid. both are `PLEDGE_METHODS` below: a `payment` row on either is written only once
+ * staff mark the gift received, `succeeded` and `manual`, at the value they entered.
  */
 export const PAYMENT_METHODS = [
 	'cash',
@@ -1570,9 +1576,19 @@ export const PAYMENT_METHODS = [
 	'paypal',
 	'venmo',
 	'daf',
-	'crypto'
+	'crypto',
+	'stock',
+	'ira_qcd'
 ] as const;
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
+
+/**
+ * the rails a donor pledges on and the organisation's own staff settle: no processor stands behind
+ * either, so the gift is a `pledge` row until it arrives. each is also a `pledge_rail` row, the
+ * deployment's own details for it.
+ */
+export const PLEDGE_METHODS = ['stock', 'ira_qcd'] as const satisfies readonly PaymentMethod[];
+export type PledgeMethod = (typeof PLEDGE_METHODS)[number];
 
 /**
  * which rail settled it. not the `PaymentProvider` port — that is the interface in
@@ -3874,6 +3890,262 @@ export const giftMatch = sqliteTable(
 
 export type GiftMatch = typeof giftMatch.$inferSelect;
 export type NewGiftMatch = typeof giftMatch.$inferInsert;
+
+/**
+ * where a donor sends a stock or IRA (QCD) gift: the organisation's own transfer details, one row
+ * per `PLEDGE_METHODS` member. a carve-out from "every configuration value is an environment
+ * variable" (AGENTS.md -> Secrets) of the `quickbooks_connection` kind — the deployer saves these on
+ * /admin/payments — and none of them is a secret: every one is printed to any donor who picks the
+ * rail.
+ *
+ * a rail turned off keeps its details, so turning it back on asks for nothing again. what the row
+ * refuses is a rail turned on with a detail missing, and a detail stated on the other rail's row.
+ * no row is the same answer as a row turned off. ../payments/pledge-rails.ts is every read and write.
+ */
+export const pledgeRail = sqliteTable(
+	'pledge_rail',
+	{
+		/** the rail, not a uuidv7: at most one row per member, and the check below keeps it so. */
+		id: text('id').$type<PledgeMethod>().primaryKey(),
+		enabled: integer('enabled', { mode: 'boolean' }).notNull().default(false),
+		/** stock: the brokerage holding the organisation's account. */
+		brokerageName: text('brokerage_name'),
+		/** stock: the brokerage's DTC participant number, as the deployer typed it. */
+		dtcNumber: text('dtc_number'),
+		/** stock: the organisation's account at that brokerage. */
+		accountNumber: text('account_number'),
+		/** stock: the name that account is held in. */
+		accountName: text('account_name'),
+		/** IRA (QCD): who the custodian's check is made out to. */
+		payeeName: text('payee_name'),
+		/** IRA (QCD): where the custodian mails it, lines as typed. */
+		mailingAddress: text('mailing_address'),
+		createdAt: createdAt(),
+		updatedAt: updatedAt()
+		// append new columns below this line — see rule 1 at the top of this file.
+	},
+	(t) => [
+		check('pledge_rail_id_check', enumCheck(t.id, PLEDGE_METHODS)),
+		check('pledge_rail_enabled_bool_check', boolCheck(t.enabled)),
+		check('pledge_rail_brokerage_name_not_blank_check', optionalNotBlank(t.brokerageName)),
+		check('pledge_rail_dtc_number_not_blank_check', optionalNotBlank(t.dtcNumber)),
+		check('pledge_rail_account_number_not_blank_check', optionalNotBlank(t.accountNumber)),
+		check('pledge_rail_account_name_not_blank_check', optionalNotBlank(t.accountName)),
+		check('pledge_rail_payee_name_not_blank_check', optionalNotBlank(t.payeeName)),
+		check('pledge_rail_mailing_address_not_blank_check', optionalNotBlank(t.mailingAddress)),
+		// a detail is its own rail's: the IRA row printing a DTC number sends shares nowhere.
+		check(
+			'pledge_rail_stock_details_check',
+			sql`${t.id} = 'stock' or (${t.brokerageName} is null and ${t.dtcNumber} is null and ${t.accountNumber} is null and ${t.accountName} is null)`
+		),
+		check(
+			'pledge_rail_ira_qcd_details_check',
+			sql`${t.id} = 'ira_qcd' or (${t.payeeName} is null and ${t.mailingAddress} is null)`
+		),
+		/**
+		 * on means every detail a donor is shown is there. not-blank is the checks above, so non-null
+		 * is all this has to say; a rail off may hold any of them, which is what Disable keeping them
+		 * needs.
+		 */
+		check(
+			'pledge_rail_enabled_complete_check',
+			sql`${t.enabled} = 0 or (${t.id} = 'stock' and ${t.brokerageName} is not null and ${t.dtcNumber} is not null and ${t.accountNumber} is not null and ${t.accountName} is not null) or (${t.id} = 'ira_qcd' and ${t.payeeName} is not null and ${t.mailingAddress} is not null)`
+		)
+	]
+);
+
+export type PledgeRail = typeof pledgeRail.$inferSelect;
+export type NewPledgeRail = typeof pledgeRail.$inferInsert;
+
+/**
+ * a stock or IRA (QCD) gift a donor has pledged, from the moment the pending screen shows them where
+ * to send it.
+ *
+ * **a pledge is not a `donation` until staff mark it received.** a stock pledge has no dollar value
+ * before then — the donor states shares, and no price is fetched — and `donation.total_minor` is
+ * NOT NULL and `> 0`, which only a rebuild of `donation` could loosen. so nothing is written to
+ * `donation`, `line_item`, `payment` or the books at pledge time, and no read of any of them can
+ * count, list or total a pledge by mistake. Mark received is the one write of the gift, whole, in
+ * one `batch()` — donation, line, a `succeeded` `manual` payment at the value and date staff
+ * entered, its entry through the in-hand path (`receivedInHandEntry` in ../donations/entries.ts) —
+ * and stamps `donation_id` here in the same batch. a pledge with `donation_id` set has been
+ * received; one without is waiting.
+ *
+ * what the donor said on the form about the gift — the cause, the note and whether it is public, the
+ * dedication, where it came from — waits here in the columns `donation` names the same way, and
+ * Mark received copies them across. the checks that hold those columns together on `donation` are
+ * repeated here, so a pledge cannot hold a pair `donation` would refuse at the moment it arrives.
+ *
+ * one-time only: no `recurring_id`, since no commitment is ever opened on either rail.
+ */
+export const pledge = sqliteTable(
+	'pledge',
+	{
+		id: id(),
+		method: text('method').$type<PledgeMethod>().notNull(),
+		/** the donor, resolved at pledge time the way the form files every gift (../donations/donor.ts). */
+		contactId: text('contact_id')
+			.notNull()
+			.references(() => contact.id),
+		/**
+		 * the form's currency when the pledge was made, and `amount_minor`'s. the gift Mark received
+		 * records is in `FORM_CURRENCY` (../donations/receive-pledge.ts), which never reads this.
+		 */
+		currency: text('currency').notNull(),
+		/**
+		 * what the donor quotes to their broker or custodian, and what staff match an arrival by:
+		 * `CFCP-AAPL-7Q2D`. uppercase, so a reference read back over the phone is one spelling, and
+		 * unique on `pledge_reference_idx`; minting it is the caller's, and a collision is its retry.
+		 */
+		reference: text('reference').notNull(),
+		/** stock: the ticker, uppercase. null on an IRA pledge. */
+		ticker: text('ticker'),
+		/**
+		 * stock: how many shares, in millionths — `50` shares is `50000000`. an integer, for the reason
+		 * money is one (the header's `money`), at the six decimal places a fractional share is quoted
+		 * to. null on an IRA pledge.
+		 */
+		sharesMillionths: integer('shares_millionths'),
+		/** IRA (QCD): the custodian the donor named. null on a stock pledge. */
+		custodian: text('custodian'),
+		/**
+		 * IRA (QCD): what the donor said they would give, in minor units. never money: the books hold
+		 * the value staff enter at Mark received, which is what the check that arrives says. null on a
+		 * stock pledge, which has no dollar value until then.
+		 */
+		amountMinor: integer('amount_minor'),
+		/**
+		 * when the donor pressed "I've contacted my broker" or "I've asked my custodian" and the
+		 * organisation was told. null while the donor has only been shown the instructions. a stamp
+		 * rather than a flag, set by a guarded update so a second press tells nobody twice.
+		 */
+		toldAt: at('told_at'),
+		/** the gift this pledge became at Mark received, and null while it is waiting. */
+		donationId: text('donation_id').references(() => donation.id),
+		/** required, since the told press finds a pledge under its form (../donations/pledges.ts). */
+		formId: text('form_id')
+			.notNull()
+			.references(() => form.id),
+		origin: text('origin'),
+		programId: text('program_id').references(() => program.id),
+		supporterPageId: text('supporter_page_id').references(() => supporterPage.id),
+		note: text('note'),
+		notePublic: integer('note_public', { mode: 'boolean' }).notNull().default(false),
+		noteAnonymous: integer('note_anonymous', { mode: 'boolean' }).notNull().default(false),
+		noteShownName: text('note_shown_name'),
+		tributeKind: text('tribute_kind'),
+		tributeHonoree: text('tribute_honoree'),
+		tributeNotifyName: text('tribute_notify_name'),
+		tributeNotifyEmail: text('tribute_notify_email'),
+		createdAt: createdAt()
+		// append new columns below this line — see rule 1 at the top of this file.
+	},
+	(t) => [
+		check('pledge_method_check', enumCheck(t.method, PLEDGE_METHODS)),
+		check('pledge_currency_check', currencyCheck(t.currency)),
+		check('pledge_reference_not_blank_check', notBlank(t.reference)),
+		check('pledge_reference_uppercase_check', sql`${t.reference} = upper(${t.reference})`),
+		check('pledge_ticker_not_blank_check', optionalNotBlank(t.ticker)),
+		check('pledge_ticker_uppercase_check', sql`${t.ticker} = upper(${t.ticker})`),
+		check('pledge_custodian_not_blank_check', optionalNotBlank(t.custodian)),
+		check('pledge_shares_millionths_positive_check', sql`${t.sharesMillionths} > 0`),
+		check('pledge_amount_minor_positive_check', sql`${t.amountMinor} > 0`),
+		/**
+		 * what each rail pledges, and only that: shares of a ticker, or an amount from a custodian.
+		 * an equality per rail rather than `or`-ed cases, the shape `form_program_pinned_check` uses,
+		 * so a stock pledge carrying a dollar figure is refused as firmly as one missing its ticker.
+		 */
+		check(
+			'pledge_stock_check',
+			sql`(${t.method} = 'stock') = (${t.ticker} is not null and ${t.sharesMillionths} is not null)`
+		),
+		check(
+			'pledge_stock_has_no_amount_check',
+			sql`${t.method} <> 'stock' or (${t.amountMinor} is null and ${t.custodian} is null)`
+		),
+		check(
+			'pledge_ira_qcd_check',
+			sql`(${t.method} = 'ira_qcd') = (${t.custodian} is not null and ${t.amountMinor} is not null)`
+		),
+		check(
+			'pledge_ira_qcd_has_no_shares_check',
+			sql`${t.method} <> 'ira_qcd' or (${t.ticker} is null and ${t.sharesMillionths} is null)`
+		),
+		check('pledge_origin_not_blank_check', optionalNotBlank(t.origin)),
+		check('pledge_note_not_blank_check', optionalNotBlank(t.note)),
+		check('pledge_note_public_bool_check', boolCheck(t.notePublic)),
+		check('pledge_note_anonymous_bool_check', boolCheck(t.noteAnonymous)),
+		// `donation`'s note pairs, word for word: `donation_note_anonymous_public_check` and the two
+		// shown-name checks beside it.
+		check('pledge_note_anonymous_public_check', sql`${t.noteAnonymous} = 0 or ${t.notePublic} = 1`),
+		check('pledge_note_shown_name_not_blank_check', optionalNotBlank(t.noteShownName)),
+		check(
+			'pledge_note_shown_name_public_check',
+			sql`(${t.notePublic} = 1) = (${t.noteShownName} is not null)`
+		),
+		check(
+			'pledge_note_shown_name_anonymous_check',
+			sql`${t.noteAnonymous} = 0 or ${t.noteShownName} = 'Anonymous'`
+		),
+		// the pairs `Tribute` in ../donations/quote-input.ts holds on the way in, which `donation`
+		// cannot check without a rebuild and this table can at birth. the kind's vocabulary stays the
+		// parse boundary's, as it is on `donation.tribute_kind`.
+		check('pledge_tribute_check', sql`(${t.tributeKind} is null) = (${t.tributeHonoree} is null)`),
+		check(
+			'pledge_tribute_notify_check',
+			sql`(${t.tributeNotifyName} is null) = (${t.tributeNotifyEmail} is null) and (${t.tributeNotifyName} is null or ${t.tributeKind} is not null)`
+		),
+		uniqueIndex('pledge_reference_idx').on(t.reference),
+		// one pledge becomes one gift; also the index `donation_id`'s foreign key is checked by, and
+		// the one the waiting read's `donation_id is null` walks.
+		uniqueIndex('pledge_donation_id_idx').on(t.donationId)
+	]
+);
+
+export type Pledge = typeof pledge.$inferSelect;
+export type NewPledge = typeof pledge.$inferInsert;
+
+export const TICKER_KINDS = ['company', 'fund'] as const;
+export type TickerKind = (typeof TICKER_KINDS)[number];
+
+/**
+ * every ticker a donor can pick on the stock step, from the SEC's public lists: a company or ETF
+ * from company_tickers_exchange.json, a mutual fund class from company_tickers_mf.json. fetched
+ * by the process itself (../donations/ticker-refresh.ts) and never shipped in a migration or a
+ * seed (the header of migrations/0043_stock_tickers.sql), never typed by anyone, and searched here
+ * so a donor never reaches sec.gov.
+ *
+ * the list is only ever replaced whole, in one `batch()`, by `replaceTickers` in
+ * ../donations/tickers.ts, which is every read and write. `ticker_name`, an FTS5 table the
+ * migration creates beside this one and drizzle cannot declare, holds each company's name for the
+ * word-prefix search and is refilled in the same batch.
+ */
+export const ticker = sqliteTable(
+	'ticker',
+	{
+		/** uppercase, class shares in the SEC's dash form: `BRK-B`. */
+		symbol: text('symbol').primaryKey(),
+		/** the company's name as the SEC writes it. null on a fund: the SEC's fund list has no names. */
+		name: text('name'),
+		/** the listing exchange, null where the SEC states none and on every fund. */
+		exchange: text('exchange'),
+		kind: text('kind').$type<TickerKind>().notNull(),
+		/** when the list this row came in with replaced the one before; every row holds the same value. */
+		replacedAt: at('replaced_at').notNull()
+		// append new columns below this line — see rule 1 at the top of this file.
+	},
+	(t) => [
+		check('ticker_kind_check', enumCheck(t.kind, TICKER_KINDS)),
+		check('ticker_symbol_not_blank_check', notBlank(t.symbol)),
+		check('ticker_symbol_uppercase_check', sql`${t.symbol} = upper(${t.symbol})`),
+		check('ticker_name_not_blank_check', optionalNotBlank(t.name)),
+		check('ticker_exchange_not_blank_check', optionalNotBlank(t.exchange)),
+		check('ticker_fund_has_no_name_check', sql`${t.kind} <> 'fund' or ${t.name} is null`)
+	]
+);
+
+export type Ticker = typeof ticker.$inferSelect;
+export type NewTicker = typeof ticker.$inferInsert;
 
 export type Supporter = typeof supporter.$inferSelect;
 export type NewSupporter = typeof supporter.$inferInsert;

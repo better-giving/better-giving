@@ -91,7 +91,13 @@ function stubbed(donations: Gift[], match: MatchFilter | null = null): ReactNode
 			path: '/admin/donations',
 			Component: () =>
 				createElement(Donations as never, {
-					loaderData: { donations, limit: 50, hasMore: false, match },
+					loaderData: {
+						donations,
+						limit: 50,
+						hasMore: false,
+						match,
+						waiting: { total: 0, pledges: [] }
+					},
 					params: {},
 					matches: []
 				})

@@ -69,7 +69,9 @@ describe('railNotes', () => {
 			paypal: null,
 			venmo: null,
 			daf: null,
-			crypto: null
+			crypto: null,
+			stock: null,
+			ira_qcd: null
 		});
 	});
 

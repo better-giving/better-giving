@@ -28,6 +28,7 @@ Every table below is in the deployment's own database (`packages/app/src/lib/ser
 
 - **Payment processors.** Each gift's amount and currency, and a reference to the gift (`packages/app/src/lib/server/donations/quote.ts`). No name a donor typed is sent to the processor. The processor collects what the donor enters on its own fields, under its own privacy policy.
 - **Your mail provider.** The app sends mail over SMTP. Receipts, thank-you notes, dedication notices, matching-gift packs and supporter sign-in links go through your provider, so it sees the recipient's address and the message.
+- **The SEC.** Once a day the deployment fetches the SEC's public ticker files and names the notification address, or `MAIL_FROM`, as its contact, as sec.gov requires. No donor data is sent. A donor's ticker search is answered from the stored list ([Stock tickers](configuration.md#stock-tickers)).
 - **Zapier and webhooks.** If you connect them, gift events carry the donor's name and email address to the hook address you set.
 
 ## Where it lives, and backups

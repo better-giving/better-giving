@@ -65,11 +65,10 @@ describe('the shipped bytes', () => {
 describe('the shipped bytes carry no face', () => {
 	/**
 	 * the gzip size the runtime stays under, in bytes: its own code, with room to grow. the runtime
-	 * measures about 125 KB gzipped inside vitest, of which the registry's 2.5.0 sheets are about
-	 * 140 B, and `pnpm build` ships about 124 KB. a face inlined as a data URL adds tens of KB, so
-	 * the ceiling still trips on one.
+	 * measures about 130.2 KB gzipped inside vitest with the pledge screens and the registry's notice
+	 * card in it. a face inlined as a data URL adds tens of KB, so the ceiling still trips on one.
 	 */
-	const RUNTIME_GZIP_CEILING = 130_000;
+	const RUNTIME_GZIP_CEILING = 135_000;
 
 	for (const mode of ['runtime', 'loader'] as const) {
 		it(`carries no face and emits no file beside the ${mode}`, async () => {

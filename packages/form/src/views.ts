@@ -27,6 +27,9 @@ import {
 	type ExpiryUnit,
 	isFigure
 } from './deposit';
+import { createIraPanel } from './ira-panel';
+import { instructionsMailto, pledgeDetails, pledgeSummary } from './pledge';
+import { BENEFITS, createPledgeBlock, type PledgeNotice, type PledgeScreen } from './pledge-screen';
 import type { AmountDecision, PayerField } from './value';
 import { RECONCILIATION_LABELS, type DeductedFee } from './fee';
 import { currencySymbol, formatFigure, formatMinor, formatOffer, parseMinor } from './money';
@@ -246,8 +249,8 @@ const STEP_COUNT = STEP_HEADINGS.length;
 /**
  * what the card is showing.
  *
- * `working` stays where it happened. the flow collapses boot, authorizing, resending, quoting,
- * quoted, confirming and resuming into one thing a donor is told — something is happening — so the projection cannot say
+ * `working` stays where it happened. the flow collapses boot, authorizing, resending, retaking,
+ * quoting, quoted, confirming and resuming into one thing a donor is told — something is happening — so the projection cannot say
  * which screen asked, and the last one shown is the answer. without that, the press on the review
  * step drops the donor onto a blank frame for the length of a request that spans two beats.
  *
@@ -348,6 +351,10 @@ function waitingOn(method: PaymentMethod | undefined): Waiting {
 			return { kind: 'fund' };
 		// sent from the donor's own wallet, so no window or bank is waited on and none is named.
 		case 'crypto':
+			return { kind: 'unknown' };
+		// sent later by the donor's broker or custodian, and nothing on this page waits on either.
+		case 'stock':
+		case 'ira_qcd':
 			return { kind: 'unknown' };
 	}
 }
@@ -538,8 +545,16 @@ type Takeover = {
 	readonly primaryNote: string;
 	/** where and how much to send a `crypto` gift, on the one screen that states it. */
 	readonly deposit: DepositScreen | null;
-	/** the way out of the screen: beside the primary where there is one, alone where there is not. */
-	readonly secondary: { readonly label: string } | null;
+	/**
+	 * the way out of the screen: beside the primary where there is one, alone where there is not.
+	 * `filled` draws it as the registry's secondary button rather than as words, which is how the
+	 * pledge screens draw theirs.
+	 */
+	readonly secondary: { readonly label: string; readonly filled?: true } | null;
+	/** what a saved pledge's screens list (./pledge-screen.ts), on the screens that have one. */
+	readonly pledge: PledgeScreen | null;
+	/** a link under the primary, drawn as the registry's secondary button: a pledge's instructions, emailed. */
+	readonly secondaryLink: { readonly label: string; readonly href: string } | null;
 	/**
 	 * the line under the way out, on the one screen that has one.
 	 *
@@ -570,8 +585,105 @@ const BLANK: Takeover = {
 	deposit: null,
 	secondary: null,
 	secondaryNote: '',
-	employer: null
+	employer: null,
+	pledge: null,
+	secondaryLink: null
 };
+
+/**
+ * a saved pledge's screen: the instructions while the donor has not said they asked for the
+ * transfer, the same with the error notice where the last press did not reach the organisation, and
+ * the thank-you once it did.
+ *
+ * the thank-you's notice names the address the receipt goes to, which is the pledge's own
+ * (`Pledge.receiptTo` in ./v1.ts): the receipt is sent when staff mark the gift received, whatever
+ * the deployment's `receipts` says about a charged gift's. a pledge with a blank address promises
+ * no receipt, and the notice is the arrival sentence alone.
+ */
+function pledgedScreen(
+	state: State & { readonly step: 'pledged' },
+	config: FormConfig,
+	money: (minor: number) => string
+): Takeover {
+	const { pledge } = state;
+	const stock = pledge.method === 'stock';
+	const summary = pledgeSummary(pledge, money);
+	// the notice's words, for the card's live region (`notice` in ./pledge-screen.ts).
+	const spoken = (notice: PledgeNotice) => `${notice.title}. ${notice.body}`;
+	if (state.phase === 'told') {
+		const counts = `Your gift counts when ${stock ? 'the shares arrive' : 'it arrives'}.`;
+		const receiptTo = pledge.receiptTo.trim();
+		const told: PledgeNotice = {
+			tone: 'info',
+			title: 'We’ve told the organization',
+			body: receiptTo === '' ? counts : `${counts} We’ll email a receipt to ${receiptTo} then.`
+		};
+		return {
+			...BLANK,
+			heading: 'Thank you',
+			arrival: spoken(told),
+			pledge: {
+				notice: told,
+				summary,
+				details: null,
+				benefits: null
+			},
+			secondary: { label: 'Done', filled: true }
+		};
+	}
+	const notice = pendingNotice(state);
+	return {
+		...BLANK,
+		heading: stock ? 'Your stock gift is pending' : 'Your IRA (QCD) gift is pending',
+		body: stock
+			? 'Ask your broker to transfer these shares using the details below. Your gift counts when they arrive.'
+			: 'Ask your custodian to send this gift using the details below. Your gift counts when it arrives.',
+		// not while the next press is in flight, so a second refusal arrives into a cleared region.
+		announce: notice === null || state.phase === 'telling' ? '' : spoken(notice),
+		pledge: {
+			notice,
+			summary,
+			details: pledgeDetails(pledge),
+			benefits: BENEFITS[pledge.method]
+		},
+		primary: {
+			label: state.refused
+				? 'Try again'
+				: stock
+					? 'I’ve contacted my broker'
+					: 'I’ve asked my custodian',
+			submit: false
+		},
+		secondaryLink: {
+			label: 'Email these instructions',
+			href: instructionsMailto(pledge, config.orgLegalName, money)
+		}
+	};
+}
+
+/**
+ * the notice on a pending screen, by how the last told press went. each says only what is true: a
+ * pledge the endpoint could not find is not called saved, and one saved again names the new
+ * reference the donor's transfer has to carry, before the press that tells the organisation.
+ */
+function pendingNotice(state: State & { readonly step: 'pledged' }): PledgeNotice | null {
+	if (state.resave === 'done') {
+		return {
+			tone: 'info',
+			title: 'We saved your gift again',
+			body: `Your new reference is ${state.pledge.reference}. Use it for your transfer.`
+		};
+	}
+	if (!state.refused) return null;
+	return {
+		tone: 'destructive',
+		title: 'We couldn’t tell the organization',
+		body:
+			state.resave === 'needed'
+				? 'We couldn’t find your gift. Press Try again to save it again under a new reference.'
+				: 'Your gift is saved. Check your connection and try again.'
+	};
+}
 
 /**
  * a timestamp as a date the donor can act on, degrading the way ./money.ts does.
@@ -839,6 +951,9 @@ function takeoverFor(state: State, config: FormConfig, money: (minor: number) =>
 				secondaryNote: `Also sent to ${state.email}.`
 			};
 
+		case 'pledged':
+			return pledgedScreen(state, config, money);
+
 		// no email is sent when an address closes, so this screen is the donor's only notice of it.
 		case 'depositExpired':
 			return {
@@ -1056,6 +1171,18 @@ function oneTimeFrequency(state: State & { readonly step: 'give' }): 'monthly' |
 	return state.fv.frequency === 'yearly' ? 'yearly' : 'monthly';
 }
 
+/**
+ * the registry's secondary button at the action's own size, for the pledge screens' way out and
+ * their emailed instructions, which the design draws as buttons rather than as words.
+ */
+const SECONDARY_BUTTON = 'ds-btn ds-btn-secondary ds-btn-lg';
+
+/**
+ * what the custodian box says under itself once a press is refused for it, or the endpoint refuses
+ * the custodian a save named. one sentence for both, in the details step's imperative.
+ */
+const CUSTODIAN_PROBLEM = 'Enter your IRA custodian’s name';
+
 /** the id the payment box's header carries, which the box is named by while it stands. */
 const PAYMENT_HEADING = 'payment-heading';
 
@@ -1104,6 +1231,12 @@ export type CardView = {
 	 */
 	readonly heldChallenge: HTMLElement;
 	/**
+	 * the pledge screen's box for the same widget, beside the press, which the widget is drawn afresh
+	 * into only where a lost pledge's save made again waits on it and it is asking the donor to solve
+	 * something (`awaitingToken` in ./checkout.machine.ts). empty otherwise, as `heldChallenge` is.
+	 */
+	readonly toldChallenge: HTMLElement;
+	/**
 	 * the coin list a `crypto` gift is chosen in, handed out for the reason `payment` above is.
 	 *
 	 * the card draws it and keeps it patched, and the crypto option stands it in its row in the payment
@@ -1111,6 +1244,12 @@ export type CardView = {
 	 * root of its own (./coin-picker.ts).
 	 */
 	readonly coins: HTMLElement;
+	/**
+	 * the IRA (QCD) option's box and benefits panel (./ira-panel.ts), handed out for the reason `coins`
+	 * above is: the card draws it and keeps it patched, and the option stands it in its row
+	 * (./embed/pledge.ts).
+	 */
+	readonly ira: HTMLElement;
 	/**
 	 * puts the caret on the heading of the screen the card is showing.
 	 *
@@ -2216,11 +2355,12 @@ export function createCard(
 		programName
 	]);
 
+	const totalRow = make(doc, 'div', { class: 'row total' }, [totalLabel, totalFigure]);
 	const summary = make(doc, 'div', { part: part('summary') }, [
 		make(doc, 'div', { class: 'row' }, [giftLabel, giftFigure]),
 		...(config.program === undefined ? [] : [programLine]),
 		feeRow,
-		make(doc, 'div', { class: 'row total' }, [totalLabel, totalFigure]),
+		totalRow,
 		receiptNote
 	]);
 
@@ -2490,6 +2630,7 @@ export function createCard(
 		oneTimeButton
 	]);
 	const coinPicker = createCoinPicker(doc);
+	const iraPanel = createIraPanel(doc);
 
 	const submitLabel = make(doc, 'span', { class: 'action-label' });
 	const submitButton = make(
@@ -2526,8 +2667,10 @@ export function createCard(
 		update(now());
 		// straight to the payment box, with no set to walk: the typed fields were settled on the
 		// step before this one and cannot be unsettled from here, so the rail is the whole of what
-		// this press can be refused for — or, on crypto, the coin, whose list is ours to send it to.
+		// this press can be refused for — or, on crypto, the coin, whose list is ours to send it to,
+		// and on IRA (QCD) the custodian, whose box is.
 		if (after.step === 'give' && after.method === 'crypto') coinPicker.focus();
+		else if (after.step === 'give' && after.method === 'ira_qcd') iraPanel.focus();
 		else payment.focus();
 	});
 
@@ -2612,6 +2755,14 @@ export function createCard(
 		held = { words, on: drawnHeading };
 		say(words, true);
 	});
+	// the pledge's Copy controls say their outcome the way the address block's do, held for the same
+	// reason.
+	const pledgeBlock = createPledgeBlock(doc, (words) => {
+		held = { words, on: drawnHeading };
+		say(words, true);
+	});
+	// directly after the press, for the reason `heldChallenge` is on the review step.
+	const toldChallenge = make(doc, 'div', { class: 'challenge' });
 
 	const primaryLabel = make(doc, 'span', { class: 'action-label' });
 	const primaryButton = make(
@@ -2637,7 +2788,18 @@ export function createCard(
 	// control at the group's own step rather than a screen's step away from it. every other takeover
 	// writes no line and the group is the control alone.
 	const secondaryNote = make(doc, 'p', { class: 'aside', hidden: true });
-	const foot = make(doc, 'div', { class: 'foot', hidden: true }, [secondaryButton, secondaryNote]);
+	// a link rather than a press: what it opens is the donor's own mail client, addressed to nobody
+	// (`instructionsMailto` in ./pledge.ts). the registry's secondary button, which takes an `<a>`.
+	const secondaryLink = make(doc, 'a', {
+		part: part('action-quiet'),
+		class: SECONDARY_BUTTON,
+		hidden: true
+	});
+	const foot = make(doc, 'div', { class: 'foot', hidden: true }, [
+		secondaryButton,
+		secondaryLink,
+		secondaryNote
+	]);
 
 	// the presses read the flow at press time, as the two takeover controls above do.
 	const employerAsk = createEmployerAsk(doc, {
@@ -2668,7 +2830,9 @@ export function createCard(
 		deadlineBlock,
 		failureMessage,
 		depositBlock.root,
+		pledgeBlock.root,
 		primaryButton,
+		toldChallenge,
 		primaryNote,
 		employerAsk.root,
 		foot
@@ -2993,8 +3157,12 @@ export function createCard(
 		const within = step === 'takeover' && shownBefore === 'takeover';
 		const caretInTakeover = within && holdsCaret(takeover);
 		const newHeading = within && screen.heading !== drawnHeading;
+		// a saved pledge's press relabelled to Try again under the same heading is the same control,
+		// and its refusal is the region's to say (`pledgedScreen` above), as the failed takeover's is.
+		const relabelledInPlace = api.state.step === 'pledged';
 		const replaced =
-			caretInTakeover && (newHeading || (screen.primary?.label ?? null) !== drawnPrimary);
+			caretInTakeover &&
+			(newHeading || (!relabelledInPlace && (screen.primary?.label ?? null) !== drawnPrimary));
 		// a new heading the caret does not arrive on is read by nobody, so the region says it: the
 		// caret already on the heading, where focusing it again says nothing, or off the takeover,
 		// where nothing moves it — unless it is in another card on the page, whose donor is busy
@@ -3051,7 +3219,9 @@ export function createCard(
 		const solving = api.state.step === 'give' && api.state.solving;
 		toggleAttribute(body, 'aria-busy', busy && !solving ? 'true' : null);
 
-		paintTakeover(screen, busy);
+		// the told press is busy on its own write, which the flow's working states do not cover.
+		paintTakeover(screen, busy || api.toldButton['aria-busy']);
+		iraPanel.update(api.custodianField, custodianProblem(api));
 		employerAsk.update(screen.employer, {
 			value: api.employerField.value,
 			busy: api.sendEmployerButton['aria-busy'],
@@ -3302,8 +3472,13 @@ export function createCard(
 			api.state.step === 'give' &&
 			api.state.method === 'crypto' &&
 			((advanced && shownBefore === 'takeover') || (coinRefused && stepBefore === 'working'));
+		// the custodian a save named, refused by the endpoint: the donor is back on this step from the
+		// wait, and the box that fixes it is where the caret goes, as the coin list is for a coin.
+		const backToCustodian =
+			api.state.step === 'give' && api.state.custodianRefused && stepBefore === 'working';
 		stepBefore = api.state.step;
 		if (backToCoins) coinPicker.focus();
+		else if (backToCustodian) iraPanel.focus();
 		else if (advanced && refusedAmount) figureControl().focus();
 		else if (advanced || replaced) headings[step].focus();
 		painted = true;
@@ -3469,12 +3644,14 @@ export function createCard(
 		const { state } = api;
 		if (state.step !== 'give') pressed = false;
 		// a crypto press is refused for its coin, and the coin list says so under itself instead
-		// (`updateCoins` below): the rail is chosen, so this box has nothing to say about it.
+		// (`updateCoins` below), as an IRA (QCD) press is for its custodian (`custodianProblem`): the
+		// rail is chosen, so this box has nothing to say about it.
 		const refused =
 			pressed &&
 			state.step === 'give' &&
 			!state.payerComplete &&
 			state.method !== 'crypto' &&
+			state.method !== 'ira_qcd' &&
 			!state.oneTimeInstead;
 		carryDecline(state);
 		// written only on the step this box is on. the node is inside the review step and every
@@ -3486,6 +3663,17 @@ export function createCard(
 		setHidden(paymentMessage, words === '');
 		toggleAttribute(payment, 'aria-describedby', words === '' ? null : 'payment-problem');
 		return refused;
+	}
+
+	/**
+	 * what the custodian box says under itself: nothing until a press on the IRA (QCD) rail was
+	 * refused for it, on the terms `updatePayment` above keeps, or until the endpoint refused the
+	 * custodian a save named. it clears on the keystroke that names one.
+	 */
+	function custodianProblem(api: DomApi): string {
+		const { state } = api;
+		if (state.step !== 'give' || state.method !== 'ira_qcd') return '';
+		return (pressed && state.custodianMissing) || state.custodianRefused ? CUSTODIAN_PROBLEM : '';
 	}
 
 	/**
@@ -3636,9 +3824,21 @@ export function createCard(
 		);
 		setText(secondaryButton, screen.secondary?.label ?? '');
 		setHidden(secondaryButton, screen.secondary === null);
+		toggleAttribute(
+			secondaryButton,
+			'class',
+			screen.secondary?.filled === true ? SECONDARY_BUTTON : null
+		);
+		setText(secondaryLink, screen.secondaryLink?.label ?? '');
+		setHidden(secondaryLink, screen.secondaryLink === null);
+		toggleAttribute(secondaryLink, 'href', screen.secondaryLink?.href ?? null);
 		setText(secondaryNote, screen.secondaryNote);
 		setHidden(secondaryNote, screen.secondaryNote === '');
-		setHidden(foot, screen.secondary === null && screen.secondaryNote === '');
+		setHidden(
+			foot,
+			screen.secondary === null && screen.secondaryLink === null && screen.secondaryNote === ''
+		);
+		pledgeBlock.update(screen.pledge);
 
 		// the two controls carry a different event on every screen, so what they send is read off
 		// the state at press time rather than bound once per node. a press that lands after the
@@ -3647,6 +3847,7 @@ export function createCard(
 			const step = now().state.step;
 			if (step === 'confirm') now().confirmButton.onClick();
 			else if (step === 'mandate') now().acceptMandateButton.onClick();
+			else if (step === 'pledged') now().toldButton.onClick();
 			else now().retryButton.onClick();
 		};
 		onSecondary = () => {
@@ -3655,8 +3856,8 @@ export function createCard(
 			// `success` is terminal and is given no way out (./checkout.machine.ts), so the second
 			// gift is a new card rather than an event. it starts empty: this form is embedded on
 			// pages nobody here can see, including shared ones, and a name and email carried onto
-			// the next donor's screen is the last donor's.
-			else if (step === 'success') restart();
+			// the next donor's screen is the last donor's. a told pledge's Done is the same door.
+			else if (step === 'success' || step === 'pledged') restart();
 			else now().backButton.onClick();
 		};
 	}
@@ -3740,7 +3941,11 @@ export function createCard(
 		// answers `TOGGLE_FEE_COVERAGE` on (./checkout.machine.ts). the receipt travels past it onto
 		// the correction screen and every ending, and a control carried along that renders and does
 		// nothing is worse than one that is not there.
-		const changeable = state.step === 'give';
+		// an IRA (QCD) gift is pledged rather than charged: no processor, a fee of nothing, and nothing
+		// totalled today. the receipt states the gift alone, the fee decision is not offered, and the
+		// press saves the pledge rather than spending money, so it says Continue.
+		const pledging = state.step === 'give' && state.method === 'ira_qcd';
+		const changeable = state.step === 'give' && !pledging;
 
 		setText(giftLabel, `${FREQUENCY_LABELS[fv.frequency]} gift`);
 		setText(giftFigure, money(fv.amountMinor));
@@ -3751,7 +3956,8 @@ export function createCard(
 			const chosen = config.program.options.find((option) => option.id === fv.programId);
 			setText(programName, chosen?.name ?? NO_PROGRAM_LABEL);
 		}
-		setHidden(feeRow, !feeShown && !changeable);
+		setHidden(feeRow, pledging || (!feeShown && !changeable));
+		setHidden(totalRow, pledging);
 		// the column holds what the donor pays, which is what every figure in this receipt is: the
 		// gift above it and the total under it are both money leaving the donor's account, and the
 		// column adds up down the card. a declined fee adds nothing to that and so states nothing —
@@ -3824,12 +4030,14 @@ export function createCard(
 		setHidden(receiptNote, receiptNote.textContent === '');
 		receiptWritten = true;
 		// the control that spends the money restates it.
-		setText(submitLabel, `Donate ${money(totalMinor)}`);
+		setText(submitLabel, pledging ? 'Continue' : `Donate ${money(totalMinor)}`);
 
 		// an empty address stays empty and hidden. `receipts === true` names the address the receipt
 		// is going to. otherwise the line says no email will be sent, so the step does not promise
 		// a receipt this deployment cannot send.
-		const email = api.emailField.value.trim();
+		// a pledge's receipt is sent when staff mark it received, which its pending screen says, so the
+		// line promising one now is not drawn over it.
+		const email = pledging ? '' : api.emailField.value.trim();
 		const receiptLine =
 			email === ''
 				? ''
@@ -3847,7 +4055,9 @@ export function createCard(
 		payment,
 		challenge,
 		heldChallenge,
+		toldChallenge,
 		coins: coinPicker.host,
+		ira: iraPanel.host,
 		focus() {
 			headings[shown].focus();
 		},

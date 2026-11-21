@@ -2,9 +2,10 @@ import {
 	isChariotRail,
 	isNowpaymentsRail,
 	isPaypalRail,
-	isStripeRail
+	isStripeRail,
+	type ProcessorRail as QuotedRail
 } from '@better-giving/form/embed/rails';
-import type { Frequency, PaymentMethod as QuotedRail } from '@better-giving/form/v1';
+import type { Frequency } from '@better-giving/form/v1';
 import { LOGS_SAY_WHY } from '../../deployment-logs.ts';
 import type {
 	PaymentMethod as SettledRail,
@@ -270,6 +271,10 @@ export function commitmentMetadata(commitment: {
  * record — and they overlap without matching. imported under their own name they would shadow
  * each other, and the field that says which rail was quoted would be indistinguishable from the
  * field that says which rail settled.
+ *
+ * a quoted rail is the form's vocabulary less its pledge rails (`ProcessorRail` in
+ * packages/form/src/embed/rails.ts): a stock or IRA (QCD) gift is pledged, never quoted at a
+ * processor, so no adapter is ever handed one.
  */
 export type { QuotedRail, SettledRail };
 

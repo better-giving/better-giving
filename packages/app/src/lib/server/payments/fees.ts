@@ -166,6 +166,14 @@ export const CHARIOT_FEE_RULES: Readonly<Record<ChariotRail, FeeRule>> = Object.
 export const NOWPAYMENTS_FEE_RULE: FeeRule = Object.freeze({ percent: 0.01, fixedMinor: 0 });
 
 /**
+ * the price of a pledged gift: nothing. no processor stands behind `stock` or `ira_qcd`
+ * (`PLEDGE_RAILS` in packages/form/src/embed/rails.ts), so there is no fee to cover.
+ *
+ * frozen for `CARD`'s reason.
+ */
+export const PLEDGE_FEE_RULE: FeeRule = Object.freeze({ percent: 0, fixedMinor: 0 });
+
+/**
  * the table `/api/v1/forms/:id/config` serves, covering every rail the wire vocabulary holds.
  *
  * composed from each processor's own rules rather than picked whole: the tables price disjoint
@@ -187,6 +195,8 @@ export function servedFeeRules(paypal: Readonly<Record<PaypalRail, FeeRule>>): F
 		...STRIPE_US_FEE_RULES,
 		...paypal,
 		...CHARIOT_FEE_RULES,
-		crypto: NOWPAYMENTS_FEE_RULE
+		crypto: NOWPAYMENTS_FEE_RULE,
+		stock: PLEDGE_FEE_RULE,
+		ira_qcd: PLEDGE_FEE_RULE
 	});
 }

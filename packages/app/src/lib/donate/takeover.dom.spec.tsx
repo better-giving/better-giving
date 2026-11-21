@@ -1,6 +1,6 @@
 import type { EmployerAsk, State } from '@better-giving/form/connect';
 import { formatMinor } from '@better-giving/form/money';
-import type { FeeRules, FormConfig, Quote } from '@better-giving/form/v1';
+import type { FeeRules, FormConfig, Pledge, Quote } from '@better-giving/form/v1';
 import type { FormValue } from '@better-giving/form/value';
 import { act, createRef, type ReactNode, useState } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -31,7 +31,9 @@ const FEE_RULES: FeeRules = {
 	paypal: { percent: 0.0349, fixedMinor: 49 },
 	venmo: { percent: 0.0349, fixedMinor: 49 },
 	daf: { percent: 0.029, fixedMinor: 0, roundUpMinor: 100 },
-	crypto: { percent: 0.01, fixedMinor: 0 }
+	crypto: { percent: 0.01, fixedMinor: 0 },
+	stock: { percent: 0, fixedMinor: 0 },
+	ira_qcd: { percent: 0, fixedMinor: 0 }
 };
 
 const CONFIG: FormConfig = {
@@ -63,7 +65,11 @@ const QUOTE: Quote = { paymentToken: 'pi_1', feeMinor: 106, totalMinor: 2606 };
  * and a state built without it is the cold return this page boots into with a payment token and
  * nothing else, which is the reading every screen has to be right in.
  */
-function draw(state: State, config: FormConfig = CONFIG): HTMLElement {
+function draw(
+	state: State,
+	config: FormConfig = CONFIG,
+	onCopied: (words: string) => void = () => {}
+): HTMLElement {
 	const host = document.createElement('div');
 	document.body.appendChild(host);
 	const mounted = createRoot(host);
@@ -80,6 +86,8 @@ function draw(state: State, config: FormConfig = CONFIG): HTMLElement {
 				employer={null}
 				onPrimary={() => {}}
 				onSecondary={() => {}}
+				onCopied={onCopied}
+				challengeMount={createRef<HTMLDivElement>()}
 			/>
 		);
 	});
@@ -643,5 +651,410 @@ describe('the thank-you’s employer ask', () => {
 
 		expect(box.hasAttribute('aria-invalid')).toBe(false);
 		expect(document.activeElement).toBe(send);
+	});
+});
+
+describe('a saved pledge’s screens', () => {
+	const STOCK: Pledge = {
+		id: 'p1',
+		method: 'stock',
+		reference: 'CFCP-AAPL-7Q2D',
+		receiptTo: 'maya.okafor@example.org',
+		ticker: 'AAPL',
+		shares: '50',
+		deliverTo: 'Harbor Street Securities',
+		dtcNumber: '0164',
+		accountNumber: 'Z12-345678',
+		accountName: 'Cedar Fork Community Pantry Inc.'
+	};
+	const IRA: Pledge = {
+		id: 'p2',
+		method: 'ira_qcd',
+		reference: 'CFCP-IRA-4K9M',
+		receiptTo: 'maya.okafor@example.org',
+		amountMinor: 10_000,
+		custodian: 'Fidelity Investments',
+		payeeName: 'Cedar Fork Community Pantry Inc.',
+		ein: '47-3829105',
+		mailingAddress: '412 Alder Lane, Suite 3\nCedar Fork, OR 97330'
+	};
+	const ORG: FormConfig = { ...CONFIG, orgLegalName: 'Cedar Fork Community Pantry Inc.' };
+	const NOT_ADVICE =
+		'This is general information, not tax advice. Talk to your tax adviser about your own situation.';
+
+	function pledged(
+		pledge: Pledge,
+		phase: 'pending' | 'telling' | 'told',
+		refused = false,
+		onCopied?: (words: string) => void
+	): HTMLElement {
+		return draw({ step: 'pledged', pledge, phase, refused }, ORG, onCopied);
+	}
+
+	/** each row of one list as its label, its value and the name of its Copy, if it has one. */
+	function rows(root: HTMLElement, list: string): (string | null)[][] {
+		const dl = root.querySelector(`.${list}`);
+		if (!(dl instanceof HTMLElement) || dl.hidden) return [];
+		return [...dl.querySelectorAll('.pledge-row')].map((row) => [
+			row.querySelector('dt')?.textContent ?? '',
+			row.querySelector('dd')?.textContent ?? '',
+			row.querySelector('button')?.getAttribute('aria-label') ?? null
+		]);
+	}
+
+	/** the notice standing, as its role (`''` for none), its title and its body. */
+	function notices(root: HTMLElement): string[][] {
+		return [...root.querySelectorAll<HTMLElement>('.ds-notice-card')]
+			.filter((node) => !node.hidden)
+			.map((node) => [
+				node.getAttribute('role') ?? '',
+				node.querySelector('.ds-notice-card-title')?.textContent ?? '',
+				node.querySelector('.ds-notice-card-body')?.textContent ?? ''
+			]);
+	}
+
+	function benefits(root: HTMLElement): string[] {
+		const panel = root.querySelector('.pledge-benefits');
+		if (!(panel instanceof HTMLElement) || panel.hidden) return [];
+		return [...panel.querySelectorAll('.benefits > *')].map((node) => node.textContent ?? '');
+	}
+
+	function primary(root: HTMLElement): string {
+		const node = root.querySelector('button[part~="action"]');
+		return node instanceof HTMLElement && !node.hidden ? (node.textContent ?? '') : '';
+	}
+
+	function link(root: HTMLElement): HTMLAnchorElement | null {
+		const node = root.querySelector('.foot > a');
+		return node instanceof HTMLAnchorElement && !node.hidden ? node : null;
+	}
+
+	const STOCK_DETAILS = [
+		['Deliver to', 'Harbor Street Securities', null],
+		['DTC number', '0164', 'Copy DTC number'],
+		['Account number', 'Z12-345678', 'Copy account number'],
+		['Account name', 'Cedar Fork Community Pantry Inc.', null],
+		['Reference', 'CFCP-AAPL-7Q2D', 'Copy reference']
+	];
+	const STOCK_BENEFITS = [
+		'Benefits of donating appreciated stock',
+		'If you itemize and give shares you have held for more than a year, you may be able to deduct their market value on the day of the gift, and you generally avoid the capital gains tax you would owe if you sold them. Deduction limits apply.',
+		NOT_ADVICE
+	];
+
+	it('lists a pending stock gift’s transfer details, each value a donor hands on with its Copy', () => {
+		const root = pledged(STOCK, 'pending');
+
+		expect(heading(root)).toBe('Your stock gift is pending');
+		expect(shown(root, '.prose')).toBe(
+			'Ask your broker to transfer these shares using the details below. Your gift counts when they arrive.'
+		);
+		expect(rows(root, 'pledge-summary')).toEqual([
+			['Shares', '50', null],
+			['Ticker', 'AAPL', null]
+		]);
+		expect(rows(root, 'pledge-details')).toEqual(STOCK_DETAILS);
+		expect(benefits(root)).toEqual(STOCK_BENEFITS);
+		expect(notices(root)).toEqual([]);
+		expect(primary(root)).toBe('I’ve contacted my broker');
+		expect(link(root)?.textContent).toBe('Email these instructions');
+		expect(link(root)?.getAttribute('href')).toMatch(/^mailto:\?subject=Stock%20gift%20to%20/);
+		expect(root.querySelector('[disabled]')).toBeNull();
+	});
+
+	it('puts the error notice over Try again where the told press did not land, the pledge still listed', () => {
+		const root = pledged(STOCK, 'pending', true);
+
+		expect(heading(root)).toBe('Your stock gift is pending');
+		expect(notices(root)).toEqual([
+			[
+				'',
+				'We couldn’t tell the organization',
+				'Your gift is saved. Check your connection and try again.'
+			]
+		]);
+		// said by the card's region rather than the notice's, and cleared while the next press is out.
+		const refused = { step: 'pledged', pledge: STOCK, refused: true } as const;
+		expect(takeoverFor({ ...refused, phase: 'pending' }, ORG, money).announce).toBe(
+			'We couldn’t tell the organization. Your gift is saved. Check your connection and try again.'
+		);
+		expect(takeoverFor({ ...refused, phase: 'telling' }, ORG, money).announce).toBe('');
+		// under the benefits panel, directly over the press it asks for again.
+		const notice = root.querySelector('.ds-notice-card-destructive');
+		expect(notice?.previousElementSibling?.classList.contains('pledge-benefits')).toBe(true);
+		expect(rows(root, 'pledge-details')).toEqual(STOCK_DETAILS);
+		expect(primary(root)).toBe('Try again');
+		expect(link(root)?.textContent).toBe('Email these instructions');
+		expect(root.querySelector('[disabled]')).toBeNull();
+	});
+
+	it('says a pledge the told press could not find is not saved, and that Try again saves it anew', () => {
+		const lost = { step: 'pledged', pledge: STOCK, refused: true, resave: 'needed' } as const;
+		const root = draw({ ...lost, phase: 'pending' }, ORG);
+		const body =
+			'We couldn’t find your gift. Press Try again to save it again under a new reference.';
+
+		expect(notices(root)).toEqual([['', 'We couldn’t tell the organization', body]]);
+		expect(root.querySelector('.ds-notice-card-destructive')?.hasAttribute('hidden')).toBe(false);
+		expect(takeoverFor({ ...lost, phase: 'pending' }, ORG, money).announce).toBe(
+			`We couldn’t tell the organization. ${body}`
+		);
+		expect(takeoverFor({ ...lost, phase: 'telling' }, ORG, money).announce).toBe('');
+		expect(primary(root)).toBe('Try again');
+		expect(rows(root, 'pledge-details')).toEqual(STOCK_DETAILS);
+	});
+
+	it('names the new reference once the pledge is saved again, over the press that tells', () => {
+		const anew: Pledge = { ...STOCK, id: 'p3', reference: 'CFCP-AAPL-8Z3P' };
+		const resaved = { step: 'pledged', pledge: anew, refused: false, resave: 'done' } as const;
+		const root = draw({ ...resaved, phase: 'pending' }, ORG);
+
+		expect(heading(root)).toBe('Your stock gift is pending');
+		expect(notices(root)).toEqual([
+			[
+				'',
+				'We saved your gift again',
+				'Your new reference is CFCP-AAPL-8Z3P. Use it for your transfer.'
+			]
+		]);
+		// the info notice heads the block, over the lists that carry the new reference.
+		const notice = root.querySelector('.ds-notice-card-info');
+		expect(notice?.nextElementSibling?.classList.contains('pledge-summary')).toBe(true);
+		expect(rows(root, 'pledge-details').at(-1)).toEqual([
+			'Reference',
+			'CFCP-AAPL-8Z3P',
+			'Copy reference'
+		]);
+		expect(takeoverFor({ ...resaved, phase: 'pending' }, ORG, money).announce).toBe(
+			'We saved your gift again. Your new reference is CFCP-AAPL-8Z3P. Use it for your transfer.'
+		);
+		expect(takeoverFor({ ...resaved, phase: 'telling' }, ORG, money).announce).toBe('');
+		expect(primary(root)).toBe('I’ve contacted my broker');
+		expect(root.querySelector('[disabled]')).toBeNull();
+	});
+
+	it('thanks a donor who told the organisation, naming where the receipt goes once the shares arrive', () => {
+		const root = pledged(STOCK, 'told');
+
+		expect(heading(root)).toBe('Thank you');
+		expect(notices(root)).toEqual([
+			[
+				'',
+				'We’ve told the organization',
+				'Your gift counts when the shares arrive. We’ll email a receipt to maya.okafor@example.org then.'
+			]
+		]);
+		expect(
+			takeoverFor({ step: 'pledged', pledge: STOCK, phase: 'told', refused: false }, ORG, money)
+				.arrival
+		).toBe(
+			'We’ve told the organization. Your gift counts when the shares arrive. We’ll email a receipt to maya.okafor@example.org then.'
+		);
+		expect(rows(root, 'pledge-summary')).toEqual([
+			['Shares', '50', null],
+			['Ticker', 'AAPL', null]
+		]);
+		expect(rows(root, 'pledge-details')).toEqual([]);
+		expect(benefits(root)).toEqual([]);
+		expect(primary(root)).toBe('');
+		expect(link(root)).toBeNull();
+		expect(controls(root)).toEqual(['Done']);
+		expect(root.querySelector('.foot > button')?.className).toBe(
+			'ds-btn ds-btn-secondary ds-btn-lg'
+		);
+		expect(root.querySelector('[disabled]')).toBeNull();
+	});
+
+	it('lists a pending IRA (QCD) gift’s payee details, the address on one line', () => {
+		const root = pledged(IRA, 'pending');
+
+		expect(heading(root)).toBe('Your IRA (QCD) gift is pending');
+		expect(shown(root, '.prose')).toBe(
+			'Ask your custodian to send this gift using the details below. Your gift counts when it arrives.'
+		);
+		expect(rows(root, 'pledge-summary')).toEqual([
+			['Amount', '$100.00', null],
+			['Custodian', 'Fidelity Investments', null]
+		]);
+		expect(rows(root, 'pledge-details')).toEqual([
+			['Payee name', 'Cedar Fork Community Pantry Inc.', null],
+			['EIN', '47-3829105', 'Copy EIN'],
+			['Mailing address', '412 Alder Lane, Suite 3, Cedar Fork, OR 97330', 'Copy mailing address'],
+			['Reference', 'CFCP-IRA-4K9M', 'Copy reference']
+		]);
+		expect(benefits(root)).toEqual([
+			'Benefits of giving from an IRA',
+			'If you are 70½ or older, you can give up to the IRS yearly limit from your traditional IRA. Your IRA custodian must pay us directly, not you and not a donor-advised fund. It can count toward any required minimum distribution and isn’t added to your taxable income (you can’t also deduct it).',
+			'This is general information, not tax advice. Talk to your tax adviser or IRA custodian about your own situation.'
+		]);
+		expect(primary(root)).toBe('I’ve asked my custodian');
+		expect(link(root)?.getAttribute('href')).toMatch(/^mailto:\?subject=IRA%20\(QCD\)%20gift/);
+		expect(root.querySelector('[disabled]')).toBeNull();
+	});
+
+	it('words the IRA (QCD) error and thank-you in the same notices', () => {
+		const refused = pledged(IRA, 'pending', true);
+		expect(notices(refused).map(([role, title]) => [role, title])).toEqual([
+			['', 'We couldn’t tell the organization']
+		]);
+		expect(primary(refused)).toBe('Try again');
+		expect(refused.querySelector('[disabled]')).toBeNull();
+
+		const told = pledged(IRA, 'told');
+		expect(heading(told)).toBe('Thank you');
+		expect(notices(told)).toEqual([
+			[
+				'',
+				'We’ve told the organization',
+				'Your gift counts when it arrives. We’ll email a receipt to maya.okafor@example.org then.'
+			]
+		]);
+		expect(rows(told, 'pledge-summary')).toEqual([
+			['Amount', '$100.00', null],
+			['Custodian', 'Fidelity Investments', null]
+		]);
+		expect(controls(told)).toEqual(['Done']);
+		expect(told.querySelector('[disabled]')).toBeNull();
+	});
+
+	it.each([
+		['stock', STOCK, 'Your gift counts when the shares arrive.'],
+		['IRA (QCD)', IRA, 'Your gift counts when it arrives.']
+	])(
+		'leaves the receipt out of a %s thank-you whose pledge has no address',
+		(_rail, pledge, body) => {
+			for (const receiptTo of ['', '  ']) {
+				const blank: Pledge = { ...pledge, receiptTo };
+				expect(notices(pledged(blank, 'told'))).toEqual([
+					['', 'We’ve told the organization', body]
+				]);
+				expect(
+					takeoverFor({ step: 'pledged', pledge: blank, phase: 'told', refused: false }, ORG, money)
+						.arrival
+				).toBe(`We’ve told the organization. ${body}`);
+			}
+		}
+	);
+
+	it('names a trimmed address in the thank-you', () => {
+		const padded: Pledge = { ...IRA, receiptTo: ' maya.okafor@example.org ' };
+		expect(notices(pledged(padded, 'told'))).toEqual([
+			[
+				'',
+				'We’ve told the organization',
+				'Your gift counts when it arrives. We’ll email a receipt to maya.okafor@example.org then.'
+			]
+		]);
+	});
+
+	it('marks the told press busy while it is in flight, still pressable', () => {
+		const root = document.createElement('div');
+		document.body.appendChild(root);
+		const mounted = createRoot(root);
+		act(() => {
+			mounted.render(
+				<TakeoverScreen
+					screen={takeoverFor(
+						{ step: 'pledged', pledge: STOCK, phase: 'telling', refused: false },
+						ORG,
+						money
+					)}
+					hidden={false}
+					busy
+					receipt={null}
+					headingRef={createRef<HTMLHeadingElement>()}
+					sectionRef={createRef<HTMLElement>()}
+					deposit={null}
+					employer={null}
+					onPrimary={() => {}}
+					onSecondary={() => {}}
+					onCopied={() => {}}
+					challengeMount={createRef<HTMLDivElement>()}
+				/>
+			);
+		});
+		onTestFinished(() => {
+			act(() => mounted.unmount());
+			root.remove();
+		});
+		const press = root.querySelector('button[part~="action"]');
+		expect(press?.getAttribute('aria-busy')).toBe('true');
+		expect(press?.textContent).toBe('I’ve contacted my broker');
+		expect(press?.hasAttribute('disabled')).toBe(false);
+	});
+
+	describe('a Copy', () => {
+		function clipboard(writeText: (text: string) => Promise<void>) {
+			Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+			onTestFinished(() => {
+				Reflect.deleteProperty(navigator, 'clipboard');
+			});
+		}
+
+		function copyOf(root: HTMLElement, name: string): HTMLButtonElement {
+			const node = root.querySelector(`button[aria-label="${name}"]`);
+			if (!(node instanceof HTMLButtonElement)) throw new Error(`no ${name}`);
+			return node;
+		}
+
+		it('copies its value, shows the tick and says so on the card’s region', async () => {
+			const written: string[] = [];
+			clipboard(async (text) => {
+				written.push(text);
+			});
+			const said: string[] = [];
+			const root = pledged(STOCK, 'pending', false, (words) => said.push(words));
+			const button = copyOf(root, 'Copy reference');
+
+			// described by the value it copies, so what it copies is said after its name.
+			expect(root.querySelector(`#${button.getAttribute('aria-describedby')}`)?.textContent).toBe(
+				'CFCP-AAPL-7Q2D'
+			);
+			await act(async () => {
+				button.click();
+			});
+
+			expect(written).toEqual(['CFCP-AAPL-7Q2D']);
+			expect(button.dataset.outcome).toBe('copied');
+			expect(said).toEqual(['Reference copied.']);
+		});
+
+		// a `<dl>`'s row `<div>` holds `<dt>` and `<dd>` and nothing else
+		// (https://html.spec.whatwg.org/multipage/grouping-content.html#the-dl-element), so a Copy stands
+		// in the `<dd>` of the value it copies, described by the value's own `<span>` there.
+		it('keeps each list to rows of a term and its description, with every Copy in its value', () => {
+			const root = pledged(IRA, 'pending', false, () => {});
+			const lists = [...root.querySelectorAll('.pledge dl')];
+			expect(lists.length).toBeGreaterThan(0);
+			for (const list of lists) {
+				for (const row of list.children) {
+					expect(row.tagName).toBe('DIV');
+					expect([...row.children].map((node) => node.tagName)).toEqual(['DT', 'DD']);
+				}
+			}
+			const copies = [...root.querySelectorAll('.pledge .copy')];
+			expect(copies.length).toBeGreaterThan(0);
+			for (const button of copies) {
+				expect(button.parentElement?.tagName).toBe('DD');
+				const value = root.querySelector(`#${button.getAttribute('aria-describedby')}`);
+				expect(value?.tagName).toBe('SPAN');
+				expect(value?.parentElement).toBe(button.parentElement);
+			}
+		});
+
+		it('selects the value for copying by hand where the clipboard refused it', async () => {
+			clipboard(() => Promise.reject(new Error('denied')));
+			const said: string[] = [];
+			const root = pledged(IRA, 'pending', false, (words) => said.push(words));
+			const button = copyOf(root, 'Copy EIN');
+
+			await act(async () => {
+				button.click();
+			});
+
+			expect(button.dataset.outcome).toBe('failed');
+			expect(said).toEqual(['EIN not copied. It is selected so you can copy it.']);
+			expect(document.getSelection()?.toString()).toBe('47-3829105');
+		});
 	});
 });

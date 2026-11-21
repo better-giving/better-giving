@@ -10,6 +10,7 @@ import { defineDonateForm, DONATE_FORM_TAG } from '../element';
 import { createRows, type Row, type RowMark } from '../embed/rows';
 import { PROVIDER_NAME_OFFSET_PX } from '../embed/rows.measured';
 import { generateBrandScale } from './radix-scale';
+import { createPledgeBlock } from '../pledge-screen';
 import type { CheckoutPorts } from '../ports';
 import type { FormConfig } from '../v1';
 import { CARD_THEME } from '../parts';
@@ -70,7 +71,9 @@ const CONFIG: FormConfig = {
 		paypal: { percent: 0.0349, fixedMinor: 49 },
 		venmo: { percent: 0.0349, fixedMinor: 49 },
 		daf: { percent: 0.029, fixedMinor: 0, roundUpMinor: 100 },
-		crypto: { percent: 0.01, fixedMinor: 0 }
+		crypto: { percent: 0.01, fixedMinor: 0 },
+		stock: { percent: 0, fixedMinor: 0 },
+		ira_qcd: { percent: 0, fixedMinor: 0 }
 	},
 	locale: 'en-US',
 	orgLegalName: 'Acme Relief Fund',
@@ -1355,6 +1358,28 @@ describe('the labels on the pair under the name', () => {
 		// and it is a case only while the step itself is genuinely under the floor here.
 		expect(step(shadow, '--_t-xs')).toBeLessThan(12);
 		expect(parseFloat(getComputedStyle(words).fontSize)).toBeGreaterThanOrEqual(12);
+	});
+
+	// and the names a saved pledge's transfer details are read by (`.pledge-details .pledge-label` in
+	// ./parts.css), on the same root: each is what tells a donor which value they are copying, so it
+	// takes the same floor rather than the bottom of the band.
+	it('holds a pledge’s detail labels at the floor on the smallest root the card allows', async () => {
+		document.documentElement.style.fontSize = '15px';
+		const { shadow, card } = await mount();
+		const block = createPledgeBlock(document, () => {});
+		card.appendChild(block.root);
+		block.update({
+			notice: null,
+			summary: [{ label: 'Shares', value: '25' }],
+			details: [
+				{ label: 'Account number', value: '0123456789', copy: 'account number', mono: true }
+			],
+			benefits: null
+		});
+		const label = shadow.querySelector('.pledge-details .pledge-label') as HTMLElement;
+
+		expect(step(shadow, '--_t-xs')).toBeLessThan(12);
+		expect(parseFloat(getComputedStyle(label).fontSize)).toBeGreaterThanOrEqual(12);
 	});
 
 	// and the two weights, which is the other half of that reading. resting, the words stand where the

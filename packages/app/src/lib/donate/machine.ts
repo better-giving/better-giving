@@ -4,6 +4,7 @@ import {
 	cryptoIsOffered,
 	fundIsOffered,
 	openFund,
+	pledgeIsOffered,
 	venmoIsOffered
 } from '@better-giving/form/machine';
 import type { CheckoutEvent, CheckoutInput, Failure } from '@better-giving/form/machine';
@@ -87,6 +88,12 @@ export type CheckoutMounts = {
 	 * only while a press is held on it and it is asking the donor to solve something.
 	 */
 	readonly heldChallengeMount: HTMLElement;
+	/**
+	 * the pledge screen's node for the same challenge, beside its press, which it is drawn afresh into
+	 * only while a lost pledge's save made again waits on it and it is asking the donor to solve
+	 * something (`awaitingToken` under `telling` in @better-giving/form/machine).
+	 */
+	readonly toldChallengeMount: HTMLElement;
 	/** the payment this page was sent back to, where it was sent anywhere. */
 	readonly resumeToken: string | null;
 	/**
@@ -106,6 +113,12 @@ export type Checkout = {
 	 * says, and when the caret goes into it, are the card's.
 	 */
 	readonly coins: CoinPicker;
+	/**
+	 * the node the IRA (QCD) option stands in its row in the payment box, for the card to draw the
+	 * custodian box and the benefits panel into. built here for `coins`' reason; a plain node, since
+	 * this page's own sheets are the only ones in its document.
+	 */
+	readonly ira: HTMLElement;
 	/**
 	 * hands `listener` how many options the payment box lists, now and on every change.
 	 *
@@ -157,7 +170,14 @@ export function startCheckout(
 	mounts: CheckoutMounts,
 	opening?: Opening
 ): Checkout {
-	const { paymentMount, challengeMount, heldChallengeMount, resumeToken, seams } = mounts;
+	const {
+		paymentMount,
+		challengeMount,
+		heldChallengeMount,
+		toldChallengeMount,
+		resumeToken,
+		seams
+	} = mounts;
 
 	// through holders rather than straight at the actor: both surfaces are handed their callbacks
 	// while the actor is still being constructed, and every real report arrives with a provider's
@@ -168,6 +188,7 @@ export function startCheckout(
 	let opened: FundReports['opened'] = () => null;
 
 	const coins = createCoinPicker(paymentMount.ownerDocument);
+	const ira = paymentMount.ownerDocument.createElement('div');
 
 	const surface = createPaymentSurface(
 		config,
@@ -180,7 +201,8 @@ export function startCheckout(
 			closed: () => fundSays({ type: 'FUND_CLOSED' })
 		},
 		coins.host,
-		seams?.payment
+		seams?.payment,
+		ira
 	);
 
 	const actor = createActor(checkoutMachine, {
@@ -202,6 +224,10 @@ export function startCheckout(
 	let challenge: ReturnType<typeof createChallenge> | null = null;
 	/** the step the last reading was on, which is what makes a reading a transition. */
 	let previous: State['step'] | null = null;
+	/** whether the last reading was a pledge's second save, which spends a token too. */
+	let resaving = false;
+	/** whether the last reading waited to send a pledge again under a fresh id. */
+	let retaking = false;
 
 	const read = (): void => {
 		const snapshot = actor.getSnapshot();
@@ -212,6 +238,7 @@ export function startCheckout(
 		surface.offerFund(fundIsOffered(snapshot));
 		surface.offerCrypto(cryptoIsOffered(snapshot));
 		surface.offerVenmo(venmoIsOffered(snapshot));
+		surface.offerIra(pledgeIsOffered(snapshot, 'ira_qcd'));
 
 		if (state.step === 'details' && challenge === null) {
 			challenge = createChallenge(
@@ -235,9 +262,27 @@ export function startCheckout(
 		if (snapshot.value === 'holding' && snapshot.context.challengeInteractive) {
 			challenge?.redraw?.(heldChallengeMount);
 		}
+		// and the same for a lost pledge's save made again, which waits on the pledge screen.
+		if (
+			snapshot.matches({ pledged: { telling: 'awaitingToken' } }) &&
+			snapshot.context.challengeInteractive
+		) {
+			challenge?.redraw?.(toldChallengeMount);
+		}
 
 		if (previous === 'working' && state.step !== 'working') challenge?.reset();
 		previous = state.step;
+		// the same for the save a told press makes again on the pending screen, which spends one
+		// without leaving `pledged` (`telling` in @better-giving/form/machine).
+		const saving = snapshot.matches({ pledged: { telling: 'saving' } });
+		if (resaving && !saving) challenge?.reset();
+		resaving = saving;
+		// and on the way into the wait to send a save refused `pledge_id_taken` under a fresh id, which
+		// stays in `working`: the refused send spent the token, and the retry waits for a fresh one
+		// (`retaking` in @better-giving/form/machine).
+		const waitingToRetake = snapshot.matches('retaking');
+		if (waitingToRetake && !retaking) challenge?.reset();
+		retaking = waitingToRetake;
 	};
 
 	const subscription = actor.subscribe(read);
@@ -247,9 +292,13 @@ export function startCheckout(
 	return {
 		actor,
 		coins,
+		ira,
 		rows: (listener) => surface.rows(listener),
 		stop() {
 			subscription.unsubscribe();
+			// the IRA (QCD) row reports its rail closing as `surface.stop` below takes it off the page,
+			// and the actor it would report to is stopped by then.
+			rail = () => {};
 			actor.stop();
 			const widget = challenge;
 			challenge = null;

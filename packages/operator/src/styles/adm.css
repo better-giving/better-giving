@@ -4766,6 +4766,35 @@
 	.adm-pagestate__title.is-focus {
 		box-shadow: none;
 	}
+
+	/* the press at the trailing end of a row of presses, away from the write at its leading end: a
+	   rail card's Disable beside its Save (packages/app/src/lib/admin/payments/pledge-rails.tsx). */
+	.adm-actions > .adm-actions__end {
+		margin-inline-start: auto;
+	}
+
+	/* the Gifts screen's waiting pledges (packages/app/src/lib/admin/donations/waiting-pledges.tsx):
+	   one row a pledge, a rule between rows and above the first, each row's facts stacked over its
+	   full-width press at the floor and laid abreast in the layer below. */
+	.adm-pledges__row {
+		display: grid;
+		gap: var(--admin-space-4);
+		padding-block: var(--admin-space-5);
+		border-block-start: var(--admin-rule);
+	}
+
+	.adm-pledges__row > .adm-btn {
+		inline-size: 100%;
+	}
+
+	.adm-pledges__lead {
+		font-weight: var(--admin-label-weight);
+	}
+
+	.adm-pledges__ref {
+		font-family: var(--admin-font-mono);
+		font-size: var(--admin-code-size);
+	}
 }
 
 @layer layout {
@@ -5420,6 +5449,19 @@
 		   pair wider than the page. */
 		.adm-cardpair {
 			grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+		}
+	}
+
+	/* a waiting pledge's three facts abreast with its press at the end, from the middle breakpoint. */
+	@media (min-width: 44rem) {
+		.adm-pledges__row {
+			grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+			align-items: center;
+			gap: var(--admin-space-6);
+		}
+
+		.adm-pledges__row > .adm-btn {
+			inline-size: auto;
 		}
 	}
 }

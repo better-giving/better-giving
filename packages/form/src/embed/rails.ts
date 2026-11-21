@@ -1,17 +1,20 @@
 import type { PaymentMethod } from '../v1';
 
 /**
- * which rails each processor settles, as four lists that cover the vocabulary exactly once.
+ * which rails each processor settles, and which no processor does, as five lists that cover the
+ * vocabulary exactly once.
  *
  * no rail is offered by both, which is what keeps a deployment holding two processors from ever
  * having to choose one for a gift: the inline card fields collect `card`, the bank debit and the
  * wallets, the hosted window collects `paypal` and `venmo` — a donor paying by card inside that
  * window is on the `paypal` rail rather than on `card`, because `card` is the inline box — Chariot's
- * window collects `daf`, and NOWPayments watches the address a `crypto` gift is sent to.
+ * window collects `daf`, and NOWPayments watches the address a `crypto` gift is sent to. `stock` and
+ * `ira_qcd` are pledged rather than charged: the donor's broker or custodian sends the gift, and the
+ * organisation's staff mark it received.
  *
  * an adapter reads its own list rather than the whole vocabulary, so a rail it cannot mint is one
- * it never asks its processor for. `rail-agreement.spec.ts` in the app holds the four lists to
- * `PAYMENT_METHODS`: a rail in neither, or in both, is a rail nothing settles.
+ * it never asks its processor for. `rail-agreement.spec.ts` in the app holds the five lists to
+ * `PAYMENT_METHODS`: a rail in none, or in two, is a rail nothing settles.
  *
  * `satisfies` rather than an annotation, so each stays a literal union and is checked to be a
  * subset of the vocabulary.
@@ -33,6 +36,13 @@ export type ChariotRail = (typeof CHARIOT_RAILS)[number];
 export const NOWPAYMENTS_RAILS = ['crypto'] as const satisfies readonly PaymentMethod[];
 export type NowpaymentsRail = (typeof NOWPAYMENTS_RAILS)[number];
 
+/** the rails a donor pledges on: no processor mints, charges or settles a gift on either. */
+export const PLEDGE_RAILS = ['stock', 'ira_qcd'] as const satisfies readonly PaymentMethod[];
+export type PledgeRail = (typeof PLEDGE_RAILS)[number];
+
+/** every rail a processor settles: the vocabulary less the pledge rails. */
+export type ProcessorRail = Exclude<PaymentMethod, PledgeRail>;
+
 /** whether this rail is one the inline card fields collect, narrowing a rail read off a config. */
 export function isStripeRail(rail: PaymentMethod): rail is StripeRail {
 	return (STRIPE_RAILS as readonly PaymentMethod[]).includes(rail);
@@ -51,6 +61,11 @@ export function isChariotRail(rail: PaymentMethod): rail is ChariotRail {
 /** whether this rail is one paid to an address NOWPayments minted, narrowing a rail read off a config. */
 export function isNowpaymentsRail(rail: PaymentMethod): rail is NowpaymentsRail {
 	return (NOWPAYMENTS_RAILS as readonly PaymentMethod[]).includes(rail);
+}
+
+/** whether this rail is one a donor pledges on, narrowing a rail read off a config. */
+export function isPledgeRail(rail: PaymentMethod): rail is PledgeRail {
+	return (PLEDGE_RAILS as readonly PaymentMethod[]).includes(rail);
 }
 
 /**
@@ -85,5 +100,7 @@ export const RAILS: Readonly<Record<PaymentMethod, string>> = Object.freeze({
 	paypal: 'paypal',
 	venmo: 'venmo',
 	daf: 'daf',
-	crypto: 'crypto'
+	crypto: 'crypto',
+	stock: 'stock',
+	ira_qcd: 'ira_qcd'
 });

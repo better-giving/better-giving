@@ -69,7 +69,8 @@ const COMPONENT_SHEETS = [
 	'page-header-css',
 	'page-state-css',
 	'settings-layout-css',
-	'app-shell-css'
+	'app-shell-css',
+	'text-button-css'
 ];
 
 /** the specifiers a sheet `@import`s into the `registry` layer. */

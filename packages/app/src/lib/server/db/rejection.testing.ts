@@ -1,3 +1,4 @@
+import { LibsqlError } from '@libsql/client';
 import { causeChain } from './rejection';
 
 // what a spec needs to read a constraint failure the database threw, raw or through drizzle.
@@ -30,4 +31,20 @@ export async function rejectionCode(fn: () => Promise<unknown>): Promise<string>
 		return causeChain(e).join(' <- ');
 	}
 	throw new Error('expected the database to reject this statement, but it succeeded');
+}
+
+/**
+ * the error a read fails with when another connection holds the file's lock, shaped as the stack
+ * throws it: drizzle's `Failed query: …` over libSQL's own error, which carries the code in a field
+ * beside its message — so a spec asserts `sqliteResultCode(error)` and reads the code the way the
+ * app does, through `cause`.
+ */
+export function busyError(): Error {
+	const driver = new LibsqlError(
+		'SQLITE_BUSY: database is locked',
+		'SQLITE_BUSY',
+		'SQLITE_BUSY',
+		5
+	);
+	return new Error('Failed query: select "id" from "contact" where "id" in (?)', { cause: driver });
 }

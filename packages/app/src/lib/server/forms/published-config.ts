@@ -7,6 +7,7 @@ import type {
 	PaymentMethod,
 	Program
 } from '@better-giving/form/v1';
+import { PLEDGE_RAILS, type PledgeRail } from '@better-giving/form/embed/rails';
 import { IDENTITY_FOLD } from '@better-giving/operator/setup-folds';
 import { OFFERED_PAYMENT_METHODS } from '../../forms/offered-rails';
 import { challengeKind } from '../api/challenge';
@@ -18,6 +19,8 @@ import { servedDeductibilityStatement } from '../org/deductibility';
 import { readOrgProfile } from '../org/queries';
 import { present } from '../org/receipt-fields';
 import { paypalFeeRules, servedFeeRules } from '../payments/fees';
+import { tickersReplacedAt } from '../donations/tickers';
+import { readPledgeRails } from '../payments/pledge-rails';
 import { servedProcessors } from '../payments/factory';
 import { PROCESSOR_LABELS, processorOf, type ProcessorName } from '../payments/provider';
 import { readActivePrograms, readProgram } from '../programs/queries';
@@ -173,6 +176,14 @@ export interface PublishedConfigSources {
 	 * about that is `servedProgram` below, which is the one judgement this half makes over it.
 	 */
 	readonly program: Program | null;
+	/**
+	 * the pledge rails whose `pledge_rail` row is on, already read (`readPledgeRails` in
+	 * ../payments/pledge-rails.ts), and stock only once a ticker list is held. absent is neither.
+	 *
+	 * beside `rails` rather than inside it: no processor settles either, so the account's rail read
+	 * never names one, and a rail turned on under Payments is offered with no processor asked.
+	 */
+	readonly pledgeRails?: readonly PledgeRail[];
 }
 
 /**
@@ -259,16 +270,23 @@ export async function readPublishedConfig(
 		});
 	}
 
-	const [owner, fundraiser, profile, cadences, rails, coins, program] = await Promise.all([
-		readOwningPage(db, stored.id, now),
-		fundraiserTakingGifts(db, stored.id),
-		readOrgProfile(db),
-		readCadences(),
-		readRails(),
-		readCoins(),
-		// the status `asEnded` may change decides nothing in the cause's read.
-		readFormProgram(db, drafted(stored))
-	]);
+	const [owner, fundraiser, profile, cadences, rails, coins, program, pledgeRails, tickersHeldAt] =
+		await Promise.all([
+			readOwningPage(db, stored.id, now),
+			fundraiserTakingGifts(db, stored.id),
+			readOrgProfile(db),
+			readCadences(),
+			readRails(),
+			readCoins(),
+			// the status `asEnded` may change decides nothing in the cause's read.
+			readFormProgram(db, drafted(stored)),
+			readPledgeRails(db),
+			tickersReplacedAt(db)
+		]);
+	// a stock pledge names a ticker on the list (`mintPledge` in ../donations/quote.ts), so with no
+	// list held yet stock has nothing a donor could pick. the Stocks Save starts the first fetch
+	// (`refreshTickersIfNoneHeld` in ../donations/ticker-refresh.ts).
+	const offersStock = pledgeRails.stock.enabled && tickersHeldAt !== null;
 	const form = drafted(asEnded(stored, owner));
 	return publishedConfig({
 		id,
@@ -280,7 +298,10 @@ export async function readPublishedConfig(
 		cadences,
 		rails,
 		coins,
-		program
+		program,
+		pledgeRails: PLEDGE_RAILS.filter((rail) =>
+			rail === 'stock' ? offersStock : pledgeRails[rail].enabled
+		)
 	});
 }
 
@@ -335,15 +356,7 @@ async function readFormProgram(db: Db, form: FormRecord): Promise<Program | null
 export function publishedConfig(sources: PublishedConfigSources): PublishedConfigResult {
 	const { id, form, owner } = sources;
 
-	if (form === null) {
-		return refusal(
-			null,
-			'form_not_found',
-			`No form with id \`${redactPublicId(id)}\` exists on this deployment.`,
-			'Check the `form` attribute on the donation element against the snippet shown under ' +
-				'Forms in /admin. A form is never deleted here, so an id that once worked still resolves.'
-		);
-	}
+	if (form === null) return { ok: false, form, reason: 'form_not_found', error: formNotFound(id) };
 
 	// a fundraiser's row serves while the page is live and shown, whatever the row's own status: the
 	// page's state is the one source, and pending, ended and hidden read alike to a caller.
@@ -566,8 +579,11 @@ export function publishedConfig(sources: PublishedConfigSources): PublishedConfi
 	const challenge = challengeKind(sources.env);
 	const program = servedProgram(sources.program);
 	const coins = sources.coins ?? [];
-	const paymentMethods =
-		coins.length > 0 ? sources.rails : sources.rails.filter((rail) => rail !== 'crypto');
+	// the pledge rails last, which is where `PAYMENT_METHODS` in packages/form/src/v1.ts puts them.
+	const paymentMethods = [
+		...(coins.length > 0 ? sources.rails : sources.rails.filter((rail) => rail !== 'crypto')),
+		...(sources.pledgeRails ?? [])
+	];
 
 	const config = {
 		formId: form.id,
@@ -706,7 +722,7 @@ export const SERVED_LOCALE = 'en-US';
  * set correctly; a list that answered with no coin says so, and names the dashboard it is set in.
  */
 export function renderableConfig(result: PublishedConfigResult): PublishedConfigResult {
-	if (!result.ok || result.config.paymentMethods.length > 0) return result;
+	if (!result.ok || result.config.paymentMethods.some(isDrawnRail)) return result;
 
 	// the processors whose credentials are set, and never the served `providers`: NOWPayments has no
 	// browser half and is on no entry there, so a deployment holding it alone would be named as
@@ -749,6 +765,29 @@ export function renderableConfig(result: PublishedConfigResult): PublishedConfig
 		`This deployment cannot serve a donation form: ${clauses.join(', and ')}.`,
 		fixes.join(' ')
 	);
+}
+
+/**
+ * a rail a donor can pay with on the form as it is drawn. stock is served while Payments has it on
+ * and a ticker list is held, but no screen in packages/form/src sends `PLEDGE_STOCK`
+ * (packages/form/src/element.ts), so a config offering stock alone is a form with nothing to press.
+ */
+function isDrawnRail(rail: PaymentMethod): boolean {
+	return rail !== 'stock';
+}
+
+/**
+ * the 404 body for a form id this deployment never had, which every form-scoped read under
+ * `/api/v1` answers alike.
+ */
+export function formNotFound(id: string): ApiError {
+	return {
+		error: 'form_not_found',
+		message: `No form with id \`${redactPublicId(id)}\` exists on this deployment.`,
+		fix:
+			'Check the `form` attribute on the donation element against the snippet shown under ' +
+			'Forms in /admin. A form is never deleted here, so an id that once worked still resolves.'
+	};
 }
 
 /**

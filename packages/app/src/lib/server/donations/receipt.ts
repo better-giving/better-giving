@@ -13,6 +13,7 @@ import type { RenderedEmail } from '../email/provider';
 import {
 	renderReceipt,
 	type CryptoReceived,
+	type PledgeReceived,
 	type ReceiptContribution,
 	type ReceiptResult
 } from '../email/receipt';
@@ -122,6 +123,8 @@ export type ReceiptTarget = {
 	 * caller off the settled `payment` row, with the coin's name from the list the donor picked from.
 	 */
 	readonly crypto: CryptoReceived | null;
+	/** the received stock or IRA (QCD) pledge (./receive-pledge.ts); absent on every other rail. */
+	readonly pledge?: PledgeReceived;
 };
 
 /**
@@ -160,6 +163,7 @@ export async function sendReceipt(
 			tribute: target.tribute,
 			program: target.program,
 			crypto: target.crypto,
+			...(target.pledge === undefined ? {} : { pledge: target.pledge }),
 			...(giftPageUrl === null ? {} : { giftPageUrl })
 		});
 		if (rendered.ok) return rendered;

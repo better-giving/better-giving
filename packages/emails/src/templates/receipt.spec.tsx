@@ -563,6 +563,76 @@ describe('receipt.template — a gift given in crypto', () => {
 	});
 });
 
+describe('receipt.template — a gift given in stock', () => {
+	const STOCK = { method: 'stock', shares: '50 shares of AAPL' } as const;
+	/** what staff entered at Mark received, which the donor values for themselves. */
+	const VALUED: ReceiptContribution = { ...CONTRIBUTION, totalMinor: 951_240 };
+
+	it('names the shares, the ticker and the date received', async () => {
+		for (const arm of await arms({ pledge: STOCK, contribution: VALUED })) {
+			expect(arm).toContain('Shares received');
+			expect(arm).toContain('50 shares of AAPL');
+			expect(arm).toContain('Date received');
+			expect(arm).toContain('January 5, 2026');
+			expect(arm.indexOf('Date received')).toBeLessThan(arm.indexOf('Shares received'));
+			expect(arm).toContain('No goods or services were provided');
+		}
+	});
+
+	it('states no dollar value anywhere, in either arm', async () => {
+		const { text, html } = await rendered({ pledge: STOCK, contribution: VALUED });
+		// what a reader of the HTML arm sees: react's `<!--$-->` markers and the inline styles'
+		// `line-height:1.55` are not on the page.
+		const shown = html.replace(/<!--[\s\S]*?-->/g, '').replace(/<[^>]*>/g, ' ');
+		for (const arm of [text, shown]) {
+			expect(arm).toContain('50 shares of AAPL');
+			expect(arm).not.toMatch(/USD|\$|9,512|9512|\d\.\d\d\b/);
+			expect(arm).not.toMatch(/Value when received|\bAmount\b|Total/);
+		}
+	});
+
+	it('keeps the subject and the organisation block', async () => {
+		const stock = await rendered({ pledge: STOCK, contribution: VALUED });
+		const card = await rendered();
+		expect(stock.subject).toBe(card.subject);
+		expect(stock.text.slice(stock.text.lastIndexOf('\n--\n'))).toBe(
+			card.text.slice(card.text.lastIndexOf('\n--\n'))
+		);
+	});
+
+	it('lines its rows up in a column the longest label sets, and emphasises the shares', async () => {
+		const { text, html } = await rendered({ pledge: STOCK, contribution: VALUED });
+		expect(text).toContain('\nDate received        January 5, 2026\n');
+		expect(text).toContain('\nShares received      50 shares of AAPL\n');
+		expect(html).toContain('<strong>50 shares of AAPL</strong>');
+	});
+});
+
+describe('receipt.template — a gift given from an IRA (QCD)', () => {
+	const IRA = { method: 'ira_qcd' } as const;
+
+	it('states the amount and the date, and that nothing was given in return', async () => {
+		for (const arm of await arms({ pledge: IRA })) {
+			expect(arm).toContain('USD 100.00');
+			expect(arm).toContain('January 5, 2026');
+			expect(arm).toContain('No goods or services were provided in return for this gift.');
+			expect(arm).not.toContain('in exchange for this contribution');
+		}
+	});
+
+	it('keeps every other line of the receipt it would get from any other rail', async () => {
+		const ira = await rendered({ pledge: IRA });
+		const card = await rendered();
+		expect(ira.subject).toBe(card.subject);
+		expect(ira.text).toBe(
+			card.text.replace(
+				'No goods or services were provided to you in exchange for this contribution.',
+				'No goods or services were provided in return for this gift.'
+			)
+		);
+	});
+});
+
 describe('receipt.template — the processing fee the donor added', () => {
 	/**
 	 * the donor sees one figure: the total they paid. what it was made of is bookkeeping —
@@ -780,6 +850,26 @@ describe('receipt.template — the employer match note', () => {
 		expect(withNote.html.replace(/<p [^>]*>Does your employer.*?<\/a><\/p>/, '')).toBe(
 			without.html
 		);
+	});
+
+	// the page states the gift's amount (`filingOf` in packages/app/src/lib/server/matching/views.ts),
+	// and a stock receipt states no dollar value.
+	it('leaves the note and the gift page off a stock receipt, and keeps them on an IRA (QCD) one', async () => {
+		const stock = await rendered({
+			pledge: { method: 'stock', shares: '50 shares of AAPL' },
+			contribution: { ...CONTRIBUTION, totalMinor: 951_240 },
+			giftPageUrl: URL
+		});
+		const shown = stock.html.replace(/<!--[\s\S]*?-->/g, '').replace(/<[^>]*>/g, ' ');
+		for (const arm of [stock.text, stock.html]) {
+			expect(arm).not.toContain(URL);
+			expect(arm).not.toContain('employer');
+		}
+		for (const arm of [stock.text, shown]) expect(arm).not.toMatch(/USD|\$|9,512|\d\.\d\d\b/);
+
+		const ira = await rendered({ pledge: { method: 'ira_qcd' }, giftPageUrl: URL });
+		expect(ira.text).toContain(NOTE);
+		expect(ira.html).toContain(`<a href="${URL}"`);
 	});
 
 	it('keeps the subject it always had', async () => {

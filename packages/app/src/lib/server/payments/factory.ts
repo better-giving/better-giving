@@ -1,4 +1,4 @@
-import type { Provider, PaymentMethod as QuotedRail } from '@better-giving/form/v1';
+import type { Provider } from '@better-giving/form/v1';
 import { envLine, RECREATE_APP, setupWebhookCommand } from '@better-giving/operator/deploy-split';
 import { LOGS_SAY_WHY } from '$lib/deployment-logs';
 import { readConfigEnv, type ConfigEnv } from '../config/env';
@@ -9,7 +9,8 @@ import {
 	refusing,
 	sealed,
 	type PaymentProvider,
-	type ProcessorName
+	type ProcessorName,
+	type QuotedRail
 } from './provider';
 import { CHARIOT_LIVE_API_URL, createChariotProvider } from './chariot';
 import { createNowpaymentsProvider } from './nowpayments';

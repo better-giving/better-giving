@@ -1134,9 +1134,11 @@ async function somethingWasCollected(db: Db, donationId: string): Promise<boolea
  *   crypto — an address nothing reached before it expired is a gift not given, and nobody is
  *            written to: the donor was the one who did not send.
  *   cash,
- *   check  — staff entry: there is no donor session, no processor and no attempt the donor made.
+ *   check,
+ *   stock,
+ *   ira_qcd — staff entry: there is no donor session, no processor and no attempt the donor made.
  *            a failure here is a correction to a record, and the person who typed it is the person
- *            who fixes it.
+ *            who fixes it. a stock or IRA (QCD) payment is written only by Mark received.
  *
  * a rail added to `PAYMENT_METHODS` in ../db/schema.ts lands on the `default`-free switch below
  * and stops the type check, which is the point of writing it as one: whether a new rail's failure
@@ -1153,6 +1155,8 @@ export function failureIsNewsToTheDonor(rail: PaymentMethod): boolean {
 		case 'crypto':
 		case 'cash':
 		case 'check':
+		case 'stock':
+		case 'ira_qcd':
 			return false;
 	}
 }

@@ -88,7 +88,7 @@
  * own, so a host that set `html { font-size: 62.5% }` must not be able to render the card at 10px,
  * while a reader's own browser zoom still moves type and spacing together. the registry's component
  * sheets read their `rem` figures through its `--ds-rem`, which the `:host` block below sets to the
- * clamped root, so every registry control on the card draws off it. eight things the registry
+ * clamped root, so every registry control on the card draws off it. nine things the registry
  * states that the form cannot take as stated, each a registry gap, the first three listed and the
  * rest numbered in the paragraphs after:
  *
@@ -127,6 +127,11 @@
  * (../registry/styles/button-css.usage.md → Markup contract). the action's busy ring is placed out
  * of flow against the action's inline end instead, so the words do not move on a press
  * (`[part~='action'] > .ds-spinner` in ./parts.css) — an eighth.
+ *
+ * the registry sets its notice card's title in `--font-display`
+ * (../registry/styles/notice-card-css.css), a face this card never loads, so the title takes the
+ * card's own face, the one every other title on the card is set in (`.ds-notice-card-title` in
+ * ./parts.css) — a ninth.
  *
  * no shade is ever made with alpha. a translucent fill takes on whatever the host's page put behind
  * it, and this component is painted onto a page it cannot see; the registry's alpha steps

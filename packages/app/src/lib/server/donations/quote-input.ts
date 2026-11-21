@@ -1,6 +1,8 @@
 import { z } from 'zod';
+import { PLEDGE_RAILS, type PledgeRail, type ProcessorRail } from '@better-giving/form/embed/rails';
 import {
 	FREQUENCIES,
+	MAX_CUSTODIAN,
 	TRIBUTE_KINDS,
 	type Frequency,
 	type FormConfig,
@@ -8,6 +10,7 @@ import {
 	type TributeKind
 } from '@better-giving/form/v1';
 import { EMAIL, MAX_EMAIL, MAX_NAME } from '../../contacts/input-schema';
+import { MAX_SHARES, SHARE_DECIMALS, sharesFromText } from '../../donations/shares';
 import { OFFERED_PAYMENT_METHODS } from '../../forms/offered-rails';
 import {
 	parseContact,
@@ -15,6 +18,7 @@ import {
 	type ContactFormValues,
 	type ParsedContact
 } from '../contacts/contact-input';
+import { asSecSymbol } from './tickers';
 
 // what a donor posted, checked against the form record rather than believed.
 //
@@ -41,7 +45,7 @@ export type ParsedQuoteRequest = {
 	readonly amountMinor: number;
 	readonly frequency: Frequency;
 	/** one of the rails this deployment offers. */
-	readonly method: PaymentMethod;
+	readonly method: ProcessorRail;
 	/** whether the donor is paying the processing fee on top. */
 	readonly coversFee: boolean;
 	/** the payer, through the same parser /admin's create form uses. */
@@ -99,6 +103,32 @@ export type ParsedQuoteRequest = {
 	 * (`createIntent` in ../payments/nowpayments.ts), never off the served list, which may be older.
 	 */
 	readonly coin: string | null;
+};
+
+/** the fields every gift carries, whichever rail it is on. */
+export type Giver = Pick<
+	ParsedQuoteRequest,
+	| 'donor'
+	| 'consentedToContact'
+	| 'note'
+	| 'noteOnPage'
+	| 'tribute'
+	| 'programId'
+	| 'turnstileToken'
+	| 'altchaPayload'
+>;
+
+/** what a stock or IRA (QCD) donor pledged, checked. */
+export type PledgedInput =
+	| { readonly method: 'stock'; readonly ticker: string; readonly sharesMillionths: number }
+	| { readonly method: 'ira_qcd'; readonly amountMinor: number; readonly custodian: string };
+
+/** one donor's pledge, once every value in it has been checked against the form. */
+export type ParsedPledgeRequest = {
+	/** the id the form minted for this pledge, which a resend of the same press carries again. */
+	readonly pledgeId: string;
+	readonly pledged: PledgedInput;
+	readonly giver: Giver;
 };
 
 /** a donor-advised fund gift's authorization, both halves present and well formed. */
@@ -689,14 +719,38 @@ export function parseQuoteRequest(body: unknown, config: FormConfig): QuoteInput
 	if (!coin.ok) return coin;
 
 	const coversFee = COVERS_FEE.safeParse(posted.coversFee);
-	if (!coversFee.success) {
-		return refusal(
-			first(coversFee.error),
-			'Send `true` when the donor is paying the processing fee on top of their gift, `false` when ' +
-				'the organisation absorbs it.'
-		);
-	}
+	if (!coversFee.success) return refusal(first(coversFee.error), COVERS_FEE_FIX);
 
+	const giver = parseGiver(posted, config);
+	if (!giver.ok) return giver;
+
+	return {
+		ok: true,
+		value: {
+			amountMinor: amount,
+			frequency: frequency.data,
+			method: method.data,
+			coversFee: coversFee.data,
+			...giver.value,
+			authorization: authorization.value,
+			coin: coin.value
+		}
+	};
+}
+
+const COVERS_FEE_FIX =
+	'Send `true` when the donor is paying the processing fee on top of their gift, `false` when ' +
+	'the organisation absorbs it.';
+
+/**
+ * who is giving and what they said about the gift — every field a gift carries whichever rail it is
+ * on, read in the order `parseQuoteRequest` reads them, so a pledge and a payment are
+ * refused alike for the same field.
+ */
+function parseGiver(
+	posted: Record<string, unknown>,
+	config: FormConfig
+): { readonly ok: true; readonly value: Giver } | Refusal {
 	const consentedToContact = CONSENTED_TO_CONTACT.safeParse(posted.consentedToContact);
 	if (!consentedToContact.success) {
 		return refusal(
@@ -800,10 +854,6 @@ export function parseQuoteRequest(body: unknown, config: FormConfig): QuoteInput
 	return {
 		ok: true,
 		value: {
-			amountMinor: amount,
-			frequency: frequency.data,
-			method: method.data,
-			coversFee: coversFee.data,
 			donor: parsedDonor.value,
 			consentedToContact: consentedToContact.data,
 			note: message === '' ? undefined : message,
@@ -811,11 +861,181 @@ export function parseQuoteRequest(body: unknown, config: FormConfig): QuoteInput
 			tribute: tribute.value,
 			programId: program.value,
 			turnstileToken: turnstileToken.data,
-			altchaPayload: altchaPayload.data,
-			authorization: authorization.value,
-			coin: coin.value
+			altchaPayload: altchaPayload.data
 		}
 	};
+}
+
+/** a pledge field the donor fills in, which a refusal names so the form can mark that box. */
+export type PledgeField = 'ticker' | 'shares' | 'custodian';
+
+/** a pledge body that was not accepted; `field` is set where the donor's own entry is at fault. */
+export type PledgeRefusal = Refusal & { readonly field?: PledgeField };
+
+/** a pledge that may be saved, or the first thing wrong with it. */
+export type PledgeInputResult =
+	| { readonly ok: true; readonly value: ParsedPledgeRequest }
+	| PledgeRefusal;
+
+const PLEDGE_METHOD = z.enum(PLEDGE_RAILS, {
+	error: (issue) =>
+		`\`method\` is ${describe(issue.input)}, which is not a rail a gift is pledged on.`
+});
+
+/** minted by the form, so a resend of the same press names the pledge it already saved. */
+const PLEDGE_ID = z.uuid({
+	error: (issue) => `\`pledgeId\` is ${describe(issue.input)}, which is not a UUID.`
+});
+
+const PLEDGE_ID_FIX =
+	'Mint one UUID per pledge when the pending screen is first shown (`crypto.randomUUID()`), and ' +
+	'send that same id again on every retry of it.';
+
+/** the SEC's symbols run to ten characters; twenty bounds a stranger's string with room to spare. */
+const MAX_TICKER = 20;
+
+const TICKER = z
+	.string({ error: (issue) => `\`ticker\` is ${describe(issue.input)}, which is not a string.` })
+	.trim()
+	.min(1, { error: '`ticker` is empty, and a stock gift names the stock it gives.' })
+	.max(MAX_TICKER, { error: `\`ticker\` is over the ${MAX_TICKER}-character maximum.` });
+
+const TICKER_FIX =
+	'Send `ticker` as one `symbol` from `GET /api/v1/forms/{formId}/tickers`, the list this ' +
+	'deployment takes stock gifts in.';
+
+const SHARES_FIX = `Send \`shares\` as decimal text above zero and at most ${MAX_SHARES.toLocaleString('en-US')}, with at most ${SHARE_DECIMALS} decimal places: \`"50"\` or \`"12.5"\`, never a number.`;
+
+const CUSTODIAN_FIX = `Send the name of the donor’s IRA custodian, 1 to ${MAX_CUSTODIAN} characters once trimmed.`;
+
+/**
+ * a submitted stock or IRA (QCD) body as a pledge to save, or a sentence naming what to change.
+ *
+ * the same rules every gift is under, through the same pieces: the cadence vocabulary, the stray
+ * fund and coin fields refused, the form's own bounds on an amount, and `parseGiver` for the donor
+ * and everything they said. what it adds is what each rail pledges — shares of a ticker, or an
+ * amount from a custodian — and that a pledge is one-time, since nothing collects one again.
+ *
+ * a stock gift carries no `amountMinor` and no bounds: the donor states shares, and its value is
+ * what staff record when the shares arrive. `coversFee` is read where it is sent and changes nothing,
+ * since neither rail has a fee.
+ *
+ * whether the ticker is one this deployment lists, and whether the rail is on, are reads, so they
+ * are the caller's (`mintQuote` in ./quote.ts).
+ */
+export function parsePledgeRequest(body: unknown, config: FormConfig): PledgeInputResult {
+	const shape = BODY.safeParse(body);
+	if (!shape.success) {
+		return refusal(
+			'The request body is not a JSON object.',
+			'POST a JSON object under `content-type: application/json`.'
+		);
+	}
+	const posted: Record<string, unknown> = shape.data;
+
+	const method = PLEDGE_METHOD.safeParse(posted.method);
+	if (!method.success) {
+		return refusal(first(method.error), `Send one of ${quoted(PLEDGE_RAILS)}.`);
+	}
+	const rail: PledgeRail = method.data;
+
+	const pledgeId = PLEDGE_ID.safeParse(posted.pledgeId);
+	if (!pledgeId.success) return refusal(first(pledgeId.error), PLEDGE_ID_FIX);
+
+	const frequency = OFFERED_FREQUENCY.safeParse(posted.frequency);
+	if (!frequency.success)
+		return refusal(first(frequency.error), `Send \`frequency\` \`one_time\`.`);
+	if (frequency.data !== 'one_time') {
+		const gift = rail === 'stock' ? 'a stock gift' : 'an IRA (QCD) gift';
+		return refusal(
+			`\`frequency\` is \`${frequency.data}\`, and ${gift} is one-time.`,
+			`Send \`frequency\` \`one_time\` on \`method\` \`${rail}\`. A gift that repeats is given on another rail.`
+		);
+	}
+
+	const pledged = rail === 'stock' ? parseStockPledge(posted) : parseIraPledge(posted, config);
+	if (!pledged.ok) return pledged;
+
+	const authorization = parseAuthorization(posted, rail, frequency.data);
+	if (!authorization.ok) return authorization;
+	const coin = parseCoin(posted, rail, frequency.data);
+	if (!coin.ok) return coin;
+
+	const coversFee = COVERS_FEE.optional().safeParse(posted.coversFee);
+	if (!coversFee.success) return refusal(first(coversFee.error), COVERS_FEE_FIX);
+
+	const giver = parseGiver(posted, config);
+	if (!giver.ok) return giver;
+
+	return {
+		ok: true,
+		value: { pledgeId: pledgeId.data, pledged: pledged.value, giver: giver.value }
+	};
+}
+
+/** the ticker, spelled as the list holds it (`BRK.B` as `BRK-B`), and the shares in millionths. */
+function parseStockPledge(
+	posted: Record<string, unknown>
+): { readonly ok: true; readonly value: PledgedInput } | PledgeRefusal {
+	if (posted.amountMinor !== undefined) {
+		return refusal(
+			'`amountMinor` was sent with `method` `stock`, and a stock gift has no amount: its value is set when the shares arrive.',
+			'Leave `amountMinor` out and send `shares` instead.'
+		);
+	}
+	const ticker = TICKER.safeParse(posted.ticker);
+	if (!ticker.success) return fieldRefusal('ticker', first(ticker.error), TICKER_FIX);
+
+	if (typeof posted.shares !== 'string') {
+		return fieldRefusal(
+			'shares',
+			`\`shares\` is ${describe(posted.shares)}, which is not decimal text.`,
+			SHARES_FIX
+		);
+	}
+	const millionths = sharesFromText(posted.shares);
+	if (millionths === null) {
+		return fieldRefusal(
+			'shares',
+			'`shares` is not a number of shares above zero with at most six decimal places, within the most one pledge may name.',
+			SHARES_FIX
+		);
+	}
+	return {
+		ok: true,
+		value: { method: 'stock', ticker: asSecSymbol(ticker.data), sharesMillionths: millionths }
+	};
+}
+
+/** the amount, held to the form's own bounds, and the custodian folded onto one line. */
+function parseIraPledge(
+	posted: Record<string, unknown>,
+	config: FormConfig
+): { readonly ok: true; readonly value: PledgedInput } | PledgeRefusal {
+	const whole = MINOR_UNITS.safeParse(posted.amountMinor);
+	if (!whole.success) return refusal(first(whole.error), MINOR_UNITS_FIX);
+	const within = withinFormBounds(config).safeParse(whole.data);
+	if (!within.success) return refusal(first(within.error), RANGE_FIX);
+
+	const custodian = tributeText(posted.custodian, 'custodian', MAX_CUSTODIAN, {
+		singleLine: true
+	});
+	if (!custodian.ok) return fieldRefusal('custodian', custodian.message, CUSTODIAN_FIX);
+	if (custodian.value === '') {
+		return fieldRefusal(
+			'custodian',
+			'`custodian` is empty, and an IRA (QCD) gift names the custodian that sends it.',
+			CUSTODIAN_FIX
+		);
+	}
+	return {
+		ok: true,
+		value: { method: 'ira_qcd', amountMinor: within.data, custodian: custodian.value }
+	};
+}
+
+function fieldRefusal(field: PledgeField, message: string, fix: string): PledgeRefusal {
+	return { ok: false, message, fix, field };
 }
 
 /**

@@ -28,6 +28,7 @@ import { defineDonateForm, type FormBoot, type FormRuntime } from '../element';
 import {
 	apiWords,
 	createEmployerWrite,
+	createPledgeTold,
 	createQuote,
 	createStatusRead,
 	EmbedFailure,
@@ -115,6 +116,21 @@ function createLoadConfig(origin: string | null): FormRuntime['loadConfig'] {
 	};
 }
 
+/**
+ * a version 4 UUID (RFC 9562), the `pledgeId` a pledge's save carries.
+ *
+ * drawn from `crypto.getRandomValues`, the one `Crypto` member an insecure context keeps (MDN,
+ * Crypto.getRandomValues): the host page may be served over http, where `crypto.randomUUID` does not
+ * exist and the press that called it would throw.
+ */
+function pledgeUuid(): string {
+	const bytes = crypto.getRandomValues(new Uint8Array(16));
+	bytes[6] = ((bytes[6] ?? 0) & 0x0f) | 0x40;
+	bytes[8] = ((bytes[8] ?? 0) & 0x3f) | 0x80;
+	const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+	return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 /** everything the element cannot build for itself, for one deployment. */
 export function createFormRuntime(origin: string | null, doc: Document): FormRuntime {
 	// built per configuration rather than once, which is what `FormRuntime.checkout` in
@@ -124,6 +140,7 @@ export function createFormRuntime(origin: string | null, doc: Document): FormRun
 	const post = createQuote(origin);
 	const status = createStatusRead(origin);
 	const employer = createEmployerWrite(origin);
+	const pledgeTold = createPledgeTold(origin);
 
 	/**
 	 * the return this page came back with, per form, held from the one read that could claim it.
@@ -175,7 +192,7 @@ export function createFormRuntime(origin: string | null, doc: Document): FormRun
 
 	return {
 		loadConfig: createLoadConfig(origin),
-		checkout: (config, mount, onRail, onUnavailable, boot, fund, coins) => {
+		checkout: (config, mount, onRail, onUnavailable, boot, fund, coins, ira) => {
 			// the return this gift is resuming, where this form is the one that sent the donor away.
 			// read here rather than where `post` is built, because the answer is per form and per
 			// boot, and neither is known until an element asks.
@@ -185,7 +202,16 @@ export function createFormRuntime(origin: string | null, doc: Document): FormRun
 			// one of this deployment's rails or into `null`, and the sentence a donor reads when
 			// nothing came up is written there too, next to what it knows about why.
 			// ../element.ts is what turns each report into an event the flow accepts.
-			const surface = createPaymentSurface(config, mount, onRail, onUnavailable, fund, coins);
+			const surface = createPaymentSurface(
+				config,
+				mount,
+				onRail,
+				onUnavailable,
+				fund,
+				coins,
+				undefined,
+				ira
+			);
 			// the quote port, wrapped so the payment surface hears of the quote on the press and
 			// again once it lands — `quoteThrough` in ./surface.ts says why both.
 			const quote = quoteThrough(surface, post);
@@ -198,7 +224,10 @@ export function createFormRuntime(origin: string | null, doc: Document): FormRun
 						resume: surface.resume,
 						status,
 						now: () => Date.now(),
-						employer
+						employer,
+						// a pledge's save is the press's own write with a pledge's body, told to no payment
+						// surface: no processor stands behind either pledge rail.
+						pledges: { id: pledgeUuid, save: post, told: pledgeTold }
 					},
 					...(resumeToken === null ? {} : { resume: { paymentToken: resumeToken } })
 				},
@@ -208,9 +237,11 @@ export function createFormRuntime(origin: string | null, doc: Document): FormRun
 				cadence: surface.cadence,
 				// the fund's reading, passed straight through for the reason the cadence is.
 				offerFund: surface.offerFund,
-				// the crypto and Venmo options' readings, passed straight through for the fund's reason.
+				// the crypto, Venmo and IRA (QCD) options' readings, passed straight through for the fund's
+				// reason.
 				offerCrypto: surface.offerCrypto,
 				offerVenmo: surface.offerVenmo,
+				offerIra: surface.offerIra,
 				// the count the card heads the payment box from, passed straight through.
 				rows: surface.rows,
 				// what the processors still up can take, passed straight through as the count is.

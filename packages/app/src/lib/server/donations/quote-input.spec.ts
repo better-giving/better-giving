@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import { isPledgeRail } from '@better-giving/form/embed/rails';
 import { PAYMENT_METHODS, TRIBUTE_KINDS, type FormConfig } from '@better-giving/form/v1';
 import { OFFERED_PAYMENT_METHODS } from '../../forms/offered-rails';
 import { PAYPAL_US_FEE_RULES_STANDARD, servedFeeRules } from '../payments/fees';
-import { parseQuoteRequest } from './quote-input';
+import { parsePledgeRequest, parseQuoteRequest } from './quote-input';
 
 // the posted body, checked against a form record. no database, no network — every rule here is
 // decidable from two values, which is why this runs in the node pool.
@@ -167,9 +168,13 @@ describe('parseQuoteRequest() — the choices the form offers', () => {
 	 * `$lib/forms/offered-rails.ts` and that list is free to shrink. the day it does, this turns red
 	 * beside a parser that would otherwise go on accepting a rail nothing offers — with the case
 	 * that would have caught it deleted for want of a value to write in it.
+	 *
+	 * the pledge rails are the one part of the vocabulary it leaves out: no processor settles them,
+	 * and `parsePledgeRequest` below is where a body on either is read.
 	 */
-	it('offers every rail the vocabulary holds', () => {
-		expect([...OFFERED_PAYMENT_METHODS].sort()).toEqual([...PAYMENT_METHODS].sort());
+	it('offers every processor rail the vocabulary holds', () => {
+		const processorRails = PAYMENT_METHODS.filter((method) => !isPledgeRail(method));
+		expect([...OFFERED_PAYMENT_METHODS].sort()).toEqual([...processorRails].sort());
 	});
 
 	/**
@@ -678,5 +683,125 @@ describe('parseQuoteRequest() — a body that is not one', () => {
 		// every one of these fields is a stranger's, on an unauthenticated path, and the length
 		// check that would bound it is the one that just failed.
 		expect(result.message).not.toContain('a-very-distinctive-attacker-string');
+	});
+});
+
+/** a stock pledge's body, as the form sends it once the pending screen is first shown. */
+const stockBody = (over: Record<string, unknown> = {}): Record<string, unknown> => {
+	const {
+		amountMinor: _none,
+		coversFee: _fee,
+		...rest
+	} = body({
+		method: 'stock',
+		pledgeId: PLEDGE_ID,
+		ticker: 'AAPL',
+		shares: '50',
+		...over
+	});
+	return rest;
+};
+
+/** an IRA (QCD) pledge's body. */
+const iraBody = (over: Record<string, unknown> = {}): Record<string, unknown> =>
+	body({ method: 'ira_qcd', pledgeId: PLEDGE_ID, custodian: 'Fidelity Investments', ...over });
+
+const PLEDGE_ID = '0b5f7a52-3d1e-4c8a-9f2b-6e4d1c0a7b93';
+
+/** the pledge parse, required to have been refused. */
+function pledgeRefusal(posted: Record<string, unknown>) {
+	const result = parsePledgeRequest(posted, CONFIG);
+	if (result.ok) throw new Error('expected this body to be refused, but it parsed');
+	return result;
+}
+
+describe('parsePledgeRequest() — a stock pledge', () => {
+	it('parses the ticker and the shares, and the donor every gift carries', () => {
+		const result = parsePledgeRequest(stockBody({ ticker: ' aapl ', shares: '12.5' }), CONFIG);
+
+		expect(result.ok && result.value).toMatchObject({
+			pledgeId: PLEDGE_ID,
+			pledged: { method: 'stock', ticker: 'AAPL', sharesMillionths: 12_500_000 }
+		});
+		expect(result.ok && result.value.giver.donor.primaryEmail).toBe('ada@example.org');
+	});
+
+	it.each(['brk.b', 'BRK/B'])(
+		'stores a class share posted as %s in the SEC’s dash form',
+		(ticker) => {
+			const result = parsePledgeRequest(stockBody({ ticker }), CONFIG);
+
+			expect(result.ok && result.value.pledged).toMatchObject({ method: 'stock', ticker: 'BRK-B' });
+		}
+	);
+
+	it.each([
+		['ticker', { ticker: undefined }],
+		['shares', { shares: undefined }],
+		['ticker', { ticker: '   ' }]
+	] as const)('names `%s` when it is missing', (field, over) => {
+		expect(pledgeRefusal(stockBody(over))).toMatchObject({ field });
+	});
+
+	it.each(['1.0000001', '0', '-1', '1e3', 7])(
+		'refuses shares of %s, naming the field',
+		(shares) => {
+			const refused = pledgeRefusal(stockBody({ shares }));
+			expect(refused.field).toBe('shares');
+			expect(refused.message).toContain('`shares`');
+		}
+	);
+
+	it('refuses an amount, which a stock gift has none of', () => {
+		const refused = pledgeRefusal({ ...stockBody(), amountMinor: 10_000 });
+		expect(refused.field).toBeUndefined();
+		expect(refused.message).toContain('`amountMinor`');
+	});
+});
+
+describe('parsePledgeRequest() — an IRA (QCD) pledge', () => {
+	it('parses the amount and the custodian', () => {
+		const result = parsePledgeRequest(iraBody({ custodian: '  Fidelity   Investments ' }), CONFIG);
+
+		expect(result.ok && result.value.pledged).toEqual({
+			method: 'ira_qcd',
+			amountMinor: 10_000,
+			custodian: 'Fidelity Investments'
+		});
+	});
+
+	it.each([undefined, '', '   '])('names `custodian` when it is %j', (custodian) => {
+		expect(pledgeRefusal(iraBody({ custodian }))).toMatchObject({ field: 'custodian' });
+	});
+
+	it('refuses a custodian past its length, naming the field', () => {
+		expect(pledgeRefusal(iraBody({ custodian: 'x'.repeat(201) }))).toMatchObject({
+			field: 'custodian'
+		});
+	});
+
+	it('holds the amount to the form’s own bounds, as every other rail is held', () => {
+		const refused = pledgeRefusal(iraBody({ amountMinor: 499 }));
+		expect(refused.field).toBeUndefined();
+		expect(refused.message).toContain('outside this form');
+	});
+});
+
+describe('parsePledgeRequest() — what both rails refuse', () => {
+	it.each([stockBody, iraBody])('refuses a gift that repeats', (make) => {
+		const refused = pledgeRefusal(make({ frequency: 'monthly' }));
+		expect(refused.message).toContain('one-time');
+	});
+
+	it.each([undefined, 'not-a-uuid'])('refuses a pledge id of %j', (pledgeId) => {
+		expect(pledgeRefusal(stockBody({ pledgeId })).message).toContain('`pledgeId`');
+	});
+
+	it('refuses a coin, which only a crypto gift carries', () => {
+		expect(pledgeRefusal(iraBody({ coin: 'btc' })).message).toContain('`coin`');
+	});
+
+	it('reads the donor through the same parser every gift does', () => {
+		expect(pledgeRefusal(iraBody({ email: '' })).message).toContain('`email`');
 	});
 });

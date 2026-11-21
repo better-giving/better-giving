@@ -88,6 +88,26 @@ describe('reading a usable response', () => {
 		);
 	});
 
+	// which of them draws a row in the payment box is the surface's (`the IRA (QCD) option` in
+	// ./embed/surface.dom.spec.ts): stock is picked on the first step and never has one.
+	it('carries the two pledge rails through, in the contract’s order, at the zero price served', () => {
+		const config = readFormConfig({
+			...RESPONSE,
+			paymentMethods: ['stock', 'card', 'ira_qcd'],
+			feeRules: {
+				card: { percent: 0.029, fixedMinor: 30 },
+				stock: { percent: 0, fixedMinor: 0 },
+				ira_qcd: { percent: 0, fixedMinor: 0 }
+			}
+		});
+
+		expect(config?.paymentMethods).toEqual(['card', 'stock', 'ira_qcd']);
+		expect(estimateFee(10_000, config?.feeRules.ira_qcd)).toEqual({
+			feeMinor: 0,
+			totalMinor: 10_000
+		});
+	});
+
 	it('keeps an optional field only when it is readable', () => {
 		const config = readFormConfig({ ...RESPONSE, turnstileSiteKey: '0x4AAA' });
 

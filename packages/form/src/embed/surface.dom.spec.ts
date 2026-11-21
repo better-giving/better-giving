@@ -38,7 +38,9 @@ const CONFIG: FormConfig = {
 		paypal: { percent: 0.0349, fixedMinor: 49 },
 		venmo: { percent: 0.0349, fixedMinor: 49 },
 		daf: { percent: 0.029, fixedMinor: 0, roundUpMinor: 100 },
-		crypto: { percent: 0.01, fixedMinor: 0 }
+		crypto: { percent: 0.01, fixedMinor: 0 },
+		stock: { percent: 0, fixedMinor: 0 },
+		ira_qcd: { percent: 0, fixedMinor: 0 }
 	},
 	locale: 'en-US',
 	orgLegalName: 'Acme Relief Fund',
@@ -713,6 +715,85 @@ describe('one payment surface over however many processors a config names', () =
 					[...(glyph?.querySelectorAll('path') ?? [])].map((path) => path.getAttribute('fill'))
 				).toEqual(['#68AAFF', '#000000']);
 				expect(glyph?.querySelector('[id]')).toBeNull();
+				surface.stop();
+			});
+		});
+
+		describe('the IRA (QCD) option', () => {
+			const PLEDGES: FormConfig = {
+				...CONFIG,
+				paymentMethods: ['card', 'paypal', 'ira_qcd', 'stock', 'crypto'],
+				coins: [
+					{ coin: 'btc', ticker: 'btc', name: 'Bitcoin', network: 'btc', memoRequired: false }
+				]
+			};
+			/** the custodian box and benefits panel the card hands over, which nothing here reads. */
+			const IRA_PANEL = document.createElement('div');
+			const pledging = async (k: Kit) => {
+				const surface = createPaymentSurface(
+					PLEDGES,
+					k.mount,
+					(rail) => k.rails.push(rail),
+					(failure) => k.unavailable.push(failure),
+					NO_FUND,
+					COIN_LIST,
+					k.seams,
+					IRA_PANEL
+				);
+				for (let turn = 0; turn < 8; turn += 1) await Promise.resolve();
+				return surface;
+			};
+
+			// stock is picked on the first step, so it never has a row (`FormConfig.paymentMethods`).
+			it('stands after the hosted window’s rows and before crypto while it is offered, and stock has no row', async () => {
+				const k = kit();
+				const surface = await pledging(k);
+				surface.offerCrypto(true);
+				expect(rowsIn(k).map((row) => head(row)?.textContent)).toEqual(['PayPal', 'Crypto']);
+
+				surface.offerIra(true);
+				expect(rowsIn(k).map((row) => head(row)?.textContent)).toEqual([
+					'PayPal',
+					'IRA (QCD)',
+					'Crypto'
+				]);
+				expect(rowsIn(k)[1]?.contains(IRA_PANEL)).toBe(true);
+
+				surface.offerIra(false);
+				expect(rowsIn(k).map((row) => head(row)?.textContent)).toEqual(['PayPal', 'Crypto']);
+				surface.stop();
+			});
+
+			// opening the row is choosing the rail: the custodian box inside it is the rest of the choice.
+			it('chooses the rail when its row is opened and lets it go when the row closes', async () => {
+				const k = kit();
+				const surface = await pledging(k);
+				surface.offerIra(true);
+				const ira = () => rowsIn(k).find((row) => head(row)?.textContent === 'IRA (QCD)');
+
+				head(ira())?.click();
+				expect(k.rails).toEqual(['ira_qcd']);
+				head(ira())?.click();
+				expect(k.rails).toEqual(['ira_qcd', null]);
+				surface.stop();
+			});
+
+			it('counts its row in the box', async () => {
+				const k = kit();
+				const surface = await pledging(k);
+				const counts: number[] = [];
+				surface.rows((count) => counts.push(count));
+				surface.offerIra(true);
+				// the card's rail and PayPal's, then the IRA (QCD) row with them.
+				expect(counts).toEqual([2, 3]);
+				surface.stop();
+			});
+
+			it('draws no row on a surface handed no panel', async () => {
+				const k = kit();
+				const surface = await composed(k, PLEDGES);
+				surface.offerIra(true);
+				expect(rowsIn(k).map((row) => head(row)?.textContent)).not.toContain('IRA (QCD)');
 				surface.stop();
 			});
 		});

@@ -13,7 +13,9 @@ import { database, platform } from '../context';
 import type { Route } from './+types/api.v1.forms.$id.donations';
 
 // the endpoint that takes money: a donor's submission in, an authoritative fee and a payment token
-// out. it is the second route under `/api/v1` and the only one that writes anything.
+// out. it is the second route under `/api/v1` and the only one that writes anything. a `stock` or
+// `ira_qcd` body saves a pledge instead and charges nothing (`Quote.pledge` in
+// packages/form/src/v1.ts), under the same four controls below.
 //
 // a resource route: no component export, so react router answers with what the handlers return
 // instead of rendering anything (react-router/docs/how-to/resource-routes.md). which handler runs
@@ -122,7 +124,8 @@ export async function action({ context, params, request }: Route.ActionArgs): Pr
 			...(code === null ? {} : { error: code }),
 			message: result.message,
 			fix: result.fix,
-			...(result.minAmountMinor === undefined ? {} : { minAmountMinor: result.minAmountMinor })
+			...(result.minAmountMinor === undefined ? {} : { minAmountMinor: result.minAmountMinor }),
+			...(result.field === undefined ? {} : { field: result.field })
 		},
 		{ status: REFUSAL_STATUS[result.reason], headers }
 	);
@@ -217,6 +220,12 @@ async function readJsonBody(request: Request): Promise<unknown> {
  *   amount under the coin's minimum or over what it takes. the donor moves the coin or the amount.
  *   under the minimum, the body also carries `minAmountMinor` where NOWPayments named its floor:
  *   the least gift the coin takes, as `QuoteRequest.amountMinor` would state it.
+ * - 400 / 422, a stock or IRA (QCD) pledge: a ticker, shares or custodian the donor left out or got
+ *   wrong is the body's, and a ticker the deployment's list does not hold is a well-formed answer
+ *   the donor moves. both carry `field`, the box to mark. a pledge rail that is off is
+ *   `payments_not_configured`, as any rail this deployment cannot take is.
+ * - 409, a pledge id already naming a gift or a different pledge: a conflict with what this
+ *   deployment holds, with no `field`, since no box the donor fills in is wrong.
  * - 500, a defect of ours. no code, because no screen fixes it: `API_ERROR_CODES` in
  *   `packages/form/src/v1.ts` is a permanent vocabulary whose members each name one, and a member for our
  *   own bug would ask a donation form to render a screen about it. this is also where a gift that
@@ -251,5 +260,8 @@ const REFUSAL_STATUS = {
 	coin_not_accepted: 422,
 	below_minimum: 422,
 	above_maximum: 422,
+	pledge_detail_invalid: 400,
+	ticker_not_listed: 422,
+	pledge_id_taken: 409,
 	internal_error: 500
 } as const satisfies Record<QuoteRefusal, number>;

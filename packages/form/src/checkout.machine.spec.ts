@@ -6,6 +6,7 @@ import {
 	fundIsOffered,
 	oneTimeIsOfferedInstead,
 	openFund,
+	pledgeIsOffered,
 	stepIsReachable,
 	venmoIsOffered,
 	DEPOSIT_POLL_MS,
@@ -14,7 +15,8 @@ import {
 } from './checkout.machine';
 import type { CheckoutEvent, CheckoutInput } from './checkout.machine';
 import type { CheckoutPorts, ConfirmInput } from './ports';
-import type { DonationStatus, FormConfig, Quote, QuoteRequest } from './v1';
+import { toState } from './connect';
+import type { DonationStatus, FormConfig, Quote, QuoteRequest, StockPledgeRequest } from './v1';
 
 // node pool: no browser, no DOM, no Stripe. that is the claim the machine exists to earn —
 // the client's money path gets the same treatment as `src/lib/server/ledger/posting.ts` gets on
@@ -39,7 +41,9 @@ const CONFIG: FormConfig = {
 		paypal: { percent: 0.0349, fixedMinor: 49 },
 		venmo: { percent: 0.0349, fixedMinor: 49 },
 		daf: { percent: 0.029, fixedMinor: 0, roundUpMinor: 100 },
-		crypto: { percent: 0.01, fixedMinor: 0 }
+		crypto: { percent: 0.01, fixedMinor: 0 },
+		stock: { percent: 0, fixedMinor: 0 },
+		ira_qcd: { percent: 0, fixedMinor: 0 }
 	},
 	locale: 'en-US',
 	orgLegalName: 'Acme Relief Fund',
@@ -104,6 +108,8 @@ function manualClock() {
 /** what each port was asked to do, so a spec can assert it was asked exactly once. */
 type Calls = {
 	quote: QuoteRequest[];
+	pledge: (QuoteRequest | StockPledgeRequest)[];
+	told: { formId: string; pledgeId: string }[];
 	confirm: ConfirmInput[];
 	resume: string[];
 	status: string[];
@@ -122,6 +128,10 @@ type HarnessOptions = {
 	readonly status?: () => Promise<DonationStatus>;
 	/** what the employer write answers, handed its signal; `null` builds the ports without one. */
 	readonly employer?: ((signal: AbortSignal) => Promise<void>) | null;
+	/** what a pledge's save answers; the pledge ports are on every harness. */
+	readonly pledge?: (request: QuoteRequest | StockPledgeRequest) => Promise<Quote>;
+	/** what the told press answers. */
+	readonly told?: () => Promise<void>;
 };
 
 /**
@@ -132,7 +142,16 @@ type HarnessOptions = {
  * stand-in instead of on the machine.
  */
 function harness(options: HarnessOptions = {}) {
-	const calls: Calls = { quote: [], confirm: [], resume: [], status: [], employer: [] };
+	const calls: Calls = {
+		quote: [],
+		pledge: [],
+		told: [],
+		confirm: [],
+		resume: [],
+		status: [],
+		employer: []
+	};
+	let pledgeIds = 0;
 	const clock = manualClock();
 
 	const ports: CheckoutPorts = {
@@ -153,6 +172,17 @@ function harness(options: HarnessOptions = {}) {
 			return options.status?.() ?? Promise.resolve({ state: 'waiting' as const });
 		},
 		now: clock.now,
+		pledges: {
+			id: () => `pledge-${++pledgeIds}`,
+			save: (request) => {
+				calls.pledge.push(request);
+				return options.pledge?.(request) ?? Promise.reject(new Error('no pledge answer'));
+			},
+			told: (input) => {
+				calls.told.push(input);
+				return options.told?.() ?? Promise.resolve();
+			}
+		},
 		...(options.employer === null
 			? {}
 			: {
@@ -1169,7 +1199,9 @@ describe('where the correction screen is and is not shown', () => {
 					paypal: { percent: 0.0349, fixedMinor: 49 },
 					venmo: { percent: 0.0349, fixedMinor: 49 },
 					daf: { percent: 0.029, fixedMinor: 0, roundUpMinor: 100 },
-					crypto: { percent: 0.01, fixedMinor: 0 }
+					crypto: { percent: 0.01, fixedMinor: 0 },
+					stock: { percent: 0, fixedMinor: 0 },
+					ira_qcd: { percent: 0, fixedMinor: 0 }
 				} as FormConfig['feeRules']
 			},
 			quote: async () => ({ paymentToken: 'pi_1_secret_x', feeMinor: 0, totalMinor: 2500 })
@@ -1212,7 +1244,9 @@ describe('where the correction screen is and is not shown', () => {
 					paypal: { percent: 0.0349, fixedMinor: 49 },
 					venmo: { percent: 0.0349, fixedMinor: 49 },
 					daf: { percent: 0.029, fixedMinor: 0, roundUpMinor: 100 },
-					crypto: { percent: 0.01, fixedMinor: 0 }
+					crypto: { percent: 0.01, fixedMinor: 0 },
+					stock: { percent: 0, fixedMinor: 0 },
+					ira_qcd: { percent: 0, fixedMinor: 0 }
 				} as FormConfig['feeRules']
 			},
 			quote: async () => ({ paymentToken: 'pi_1_secret_x', feeMinor: 175, totalMinor: 2675 })
@@ -1686,6 +1720,9 @@ const EVERY_EVENT: readonly CheckoutEvent[] = Object.values({
 	GO_TO_STEP: { type: 'GO_TO_STEP', step: 'amount' },
 	SET_METHOD: { type: 'SET_METHOD', method: 'card' },
 	SET_COIN: { type: 'SET_COIN', coin: 'btc' },
+	SET_CUSTODIAN: { type: 'SET_CUSTODIAN', custodian: 'Fidelity Investments' },
+	PLEDGE_STOCK: { type: 'PLEDGE_STOCK', ticker: 'AAPL', shares: '50' },
+	TELL_ORGANIZATION: { type: 'TELL_ORGANIZATION' },
 	PAYMENT_UNAVAILABLE: {
 		type: 'PAYMENT_UNAVAILABLE',
 		failure: { message: 'The payment fields could not be shown.' }
@@ -1903,7 +1940,9 @@ describe('a config the wire mangled', () => {
 					paypal: { percent: 0.0349, fixedMinor: 49 },
 					venmo: { percent: 0.0349, fixedMinor: 49 },
 					daf: { percent: 0.029, fixedMinor: 0, roundUpMinor: 100 },
-					crypto: { percent: 0.01, fixedMinor: 0 }
+					crypto: { percent: 0.01, fixedMinor: 0 },
+					stock: { percent: 0, fixedMinor: 0 },
+					ira_qcd: { percent: 0, fixedMinor: 0 }
 				} as FormConfig['feeRules']
 			}
 		});
@@ -3205,5 +3244,682 @@ describe('the employer ask on the thank-you', () => {
 		actor.send({ type: 'SKIP_EMPLOYER' });
 		expect(actor.getSnapshot().matches({ success: 'skipped' })).toBe(true);
 		expect(actor.getSnapshot().context.employerRefusal).toBeNull();
+	});
+});
+
+describe('an IRA (QCD) pledge', () => {
+	const IRA_CONFIG: FormConfig = { ...CONFIG, paymentMethods: ['card', 'ira_qcd', 'stock'] };
+
+	/** the review step of a one-time gift with the IRA (QCD) row open and a token minted. */
+	function onIraRail(options: HarnessOptions = {}) {
+		const h = readyToSubmit({ config: IRA_CONFIG, ...options });
+		h.actor.send({ type: 'SET_METHOD', method: 'ira_qcd' });
+		return h;
+	}
+
+	it('offers the rail on a one-time gift only, on a form taking it', () => {
+		const { actor } = harness({ config: IRA_CONFIG });
+		expect(pledgeIsOffered(actor.getSnapshot(), 'ira_qcd')).toBe(true);
+		actor.send({ type: 'SET_FREQUENCY', frequency: 'monthly' });
+		expect(pledgeIsOffered(actor.getSnapshot(), 'ira_qcd')).toBe(false);
+
+		const plain = harness();
+		expect(pledgeIsOffered(plain.actor.getSnapshot(), 'ira_qcd')).toBe(false);
+	});
+
+	it('saves nothing on a Continue with no custodian, and marks the custodian missing', async () => {
+		const { actor, calls } = onIraRail();
+		actor.send({ type: 'SET_CUSTODIAN', custodian: '   ' });
+		actor.send({ type: 'SUBMIT' });
+		await settle();
+
+		expect(calls.pledge).toEqual([]);
+		expect(calls.quote).toEqual([]);
+		expect(actor.getSnapshot().value).toBe('give');
+		expect(toState(actor.getSnapshot())).toMatchObject({ step: 'give', custodianMissing: true });
+	});
+
+	const IRA_PLEDGE: Quote = {
+		paymentToken: 'pledge-1',
+		feeMinor: 0,
+		totalMinor: 2500,
+		pledge: {
+			id: 'pledge-1',
+			method: 'ira_qcd',
+			reference: 'CFCP-IRA-4K9M',
+			receiptTo: 'donor@example.org',
+			amountMinor: 2500,
+			custodian: 'Fidelity Investments',
+			payeeName: 'Acme Relief Fund',
+			ein: '12-3456789',
+			mailingAddress: '412 Alder Lane, Suite 3\nCedar Fork, OR 97330'
+		}
+	};
+	/** the same pledge, saved under `id`. */
+	const savedUnder = (id: string): Quote => ({
+		...IRA_PLEDGE,
+		pledge: { ...IRA_PLEDGE.pledge, id } as NonNullable<Quote['pledge']>
+	});
+
+	it('saves one pledge under the id it minted, and shows its pending screen', async () => {
+		const { actor, calls } = onIraRail({
+			config: { ...CHOICE_CONFIG, paymentMethods: ['card', 'ira_qcd'] },
+			pledge: async () => IRA_PLEDGE
+		});
+		actor.send({ type: 'SET_PROGRAM', programId: 'prg_water' });
+		actor.send({ type: 'SET_CUSTODIAN', custodian: '  Fidelity Investments ' });
+		actor.send({ type: 'SUBMIT' });
+		await settle();
+
+		expect(calls.quote).toEqual([]);
+		expect(calls.pledge).toEqual([
+			{
+				formId: 'frm_a8x2k9',
+				method: 'ira_qcd',
+				pledgeId: 'pledge-1',
+				amountMinor: 2500,
+				frequency: 'one_time',
+				coversFee: false,
+				custodian: 'Fidelity Investments',
+				email: 'donor@example.org',
+				firstName: 'Ada',
+				lastName: 'Lovelace',
+				consentedToContact: false,
+				programId: 'prg_water',
+				turnstileToken: 'tk_ready'
+			}
+		]);
+		expect(toState(actor.getSnapshot())).toMatchObject({
+			step: 'pledged',
+			phase: 'pending',
+			refused: false,
+			pledge: IRA_PLEDGE.pledge
+		});
+	});
+
+	it('sends the same pledge id again on the press after a failed save', async () => {
+		let answer: () => Promise<Quote> = () => Promise.reject(new TypeError('Failed to fetch'));
+		const { actor, calls } = onIraRail({ pledge: () => answer() });
+		actor.send({ type: 'SET_CUSTODIAN', custodian: 'Fidelity Investments' });
+		actor.send({ type: 'SUBMIT' });
+		await settle();
+		expect(actor.getSnapshot().value).toBe('failed');
+
+		answer = async () => IRA_PLEDGE;
+		actor.send({ type: 'RETRY' });
+		actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'tk_again' });
+		actor.send({ type: 'SUBMIT' });
+		await settle();
+
+		expect(calls.pledge.map((request) => request.pledgeId)).toEqual(['pledge-1', 'pledge-1']);
+		expect(actor.getSnapshot().matches({ pledged: 'pending' })).toBe(true);
+	});
+
+	it('mints a new pledge id for a changed request, and gives an earlier request its own again', async () => {
+		let answer: () => Promise<Quote> = () => Promise.reject(new TypeError('Failed to fetch'));
+		const { actor, calls } = onIraRail({ pledge: () => answer() });
+		const press = (custodian: string, token: string) => {
+			actor.send({ type: 'RETRY' });
+			actor.send({ type: 'SET_CUSTODIAN', custodian });
+			actor.send({ type: 'SET_TURNSTILE_TOKEN', token });
+			actor.send({ type: 'SUBMIT' });
+		};
+		actor.send({ type: 'SET_CUSTODIAN', custodian: 'Fidelity Investments' });
+		actor.send({ type: 'SUBMIT' });
+		await settle();
+		press('Charles Schwab', 'tk_2');
+		await settle();
+
+		answer = async () => IRA_PLEDGE;
+		press('Fidelity Investments', 'tk_3');
+		await settle();
+
+		expect(calls.pledge.map((request) => request.pledgeId)).toEqual([
+			'pledge-1',
+			'pledge-2',
+			'pledge-1'
+		]);
+		expect(actor.getSnapshot().matches({ pledged: 'pending' })).toBe(true);
+	});
+
+	it('refuses an answer carrying another pledge, and saves nothing new on the way', async () => {
+		const { actor } = onIraRail({
+			pledge: async () => ({
+				...IRA_PLEDGE,
+				pledge: { ...IRA_PLEDGE.pledge, id: 'pledge-other' } as NonNullable<Quote['pledge']>
+			})
+		});
+		actor.send({ type: 'SET_CUSTODIAN', custodian: 'Fidelity Investments' });
+		actor.send({ type: 'SUBMIT' });
+		await settle();
+
+		expect(actor.getSnapshot().value).toBe('failed');
+		expect(actor.getSnapshot().context.failure?.message).toBe(PLEDGE_UNSAVED);
+	});
+
+	// promises nothing about a second save: a Try again after a corrected field is a changed
+	// request under a fresh `pledgeId` (`pledgeId` in ./v1.ts), which the endpoint saves as its own.
+	const PLEDGE_UNSAVED = 'We couldn’t confirm your gift was saved. Try again.';
+
+	const ID_TAKEN = Object.assign(new Error('This gift reference is already in use.'), {
+		code: 'pledge_id_taken'
+	});
+
+	it('sends the save once more under a fresh id on a fresh token when the id is taken', async () => {
+		const answers: (() => Promise<Quote>)[] = [
+			() => Promise.reject(ID_TAKEN),
+			async () => savedUnder('pledge-2')
+		];
+		const { actor, calls } = onIraRail({ pledge: () => answers.shift()?.() ?? neverAnswers() });
+		actor.send({ type: 'SET_CUSTODIAN', custodian: 'Fidelity Investments' });
+		actor.send({ type: 'SUBMIT' });
+		await settle();
+		expect(calls.pledge).toHaveLength(1);
+
+		actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'tk_again' });
+		await settle();
+
+		expect(calls.pledge.map((request) => [request.pledgeId, request.turnstileToken])).toEqual([
+			['pledge-1', 'tk_ready'],
+			['pledge-2', 'tk_again']
+		]);
+		expect(toState(actor.getSnapshot())).toMatchObject({
+			step: 'pledged',
+			phase: 'pending',
+			pledge: { id: 'pledge-2' }
+		});
+		expect(actor.getSnapshot().context.pledgeId).toBe('pledge-2');
+	});
+
+	it('shows the generic failure on a second taken id, and sends the fresh id again on the next press', async () => {
+		let answer: () => Promise<Quote> = () => Promise.reject(ID_TAKEN);
+		const { actor, calls } = onIraRail({ pledge: () => answer() });
+		actor.send({ type: 'SET_CUSTODIAN', custodian: 'Fidelity Investments' });
+		actor.send({ type: 'SUBMIT' });
+		await settle();
+		actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'tk_2' });
+		await settle();
+
+		expect(calls.pledge).toHaveLength(2);
+		expect(actor.getSnapshot().value).toBe('failed');
+		expect(actor.getSnapshot().context.failure?.message).toBe(
+			'This gift was not started, and nothing was charged. Try again.'
+		);
+
+		// the id the refusal minted is the request's now, on every later send of it.
+		answer = () => Promise.reject(new TypeError('Failed to fetch'));
+		actor.send({ type: 'RETRY' });
+		actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'tk_3' });
+		actor.send({ type: 'SUBMIT' });
+		await settle();
+		expect(calls.pledge.map((request) => request.pledgeId)).toEqual([
+			'pledge-1',
+			'pledge-2',
+			'pledge-2'
+		]);
+	});
+
+	it('fails with nothing sent again when no fresh token arrives for the save under a fresh id', async () => {
+		const { actor, calls, clock } = onIraRail({ pledge: () => Promise.reject(ID_TAKEN) });
+		actor.send({ type: 'SET_CUSTODIAN', custodian: 'Fidelity Investments' });
+		actor.send({ type: 'SUBMIT' });
+		await settle();
+		clock.advance(PORT_TIMEOUT_MS);
+
+		expect(calls.pledge).toHaveLength(1);
+		expect(actor.getSnapshot().value).toBe('failed');
+		expect(actor.getSnapshot().context.failure?.message).toBe(
+			'This gift was not started, and nothing was charged. Try again.'
+		);
+	});
+
+	it('says the gift may be saved when a save goes unanswered past the timeout', async () => {
+		const { actor, clock } = onIraRail({ pledge: neverAnswers });
+		actor.send({ type: 'SET_CUSTODIAN', custodian: 'Fidelity Investments' });
+		actor.send({ type: 'SUBMIT' });
+		clock.advance(PORT_TIMEOUT_MS);
+
+		expect(actor.getSnapshot().value).toBe('failed');
+		expect(actor.getSnapshot().context.failure?.message).toBe(PLEDGE_UNSAVED);
+	});
+
+	it('says the gift may be saved when the save never heard back, and keeps the server’s own refusal', async () => {
+		const lost = Object.assign(new Error('This donation could not be started.'), {
+			unanswered: true
+		});
+		const first = onIraRail({ pledge: () => Promise.reject(lost) });
+		first.actor.send({ type: 'SET_CUSTODIAN', custodian: 'Fidelity Investments' });
+		first.actor.send({ type: 'SUBMIT' });
+		await settle();
+		expect(first.actor.getSnapshot().context.failure?.message).toBe(PLEDGE_UNSAVED);
+
+		const refused = Object.assign(new Error('We couldn’t save this gift. Try again in a moment.'), {
+			code: 'internal_error'
+		});
+		const second = onIraRail({ pledge: () => Promise.reject(refused) });
+		second.actor.send({ type: 'SET_CUSTODIAN', custodian: 'Fidelity Investments' });
+		second.actor.send({ type: 'SUBMIT' });
+		await settle();
+		expect(second.actor.getSnapshot().context.failure?.message).toBe(
+			'We couldn’t save this gift. Try again in a moment.'
+		);
+	});
+
+	/** the IRA (QCD) pending screen, its pledge saved. */
+	async function pending(options: HarnessOptions = {}) {
+		const h = onIraRail({ pledge: async () => IRA_PLEDGE, ...options });
+		h.actor.send({ type: 'SET_CUSTODIAN', custodian: 'Fidelity Investments' });
+		h.actor.send({ type: 'SUBMIT' });
+		await settle();
+		return h;
+	}
+
+	it('tells the organisation on the press, and thanks the donor once it is told', async () => {
+		const { actor, calls } = await pending();
+		actor.send({ type: 'TELL_ORGANIZATION' });
+		expect(toState(actor.getSnapshot())).toMatchObject({ step: 'pledged', phase: 'telling' });
+		await settle();
+
+		expect(calls.told).toEqual([{ formId: 'frm_a8x2k9', pledgeId: 'pledge-1' }]);
+		expect(toState(actor.getSnapshot())).toMatchObject({
+			step: 'pledged',
+			phase: 'told',
+			refused: false
+		});
+	});
+
+	it('stands on the instructions with the refusal when the press fails, and a second press tells', async () => {
+		let answer: () => Promise<void> = () => Promise.reject(new TypeError('Failed to fetch'));
+		const { actor, calls } = await pending({ told: () => answer() });
+		actor.send({ type: 'TELL_ORGANIZATION' });
+		await settle();
+		expect(toState(actor.getSnapshot())).toMatchObject({
+			step: 'pledged',
+			phase: 'pending',
+			refused: true
+		});
+
+		answer = () => Promise.resolve();
+		actor.send({ type: 'TELL_ORGANIZATION' });
+		await settle();
+		expect(calls.told).toHaveLength(2);
+		expect(toState(actor.getSnapshot())).toMatchObject({ phase: 'told', refused: false });
+	});
+
+	it('lands back on the review step with the custodian marked when the endpoint refuses it', async () => {
+		const refusal = Object.assign(new Error('Enter the custodian holding your IRA.'), {
+			code: 'pledge_detail_invalid',
+			field: 'custodian'
+		});
+		const { actor } = onIraRail({ pledge: () => Promise.reject(refusal) });
+		actor.send({ type: 'SET_CUSTODIAN', custodian: 'Fidelity Investments' });
+		actor.send({ type: 'SUBMIT' });
+		await settle();
+
+		expect(toState(actor.getSnapshot())).toMatchObject({ step: 'give', custodianRefused: true });
+
+		actor.send({ type: 'SET_CUSTODIAN', custodian: 'Fidelity Investments Inc.' });
+		expect(toState(actor.getSnapshot())).toMatchObject({ step: 'give', custodianRefused: false });
+	});
+
+	const NOT_FOUND = Object.assign(new Error('This gift isn’t saved here.'), {
+		code: 'pledge_not_found'
+	});
+
+	it('saves the pledge again under a new id on the press after one the endpoint did not find, and tells on the next', async () => {
+		let told: () => Promise<void> = () => Promise.reject(NOT_FOUND);
+		const resaved = {
+			...IRA_PLEDGE.pledge,
+			id: 'pledge-2',
+			reference: 'CFCP-IRA-8Z3P'
+		} as NonNullable<Quote['pledge']>;
+		let saved = IRA_PLEDGE;
+		const { actor, calls } = await pending({ told: () => told(), pledge: async () => saved });
+		actor.send({ type: 'TELL_ORGANIZATION' });
+		await settle();
+		expect(toState(actor.getSnapshot())).toMatchObject({
+			phase: 'pending',
+			refused: true,
+			resave: 'needed'
+		});
+
+		told = () => Promise.resolve();
+		saved = { ...IRA_PLEDGE, pledge: resaved };
+		actor.send({ type: 'TELL_ORGANIZATION' });
+		expect(toState(actor.getSnapshot())).toMatchObject({ phase: 'telling' });
+		expect(calls.pledge).toHaveLength(1);
+		actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'tk_again' });
+		await settle();
+
+		expect(calls.pledge[1]).toEqual({
+			...calls.pledge[0],
+			pledgeId: 'pledge-2',
+			turnstileToken: 'tk_again'
+		});
+		expect(calls.told).toEqual([{ formId: 'frm_a8x2k9', pledgeId: 'pledge-1' }]);
+		expect(toState(actor.getSnapshot())).toMatchObject({
+			phase: 'pending',
+			refused: false,
+			resave: 'done',
+			pledge: resaved
+		});
+
+		actor.send({ type: 'TELL_ORGANIZATION' });
+		await settle();
+		expect(calls.pledge).toHaveLength(2);
+		expect(calls.told).toEqual([
+			{ formId: 'frm_a8x2k9', pledgeId: 'pledge-1' },
+			{ formId: 'frm_a8x2k9', pledgeId: 'pledge-2' }
+		]);
+		expect(toState(actor.getSnapshot())).toMatchObject({ phase: 'told', refused: false });
+		expect(toState(actor.getSnapshot())).not.toHaveProperty('resave');
+	});
+
+	it('stands on the instructions with the refusal when that second save fails, and tries it again', async () => {
+		let save: () => Promise<Quote> = async () => IRA_PLEDGE;
+		const { actor, calls, clock } = await pending({
+			told: () => Promise.reject(NOT_FOUND),
+			pledge: () => save()
+		});
+		actor.send({ type: 'TELL_ORGANIZATION' });
+		await settle();
+
+		save = () => Promise.reject(new TypeError('Failed to fetch'));
+		actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'tk_2' });
+		actor.send({ type: 'TELL_ORGANIZATION' });
+		await settle();
+		expect(toState(actor.getSnapshot())).toMatchObject({ phase: 'pending', refused: true });
+		expect(calls.told).toHaveLength(1);
+
+		// no fresh token within the wait: nothing is sent, and the refusal stands.
+		actor.send({ type: 'TELL_ORGANIZATION' });
+		clock.advance(PORT_TIMEOUT_MS);
+		expect(toState(actor.getSnapshot())).toMatchObject({ phase: 'pending', refused: true });
+		expect(calls.pledge).toHaveLength(2);
+
+		save = async () => savedUnder('pledge-2');
+		actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'tk_3' });
+		actor.send({ type: 'TELL_ORGANIZATION' });
+		await settle();
+		// every send of the lost pledge names the one id its refusal minted.
+		expect(calls.pledge.map((request) => request.pledgeId)).toEqual([
+			'pledge-1',
+			'pledge-2',
+			'pledge-2'
+		]);
+		expect(toState(actor.getSnapshot())).toMatchObject({
+			phase: 'pending',
+			refused: false,
+			resave: 'done'
+		});
+		expect(calls.told).toHaveLength(1);
+	});
+
+	it('waits as long as the donor is solving an interactive challenge for that second save, then sends', async () => {
+		const answers = [IRA_PLEDGE, savedUnder('pledge-2')];
+		const { actor, calls, clock } = await pending({
+			told: () => Promise.reject(NOT_FOUND),
+			pledge: async () => answers.shift() ?? IRA_PLEDGE
+		});
+		actor.send({ type: 'TELL_ORGANIZATION' });
+		await settle();
+
+		actor.send({ type: 'TELL_ORGANIZATION' });
+		actor.send({ type: 'SET_CHALLENGE_INTERACTIVE', interactive: true });
+		clock.advance(PORT_TIMEOUT_MS * 3);
+		expect(toState(actor.getSnapshot())).toMatchObject({ phase: 'telling' });
+
+		actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'tk_solved' });
+		await settle();
+		expect(calls.pledge.map((request) => request.turnstileToken)).toEqual([
+			'tk_ready',
+			'tk_solved'
+		]);
+		expect(toState(actor.getSnapshot())).toMatchObject({ phase: 'pending', resave: 'done' });
+	});
+
+	it('runs that wait again from when the challenge leaves interactive mode without a token', async () => {
+		const { actor, calls, clock } = await pending({ told: () => Promise.reject(NOT_FOUND) });
+		actor.send({ type: 'TELL_ORGANIZATION' });
+		await settle();
+
+		actor.send({ type: 'TELL_ORGANIZATION' });
+		actor.send({ type: 'SET_CHALLENGE_INTERACTIVE', interactive: true });
+		clock.advance(PORT_TIMEOUT_MS * 2);
+		actor.send({ type: 'SET_CHALLENGE_INTERACTIVE', interactive: false });
+		clock.advance(PORT_TIMEOUT_MS - 1);
+		expect(toState(actor.getSnapshot())).toMatchObject({ phase: 'telling' });
+
+		clock.advance(1);
+		expect(toState(actor.getSnapshot())).toMatchObject({
+			phase: 'pending',
+			refused: true,
+			resave: 'needed'
+		});
+		expect(calls.pledge).toHaveLength(1);
+	});
+
+	it('stands on the refusal at once for that second save where the challenge cannot be shown', async () => {
+		const { actor, calls } = await pending({ told: () => Promise.reject(NOT_FOUND) });
+		actor.send({ type: 'TELL_ORGANIZATION' });
+		await settle();
+
+		actor.send({
+			type: 'CHALLENGE_UNAVAILABLE',
+			failure: { message: 'The security check could not be shown.', fix: 'Check the sitekey.' }
+		});
+		actor.send({ type: 'TELL_ORGANIZATION' });
+		expect(toState(actor.getSnapshot())).toMatchObject({
+			phase: 'pending',
+			refused: true,
+			resave: 'needed'
+		});
+		// the report stands, since no token is coming: every press after it is refused as quickly.
+		actor.send({ type: 'TELL_ORGANIZATION' });
+		expect(toState(actor.getSnapshot())).toMatchObject({ phase: 'pending', refused: true });
+		expect(calls.pledge).toHaveLength(1);
+	});
+
+	it('sends that second save once more under a fresh id when its id is taken, and stands on the refusal after two', async () => {
+		const answers: (() => Promise<Quote>)[] = [
+			async () => IRA_PLEDGE,
+			() => Promise.reject(ID_TAKEN),
+			async () => savedUnder('pledge-3'),
+			() => Promise.reject(ID_TAKEN),
+			() => Promise.reject(ID_TAKEN)
+		];
+		const { actor, calls } = await pending({
+			told: () => Promise.reject(NOT_FOUND),
+			pledge: () => answers.shift()?.() ?? neverAnswers()
+		});
+		const press = async (token: string) => {
+			actor.send({ type: 'TELL_ORGANIZATION' });
+			actor.send({ type: 'SET_TURNSTILE_TOKEN', token });
+			await settle();
+		};
+		actor.send({ type: 'TELL_ORGANIZATION' });
+		await settle();
+
+		await press('tk_2');
+		expect(toState(actor.getSnapshot())).toMatchObject({ phase: 'telling' });
+		actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'tk_3' });
+		await settle();
+		expect(calls.pledge.map((request) => request.pledgeId)).toEqual([
+			'pledge-1',
+			'pledge-2',
+			'pledge-3'
+		]);
+		expect(toState(actor.getSnapshot())).toMatchObject({
+			resave: 'done',
+			pledge: { id: 'pledge-3' }
+		});
+
+		// lost again, and this time both sends are refused.
+		actor.send({ type: 'TELL_ORGANIZATION' });
+		await settle();
+		await press('tk_4');
+		actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'tk_5' });
+		await settle();
+		expect(calls.pledge).toHaveLength(5);
+		expect(toState(actor.getSnapshot())).toMatchObject({
+			phase: 'pending',
+			refused: true,
+			resave: 'needed'
+		});
+	});
+
+	it('tells nobody when that second save answers another pledge or none at all', async () => {
+		let save: () => Promise<Quote> = async () => IRA_PLEDGE;
+		const { actor, calls, clock } = await pending({
+			told: () => Promise.reject(NOT_FOUND),
+			pledge: () => save()
+		});
+		actor.send({ type: 'TELL_ORGANIZATION' });
+		await settle();
+
+		save = async () => ({
+			...IRA_PLEDGE,
+			pledge: { ...IRA_PLEDGE.pledge, id: 'pledge-other' } as NonNullable<Quote['pledge']>
+		});
+		actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'tk_2' });
+		actor.send({ type: 'TELL_ORGANIZATION' });
+		await settle();
+		expect(toState(actor.getSnapshot())).toMatchObject({ phase: 'pending', refused: true });
+		expect(toState(actor.getSnapshot())).toMatchObject({ pledge: IRA_PLEDGE.pledge });
+
+		save = neverAnswers;
+		actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'tk_3' });
+		actor.send({ type: 'TELL_ORGANIZATION' });
+		clock.advance(PORT_TIMEOUT_MS);
+		expect(toState(actor.getSnapshot())).toMatchObject({ phase: 'pending', refused: true });
+		expect(calls.pledge).toHaveLength(3);
+		expect(calls.told).toHaveLength(1);
+	});
+
+	it('stands on the instructions with the refusal when the press goes unanswered', async () => {
+		const { actor, clock } = await pending({ told: neverAnswers });
+		actor.send({ type: 'TELL_ORGANIZATION' });
+		clock.advance(PORT_TIMEOUT_MS);
+		expect(toState(actor.getSnapshot())).toMatchObject({ phase: 'pending', refused: true });
+	});
+});
+
+describe('a stock pledge', () => {
+	const STOCK_CONFIG: FormConfig = { ...CONFIG, paymentMethods: ['card', 'stock'] };
+	const STOCK_PLEDGE: Quote = {
+		paymentToken: 'pledge-1',
+		feeMinor: 0,
+		totalMinor: 0,
+		pledge: {
+			id: 'pledge-1',
+			method: 'stock',
+			reference: 'CFCP-AAPL-7Q2D',
+			receiptTo: 'donor@example.org',
+			ticker: 'AAPL',
+			shares: '50',
+			deliverTo: 'Harbor Street Securities',
+			dtcNumber: '0164',
+			accountNumber: 'Z12-345678',
+			accountName: 'Acme Relief Fund'
+		}
+	};
+
+	/** the details step filled in, with a token minted, on a form taking stock. */
+	function detailsGiven(options: HarnessOptions = {}) {
+		const h = atDetails({ config: STOCK_CONFIG, pledge: async () => STOCK_PLEDGE, ...options });
+		h.actor.send({
+			type: 'SET_CONTACT',
+			email: 'donor@example.org',
+			firstName: 'Ada',
+			lastName: 'Lovelace'
+		});
+		h.actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'tk_ready' });
+		return h;
+	}
+
+	it('saves the shares of the ticker, with no amount and no fee, and shows its pending screen', async () => {
+		const { actor, calls } = detailsGiven();
+		actor.send({ type: 'PLEDGE_STOCK', ticker: 'AAPL', shares: '50' });
+		await settle();
+
+		expect(calls.quote).toEqual([]);
+		expect(calls.pledge).toEqual([
+			{
+				formId: 'frm_a8x2k9',
+				method: 'stock',
+				pledgeId: 'pledge-1',
+				ticker: 'AAPL',
+				shares: '50',
+				frequency: 'one_time',
+				email: 'donor@example.org',
+				firstName: 'Ada',
+				lastName: 'Lovelace',
+				consentedToContact: false,
+				turnstileToken: 'tk_ready'
+			}
+		]);
+		expect(toState(actor.getSnapshot())).toMatchObject({
+			step: 'pledged',
+			phase: 'pending',
+			pledge: STOCK_PLEDGE.pledge
+		});
+	});
+
+	it('saves nothing on a form that takes no stock', async () => {
+		const { actor, calls } = detailsGiven({ config: CONFIG });
+		actor.send({ type: 'PLEDGE_STOCK', ticker: 'AAPL', shares: '50' });
+		await settle();
+
+		expect(calls.pledge).toEqual([]);
+		expect(actor.getSnapshot().value).toBe('details');
+	});
+
+	it('saves nothing before the details a receipt needs are given', async () => {
+		const { actor, calls } = atDetails({ config: STOCK_CONFIG });
+		actor.send({ type: 'PLEDGE_STOCK', ticker: 'AAPL', shares: '50' });
+		await settle();
+
+		expect(calls.pledge).toEqual([]);
+		expect(actor.getSnapshot().value).toBe('details');
+	});
+
+	it('goes back to the details step on a Try again, and saves under the same id', async () => {
+		let answer: () => Promise<Quote> = () => Promise.reject(new TypeError('Failed to fetch'));
+		const { actor, calls } = detailsGiven({ pledge: () => answer() });
+		actor.send({ type: 'PLEDGE_STOCK', ticker: 'AAPL', shares: '50' });
+		await settle();
+		expect(actor.getSnapshot().value).toBe('failed');
+
+		actor.send({ type: 'RETRY' });
+		expect(actor.getSnapshot().value).toBe('details');
+
+		answer = async () => STOCK_PLEDGE;
+		actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'tk_again' });
+		actor.send({ type: 'PLEDGE_STOCK', ticker: 'AAPL', shares: '50' });
+		await settle();
+		expect(calls.pledge.map((request) => request.pledgeId)).toEqual(['pledge-1', 'pledge-1']);
+		expect(actor.getSnapshot().matches({ pledged: 'pending' })).toBe(true);
+	});
+
+	// the payment box reports a rail on a change only, so a card row left open is not said again.
+	it('stands the donor back on the rail the stock save displaced once it fails, so the review press pays by it', async () => {
+		const { actor, calls } = detailsGiven({
+			pledge: () => Promise.reject(new TypeError('Failed to fetch'))
+		});
+		actor.send({ type: 'CONTINUE' });
+		actor.send({ type: 'SET_METHOD', method: 'card' });
+		actor.send({ type: 'GO_TO_STEP', step: 'details' });
+		actor.send({ type: 'PLEDGE_STOCK', ticker: 'AAPL', shares: '50' });
+		await settle();
+		actor.send({ type: 'RETRY' });
+
+		expect(actor.getSnapshot().context.payerDraft.method).toBe('card');
+
+		actor.send({ type: 'CONTINUE' });
+		actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'tk_again' });
+		actor.send({ type: 'SUBMIT' });
+		await settle();
+		expect(calls.pledge).toHaveLength(1);
+		expect(calls.quote).toMatchObject([{ method: 'card', turnstileToken: 'tk_again' }]);
 	});
 });

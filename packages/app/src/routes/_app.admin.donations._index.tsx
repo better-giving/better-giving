@@ -4,23 +4,40 @@ import { PageState } from '@better-giving/operator/components/shell/PageState';
 import { href, Link } from 'react-router';
 import { ScreenHeading } from '$lib/admin/crumbs';
 import { GiftsTable } from '$lib/admin/donations/gifts-table';
+import { MarkedReceived, WaitingCard } from '$lib/admin/donations/waiting-pledges';
 import { screenTitle } from '$lib/admin/screen-title';
+import { formPress } from '$lib/admin/unreached';
 import { formatMinor } from '$lib/donations/money';
+import {
+	MARK_RECEIVED_FORM_ID,
+	MARK_RECEIVED_INPUT,
+	STALE_PLEDGE
+} from '$lib/donations/pledge-forms';
+import { pledgedPhrase } from '$lib/donations/pledged';
+import { FORM_CURRENCY, readAmount } from '$lib/forms/amounts';
+import { defineForm, type RejectionStatus } from '$lib/forms/definition';
+import { readAccountingDate } from '$lib/ledger/input-schema';
 import { MATCH_FILTERS, type MatchFilter } from '$lib/matching/status';
+import { invalid, parseForm, submittedForm } from '$lib/server/conform';
 import { loadFailed } from '$lib/server/db/load-failure';
+import { type WaitingPledges, listWaitingPledges } from '$lib/server/donations/pledges';
 import { DONATION_LIST_LIMIT, listDonations } from '$lib/server/donations/queries';
-import { isInHand, RAIL_LABELS } from '$lib/server/donations/rails';
+import { isDatedByDay, RAIL_LABELS } from '$lib/server/donations/rails';
+import { receivePledge, sendReceivedPledgeMail } from '$lib/server/donations/receive-pledge';
 import { readTrackingIds } from '$lib/server/donations/tracking-ids';
+import { createEmailProvider } from '$lib/server/email/factory';
+import { giftLinkOrigin } from '$lib/server/matching/links';
 import { readNoteStandings } from '$lib/server/pages/messages';
 import { createPaymentProviders } from '$lib/server/payments/factory';
 import { database, platform } from '../context';
 import type { Route } from './+types/_app.admin.donations._index';
 
-// the gifts a deployment has taken: a `loader` and nothing else. there is no write on this screen —
-// a gift given online is recorded by the public endpoint under `/api/v1` and settled by the payment
+// the gifts a deployment has taken, and the stock and IRA (QCD) pledges still waiting to arrive. a
+// gift given online is recorded by the public endpoint under `/api/v1` and settled by the payment
 // processor's webhook, and one that arrived in hand is added on ./_app.admin.donations.new.tsx,
-// which this screen links to. /admin reads the result of all three. the way out of the list is
-// ./_app.admin.donations.export.tsx, which this screen links to as well.
+// which this screen links to. the one write here is Mark received, which turns a waiting pledge
+// into its gift (`receivePledge` in $lib/server/donations/receive-pledge.ts). the way out of the
+// list is ./_app.admin.donations.export.tsx, which this screen links to as well.
 //
 // this file is deliberately thin. what a gift's state is lives in
 // `$lib/server/donations/queries.ts`, what each state is called lives in
@@ -56,8 +73,12 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 	let donations: Awaited<ReturnType<typeof listDonations>>['donations'];
 	let hasMore: boolean;
 	let noteStanding: Awaited<ReturnType<typeof readNoteStandings>>;
+	let waiting: WaitingPledges;
 	try {
-		({ donations, hasMore } = await listDonations(db, match === null ? {} : { match }));
+		[{ donations, hasMore }, waiting] = await Promise.all([
+			listDonations(db, match === null ? {} : { match }),
+			listWaitingPledges(db)
+		]);
 		noteStanding = await readNoteStandings(
 			db,
 			donations.filter((d) => d.note !== null).map((d) => d.id)
@@ -85,11 +106,12 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 			// goes and the stored value is an integer number of minor units, so a component
 			// rendering `totalMinor` renders a gift a hundred times its size.
 			amount: formatMinor(d.totalMinor, d.currency),
-			// money arriving in hand is stored as the day typed, at that day's UTC midnight
-			// (`recordGiftInHand` in `$lib/server/donations/record-in-hand.ts`), so its day is UTC's
-			// and crosses as the ISO day. every other gift is an instant, crossed whole and written
+			// money arriving in hand and a received pledge are stored as the day typed, at that day's
+			// UTC midnight (`recordGiftInHand` in `$lib/server/donations/record-in-hand.ts`, `receivePledge`
+			// in `$lib/server/donations/receive-pledge.ts`), so its day is UTC's and crosses as the ISO
+			// day. every other gift is an instant, crossed whole and written
 			// in the viewer's zone by `LocalTime` ($lib/admin/viewer-time.react.tsx).
-			...(isInHand(d.rail?.method)
+			...(isDatedByDay(d.rail?.method)
 				? { receivedOn: d.receivedAt.toISOString().slice(0, 10) }
 				: { receivedAt: d.receivedAt.toISOString() }),
 			source: d.source,
@@ -157,9 +179,103 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 		hasMore,
 		// the filter the rows were read under, so the select shows it and the empty row says which
 		// emptiness this is.
-		match
+		match,
+		// the "Waiting to arrive" card, drawn only while `total` is above zero. a pledge is never a row
+		// above: it becomes one at Mark received. what was pledged crosses as its words, since a stock
+		// pledge's share count is millionths and an IRA (QCD) pledge's figure minor units.
+		waiting: {
+			total: waiting.total,
+			pledges: waiting.pledges.map((p) => ({
+				id: p.id,
+				method: p.pledged.method,
+				donorName: p.donorName,
+				donorEmail: p.donorEmail,
+				pledged: pledgedPhrase(p.pledged),
+				reference: p.reference,
+				// "Donor says it’s sent" where the donor pressed the button saying so, "Instructions
+				// shown" while they have only been shown where to send it.
+				told: p.toldAt !== null
+			}))
+		}
 	};
 }
+
+/**
+ * Mark received: one waiting pledge recorded as the gift it became, at the value and on the day
+ * entered, and the donor's receipt sent after the response.
+ *
+ * **the request body is read exactly once, here.** any signed-in staff member may press it, as any
+ * may Add donation.
+ */
+export async function action({ context, request }: Route.ActionArgs) {
+	const body = await request.formData();
+	submittedForm(body, [MARK_RECEIVED_FORM_ID]);
+	const submission = parseForm(body, MARK_RECEIVED_FORM);
+	if (!submission.ok) return invalid(400, submission.reject());
+
+	// the same two reads the schema's checks already made, read for the value this time.
+	const money = readAmount(submission.value.value, FORM_CURRENCY);
+	const dated = readAccountingDate(submission.value.received_on);
+	if (money.minor === null || dated.at === null) {
+		// unreachable past the schema, which refuses on exactly these two reads.
+		return invalid(400, submission.reject({ formErrors: [STALE_PLEDGE] }));
+	}
+
+	const db = context.get(database);
+	const received = await receivePledge(db, {
+		pledgeId: submission.value.pledge_id,
+		amountMinor: money.minor,
+		dated: dated.at
+	});
+	const { env, deferred } = context.get(platform);
+	const mailDeps = () => ({
+		db,
+		email: createEmailProvider(env),
+		giftOrigin: giftLinkOrigin(env, new URL(request.url))
+	});
+	if (!received.ok) {
+		// the mail an earlier press may not have sent, after the response like the first press's:
+		// `sendReceipt` claims the gift's stamp, so a receipt that went is not sent again.
+		if (received.reason === 'already_received') {
+			deferred.waitUntil(sendReceivedPledgeMail(mailDeps(), received.gift));
+		}
+		const [status, sentence] = MARK_RECEIVED_REFUSALS[received.reason];
+		return invalid(status, submission.reject({ formErrors: [sentence] }));
+	}
+
+	// after the response, through the process's tracker: the gift is in the books whatever the mail
+	// does, and `sendReceipt` claims the gift's stamp, so a receipt goes once.
+	deferred.waitUntil(sendReceivedPledgeMail(mailDeps(), received.gift));
+	// the gift in words for the screen's line (`MarkedReceived`), as Add donation's outcome states one.
+	return {
+		received: {
+			pledgeId: submission.value.pledge_id,
+			amount: formatMinor(money.minor, FORM_CURRENCY),
+			donorName: received.gift.donorName,
+			receivedOn: submission.value.received_on
+		}
+	};
+}
+
+/**
+ * a Mark received whose request never reached the server, answered in the browser as the dialog's
+ * refusal rather than with the error boundary ($lib/admin/unreached.ts).
+ */
+export function clientAction({ request, serverAction }: Route.ClientActionArgs) {
+	return formPress(request, serverAction);
+}
+
+const MARK_RECEIVED_FORM = defineForm({ id: MARK_RECEIVED_FORM_ID, schema: MARK_RECEIVED_INPUT });
+
+/** what each refusal of Mark received answers, with the sentence over the dialog. */
+const MARK_RECEIVED_REFUSALS = {
+	not_found: [404, 'This pledge is no longer here. Reload the page.'],
+	already_received: [
+		409,
+		'This gift was already marked received, so nothing was recorded again. Reload the page to see it in the list.'
+	],
+	write_failed: [500, 'The gift couldn’t be recorded. Try again; a second press records it once.']
+} as const satisfies Record<string, readonly [RejectionStatus, string]>;
 
 // what this page owes is that every gift a deployment has taken can be read: who gave, how much,
 // when, what state it is in, what they wrote, and where its employer match stands.
@@ -186,6 +302,8 @@ export default function Donations({ loaderData }: Route.ComponentProps) {
 				}
 				secondary={HEADING_LINKS}
 			/>
+			<MarkedReceived />
+			{loaderData.waiting.total > 0 ? <WaitingCard waiting={loaderData.waiting} /> : null}
 			{none ? (
 				// the heading's Add donation is the way in, so the state offers no second one.
 				<PageState
