@@ -25,23 +25,20 @@ export type PledgeNotice = {
 /** the benefits panel's words. */
 export type Benefits = { readonly title: string; readonly body: string; readonly fine: string };
 
-const NOT_ADVICE =
-	'This is general information, not tax advice. Talk to your tax adviser about your own situation.';
-
 /**
- * each pledge rail's benefits panel, as the design package states it word for word: a change to these
- * claims is cleared by the PM before it merges, and no figure is stated in either.
+ * each pledge rail's benefits panel, word for word as the PM and legal approved it: a claim changes
+ * only with their approval, and neither panel states a figure.
  */
 export const BENEFITS: Readonly<Record<PledgeRail, Benefits>> = {
 	stock: {
 		title: 'Benefits of donating appreciated stock',
-		body: 'Give shares you have held for more than a year and you may deduct their full market value, without paying the capital gains tax you would owe if you sold them.',
-		fine: NOT_ADVICE
+		body: 'If you itemize and give shares you have held for more than a year, you may be able to deduct their market value on the day of the gift, and you generally avoid the capital gains tax you would owe if you sold them. Deduction limits apply.',
+		fine: 'This is general information, not tax advice. Talk to your tax adviser about your own situation.'
 	},
 	ira_qcd: {
 		title: 'Benefits of giving from an IRA',
-		body: 'If you are 70½ or older, you can give up to the annual QCD limit straight from your IRA. It counts toward your required minimum distribution and isn’t added to your taxable income.',
-		fine: NOT_ADVICE
+		body: 'If you are 70½ or older, you can give up to the IRS yearly limit from your traditional IRA. Your IRA custodian must pay us directly, not you and not a donor-advised fund. It can count toward any required minimum distribution and isn’t added to your taxable income (you can’t also deduct it).',
+		fine: 'This is general information, not tax advice. Talk to your tax adviser or IRA custodian about your own situation.'
 	}
 };
 

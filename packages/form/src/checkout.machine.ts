@@ -368,10 +368,17 @@ export type CheckoutContext = {
 	/** the last told press did not reach the organisation, until one does. */
 	readonly toldRefused: boolean;
 	/**
-	 * the last told press was refused `pledge_not_found`: the endpoint holds no pledge under
-	 * `pledgeId`, so the next press saves it again before it tells. until a save answers the pledge.
+	 * where the pledge stands after a told press was refused `pledge_not_found`: `needed` while the
+	 * endpoint holds nothing under `pledgeId` (a fresh one, minted by the refusal), so the next press
+	 * saves the same request again instead of telling, and `done` once that save answered, until the
+	 * next press. `null` on every other pledge.
 	 */
-	readonly pledgeLost: boolean;
+	readonly pledgeResave: 'needed' | 'done' | null;
+	/**
+	 * the save in flight was refused `pledge_id_taken` once and is being sent under a fresh id, so a
+	 * second refusal is a failure rather than another id. cleared by the press that starts a save.
+	 */
+	readonly pledgeIdRetaken: boolean;
 };
 
 /** a stock pledge's ticker and shares, as `StockPledgeRequest` in ./v1.ts carries them. */
@@ -1355,8 +1362,24 @@ export const checkoutMachine = setup({
 			);
 		},
 
-		/** the last told press was refused `pledge_not_found`, so the next one saves the pledge first. */
-		pledgeIsLost: ({ context }) => context.pledgeLost,
+		/** the last told press was refused `pledge_not_found`, so the next one saves the pledge instead. */
+		pledgeIsLost: ({ context }) => context.pledgeResave === 'needed',
+
+		/**
+		 * a pledge save refused because its id names something else, for the first time on this save,
+		 * which the endpoint's own way back answers with one more send under a fresh id
+		 * (`pledge_id_taken` in ./v1.ts).
+		 */
+		retakesPledgeId: ({ context, event }) =>
+			'error' in event && errorCode(event.error) === 'pledge_id_taken' && !context.pledgeIdRetaken,
+
+		/** a pledge save refused because its id names something else, on the send under a fresh one. */
+		pledgeIdIsTaken: ({ event }) =>
+			'error' in event && errorCode(event.error) === 'pledge_id_taken',
+
+		/** a told press refused because the endpoint holds no pledge under its id. */
+		toldFindsNoPledge: ({ event }) =>
+			'error' in event && errorCode(event.error) === 'pledge_not_found',
 
 		/** the press was a pledge's save, so an answer that is not its pledge is no pledge at all. */
 		savesPledge: ({ context }) => context.payer !== null && isPledgeRail(context.payer.method),
@@ -1511,12 +1534,34 @@ export const checkoutMachine = setup({
 			heldChallenge: null
 		}),
 
-		/** a told press that did not reach the organisation, for whatever reason. */
-		refuseTold: assign({ toldRefused: true }),
+		/**
+		 * a told press that did not reach the organisation, for whatever reason. a resave still owed
+		 * stays owed; one that was made has been said, and the refusal is what stands now.
+		 */
+		refuseTold: assign({
+			toldRefused: true,
+			pledgeResave: ({ context }) => (context.pledgeResave === 'needed' ? 'needed' : null)
+		}),
+
+		/**
+		 * a fresh id for the pledge request in flight, which every later send of that same request
+		 * names (`pledgeIds` on the context): the endpoint holds nothing under the old one, or holds
+		 * something that is not this pledge.
+		 */
+		remintPledgeId: assign(({ context }) => {
+			const ports = context.ports.pledges;
+			if (context.payer === null || ports === undefined) {
+				throw new Error('unreachable: a pledge id is minted only for a pledge being saved');
+			}
+			const pledgeId = ports.id();
+			const key = pledgeRequestKey(context, context.payer);
+			return { pledgeId, pledgeIds: { ...context.pledgeIds, [key]: pledgeId } };
+		}),
 
 		/** the one place a donor draft becomes the payer an intent is minted for. */
 		commitPayer: assign({
-			payer: ({ context }) => completePayer(context.payerDraft, context.config)
+			payer: ({ context }) => completePayer(context.payerDraft, context.config),
+			pledgeIdRetaken: false
 		}),
 
 		/**
@@ -1664,7 +1709,8 @@ export const checkoutMachine = setup({
 		stock: null,
 		custodianRefused: false,
 		toldRefused: false,
-		pledgeLost: false
+		pledgeResave: null,
+		pledgeIdRetaken: false
 	}),
 	// four reports from surfaces that resolve on their own schedule. none of them is a step in the
 	// flow and none moves it from here, so all four are accepted wherever the machine happens to be.
@@ -2199,6 +2245,27 @@ export const checkoutMachine = setup({
 		},
 
 		/**
+		 * a pledge save refused `pledge_id_taken`, about to be sent once more under the fresh id the
+		 * refusal minted, waiting on a token it may spend: the refused send spent the last one, and the
+		 * widget is reset on the way in (`#start` in ./element.ts). nothing was saved, so a wait that
+		 * runs out ends on `failed` with nothing to undo.
+		 */
+		retaking: {
+			always: { guard: 'tokenIsFresh', target: 'quoting' },
+			after: {
+				portTimeout: {
+					target: 'failed',
+					actions: assign({
+						failure: (): Failure => ({
+							message: GENERIC_FAILURE,
+							fix: `No fresh challenge token arrived within ${PORT_TIMEOUT_MS}ms to send the pledge again under a fresh \`pledgeId\`, so nothing was saved.`
+						})
+					})
+				}
+			}
+		},
+
+		/**
 		 * the first beat of the press: the server mints the intent and names the real fee.
 		 *
 		 * there is no `SUBMIT` handler here, and that absence is what drops a second press: it
@@ -2270,6 +2337,21 @@ export const checkoutMachine = setup({
 					}
 				],
 				onError: [
+					{
+						guard: 'retakesPledgeId',
+						target: 'retaking',
+						actions: ['remintPledgeId', assign({ pledgeIdRetaken: true })]
+					},
+					{
+						guard: 'pledgeIdIsTaken',
+						target: 'failed',
+						actions: assign({
+							failure: (): Failure => ({
+								message: GENERIC_FAILURE,
+								fix: 'POST /api/v1/forms/:id/donations refused both the `pledgeId` and the fresh one minted after it as `pledge_id_taken`, so nothing was saved. Check that `pledges.id` mints a new UUID on every call.'
+							})
+						})
+					},
 					// a refusal a donor fixes on a step of the form skips the failure screen and lands
 					// them on that step, where the refusal is stated.
 					{
@@ -2674,21 +2756,23 @@ export const checkoutMachine = setup({
 		 *
 		 * a told press that fails goes back to `pending` with the refusal standing, and the press is
 		 * the same event again. the pledge is saved either way, which is what the refusal says, except
-		 * where the endpoint answered `pledge_not_found`: the next press saves it again first
-		 * (`pledgeLost` on the context).
+		 * where the endpoint answered `pledge_not_found`: the next press saves it again under a new id
+		 * and tells nobody, and the press after that tells (`pledgeResave` on the context).
 		 */
 		pledged: {
 			initial: 'pending',
 			states: {
 				pending: {
-					on: { TELL_ORGANIZATION: { target: 'telling' } }
+					on: {
+						TELL_ORGANIZATION: { target: 'telling', actions: assign({ pledgeIdRetaken: false }) }
+					}
 				},
 				/**
-				 * the told press in flight, and before it, where the endpoint found no pledge under this
-				 * id, the save again: the same request under the same id, on a fresh challenge token,
-				 * which the endpoint saves anew since nothing holds the id (`savePledge` in the app's
-				 * $lib/server/donations/pledges.ts). its answer is the pledge the screen draws from then
-				 * on, reference included.
+				 * the told press in flight, or, where the endpoint found no pledge under the last id, the
+				 * save again in its place: the same request under the id that refusal minted, on a fresh
+				 * challenge token. its answer is the pledge the screen draws from then on, new reference
+				 * included, and the donor tells the organisation with the press after it, once they have
+				 * the reference their transfer names.
 				 */
 				telling: {
 					initial: 'choosing',
@@ -2718,12 +2802,24 @@ export const checkoutMachine = setup({
 											type: 'quoteIsPledge',
 											params: ({ event }) => ({ quote: event.output })
 										},
-										target: 'posting',
-										actions: assign({ quote: ({ event }) => event.output, pledgeLost: false })
+										target: '#checkout.pledged.pending',
+										actions: assign({
+											quote: ({ event }) => event.output,
+											toldRefused: false,
+											pledgeResave: 'done'
+										})
 									},
 									{ target: '#checkout.pledged.pending', actions: 'refuseTold' }
 								],
-								onError: { target: '#checkout.pledged.pending', actions: 'refuseTold' }
+								onError: [
+									// back for a token, since the refused send spent this one (`retaking` above).
+									{
+										guard: 'retakesPledgeId',
+										target: 'awaitingToken',
+										actions: ['remintPledgeId', assign({ pledgeIdRetaken: true })]
+									},
+									{ target: '#checkout.pledged.pending', actions: 'refuseTold' }
+								]
 							},
 							after: {
 								portTimeout: { target: '#checkout.pledged.pending', actions: 'refuseTold' }
@@ -2744,15 +2840,22 @@ export const checkoutMachine = setup({
 								},
 								onDone: {
 									target: '#checkout.pledged.told',
-									actions: assign({ toldRefused: false })
+									actions: assign({ toldRefused: false, pledgeResave: null })
 								},
-								onError: {
-									target: '#checkout.pledged.pending',
-									actions: assign({
-										toldRefused: true,
-										pledgeLost: ({ event }) => errorCode(event.error) === 'pledge_not_found'
-									})
-								}
+								onError: [
+									{
+										guard: 'toldFindsNoPledge',
+										target: '#checkout.pledged.pending',
+										actions: [
+											assign({ toldRefused: true, pledgeResave: 'needed' }),
+											'remintPledgeId'
+										]
+									},
+									{
+										target: '#checkout.pledged.pending',
+										actions: assign({ toldRefused: true, pledgeResave: null })
+									}
+								]
 							},
 							after: {
 								portTimeout: { target: '#checkout.pledged.pending', actions: 'refuseTold' }

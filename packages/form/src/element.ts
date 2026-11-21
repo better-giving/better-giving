@@ -1290,6 +1290,8 @@ export function donateFormClass(runtime: FormRuntime): CustomElementConstructor 
 			let previous: State['step'] | null = null;
 			/** whether the last reading was a pledge's second save, which spends a token too. */
 			let resaving = false;
+			/** whether the last reading waited to send a pledge again under a fresh id. */
+			let retaking = false;
 			// the cadence goes out before the card is patched, so the provider's own fields and the
 			// figures beside them are never a frame apart on what gift is being made. it is told on
 			// every reading rather than on a change: this element holds no memory of what it last
@@ -1345,6 +1347,11 @@ export function donateFormClass(runtime: FormRuntime): CustomElementConstructor 
 				const saving = snapshot.matches({ pledged: { telling: 'saving' } });
 				if (resaving && !saving) this.#challenge?.reset();
 				resaving = saving;
+				// and for a save refused `pledge_id_taken`, whose send under a fresh id waits in
+				// `working` too (`retaking` in ./checkout.machine.ts), so the step never changes.
+				const waitingToRetake = snapshot.matches('retaking');
+				if (waitingToRetake && !retaking) this.#challenge?.reset();
+				retaking = waitingToRetake;
 				const arrived = step !== previous;
 				previous = step;
 				// on arrival only, so a reading that changes nothing on the receipt says nothing again;

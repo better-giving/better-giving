@@ -249,8 +249,8 @@ const STEP_COUNT = STEP_HEADINGS.length;
 /**
  * what the card is showing.
  *
- * `working` stays where it happened. the flow collapses boot, authorizing, resending, quoting,
- * quoted, confirming and resuming into one thing a donor is told — something is happening — so the projection cannot say
+ * `working` stays where it happened. the flow collapses boot, authorizing, resending, retaking,
+ * quoting, quoted, confirming and resuming into one thing a donor is told — something is happening — so the projection cannot say
  * which screen asked, and the last one shown is the answer. without that, the press on the review
  * step drops the donor onto a blank frame for the length of a request that spans two beats.
  *
@@ -628,13 +628,7 @@ function pledgedScreen(
 			secondary: { label: 'Done', filled: true }
 		};
 	}
-	const refusal: PledgeNotice | null = state.refused
-		? {
-				tone: 'destructive',
-				title: 'We couldn’t tell the organization',
-				body: 'Your gift is saved. Check your connection and try again.'
-			}
-		: null;
+	const notice = pendingNotice(state);
 	return {
 		...BLANK,
 		heading: stock ? 'Your stock gift is pending' : 'Your IRA (QCD) gift is pending',
@@ -642,9 +636,9 @@ function pledgedScreen(
 			? 'Ask your broker to transfer these shares using the details below. Your gift counts when they arrive.'
 			: 'Ask your custodian to send this gift using the details below. Your gift counts when it arrives.',
 		// not while the next press is in flight, so a second refusal arrives into a cleared region.
-		announce: refusal === null || state.phase === 'telling' ? '' : spoken(refusal),
+		announce: notice === null || state.phase === 'telling' ? '' : spoken(notice),
 		pledge: {
-			notice: refusal,
+			notice,
 			summary,
 			details: pledgeDetails(pledge),
 			benefits: BENEFITS[pledge.method]
@@ -661,6 +655,30 @@ function pledgedScreen(
 			label: 'Email these instructions',
 			href: instructionsMailto(pledge, config.orgLegalName, money)
 		}
+	};
+}
+
+/**
+ * the notice on a pending screen, by how the last told press went. each says only what is true: a
+ * pledge the endpoint could not find is not called saved, and one saved again names the new
+ * reference the donor's transfer has to carry, before the press that tells the organisation.
+ */
+function pendingNotice(state: State & { readonly step: 'pledged' }): PledgeNotice | null {
+	if (state.resave === 'done') {
+		return {
+			tone: 'info',
+			title: 'We saved your gift again',
+			body: `Your new reference is ${state.pledge.reference}. Use it for your transfer.`
+		};
+	}
+	if (!state.refused) return null;
+	return {
+		tone: 'destructive',
+		title: 'We couldn’t tell the organization',
+		body:
+			state.resave === 'needed'
+				? 'We couldn’t find your gift. Press Try again to save it again under a new reference.'
+				: 'Your gift is saved. Check your connection and try again.'
 	};
 }
 

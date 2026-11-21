@@ -8442,6 +8442,11 @@ describe('a stock or IRA (QCD) pledge', () => {
 	};
 	const NOT_ADVICE =
 		'This is general information, not tax advice. Talk to your tax adviser about your own situation.';
+	const IRA_BENEFITS = [
+		'Benefits of giving from an IRA',
+		'If you are 70½ or older, you can give up to the IRS yearly limit from your traditional IRA. Your IRA custodian must pay us directly, not you and not a donor-advised fund. It can count toward any required minimum distribution and isn’t added to your taxable income (you can’t also deduct it).',
+		'This is general information, not tax advice. Talk to your tax adviser or IRA custodian about your own situation.'
+	];
 
 	type PledgeOptions = Options & {
 		readonly saved?: Quote;
@@ -8463,6 +8468,16 @@ describe('a stock or IRA (QCD) pledge', () => {
 			...options.ports
 		}
 	});
+
+	/** the IRA (QCD) pledge saved under the id a request sent, and under `reference` where given. */
+	const savedUnder = (id: string | undefined, reference?: string): Quote => {
+		const pledge = IRA_PLEDGE.pledge as NonNullable<Quote['pledge']>;
+		return {
+			...IRA_PLEDGE,
+			paymentToken: id ?? '',
+			pledge: { ...pledge, id: id ?? '', reference: reference ?? pledge.reference }
+		};
+	};
 
 	/** the IRA (QCD) option's own root, standing in the payment node. */
 	const panel = (card: Mounted): ShadowRoot => {
@@ -8550,11 +8565,7 @@ describe('a stock or IRA (QCD) pledge', () => {
 		expect(panel(card).querySelector('label[for="custodian"]')?.textContent).toBe('Custodian');
 		expect(
 			[...panel(card).querySelectorAll('.benefits > *')].map((node) => node.textContent)
-		).toEqual([
-			'Benefits of giving from an IRA',
-			'If you are 70½ or older, you can give up to the annual QCD limit straight from your IRA. It counts toward your required minimum distribution and isn’t added to your taxable income.',
-			NOT_ADVICE
-		]);
+		).toEqual(IRA_BENEFITS);
 		expect(custodian(card).maxLength).toBe(200);
 		expect(disabled(card)).toEqual([]);
 	});
@@ -8632,11 +8643,7 @@ describe('a stock or IRA (QCD) pledge', () => {
 			['Reference', 'CFCP-IRA-4K9M']
 		]);
 		expect(copies(card)).toEqual(['Copy EIN', 'Copy mailing address', 'Copy reference']);
-		expect(benefits(card)).toEqual([
-			'Benefits of giving from an IRA',
-			'If you are 70½ or older, you can give up to the annual QCD limit straight from your IRA. It counts toward your required minimum distribution and isn’t added to your taxable income.',
-			NOT_ADVICE
-		]);
+		expect(benefits(card)).toEqual(IRA_BENEFITS);
 		expect(notice(card)).toEqual([]);
 		expect(shows(card, '.takeover > [part~="action"] .action-label')).toBe(
 			'I’ve asked my custodian'
@@ -8738,30 +8745,153 @@ describe('a stock or IRA (QCD) pledge', () => {
 		expect(carets).toEqual(['press', 'press']);
 	});
 
-	it('saves again on a fresh token after the endpoint found no pledge, and resets the widget after', async () => {
+	it('saves again under a new reference on a fresh token after the endpoint found no pledge, and tells on the press after', async () => {
 		let resets = 0;
+		let minted = 0;
 		const saves: (QuoteRequest | StockPledgeRequest)[] = [];
+		const told: string[] = [];
 		const notFound = Object.assign(new Error('This gift isn’t saved here.'), {
 			code: 'pledge_not_found'
 		});
-		const card = await iraPending({
-			saves,
+		let answer: () => Promise<void> = () => Promise.reject(notFound);
+		const lost = {
+			notice: [
+				{
+					role: null,
+					title: 'We couldn’t tell the organization',
+					body: 'We couldn’t find your gift. Press Try again to save it again under a new reference.'
+				}
+			],
+			said: 'We couldn’t tell the organization. We couldn’t find your gift. Press Try again to save it again under a new reference.'
+		};
+		const card = await onIra({
 			resets: () => (resets += 1),
-			told: () => Promise.reject(notFound)
+			ports: {
+				pledges: {
+					id: () => `pledge-${++minted}`,
+					save: async (request) => {
+						saves.push(request);
+						return request.pledgeId === 'pledge-1'
+							? IRA_PLEDGE
+							: savedUnder(request.pledgeId, 'CFCP-IRA-8Z3P');
+					},
+					told: ({ pledgeId }) => {
+						told.push(pledgeId);
+						return answer();
+					}
+				}
+			}
 		});
+		type(custodian(card), 'Fidelity Investments');
+		card.find('[part~="submit"]').click();
+		await settle();
 		expect(resets).toBe(1);
 
 		primary(card).click();
 		await settle();
+		expect(notice(card)).toEqual(lost.notice);
+		expect(said(card)).toBe(lost.said);
+		expect(shows(card, '.takeover > [part~="action"] .action-label')).toBe('Try again');
+
+		answer = async () => {};
 		primary(card).click();
 		await settle();
 
 		// the second save carries the token the first save's reset minted, and spends it.
 		expect(saves.map((save) => [save.pledgeId, save.turnstileToken])).toEqual([
 			['pledge-1', 'tk_widget_1'],
-			['pledge-1', 'tk_widget_2']
+			['pledge-2', 'tk_widget_2']
 		]);
 		expect(resets).toBe(2);
+		expect(told).toEqual(['pledge-1']);
+		expect(heading(card)).toBe('Your IRA (QCD) gift is pending');
+		expect(rows(card, '.pledge-details').at(-1)).toEqual(['Reference', 'CFCP-IRA-8Z3P']);
+		expect(notice(card)).toEqual([
+			{
+				role: null,
+				title: 'We saved your gift again',
+				body: 'Your new reference is CFCP-IRA-8Z3P. Use it for your transfer.'
+			}
+		]);
+		expect(said(card)).toBe(
+			'We saved your gift again. Your new reference is CFCP-IRA-8Z3P. Use it for your transfer.'
+		);
+		expect(shows(card, '.takeover > [part~="action"] .action-label')).toBe(
+			'I’ve asked my custodian'
+		);
+
+		primary(card).click();
+		await settle();
+		expect(told).toEqual(['pledge-1', 'pledge-2']);
+		expect(heading(card)).toBe('Thank you');
+	});
+
+	it('resets the widget for the one more save under a fresh id when the id is taken', async () => {
+		let resets = 0;
+		let minted = 0;
+		const saves: (QuoteRequest | StockPledgeRequest)[] = [];
+		const taken = Object.assign(new Error('This gift reference is already in use.'), {
+			code: 'pledge_id_taken'
+		});
+		const card = await onIra({
+			resets: () => (resets += 1),
+			ports: {
+				pledges: {
+					id: () => `pledge-${++minted}`,
+					save: async (request) => {
+						saves.push(request);
+						if (request.pledgeId === 'pledge-1') throw taken;
+						return savedUnder(request.pledgeId);
+					},
+					told: async () => {}
+				}
+			}
+		});
+		type(custodian(card), 'Fidelity Investments');
+		card.find('[part~="submit"]').click();
+		await settle();
+		await settle();
+
+		expect(saves.map((save) => [save.pledgeId, save.turnstileToken])).toEqual([
+			['pledge-1', 'tk_widget_1'],
+			['pledge-2', 'tk_widget_2']
+		]);
+		expect(heading(card)).toBe('Your IRA (QCD) gift is pending');
+		expect(resets).toBe(2);
+	});
+
+	it('shows the lost-pledge notice again when the save made in its place fails', async () => {
+		const notFound = Object.assign(new Error('This gift isn’t saved here.'), {
+			code: 'pledge_not_found'
+		});
+		let save: () => Promise<Quote> = async () => IRA_PLEDGE;
+		const card = await onIra({
+			ports: {
+				pledges: {
+					id: () => 'pledge-1',
+					save: () => save(),
+					told: () => Promise.reject(notFound)
+				}
+			}
+		});
+		type(custodian(card), 'Fidelity Investments');
+		card.find('[part~="submit"]').click();
+		await settle();
+		primary(card).click();
+		await settle();
+
+		save = () => Promise.reject(new TypeError('Failed to fetch'));
+		primary(card).click();
+		await settle();
+
+		expect(notice(card)).toEqual([
+			{
+				role: null,
+				title: 'We couldn’t tell the organization',
+				body: 'We couldn’t find your gift. Press Try again to save it again under a new reference.'
+			}
+		]);
+		expect(shows(card, '.takeover > [part~="action"] .action-label')).toBe('Try again');
 	});
 
 	it('thanks the donor once the organisation is told, and Done starts a new gift', async () => {
@@ -8821,7 +8951,7 @@ describe('a stock or IRA (QCD) pledge', () => {
 		expect(copies(card)).toEqual(['Copy DTC number', 'Copy account number', 'Copy reference']);
 		expect(benefits(card)).toEqual([
 			'Benefits of donating appreciated stock',
-			'Give shares you have held for more than a year and you may deduct their full market value, without paying the capital gains tax you would owe if you sold them.',
+			'If you itemize and give shares you have held for more than a year, you may be able to deduct their market value on the day of the gift, and you generally avoid the capital gains tax you would owe if you sold them. Deduction limits apply.',
 			NOT_ADVICE
 		]);
 		expect(shows(card, '.takeover > [part~="action"] .action-label')).toBe(

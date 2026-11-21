@@ -335,8 +335,18 @@ export type State =
 			 * organisation told — the screen that thanks the donor.
 			 */
 			readonly phase: 'pending' | 'telling' | 'told';
-			/** the last told press did not reach the organisation; the pledge is saved regardless. */
+			/**
+			 * the last told press did not reach the organisation. the pledge is saved regardless,
+			 * except where `resave` is `needed`.
+			 */
 			readonly refused: boolean;
+			/**
+			 * present only after a told press the endpoint answered with no pledge under its id:
+			 * `needed` while the next press saves the gift again under a new reference instead of
+			 * telling, and `done` once it has, which `pledge` then carries (`pledgeResave` in
+			 * ./checkout.machine.ts).
+			 */
+			readonly resave?: 'needed' | 'done';
 	  }
 	| { readonly step: 'verificationExpired' }
 	| ({
@@ -504,6 +514,7 @@ export const TOP_LEVEL_STATES = [
 	'holding',
 	'authorizing',
 	'resending',
+	'retaking',
 	'quoting',
 	'quoted',
 	'confirm',
@@ -558,8 +569,8 @@ function employerAskOf(snapshot: CheckoutSnapshot): EmployerAsk | null {
  * an unprojected state into a `pnpm check` failure.
  *
  * the `working` collapses are deliberate rather than incidental: `boot`, `authorizing`, `resending`,
- * `quoting`, `quoted`, `confirming` and `resuming` are one screen to a donor — something is
- * happening — and giving each its own step would be seven identical spinners a layout has to keep in sync. what
+ * `retaking`, `quoting`, `quoted`, `confirming` and `resuming` are one screen to a donor — something is
+ * happening — and giving each its own step would be eight identical spinners a layout has to keep in sync. what
  * survives the collapse is `phase`, because the words said out loud over a mint and a charge are
  * not the same words. `indeterminate` is pointedly not among them; it is a different thing to say.
  */
@@ -641,7 +652,8 @@ export function toState(snapshot: CheckoutSnapshot): State {
 				step: 'pledged',
 				pledge,
 				phase: phases.find((phase) => snapshot.matches({ pledged: phase })) ?? 'pending',
-				refused: context.toldRefused
+				refused: context.toldRefused,
+				...(context.pledgeResave === null ? {} : { resave: context.pledgeResave })
 			};
 		}
 		case 'awaitingVerification':
@@ -691,6 +703,7 @@ export function toState(snapshot: CheckoutSnapshot): State {
 					};
 		case 'boot':
 		case 'resending':
+		case 'retaking':
 		case 'quoting':
 		case 'quoted':
 			return working('quoting');
