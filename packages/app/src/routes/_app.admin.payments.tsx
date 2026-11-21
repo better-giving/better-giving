@@ -21,6 +21,7 @@ import { type ReactNode, useEffect, useId, useRef } from 'react';
 import { useFetcher } from 'react-router';
 import { z } from 'zod';
 import { ScreenHeading } from '$lib/admin/crumbs';
+import { PledgeRails } from '$lib/admin/payments/pledge-rails';
 import { screenTitle } from '$lib/admin/screen-title';
 import { formPress } from '$lib/admin/unreached';
 import { resultFor, whichForm } from '$lib/admin/use-admin-form';
@@ -270,6 +271,7 @@ export default function Payments({ loaderData }: Route.ComponentProps) {
 			{cards.map((card) => (
 				<ProcessorCard key={card.processor} card={card} />
 			))}
+			<PledgeRails rails={loaderData.pledgeRails} />
 			{others.length === 0 ? null : <NotSetUp others={others} />}
 		</Column>
 	);

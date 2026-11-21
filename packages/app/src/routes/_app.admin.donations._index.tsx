@@ -4,6 +4,7 @@ import { PageState } from '@better-giving/operator/components/shell/PageState';
 import { href, Link } from 'react-router';
 import { ScreenHeading } from '$lib/admin/crumbs';
 import { GiftsTable } from '$lib/admin/donations/gifts-table';
+import { WaitingCard } from '$lib/admin/donations/waiting-pledges';
 import { screenTitle } from '$lib/admin/screen-title';
 import { formatMinor } from '$lib/donations/money';
 import {
@@ -283,6 +284,7 @@ export default function Donations({ loaderData }: Route.ComponentProps) {
 				}
 				secondary={HEADING_LINKS}
 			/>
+			{loaderData.waiting.total > 0 ? <WaitingCard waiting={loaderData.waiting} /> : null}
 			{none ? (
 				// the heading's Add donation is the way in, so the state offers no second one.
 				<PageState
