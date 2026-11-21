@@ -290,14 +290,15 @@ export type CheckoutContext = {
 	 */
 	readonly authorization: FundAuthorization | null;
 	/**
-	 * the rail the donor stood on before pressing a fund's own button, which is where they stand again
-	 * when that attempt is over.
+	 * the rail the donor stood on before pressing a fund's own button or saving a stock pledge, which
+	 * is where they stand again when that attempt is over.
 	 *
-	 * the press is the fund's rail being chosen and its window opening in one go, so the rail it
-	 * displaced is still the one picked in the other boxes on the card — a donor who closes the window
-	 * is back in front of those boxes, and nothing in them reports the pick a second time.
+	 * either press is a rail being chosen with no row of the payment box opened for it, so the rail
+	 * it displaced is still the one picked in the other boxes on the card — a donor who closes the
+	 * window or presses Try again is back in front of those boxes, and nothing in them reports the
+	 * pick a second time.
 	 */
-	readonly railBeforeFund: PaymentMethod | undefined;
+	readonly displacedRail: PaymentMethod | undefined;
 	/**
 	 * the challenge token the last quote was sent with, which a resend may not spend again.
 	 *
@@ -933,12 +934,17 @@ export function shownTotalMinor(context: CheckoutContext): number | null {
 }
 
 /**
- * the rail the donor stands on once a fund's attempt is over: a fund's rail is held only between its
- * button's press and the end of that attempt, and gives way to the rail it displaced.
+ * the rail the donor stands on once a fund's or a stock pledge's attempt is over: either rail is held
+ * only between its press and the end of that attempt, and gives way to the rail it displaced.
  */
 function standingRail(context: CheckoutContext): PaymentMethod | undefined {
 	const { method } = context.payerDraft;
-	return method !== undefined && isChariotRail(method) ? context.railBeforeFund : method;
+	return method !== undefined && isHeldRail(method) ? context.displacedRail : method;
+}
+
+/** a rail chosen by a press of its own rather than by a row of the payment box. */
+function isHeldRail(method: PaymentMethod): boolean {
+	return method === 'stock' || isChariotRail(method);
 }
 
 /**
@@ -1568,17 +1574,15 @@ export const checkoutMachine = setup({
 		 * the fund's rail chosen by its own button's press, and the payer its window is opened for.
 		 *
 		 * one action for both, because the press is both: the rail it displaces is kept to stand on
-		 * again when the attempt is over (`railBeforeFund`), and the estimate is restated on the fund's
+		 * again when the attempt is over (`displacedRail`), and the estimate is restated on the fund's
 		 * own fee rule so the window opens on the total the donor is asked to grant.
 		 */
 		chooseFund: assign(({ context }) => {
-			const previous = context.payerDraft.method;
 			const payerDraft = { ...context.payerDraft, method: 'daf' as const };
 			const chosen = { ...context, payerDraft };
 			return {
 				payerDraft,
-				railBeforeFund:
-					previous !== undefined && isChariotRail(previous) ? context.railBeforeFund : previous,
+				displacedRail: standingRail(context),
 				estimate: currentEstimate(chosen),
 				payer: completeFundPayer(payerDraft, context.config)
 			};
@@ -1695,7 +1699,7 @@ export const checkoutMachine = setup({
 		verificationDeadline: null,
 		failure: null,
 		authorization: null,
-		railBeforeFund: undefined,
+		displacedRail: undefined,
 		sentToken: null,
 		heldChallenge: null,
 		coinRefusal: null,
@@ -2012,13 +2016,16 @@ export const checkoutMachine = setup({
 				/**
 				 * a stock pledge saved from here, through `holding` as the review step's press is, so it
 				 * waits on a challenge token it may spend. the rail is set with the shares: a stock gift
-				 * has no row in the payment box for a donor to open.
+				 * has no row in the payment box for a donor to open. the rail it displaces is kept to
+				 * stand on again once the attempt is over (`displacedRail`), so a press on the review
+				 * step after a failed save pays by the rail its box shows rather than saving these shares.
 				 */
 				PLEDGE_STOCK: {
 					guard: 'stockCanPledge',
 					target: 'holding',
 					actions: assign({
 						stock: ({ event }) => ({ ticker: event.ticker, shares: event.shares }),
+						displacedRail: ({ context }) => standingRail(context),
 						payerDraft: ({ context }) => ({ ...context.payerDraft, method: 'stock' as const })
 					})
 				},
@@ -2780,10 +2787,35 @@ export const checkoutMachine = setup({
 						choosing: {
 							always: [{ guard: 'pledgeIsLost', target: 'awaitingToken' }, { target: 'posting' }]
 						},
+						/**
+						 * the wait `holding` is, on this screen: a challenge that will never mint a token
+						 * refuses the press at once and stays reported, so each press after it is refused
+						 * as quickly; and a widget asking the donor to solve something is drawn on this
+						 * screen (`#start` in ./element.ts) and is no wait at all while they solve it.
+						 */
 						awaitingToken: {
-							always: { guard: 'tokenIsFresh', target: 'saving' },
+							always: [
+								{
+									guard: 'challengeIsHeld',
+									target: '#checkout.pledged.pending',
+									actions: 'refuseTold'
+								},
+								{ guard: 'tokenIsFresh', target: 'saving' }
+							],
 							after: {
-								portTimeout: { target: '#checkout.pledged.pending', actions: 'refuseTold' }
+								portTimeout: {
+									guard: not('challengeIsInteractive'),
+									target: '#checkout.pledged.pending',
+									actions: 'refuseTold'
+								}
+							},
+							on: {
+								// re-entered so the wait runs again from here, for the reason `holding`'s is.
+								SET_CHALLENGE_INTERACTIVE: {
+									target: 'awaitingToken',
+									reenter: true,
+									actions: assign({ challengeInteractive: ({ event }) => event.interactive })
+								}
 							}
 						},
 						saving: {

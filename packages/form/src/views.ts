@@ -1228,6 +1228,12 @@ export type CardView = {
 	 */
 	readonly heldChallenge: HTMLElement;
 	/**
+	 * the pledge screen's box for the same widget, beside the press, which the widget is drawn afresh
+	 * into only where a lost pledge's save made again waits on it and it is asking the donor to solve
+	 * something (`awaitingToken` in ./checkout.machine.ts). empty otherwise, as `heldChallenge` is.
+	 */
+	readonly toldChallenge: HTMLElement;
+	/**
 	 * the coin list a `crypto` gift is chosen in, handed out for the reason `payment` above is.
 	 *
 	 * the card draws it and keeps it patched, and the crypto option stands it in its row in the payment
@@ -2752,6 +2758,8 @@ export function createCard(
 		held = { words, on: drawnHeading };
 		say(words, true);
 	});
+	// directly after the press, for the reason `heldChallenge` is on the review step.
+	const toldChallenge = make(doc, 'div', { class: 'challenge' });
 
 	const primaryLabel = make(doc, 'span', { class: 'action-label' });
 	const primaryButton = make(
@@ -2821,6 +2829,7 @@ export function createCard(
 		depositBlock.root,
 		pledgeBlock.root,
 		primaryButton,
+		toldChallenge,
 		primaryNote,
 		employerAsk.root,
 		foot
@@ -4043,6 +4052,7 @@ export function createCard(
 		payment,
 		challenge,
 		heldChallenge,
+		toldChallenge,
 		coins: coinPicker.host,
 		ira: iraPanel.host,
 		focus() {

@@ -8671,8 +8671,29 @@ describe('a stock or IRA (QCD) pledge', () => {
 
 		expect(written).toEqual(['CFCP-IRA-4K9M']);
 		expect(copy.dataset.outcome).toBe('copied');
-		expect(copy.getAttribute('aria-describedby')).toBe(copy.parentElement?.querySelector('dd')?.id);
+		const described = card.shadow.getElementById(copy.getAttribute('aria-describedby') ?? '');
+		expect(described?.textContent).toBe('CFCP-IRA-4K9M');
 		expect(card.text('[role="status"]')).toBe('Reference copied.');
+	});
+
+	// a `<dl>`'s row `<div>` holds `<dt>` and `<dd>` and nothing else
+	// (https://html.spec.whatwg.org/multipage/grouping-content.html#the-dl-element), so a Copy stands in
+	// the `<dd>` of the value it copies.
+	it('keeps each list to rows of a term and its description, with every Copy in its value', async () => {
+		const card = await iraPending();
+		const lists = card.all('.pledge dl');
+		expect(lists.length).toBeGreaterThan(0);
+		for (const list of lists) {
+			for (const row of list.children) {
+				expect(row.tagName).toBe('DIV');
+				expect([...row.children].map((node) => node.tagName)).toEqual(['DT', 'DD']);
+			}
+		}
+		expect(card.all('.pledge .copy').map((copy) => copy.parentElement?.tagName)).toEqual([
+			'DD',
+			'DD',
+			'DD'
+		]);
 	});
 
 	it('says a refused copy on the region and selects the value instead', async () => {
@@ -8858,6 +8879,54 @@ describe('a stock or IRA (QCD) pledge', () => {
 		]);
 		expect(heading(card)).toBe('Your IRA (QCD) gift is pending');
 		expect(resets).toBe(2);
+	});
+
+	// the widget sits in a step this screen hides, so one asking the donor to solve something for the
+	// save made again is drawn beside the Try again they pressed, where they can.
+	it('draws a widget asking for the donor beside Try again, and saves on the token it mints', async () => {
+		const drawn: HTMLElement[] = [];
+		const saves: (QuoteRequest | StockPledgeRequest)[] = [];
+		const notFound = Object.assign(new Error('This gift isn’t saved here.'), {
+			code: 'pledge_not_found'
+		});
+		let minted = 0;
+		const card = await onIra({
+			mints: false,
+			redraws: (node) => void drawn.push(node),
+			ports: {
+				pledges: {
+					id: () => `pledge-${++minted}`,
+					save: async (request) => {
+						saves.push(request);
+						return savedUnder(request.pledgeId);
+					},
+					told: () => Promise.reject(notFound)
+				}
+			}
+		});
+		type(custodian(card), 'Fidelity Investments');
+		card.token('tk_first');
+		card.find('[part~="submit"]').click();
+		await settle();
+		primary(card).click();
+		await settle();
+		expect(drawn).toEqual([]);
+
+		primary(card).click();
+		card.interactive(true);
+		await settle();
+
+		expect(drawn).toHaveLength(1);
+		expect(card.find('.takeover').contains(drawn[0] ?? null)).toBe(true);
+		expect(drawn[0]?.closest('[hidden]')).toBeNull();
+		expect(drawn[0]?.previousElementSibling).toBe(primary(card));
+
+		card.token('tk_solved');
+		await settle();
+		expect(saves.map((save) => [save.pledgeId, save.turnstileToken])).toEqual([
+			['pledge-1', 'tk_first'],
+			['pledge-2', 'tk_solved']
+		]);
 	});
 
 	it('shows the lost-pledge notice again when the save made in its place fails', async () => {

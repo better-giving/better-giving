@@ -1088,10 +1088,32 @@ form {
 
 .pledge-details .pledge-label {
 	grid-column: 1;
+	grid-row: 1;
 }
 
 .pledge-details .pledge-value {
 	grid-column: 1;
+}
+
+/*
+ * a value with its Copy: the Copy stands in the `<dd>` (../pledge-screen.ts), so the `<dd>` takes the
+ * whole row on the row's own tracks and the Copy spans the label and the value as a row child would.
+ * keyed on the Copy, so a row without one, and the gift page's rows until they carry theirs in the
+ * `<dd>` (packages/app/src/lib/donate/pledge-block.tsx), keep the rule above.
+ */
+.pledge-details .pledge-value:has(> .copy) {
+	grid-column: 1 / -1;
+	grid-row: 1 / span 2;
+	display: grid;
+	grid-template-columns: subgrid;
+	grid-template-rows: subgrid;
+	align-items: center;
+}
+
+.pledge-details .pledge-value > .pledge-text {
+	grid-column: 1;
+	grid-row: 2;
+	min-inline-size: 0;
 }
 
 .pledge-details .copy {

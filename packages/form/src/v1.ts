@@ -851,17 +851,17 @@ export type ApiError = {
  * switches on, so renaming one breaks an integration that already handles it, and the only way to
  * add or merge a member is to edit the file whose header says that.
  *
- * sixteen, and the count is held down deliberately. a code answers "which screen", the message
+ * seventeen, and the count is held down deliberately. a code answers "which screen", the message
  * answers "which value" — so two codes carrying a byte-identical `fix` were one code all along
  * and are merged rather than kept as synonyms, and a new value worth naming is a new sentence in
- * an existing member's message before it is a seventeenth member.
+ * an existing member's message before it is an eighteenth member.
  *
- * six of the sixteen are decided before anything is charged, from this deployment's own
- * configuration and the form record. the ten that are not are the ten the donation form can do
+ * six of the seventeen are decided before anything is charged, from this deployment's own
+ * configuration and the form record. the eleven that are not are the eleven the donation form can do
  * something about, and that is what earns each of them a member: `payments_unavailable` is the
  * processor answering badly, `challenge_failed` is a token the challenge service would not
  * honour, the two `daf_` members are a donor-advised fund's own answer to a grant, the three
- * crypto members are the processor refusing the coin or the amount the donor chose, and the three
+ * crypto members are the processor refusing the coin or the amount the donor chose, and the four
  * pledge members are a box on a pledge's screen to fill again or a pledge the screen holds that
  * this deployment does not. every other failure of the payment path is either a hole an operator
  * fills, which the six already say, or a bug of ours, which is a 500 and no code at all: a member

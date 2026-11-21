@@ -1334,6 +1334,13 @@ export function donateFormClass(runtime: FormRuntime): CustomElementConstructor 
 				if (snapshot.value === 'holding' && snapshot.context.challengeInteractive) {
 					this.#challenge?.redraw?.(view.heldChallenge);
 				}
+				// and the same for a lost pledge's save made again, which waits on the pledge screen.
+				if (
+					snapshot.matches({ pledged: { telling: 'awaitingToken' } }) &&
+					snapshot.context.challengeInteractive
+				) {
+					this.#challenge?.redraw?.(view.toldChallenge);
+				}
 
 				// the token is spent by the press that leaves `working`, and spent is spent: it is
 				// valid once, whether the server honoured it or refused it. so the widget is reset on

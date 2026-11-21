@@ -3656,6 +3656,71 @@ describe('an IRA (QCD) pledge', () => {
 		expect(calls.told).toHaveLength(1);
 	});
 
+	it('waits as long as the donor is solving an interactive challenge for that second save, then sends', async () => {
+		const answers = [IRA_PLEDGE, savedUnder('pledge-2')];
+		const { actor, calls, clock } = await pending({
+			told: () => Promise.reject(NOT_FOUND),
+			pledge: async () => answers.shift() ?? IRA_PLEDGE
+		});
+		actor.send({ type: 'TELL_ORGANIZATION' });
+		await settle();
+
+		actor.send({ type: 'TELL_ORGANIZATION' });
+		actor.send({ type: 'SET_CHALLENGE_INTERACTIVE', interactive: true });
+		clock.advance(PORT_TIMEOUT_MS * 3);
+		expect(toState(actor.getSnapshot())).toMatchObject({ phase: 'telling' });
+
+		actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'tk_solved' });
+		await settle();
+		expect(calls.pledge.map((request) => request.turnstileToken)).toEqual([
+			'tk_ready',
+			'tk_solved'
+		]);
+		expect(toState(actor.getSnapshot())).toMatchObject({ phase: 'pending', resave: 'done' });
+	});
+
+	it('runs that wait again from when the challenge leaves interactive mode without a token', async () => {
+		const { actor, calls, clock } = await pending({ told: () => Promise.reject(NOT_FOUND) });
+		actor.send({ type: 'TELL_ORGANIZATION' });
+		await settle();
+
+		actor.send({ type: 'TELL_ORGANIZATION' });
+		actor.send({ type: 'SET_CHALLENGE_INTERACTIVE', interactive: true });
+		clock.advance(PORT_TIMEOUT_MS * 2);
+		actor.send({ type: 'SET_CHALLENGE_INTERACTIVE', interactive: false });
+		clock.advance(PORT_TIMEOUT_MS - 1);
+		expect(toState(actor.getSnapshot())).toMatchObject({ phase: 'telling' });
+
+		clock.advance(1);
+		expect(toState(actor.getSnapshot())).toMatchObject({
+			phase: 'pending',
+			refused: true,
+			resave: 'needed'
+		});
+		expect(calls.pledge).toHaveLength(1);
+	});
+
+	it('stands on the refusal at once for that second save where the challenge cannot be shown', async () => {
+		const { actor, calls } = await pending({ told: () => Promise.reject(NOT_FOUND) });
+		actor.send({ type: 'TELL_ORGANIZATION' });
+		await settle();
+
+		actor.send({
+			type: 'CHALLENGE_UNAVAILABLE',
+			failure: { message: 'The security check could not be shown.', fix: 'Check the sitekey.' }
+		});
+		actor.send({ type: 'TELL_ORGANIZATION' });
+		expect(toState(actor.getSnapshot())).toMatchObject({
+			phase: 'pending',
+			refused: true,
+			resave: 'needed'
+		});
+		// the report stands, since no token is coming: every press after it is refused as quickly.
+		actor.send({ type: 'TELL_ORGANIZATION' });
+		expect(toState(actor.getSnapshot())).toMatchObject({ phase: 'pending', refused: true });
+		expect(calls.pledge).toHaveLength(1);
+	});
+
 	it('sends that second save once more under a fresh id when its id is taken, and stands on the refusal after two', async () => {
 		const answers: (() => Promise<Quote>)[] = [
 			async () => IRA_PLEDGE,
@@ -3835,5 +3900,27 @@ describe('a stock pledge', () => {
 		await settle();
 		expect(calls.pledge.map((request) => request.pledgeId)).toEqual(['pledge-1', 'pledge-1']);
 		expect(actor.getSnapshot().matches({ pledged: 'pending' })).toBe(true);
+	});
+
+	// the payment box reports a rail on a change only, so a card row left open is not said again.
+	it('stands the donor back on the rail the stock save displaced once it fails, so the review press pays by it', async () => {
+		const { actor, calls } = detailsGiven({
+			pledge: () => Promise.reject(new TypeError('Failed to fetch'))
+		});
+		actor.send({ type: 'CONTINUE' });
+		actor.send({ type: 'SET_METHOD', method: 'card' });
+		actor.send({ type: 'GO_TO_STEP', step: 'details' });
+		actor.send({ type: 'PLEDGE_STOCK', ticker: 'AAPL', shares: '50' });
+		await settle();
+		actor.send({ type: 'RETRY' });
+
+		expect(actor.getSnapshot().context.payerDraft.method).toBe('card');
+
+		actor.send({ type: 'CONTINUE' });
+		actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'tk_again' });
+		actor.send({ type: 'SUBMIT' });
+		await settle();
+		expect(calls.pledge).toHaveLength(1);
+		expect(calls.quote).toMatchObject([{ method: 'card', turnstileToken: 'tk_again' }]);
 	});
 });

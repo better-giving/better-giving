@@ -242,7 +242,7 @@ export function toldUrl(origin: string, formId: string, pledgeId: string): strin
  * no body, and none is worded: the flow answers every failure with the same notice over the pending
  * screen (`pledged` in ../checkout.machine.ts), so a sentence here would be one no donor is shown.
  * a refusal still carries the endpoint's code, as `createQuote`'s does: `pledge_not_found` is what
- * makes the next press save the pledge again before it tells (`pledgeLost` in ../checkout.machine.ts).
+ * makes the next press save the pledge again before it tells (`pledgeIsLost` in ../checkout.machine.ts).
  * `credentials: 'omit'` for `createQuote`'s reason.
  */
 export function createPledgeTold(origin: string | null): PledgePorts['told'] {

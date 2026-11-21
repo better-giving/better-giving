@@ -178,7 +178,13 @@ export function createPledgeBlock(
 		return button;
 	};
 
-	/** a list of rows, as `<dt>` and `<dd>` pairs in one `<div>` each, rebuilt when its rows change. */
+	/**
+	 * a list of rows, as `<dt>` and `<dd>` pairs in one `<div>` each, rebuilt when its rows change.
+	 *
+	 * a row's `<div>` may hold its `<dt>` and `<dd>` and nothing else
+	 * (https://html.spec.whatwg.org/multipage/grouping-content.html#the-dl-element), so a Copy stands
+	 * in the `<dd>` after the value's own `<span>`, which is what the Copy is described by and selects.
+	 */
 	const list = (className: string, prefix: string) => {
 		const node = make('dl', `pledge-list ${className}`);
 		let drawn = '';
@@ -191,17 +197,14 @@ export function createPledgeBlock(
 				drawn = key;
 				node.replaceChildren(
 					...rows.map((row, at) => {
+						const text = make('span', 'pledge-text', [row.value]);
+						text.id = `${prefix}-${at}`;
 						const value = make('dd', row.mono === true ? 'pledge-value mono' : 'pledge-value', [
-							row.value
-						]);
-						value.id = `${prefix}-${at}`;
-						const entry = make('div', 'pledge-row', [
-							make('dt', 'pledge-label', [row.label]),
-							value
+							text
 						]);
 						const { copy } = row;
-						if (copy !== undefined) entry.append(copyControl({ ...row, copy }, value));
-						return entry;
+						if (copy !== undefined) value.append(copyControl({ ...row, copy }, text));
+						return make('div', 'pledge-row', [make('dt', 'pledge-label', [row.label]), value]);
 					})
 				);
 			}
