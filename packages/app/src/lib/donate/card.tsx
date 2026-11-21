@@ -741,11 +741,13 @@ function CheckoutCard({
 		// one takeover replacing another can take the control holding the caret with it: Give and
 		// Authorize go to a wait that paints no primary, and the address block leaves with whatever
 		// Copy held it. taken back only from inside the takeover — a resume's outcome replaces the
-		// takeover it booted onto with the caret still on the page.
+		// takeover it booted onto with the caret still on the page. a saved pledge's press relabelled
+		// to Try again under the same heading is the same control, and its refusal is the region's to say.
+		const relabelledInPlace = state.step === 'pledged';
 		const replaced =
 			withinTakeover &&
 			caretInTakeover &&
-			(takeover.heading !== before.heading || primary !== before.primary);
+			(takeover.heading !== before.heading || (!relabelledInPlace && primary !== before.primary));
 		// three arrivals put the caret on the control that fixes what the donor arrived about rather
 		// than on the heading: a coin's refusal of the amount on the control holding the figure, and a
 		// refusal of the coin — or a way back from the address screen — on the coin list.

@@ -3749,6 +3749,23 @@ describe('an IRA (QCD) gift', () => {
 		expect(takeoverHeading(root).textContent).toBe('Thank you');
 	});
 
+	// the press relabelled to Try again is the same control on the same screen, so every refusal is
+	// the region's to say and the caret stays on the press; the thank-you's new heading still takes it.
+	it('leaves the caret on the press through every refused told press', async () => {
+		const { root } = await pending(deployment(['save'], ['down', 'down', 'ok']));
+		const carets: string[] = [];
+
+		for (const _ of [1, 2]) {
+			await pressHeld(takeoverPrimary(root));
+			carets.push(document.activeElement === takeoverPrimary(root) ? 'press' : 'moved');
+		}
+		await pressHeld(takeoverPrimary(root));
+
+		expect(carets).toEqual(['press', 'press']);
+		expect(takeoverHeading(root).textContent).toBe('Thank you');
+		expect(document.activeElement).toBe(takeoverHeading(root));
+	});
+
 	it('starts a fresh card from Done', async () => {
 		const { root } = await pending();
 		await pressHeld(takeoverPrimary(root));
