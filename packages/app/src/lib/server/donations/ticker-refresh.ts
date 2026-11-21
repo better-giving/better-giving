@@ -3,11 +3,13 @@ import type { Db } from '../db/client';
 import { alert } from '../email/alert';
 import type { EmailProvider } from '../email/provider';
 import { readOrgProfile } from '../org/queries';
+import { readPledgeRails } from '../payments/pledge-rails';
 import { replaceTickers, type TickerRow, tickersReplacedAt } from './tickers';
 
-// the stock step's ticker list, fetched from the SEC's two public files once a day and handed whole
-// to `replaceTickers` (./tickers.ts). ../../../cron-runs.ts fires it, and the Stocks Save on
-// /admin/payments fires it once where no list is held yet (`refreshTickersIfNoneHeld`).
+// the stock step's ticker list, fetched from the SEC's two public files once a day while the stock
+// rail is on and handed whole to `replaceTickers` (./tickers.ts). ../../../cron-runs.ts fires it,
+// and the Stocks Save on /admin/payments fires it once where no list is held yet
+// (`refreshTickersIfNoneHeld`).
 //
 // sec.gov answers 403 to a request whose User-Agent names no contact
 // (https://www.sec.gov/os/accessing-edgar-data), so the contact is the notification address saved
@@ -32,11 +34,11 @@ export type TickerRefreshDeps = {
 const FRESH_FOR_MS = 23 * 60 * 60_000;
 
 /**
- * how long one file, body included, is given before it is treated as an answer that never came.
- * shutdown waits for the Stocks Save's refresh (../runtime/deferred.ts), so a stalled sec.gov must
- * not hold it.
+ * how long both files together, bodies included, are given before the run is treated as an answer
+ * that never came. shutdown waits for the Stocks Save's refresh (../runtime/deferred.ts) and is
+ * killed at the `stop_grace_period` in compose.yaml, so a stalled sec.gov must finish under it.
  */
-export const TICKER_FETCH_TIMEOUT_MS = 30_000;
+export const TICKER_REFRESH_TIMEOUT_MS = 20_000;
 
 /** one of the two files: where it is, its shape, and the fewest rows a whole copy of it holds. */
 type SecFile<Row> = {
@@ -93,10 +95,21 @@ class TickerFileError extends Error {
 }
 
 /**
- * fetches both files and replaces the list. never throws: a failure leaves the list a donor
- * searches as it was and alerts the operator.
+ * the daily run: where the stock rail is on, fetches both files and replaces the list. never throws:
+ * a failure leaves the list a donor searches as it was and alerts the operator. with the rail off it
+ * asks sec.gov nothing, and so has nothing to alert about.
  */
 export async function refreshTickers(deps: TickerRefreshDeps, now: Date): Promise<void> {
+	try {
+		if (!(await readPledgeRails(deps.db)).stock.enabled) return;
+	} catch (error) {
+		await tellOperator(deps, error);
+		return;
+	}
+	await refreshFromSec(deps, now);
+}
+
+async function refreshFromSec(deps: TickerRefreshDeps, now: Date): Promise<void> {
 	try {
 		const replacedAt = await tickersReplacedAt(deps.db);
 		if (replacedAt !== null && now.getTime() - replacedAt.getTime() < FRESH_FOR_MS) return;
@@ -113,7 +126,8 @@ export async function refreshTickers(deps: TickerRefreshDeps, now: Date): Promis
  * `refreshTickers`, where no list has ever been stored: a stock pledge on a ticker the list does not
  * hold is refused (`mintPledge` in ./quote.ts), so the Stocks Save on /admin/payments starts one
  * rather than leave every stock gift refused until the next 04:20 run. a list already held, however
- * old, is that run's to replace. never throws.
+ * old, is that run's to replace. the Save has just turned the rail on, so the rail is not read
+ * again. never throws.
  */
 export async function refreshTickersIfNoneHeld(deps: TickerRefreshDeps, now: Date): Promise<void> {
 	try {
@@ -122,14 +136,15 @@ export async function refreshTickersIfNoneHeld(deps: TickerRefreshDeps, now: Dat
 		await tellOperator(deps, error);
 		return;
 	}
-	await refreshTickers(deps, now);
+	await refreshFromSec(deps, now);
 }
 
 async function fetchTickers(deps: TickerRefreshDeps, userAgent: string): Promise<TickerRow[]> {
+	const deadline = AbortSignal.timeout(TICKER_REFRESH_TIMEOUT_MS);
 	// the exchange file first: `replaceTickers` keeps a symbol's first row, and only that file names
 	// the company.
-	const companies = await fetchFile(deps, EXCHANGE_FILE, userAgent);
-	const funds = await fetchFile(deps, FUND_FILE, userAgent);
+	const companies = await fetchFile(deps, EXCHANGE_FILE, userAgent, deadline);
+	const funds = await fetchFile(deps, FUND_FILE, userAgent, deadline);
 	return [
 		...companies.map(([, name, symbol, exchange]) => ({
 			symbol,
@@ -149,13 +164,14 @@ async function fetchTickers(deps: TickerRefreshDeps, userAgent: string): Promise
 async function fetchFile<Row>(
 	deps: TickerRefreshDeps,
 	file: SecFile<Row>,
-	userAgent: string
+	userAgent: string,
+	deadline: AbortSignal
 ): Promise<readonly Row[]> {
 	let body: unknown;
 	try {
 		const response = await deps.fetch(file.url, {
 			headers: { 'user-agent': userAgent, accept: 'application/json' },
-			signal: AbortSignal.timeout(TICKER_FETCH_TIMEOUT_MS)
+			signal: deadline
 		});
 		if (!response.ok) throw new TickerFileError(file.url, `sec.gov answered ${response.status}`);
 		body = await response.json();

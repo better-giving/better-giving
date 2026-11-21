@@ -35,6 +35,8 @@ beforeEach(async () => {
 		'line_item',
 		'gift_match',
 		'donation',
+		'supporter_page',
+		'supporter',
 		'contact',
 		'form'
 	]) {
@@ -168,6 +170,62 @@ describe('receivePledge', () => {
 		expect(await stamp()).toBeNull();
 		expect(await count('payment')).toBe(0);
 		expect(logged).toHaveBeenCalledWith('recording a received pledge failed:', expect.anything());
+	});
+
+	describe('on a fundraiser’s form', () => {
+		const PAGE_ID = '019fb600-0000-7000-8000-0000000000a1';
+
+		const givenPage = async (endedAt: number | null, hiddenAt: number | null) => {
+			await run(
+				stmt(
+					`insert into supporter (id, email, name, created_at)
+					 values ('019fb600-0000-7000-8000-0000000000b1', 'ada@example.org', 'Ada Rivera', 0)`
+				)
+			);
+			await run(
+				stmt(
+					`insert into supporter_page (id, supporter_id, slug, title, story, goal_minor, currency,
+					                            form_id, status, published_at, ended_at, hidden_at,
+					                            created_at, updated_at)
+					 values (?, '019fb600-0000-7000-8000-0000000000b1', 'run-for-the-pantry',
+					         'Run for the pantry', 'I am running.', 50000, 'USD', ?, ?, 0, ?, ?, 0, 0)`,
+					PAGE_ID,
+					FORM_ID,
+					endedAt === null ? 'live' : 'ended',
+					endedAt,
+					hiddenAt
+				)
+			);
+			await run(stmt('update pledge set supporter_page_id = ? where id = ?', PAGE_ID, PLEDGE_ID));
+		};
+
+		const givenOn = async () =>
+			(
+				await first<{ supporter_page_id: string | null }>(
+					stmt('select supporter_page_id from donation where id = ?', PLEDGE_ID)
+				)
+			)?.supporter_page_id;
+
+		it('counts the gift to the page where the page counts gifts on the day it arrived', async () => {
+			await givenPage(null, null);
+
+			expect(await receivePledge(db, ARRIVAL)).toMatchObject({ ok: true });
+			expect(await givenOn()).toBe(PAGE_ID);
+		});
+
+		it.each([
+			['ended', ARRIVAL.dated.getTime() - 1, null],
+			['hidden', null, ARRIVAL.dated.getTime()]
+		])(
+			'gives the gift no page where the page was %s by the day it arrived',
+			async (_, endedAt, hiddenAt) => {
+				await givenPage(endedAt, hiddenAt);
+
+				expect(await receivePledge(db, ARRIVAL)).toMatchObject({ ok: true });
+				expect(await givenOn()).toBeNull();
+				expect(await stamp()).toBe(PLEDGE_ID);
+			}
+		);
 	});
 
 	it('still answers the gift, with no donor, where the donor cannot be read after the commit', async () => {

@@ -726,6 +726,15 @@ describe('parsePledgeRequest() — a stock pledge', () => {
 		expect(result.ok && result.value.giver.donor.primaryEmail).toBe('ada@example.org');
 	});
 
+	it.each(['brk.b', 'BRK/B'])(
+		'stores a class share posted as %s in the SEC’s dash form',
+		(ticker) => {
+			const result = parsePledgeRequest(stockBody({ ticker }), CONFIG);
+
+			expect(result.ok && result.value.pledged).toMatchObject({ method: 'stock', ticker: 'BRK-B' });
+		}
+	);
+
 	it.each([
 		['ticker', { ticker: undefined }],
 		['shares', { shares: undefined }],

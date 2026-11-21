@@ -18,6 +18,7 @@ import {
 	type ContactFormValues,
 	type ParsedContact
 } from '../contacts/contact-input';
+import { asSecSymbol } from './tickers';
 
 // what a donor posted, checked against the form record rather than believed.
 //
@@ -972,7 +973,7 @@ export function parsePledgeRequest(body: unknown, config: FormConfig): PledgeInp
 	};
 }
 
-/** the ticker, uppercased as the list holds it, and the shares in millionths. */
+/** the ticker, spelled as the list holds it (`BRK.B` as `BRK-B`), and the shares in millionths. */
 function parseStockPledge(
 	posted: Record<string, unknown>
 ): { readonly ok: true; readonly value: PledgedInput } | PledgeRefusal {
@@ -1002,7 +1003,7 @@ function parseStockPledge(
 	}
 	return {
 		ok: true,
-		value: { method: 'stock', ticker: ticker.data.toUpperCase(), sharesMillionths: millionths }
+		value: { method: 'stock', ticker: asSecSymbol(ticker.data), sharesMillionths: millionths }
 	};
 }
 

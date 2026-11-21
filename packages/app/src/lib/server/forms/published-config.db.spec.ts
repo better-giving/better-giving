@@ -3,6 +3,7 @@ import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { OFFERED_PAYMENT_METHODS } from '$lib/forms/offered-rails';
 import { createDb, type Db } from '$lib/server/db/client';
 import { readPublishedConfig } from '$lib/server/forms/published-config';
+import { replaceTickers } from '$lib/server/donations/tickers';
 import { disablePledgeRail, enablePledgeRail } from '$lib/server/payments/pledge-rails';
 import { parseOrgProfile } from '$lib/server/org/org-input';
 import { saveOrgProfile } from '$lib/server/org/queries';
@@ -430,10 +431,13 @@ describe('readPublishedConfig', () => {
 	});
 
 	// the two pledge rails are no processor's, so the account's rail read never names them: each is
-	// offered exactly while its own `pledge_rail` row is on.
+	// offered exactly while its own `pledge_rail` row is on, and stock only once a ticker list is held.
 	describe('the pledge rails', () => {
 		beforeEach(async () => {
 			await run(stmt('delete from pledge_rail'));
+			await replaceTickers(db, [
+				{ symbol: 'AAPL', name: 'Apple Inc.', exchange: 'Nasdaq', kind: 'company' }
+			]);
 		});
 
 		const served = async () => {
@@ -462,6 +466,16 @@ describe('readPublishedConfig', () => {
 			await enablePledgeRail(db, { rail: 'stock', details: STOCK_DETAILS });
 			await enablePledgeRail(db, { rail: 'ira_qcd', details: IRA_DETAILS });
 			await disablePledgeRail(db, 'stock');
+
+			const config = await served();
+			expect(config.paymentMethods).not.toContain('stock');
+			expect(config.paymentMethods).toContain('ira_qcd');
+		});
+
+		it('offers no stock while no ticker list is held, still offering IRA (QCD)', async () => {
+			await run(stmt('delete from ticker'));
+			await enablePledgeRail(db, { rail: 'stock', details: STOCK_DETAILS });
+			await enablePledgeRail(db, { rail: 'ira_qcd', details: IRA_DETAILS });
 
 			const config = await served();
 			expect(config.paymentMethods).not.toContain('stock');

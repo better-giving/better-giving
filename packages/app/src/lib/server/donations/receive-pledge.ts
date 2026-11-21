@@ -9,6 +9,7 @@ import type { Db } from '../db/client';
 import { sqliteResultCode } from '../db/rejection';
 import { donation, type NewDonation, type Pledge, pledge } from '../db/schema';
 import { readProgram } from '../programs/queries';
+import { supporterPageCountingOf } from '../supporters/gifts';
 import { receivedInHandEntry } from './entries';
 import { type ReceiptDeps, type ReceiptOutcome, sendReceipt } from './receipt';
 import { inHandWrites } from './record-in-hand';
@@ -100,8 +101,9 @@ export async function receivePledge(db: Db, arrival: PledgeArrival): Promise<Rec
 		dated: arrival.dated
 	});
 
-	// what the donor said on the form, copied across column for column (the header of `pledge`).
-	const donationRow: NewDonation = {
+	// what the donor said on the form, copied across column for column (the header of `pledge`), but
+	// for the fundraiser: that is bound in the insert below.
+	const donationRow: Omit<NewDonation, 'supporterPageId'> = {
 		id: donationId,
 		contactId: row.contactId,
 		totalMinor: arrival.amountMinor,
@@ -110,7 +112,6 @@ export async function receivePledge(db: Db, arrival: PledgeArrival): Promise<Rec
 		formId: row.formId,
 		origin: row.origin,
 		programId: row.programId,
-		supporterPageId: row.supporterPageId,
 		source: null,
 		note: row.note,
 		notePublic: row.notePublic,
@@ -124,7 +125,12 @@ export async function receivePledge(db: Db, arrival: PledgeArrival): Promise<Rec
 
 	try {
 		await db.batch([
-			db.insert(donation).values(donationRow),
+			// the page the pledge was made on, while it was neither ended nor hidden on the day the gift
+			// arrived (../supporters/gifts.ts).
+			db.insert(donation).values({
+				...donationRow,
+				supporterPageId: supporterPageCountingOf(row.formId, arrival.dated)
+			}),
 			...inHandWrites(db, {
 				donationId,
 				paymentId,

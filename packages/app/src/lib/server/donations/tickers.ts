@@ -93,7 +93,7 @@ export async function searchTickers(db: Db, query: string, limit: number): Promi
 	}
 	const typed = query.trim();
 	if (typed === '') return [];
-	const symbol = typed.toUpperCase().replace(/[./]/g, '-');
+	const symbol = asSecSymbol(typed);
 	const phrase = `"${typed.replaceAll('"', '""')}"*`;
 	// the prefix is a range on the primary key, the shape the planner searches an index by. its upper
 	// bound is the query followed by U+10FFFF, which sorts after every character a symbol can hold.
@@ -124,6 +124,11 @@ export async function searchTickers(db: Db, query: string, limit: number): Promi
 		order by hit.tier, hit.pos
 		limit ${limit}
 	`);
+}
+
+/** typed text spelled as the list stores a symbol: uppercase, a dot or slash as the SEC's dash. */
+export function asSecSymbol(typed: string): string {
+	return typed.toUpperCase().replace(/[./]/g, '-');
 }
 
 /**

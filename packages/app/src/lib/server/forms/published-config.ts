@@ -19,6 +19,7 @@ import { servedDeductibilityStatement } from '../org/deductibility';
 import { readOrgProfile } from '../org/queries';
 import { present } from '../org/receipt-fields';
 import { paypalFeeRules, servedFeeRules } from '../payments/fees';
+import { tickersReplacedAt } from '../donations/tickers';
 import { readPledgeRails } from '../payments/pledge-rails';
 import { servedProcessors } from '../payments/factory';
 import { PROCESSOR_LABELS, processorOf, type ProcessorName } from '../payments/provider';
@@ -177,7 +178,7 @@ export interface PublishedConfigSources {
 	readonly program: Program | null;
 	/**
 	 * the pledge rails whose `pledge_rail` row is on, already read (`readPledgeRails` in
-	 * ../payments/pledge-rails.ts). absent is neither.
+	 * ../payments/pledge-rails.ts), and stock only once a ticker list is held. absent is neither.
 	 *
 	 * beside `rails` rather than inside it: no processor settles either, so the account's rail read
 	 * never names one, and a rail turned on under Payments is offered with no processor asked.
@@ -269,7 +270,7 @@ export async function readPublishedConfig(
 		});
 	}
 
-	const [owner, fundraiser, profile, cadences, rails, coins, program, pledgeRails] =
+	const [owner, fundraiser, profile, cadences, rails, coins, program, pledgeRails, tickersHeldAt] =
 		await Promise.all([
 			readOwningPage(db, stored.id, now),
 			fundraiserTakingGifts(db, stored.id),
@@ -279,8 +280,13 @@ export async function readPublishedConfig(
 			readCoins(),
 			// the status `asEnded` may change decides nothing in the cause's read.
 			readFormProgram(db, drafted(stored)),
-			readPledgeRails(db)
+			readPledgeRails(db),
+			tickersReplacedAt(db)
 		]);
+	// a stock pledge names a ticker on the list (`mintPledge` in ../donations/quote.ts), so with no
+	// list held yet stock has nothing a donor could pick. the Stocks Save starts the first fetch
+	// (`refreshTickersIfNoneHeld` in ../donations/ticker-refresh.ts).
+	const offersStock = pledgeRails.stock.enabled && tickersHeldAt !== null;
 	const form = drafted(asEnded(stored, owner));
 	return publishedConfig({
 		id,
@@ -293,7 +299,9 @@ export async function readPublishedConfig(
 		rails,
 		coins,
 		program,
-		pledgeRails: PLEDGE_RAILS.filter((rail) => pledgeRails[rail].enabled)
+		pledgeRails: PLEDGE_RAILS.filter((rail) =>
+			rail === 'stock' ? offersStock : pledgeRails[rail].enabled
+		)
 	});
 }
 
@@ -760,8 +768,8 @@ export function renderableConfig(result: PublishedConfigResult): PublishedConfig
 }
 
 /**
- * a rail a donor can pay with on the form as it is drawn. stock is served while Payments has it on,
- * but no screen in packages/form/src sends `PLEDGE_STOCK` (packages/form/src/element.ts), so a
+ * a rail a donor can pay with on the form as it is drawn. stock is served while Payments has it on
+ * and a ticker list is held, but no screen in packages/form/src sends `PLEDGE_STOCK` (packages/form/src/element.ts), so a
  * config offering stock alone is a form with nothing to press.
  */
 function isDrawnRail(rail: PaymentMethod): boolean {

@@ -67,9 +67,11 @@ import type { PostableAccountId } from './postable';
 //   time   -> integer unix milliseconds UTC on every `_at` column. `created_at` is
 //             system time; ledger/settlement rows additionally carry `occurred_at`
 //             (business time). never text ISO-8601.
-//   ids    -> text uuidv7 generated app-side by the `id()` helper below, with one
-//             exception: `form.id` is a prefixed random string, for the reasons on the
-//             `formId` helper. sqlite has
+//   ids    -> text uuidv7 generated app-side by the `id()` helper below, with two
+//             exceptions: `form.id` is a prefixed random string, for the reasons on the
+//             `formId` helper, and `pledge.id` is the uuid the donor's form minted, which
+//             the gift a received pledge becomes takes as its `donation.id`
+//             (../donations/receive-pledge.ts). sqlite has
 //             no gen_random_uuid(), so generation is ours either way; v7 is
 //             time-ordered, which keeps index locality on the append-only tables.
 //             text(36), not blob(16) — legibility beats index size at nonprofit scale.

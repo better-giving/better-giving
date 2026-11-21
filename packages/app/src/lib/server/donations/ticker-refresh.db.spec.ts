@@ -3,12 +3,13 @@ import { createDb, type Db } from '../db/client';
 import { client, openUnmigrated, run, stmt } from '../db/database.testing';
 import type { EmailMessage, EmailProvider } from '../email/provider';
 import { saveProfile } from '../org/profile.testing';
+import { disablePledgeRail, enablePledgeRail } from '../payments/pledge-rails';
 import {
 	EXCHANGE_FILE_URL,
 	FUND_FILE_URL,
 	refreshTickers,
 	refreshTickersIfNoneHeld,
-	TICKER_FETCH_TIMEOUT_MS
+	TICKER_REFRESH_TIMEOUT_MS
 } from './ticker-refresh';
 import { exchangeFile, fundFile, ok, secStandIn, wholeFiles } from './ticker-refresh.testing';
 import { replaceTickers, searchTickers } from './tickers';
@@ -46,6 +47,16 @@ async function holdOldList(ago: number): Promise<void> {
 beforeEach(async () => {
 	await saveProfile(db);
 	await holdOldList(2 * 24 * HOUR);
+	await run(stmt('delete from pledge_rail'));
+	await enablePledgeRail(db, {
+		rail: 'stock',
+		details: {
+			brokerageName: 'Harbor Street Securities',
+			dtcNumber: '0164',
+			accountNumber: 'Z12-345678',
+			accountName: 'Cedar Fork Community Pantry Inc.'
+		}
+	});
 });
 
 afterEach(() => {
@@ -192,11 +203,54 @@ describe('refreshTickers', () => {
 		deadline.abort(new DOMException('The operation was aborted due to timeout', 'TimeoutError'));
 		await refreshing;
 
-		expect(timeout).toHaveBeenCalledWith(TICKER_FETCH_TIMEOUT_MS);
+		expect(timeout).toHaveBeenCalledWith(TICKER_REFRESH_TIMEOUT_MS);
 		expect((await searchTickers(db, 'OLD', 8)).map((row) => row.symbol)).toEqual(['OLD']);
 		expect(sent).toHaveLength(1);
 		expect(sent[0]?.text).toContain(EXCHANGE_FILE_URL);
 		expect(sent[0]?.text).toContain('timeout');
+	});
+
+	it('gives both files one deadline, under the 30s stop grace in compose.yaml', async () => {
+		const deadline = new AbortController();
+		const timeout = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(deadline.signal);
+		const requests: Request[] = [];
+		// the exchange file answers; the fund file stalls until the one deadline passes.
+		const stallsOnFunds = ((input: RequestInfo | URL, init?: RequestInit) => {
+			const request = new Request(input, init);
+			requests.push(request);
+			if (request.url === EXCHANGE_FILE_URL) {
+				return Promise.resolve(Response.json(exchangeFile(6_000)));
+			}
+			return new Promise<Response>((_, reject) => {
+				init?.signal?.addEventListener('abort', () => reject(init.signal?.reason));
+			});
+		}) as typeof globalThis.fetch;
+		const { email, sent } = recordingEmail();
+
+		const refreshing = refreshTickers({ db, fetch: stallsOnFunds, email, mailFrom: null }, NOW);
+		await vi.waitFor(() => expect(requests).toHaveLength(2));
+		deadline.abort(new DOMException('The operation was aborted due to timeout', 'TimeoutError'));
+		await refreshing;
+
+		expect(timeout).toHaveBeenCalledTimes(1);
+		expect(TICKER_REFRESH_TIMEOUT_MS).toBeLessThan(30_000);
+		expect((await searchTickers(db, 'OLD', 8)).map((row) => row.symbol)).toEqual(['OLD']);
+		expect(sent[0]?.text).toContain(FUND_FILE_URL);
+	});
+
+	it('fetches nothing and alerts nobody where the stock rail is off', async () => {
+		await disablePledgeRail(db, 'stock');
+		const sec = secStandIn({
+			exchange: { status: 403, body: {} },
+			fund: { status: 403, body: {} }
+		});
+		const { email, sent } = recordingEmail();
+
+		await refresh(sec, email);
+
+		expect(sec.requests).toEqual([]);
+		expect(sent).toEqual([]);
+		expect((await searchTickers(db, 'OLD', 8)).map((row) => row.symbol)).toEqual(['OLD']);
 	});
 
 	it('alerts with the cause when the request itself fails, fetching nothing after it', async () => {
