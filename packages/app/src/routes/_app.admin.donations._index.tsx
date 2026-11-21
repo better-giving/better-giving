@@ -4,7 +4,7 @@ import { PageState } from '@better-giving/operator/components/shell/PageState';
 import { href, Link } from 'react-router';
 import { ScreenHeading } from '$lib/admin/crumbs';
 import { GiftsTable } from '$lib/admin/donations/gifts-table';
-import { WaitingCard } from '$lib/admin/donations/waiting-pledges';
+import { MarkedReceived, WaitingCard } from '$lib/admin/donations/waiting-pledges';
 import { screenTitle } from '$lib/admin/screen-title';
 import { formPress } from '$lib/admin/unreached';
 import { formatMinor } from '$lib/donations/money';
@@ -245,7 +245,15 @@ export async function action({ context, request }: Route.ActionArgs) {
 			received.gift
 		)
 	);
-	return { received: { pledgeId: submission.value.pledge_id } };
+	// the gift in words for the screen's line (`MarkedReceived`), as Add donation's outcome states one.
+	return {
+		received: {
+			pledgeId: submission.value.pledge_id,
+			amount: formatMinor(money.minor, FORM_CURRENCY),
+			donorName: received.gift.donorName,
+			receivedOn: submission.value.received_on
+		}
+	};
 }
 
 /**
@@ -293,6 +301,7 @@ export default function Donations({ loaderData }: Route.ComponentProps) {
 				}
 				secondary={HEADING_LINKS}
 			/>
+			<MarkedReceived />
 			{loaderData.waiting.total > 0 ? <WaitingCard waiting={loaderData.waiting} /> : null}
 			{none ? (
 				// the heading's Add donation is the way in, so the state offers no second one.

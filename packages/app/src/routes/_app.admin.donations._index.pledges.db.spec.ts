@@ -250,7 +250,14 @@ describe('Mark received', () => {
 		const response = await markReceived(STOCK_RECEIVED);
 
 		expect(response.status).toBe(200);
-		expect(await response.json()).toEqual({ received: { pledgeId: STOCK_PLEDGE } });
+		expect(await response.json()).toEqual({
+			received: {
+				pledgeId: STOCK_PLEDGE,
+				amount: '$9,512.40',
+				donorName: 'Maya Okafor',
+				receivedOn: '2026-11-18'
+			}
+		});
 		expect(await campaignRaised(db, FORM_ID)).toEqual({ raisedMinor: 951240 });
 		expect(await booked()).toBe(951240);
 

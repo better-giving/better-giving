@@ -274,6 +274,29 @@ describe('Save', () => {
 		expect(button(stocks, 'Save').type).toBe('submit');
 		expect(stocks.querySelector('[role="status"]')?.textContent).toBe('');
 	});
+
+	it('keeps Save, and says no Saved, over a box edited while the Save was out', async () => {
+		let release: () => void = () => {};
+		// a Save of the details already stored, so the landing moves no record and resets no box.
+		const { root, posted } = await screen(
+			{ ...OFF, stock: { enabled: true, details: STOCK_DETAILS } },
+			(body, rails) => {
+				const [next, said] = landing(body, rails);
+				return [next, new Promise((done) => (release = () => done(said)))];
+			}
+		);
+		const stocks = card(root, 'Stocks');
+		await press(button(stocks, 'Save'));
+		await vi.waitFor(() => expect(posted).toHaveLength(1));
+		await type(box(stocks, 'DTC number'), '0165');
+		await act(async () => release());
+		await vi.waitFor(() => expect(root.querySelector('[aria-busy="true"]')).toBeNull());
+
+		const after = card(root, 'Stocks');
+		expect(box(after, 'DTC number').value).toBe('0165');
+		expect(button(after, 'Save').type).toBe('submit');
+		expect(after.querySelector('[role="status"]')?.textContent).toBe('');
+	});
 });
 
 describe('Disable', () => {

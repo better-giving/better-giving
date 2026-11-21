@@ -161,10 +161,13 @@ function RailCard({
 	const off = useFetcher<RailAnswer>();
 	// the switch is a request to open the card and is never posted: the rail goes live at Save.
 	const [turnedOn, setTurnedOn] = useState(false);
-	// the answer that may no longer say Saved: a Saved standing over a box edited since is a claim the
-	// edit is stored, and one standing over a card reopened after Disable is a claim the rail is live.
-	// it returns only with the next answer.
+	// the answer that may no longer say Saved: one standing over a card reopened after Disable is a
+	// claim the rail is live. it returns only with the next answer.
 	const [spent, setSpent] = useState<RailAnswer | undefined>(undefined);
+	// the boxes as the last Save sent them, and whether they still read so: a Saved standing over a
+	// box edited since, during the Save included, is a claim the edit is stored.
+	const sent = useRef<string | null>(null);
+	const [edited, setEdited] = useState(false);
 	const headingRef = useRef<HTMLHeadingElement>(null);
 	const switchRef = useRef<HTMLInputElement>(null);
 
@@ -172,7 +175,7 @@ function RailCard({
 	// it again over its message, since the rail is still live.
 	const expanded = turnedOn || (enabled && off.state === 'idle');
 	const answer = save.state === 'idle' ? save.data : undefined;
-	const saved = answer?.pledgeRail?.outcome === 'saved' && spent !== answer;
+	const saved = answer?.pledgeRail?.outcome === 'saved' && spent !== answer && !edited;
 	const busy = save.state !== 'idle';
 	const disableRefused =
 		off.state === 'idle' ? resultFor(offForm, off.data)?.error?.['']?.[0] : undefined;
@@ -211,7 +214,21 @@ function RailCard({
 				{heading}
 			</h2>
 			<p className="adm-hint">{enabled ? `${intro} ${live}` : intro}</p>
-			<save.Form method="post" className="adm-stack" {...form} onInput={() => setSpent(save.data)}>
+			<save.Form
+				method="post"
+				className="adm-stack"
+				{...form}
+				onSubmit={(event) => {
+					form.onSubmit(event);
+					// conform's own validation passes are submits it cancels; only one it lets through posts.
+					if (event.defaultPrevented) return;
+					sent.current = boxesOf(event.currentTarget);
+					setEdited(false);
+				}}
+				onInput={(event) => setEdited(boxesOf(event.currentTarget) !== sent.current)}
+				// a landed Save that moved the record resets the boxes onto it (`useAdminForm`).
+				onReset={() => setEdited(false)}
+			>
 				<input {...whichForm(form.id)} />
 				{children}
 				<div className="adm-actions">
@@ -254,6 +271,11 @@ function RailCard({
 			</save.Form>
 		</Section>
 	);
+}
+
+/** what a Save form's boxes hold, as one comparable value. */
+function boxesOf(form: HTMLFormElement): string {
+	return JSON.stringify([...new FormData(form)].map(([name, value]) => [name, String(value)]));
 }
 
 /**

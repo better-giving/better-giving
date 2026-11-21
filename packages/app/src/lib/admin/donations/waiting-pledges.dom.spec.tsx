@@ -6,10 +6,16 @@ import { MARK_RECEIVED_FORM_ID } from '$lib/donations/pledge-forms';
 import { WHICH_FORM } from '$lib/forms/definition';
 import { clientAction } from '../../../routes/_app.admin.donations._index';
 import { UNREACHED } from '../unreached';
-import { WaitingCard, type WaitingCardProps, type WaitingPledge } from './waiting-pledges';
+import { localDay } from '../local-day';
+import {
+	MarkedReceived,
+	WaitingCard,
+	type WaitingCardProps,
+	type WaitingPledge
+} from './waiting-pledges';
 
 // the "Waiting to arrive" card and its Mark received dialog, mounted under the Gifts screen's index
-// route with a stand-in for the gifts table's scroll plane beside it. each press goes through the
+// route with its outcome line above and a stand-in for the gifts table's scroll plane beside it. each press goes through the
 // route's `clientAction`, whose server action answers as the test says, and the loader reads the
 // waiting list back, so a press that lands redraws the
 // card from what is still waiting. happy-dom implements `showModal()` as a flag with no top layer,
@@ -60,7 +66,18 @@ type Answer = (body: FormData, waiting: Waiting) => [Waiting, unknown];
 const recording: Answer = (body, waiting) => {
 	const id = String(body.get('pledge_id'));
 	const pledges = waiting.pledges.filter((one) => one.id !== id);
-	return [{ total: pledges.length, pledges }, { received: { pledgeId: id } }];
+	const donor = waiting.pledges.find((one) => one.id === id)?.donorName ?? null;
+	return [
+		{ total: pledges.length, pledges },
+		{
+			received: {
+				pledgeId: id,
+				amount: `$${String(body.get('value'))}`,
+				donorName: donor,
+				receivedOn: String(body.get('received_on'))
+			}
+		}
+	];
 };
 
 async function screen(stored: Waiting, answer: Answer) {
@@ -71,6 +88,7 @@ async function screen(stored: Waiting, answer: Answer) {
 		return createElement(
 			'div',
 			null,
+			createElement(MarkedReceived),
 			now.total > 0 ? createElement(WaitingCard, { waiting: now }) : null,
 			createElement('section', { className: 'adm-plane', tabIndex: 0 })
 		);
@@ -192,6 +210,23 @@ describe('the waiting card', () => {
 	});
 });
 
+const ALREADY_RECEIVED =
+	'This gift was already marked received, so nothing was recorded again. Reload the page to see it in the list.';
+/** the action as the route answers a press on a pledge already received. */
+const alreadyReceived = (waiting: Waiting): [Waiting, unknown] => [
+	waiting,
+	data(
+		{
+			form: {
+				id: MARK_RECEIVED_FORM_ID,
+				result: { status: 'error', error: { '': [ALREADY_RECEIVED] } }
+			}
+		},
+		{ status: 409 }
+	)
+];
+const alertIn = (dialog: Element | null) => dialog?.querySelector('[role="alert"]') ?? null;
+
 describe('the Mark received dialog', () => {
 	it('is the registry dialog, opened modal and named by its heading, with both boxes', async () => {
 		const { root } = await screen(BOTH, recording);
@@ -274,23 +309,6 @@ describe('the Mark received dialog', () => {
 		expect(document.getElementById(`${value.id}-err`)?.textContent).toBe('must be more than zero');
 	});
 
-	const ALREADY_RECEIVED =
-		'This gift was already marked received, so nothing was recorded again. Reload the page to see it in the list.';
-	/** the action as the route answers a press on a pledge already received. */
-	const alreadyReceived = (waiting: Waiting): [Waiting, unknown] => [
-		waiting,
-		data(
-			{
-				form: {
-					id: MARK_RECEIVED_FORM_ID,
-					result: { status: 'error', error: { '': [ALREADY_RECEIVED] } }
-				}
-			},
-			{ status: 409 }
-		)
-	];
-	const alertIn = (dialog: Element | null) => dialog?.querySelector('[role="alert"]') ?? null;
-
 	it('stays open over its sentence when the pledge was already received', async () => {
 		const { root, posted } = await screen(BOTH, (_, waiting) => alreadyReceived(waiting));
 		const dialog = await open(root, 'Maya Okafor');
@@ -341,5 +359,83 @@ describe('the Mark received dialog', () => {
 		expect(still).toBe(dialog);
 		expect(box(still ?? dialog, 'Value received').value).toBe('9,512.40');
 		expect(rowOf(root, 'Maya Okafor')).toBeDefined();
+	});
+
+	it('fills in today as the day received', async () => {
+		const { root } = await screen(BOTH, recording);
+		const dialog = await open(root, 'Maya Okafor');
+
+		expect(box(dialog, 'Date received').value).toBe(localDay(new Date()));
+	});
+
+	it('keeps Cancel from closing it while the press is out, so the refusal lands in it', async () => {
+		let release: () => void = () => {};
+		const { root, posted } = await screen(BOTH, (_, waiting) => {
+			const [next, said] = alreadyReceived(waiting);
+			return [next, new Promise((done) => (release = () => done(said)))];
+		});
+		const dialog = await open(root, 'Maya Okafor');
+		await fill(dialog);
+		await markReceived(dialog, posted);
+		const cancel = button(dialog, 'Cancel');
+		await press(cancel);
+
+		expect(root.querySelector('dialog')).toBe(dialog);
+		expect(cancel.getAttribute('aria-disabled')).toBe('true');
+		expect(cancel.hasAttribute('disabled')).toBe(false);
+
+		await act(async () => release());
+		await vi.waitFor(() => expect(alertIn(dialog)?.textContent).toBe(ALREADY_RECEIVED));
+		expect(cancel.getAttribute('aria-disabled')).toBeNull();
+		await press(cancel);
+		expect(root.querySelector('dialog')).toBeNull();
+	});
+
+	it('opens again empty, without the refusal it was closed on', async () => {
+		const { root, posted } = await screen(BOTH, (_, waiting) => alreadyReceived(waiting));
+		const first = await open(root, 'Maya Okafor');
+		await fill(first);
+		await markReceived(first, posted);
+		await vi.waitFor(() => expect(alertIn(first)?.textContent).toBe(ALREADY_RECEIVED));
+		await press(button(first, 'Cancel'));
+
+		const again = await open(root, 'Maya Okafor');
+		expect(alertIn(again)).toBeNull();
+		expect(box(again, 'Value received').value).toBe('');
+	});
+});
+
+describe('the line a landed Mark received leaves', () => {
+	const statusOf = (root: HTMLElement) => root.querySelector('[role="status"]');
+
+	it('is there empty before any press', async () => {
+		const { root } = await screen(BOTH, recording);
+
+		expect(statusOf(root)?.textContent).toBe('');
+		expect(statusOf(root)?.classList.contains('adm-vh')).toBe(true);
+	});
+
+	it('names the gift recorded, and stays after the last pledge takes the card with it', async () => {
+		const { root, posted } = await screen({ total: 1, pledges: [MAYA] }, recording);
+		const dialog = await open(root, 'Maya Okafor');
+		await fill(dialog);
+		await markReceived(dialog, posted);
+		await vi.waitFor(() => expect(root.querySelector('h2')).toBeNull());
+
+		expect(statusOf(root)?.textContent).toBe(
+			'Marked received. $9,512.40 from Maya Okafor, received 2026-11-18.'
+		);
+		expect(statusOf(root)?.classList.contains('adm-vh')).toBe(false);
+		expect(statusOf(root)?.querySelector('time')?.getAttribute('dateTime')).toBe('2026-11-18');
+	});
+
+	it('says nothing over a refusal', async () => {
+		const { root, posted } = await screen(BOTH, (_, waiting) => alreadyReceived(waiting));
+		const dialog = await open(root, 'Maya Okafor');
+		await fill(dialog);
+		await markReceived(dialog, posted);
+		await vi.waitFor(() => expect(alertIn(dialog)?.textContent).toBe(ALREADY_RECEIVED));
+
+		expect(statusOf(root)?.textContent).toBe('');
 	});
 });

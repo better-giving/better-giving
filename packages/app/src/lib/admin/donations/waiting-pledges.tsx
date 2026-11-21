@@ -10,6 +10,7 @@ import { type FetcherWithComponents, useFetcher } from 'react-router';
 import { MARK_RECEIVED_FORM_ID, MARK_RECEIVED_INPUT } from '$lib/donations/pledge-forms';
 import { FORM_CURRENCY } from '$lib/forms/amounts';
 import { defineForm, type FormRejection } from '$lib/forms/definition';
+import { localDay } from '../local-day';
 import { MoneyField } from '../page-edit/money-field';
 import { boxProps, useAdminForm, whichForm } from '../use-admin-form';
 
@@ -39,18 +40,50 @@ export type WaitingCardProps = {
 /** what Mark received answers, or its refusal. */
 type ReceivedAnswer = {
 	readonly form?: FormRejection;
-	readonly received?: { readonly pledgeId: string };
+	readonly received?: {
+		readonly pledgeId: string;
+		/** the value received, formatted. */
+		readonly amount: string;
+		/** null where the gift's donor could not be read back after the write. */
+		readonly donorName: string | null;
+		/** the ISO day typed. */
+		readonly receivedOn: string;
+	};
 };
 
 /** where Mark received posts: the Gifts screen's index route, whatever route this card is drawn on. */
 const RECEIVED_ACTION = '/admin/donations?index';
 
+/** the card's press and `MarkedReceived`'s line are one fetcher, so the line outlives the card. */
+const MARK_RECEIVED_FETCHER = 'mark-received';
+
 const MARK_RECEIVED_FORM = defineForm({ id: MARK_RECEIVED_FORM_ID, schema: MARK_RECEIVED_INPUT });
+
+/**
+ * what a landed Mark received says. the screen mounts it in every state, beside the card rather than
+ * in it: the last pledge marked unmounts the card on the render its answer lands.
+ */
+export function MarkedReceived() {
+	const fetcher = useFetcher<ReceivedAnswer>({ key: MARK_RECEIVED_FETCHER });
+	const received = fetcher.state === 'idle' ? fetcher.data?.received : undefined;
+	// the day as a `time`, which base.css keeps on one line, as Add donation's outcome writes it.
+	return (
+		<p role="status" className={received === undefined ? 'adm-vh' : undefined}>
+			{received === undefined ? null : (
+				<StatusWord register="momentary">
+					Marked received. {received.amount}
+					{received.donorName === null ? '' : ` from ${received.donorName}`}, received{' '}
+					<time dateTime={received.receivedOn}>{received.receivedOn}</time>.
+				</StatusWord>
+			)}
+		</p>
+	);
+}
 
 /** drawn only while something waits: the screen mounts it when `total` is above zero. */
 export function WaitingCard({ waiting }: WaitingCardProps) {
 	const headingId = useId();
-	const fetcher = useFetcher<ReceivedAnswer>();
+	const fetcher = useFetcher<ReceivedAnswer>({ key: MARK_RECEIVED_FETCHER });
 	// the pledge whose dialog is up, and the one the last press was about with the answer in hand as
 	// it was made: an answer is shown only in the dialog of the pledge it answered, and the answer in
 	// hand at the press is the press before it, which may have been another pledge's.
@@ -94,7 +127,14 @@ export function WaitingCard({ waiting }: WaitingCardProps) {
 							<p className="adm-pledges__ref">{one.reference}</p>
 							<p className="adm-hint">{one.told ? 'Donor says it’s sent' : 'Instructions shown'}</p>
 						</div>
-						<Button type="button" onClick={() => setOpened(one.id)}>
+						<Button
+							type="button"
+							onClick={() => {
+								// a dialog opens empty, never over the refusal its last opening was closed on.
+								setPressed(null);
+								setOpened(one.id);
+							}}
+						>
 							Mark received
 							<span className="adm-vh">
 								, {one.donorName}, {one.pledged}
@@ -149,8 +189,10 @@ function MarkReceivedDialog({
 	onClose,
 	fallback
 }: MarkReceivedDialogProps) {
+	// the dialog is drawn only in the browser, after a press, so the operator's day is there at mount.
+	const [today] = useState(() => localDay(new Date()));
 	const [form, fields] = useAdminForm(MARK_RECEIVED_FORM, answer, {
-		defaultValue: { pledge_id: pledge.id, value: '', received_on: '' }
+		defaultValue: { pledge_id: pledge.id, value: '', received_on: today }
 	});
 	const valueBox = useRef<HTMLInputElement>(null);
 	const busy = fetcher.state !== 'idle';
@@ -180,7 +222,14 @@ function MarkReceivedDialog({
 					}
 				}}
 				cancel="Cancel"
-				cancelProps={{ type: 'button', onClick: onClose }}
+				// a press in flight keeps the dialog up for its answer, a refusal included.
+				cancelProps={{
+					type: 'button',
+					'aria-disabled': busy || undefined,
+					onClick: () => {
+						if (!busy) onClose();
+					}
+				}}
 				onDismiss={() => {
 					if (!busy) onClose();
 				}}
