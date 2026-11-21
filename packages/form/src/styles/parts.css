@@ -10,14 +10,15 @@
  *   - `max(16px, 1em)`, twice: on the text boxes this sheet draws and on the registry's,
  *     `.ds-field-input`. iOS Safari zooms the page when a focused control computes below 16px, and
  *     this form is on someone else's page.
- *   - `max(12px, var(--_t-xs))`, six times: `.mandate`, `.fee-note`, the `(optional)` beside
- *     a label, the `.hint` under the note's consent, the notify press inside the tribute and the
- *     words of a floated label. `em` compounds
+ *   - `max(12px, var(--_t-xs))`, eight times: `.mandate`, `.fee-note`, the `(optional)` beside
+ *     a label, the `.hint` under the note's consent, the notify press inside the tribute, the
+ *     words of a floated label, the benefits panel's `.benefits-fine` and the labels of a saved
+ *     pledge's transfer details. `em` compounds
  *     against a parent already at `--_t-sm`, so the step documented as 12px draws at 10.5px and
  *     lower — the floor is what stops the compounding, and the token is what the size still follows
- *     above it. the press and the floated label compound against nothing and take the floor for the
- *     clamp band alone. the registry's badge text (`.ds-badge`) takes the same floor over its own
- *     step off the root, for the same band.
+ *     above it. the press, the floated label and the pledge's detail labels compound against
+ *     nothing and take the floor for the clamp band alone. the registry's badge text (`.ds-badge`)
+ *     takes the same floor over its own step off the root, for the same band.
  *   - `min-block-size: 5em` on the textarea. how many lines the box opens at, which is a shape of
  *     that box and not a measure anything else on the card shares.
  *   - `overflow-clip-margin: 6px` on `.disclosure-inner`. the room a focus ring painted outside a
@@ -2415,9 +2416,15 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 	line-height: var(--_lh-tight);
 }
 
-/* the details name their values a step down again, since the value under each is what is read. */
+/*
+ * the details name their values a step down again, since the value under each is what is read. the
+ * name is still what tells a donor which value they are copying into their broker's or custodian's
+ * form, so it carries the floor `.optional` argues: its parent is the card's own base, and `--_t-xs` draws
+ * at 11.25px at the bottom of the clamp band.
+ */
 .pledge-details .pledge-label {
-	font-size: var(--_t-xs);
+	/* raw-length-ok: the floor, for the reason above. */
+	font-size: max(12px, var(--_t-xs));
 }
 
 .pledge-value {
