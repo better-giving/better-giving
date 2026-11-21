@@ -4,7 +4,7 @@ import { FieldMessage } from '@better-giving/operator/components/forms/FieldMess
 import { Section } from '@better-giving/operator/components/shell/Layout';
 import { StatusWord } from '@better-giving/operator/components/status/StatusWord';
 import { getFormProps } from '@conform-to/react';
-import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { type FetcherWithComponents, useFetcher } from 'react-router';
 import { defineForm, type FormRejection } from '$lib/forms/definition';
 import {
@@ -195,6 +195,20 @@ function RailCard({
 		off.state === 'idle' && spent.off !== off.data
 			? resultFor(offForm, off.data)?.error?.['']?.[0]
 			: undefined;
+
+	// a card its switch opens starts clean. conform keeps the marks of the last Save past the form's
+	// unmount, and the form element's reset is what clears them (`onReset` in @conform-to/dom's
+	// form.js); the boxes go back to the stored details, which is what they already hold. a card a
+	// refused Disable opens again keeps its marks, since the rail never went off.
+	const wasExpanded = useRef(expanded);
+	useLayoutEffect(() => {
+		const opened = !wasExpanded.current && expanded;
+		wasExpanded.current = expanded;
+		if (!opened || !turnedOn) return;
+		sent.current = null;
+		typed.current = null;
+		document.forms.namedItem(form.id)?.reset();
+	}, [expanded, turnedOn, form.id]);
 
 	// a card opened by its switch puts the caret in its first box; one opened again by a refused
 	// Disable puts it back on Disable, over the refusal that asks for that press again.

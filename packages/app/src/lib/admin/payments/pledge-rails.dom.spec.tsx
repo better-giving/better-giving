@@ -562,4 +562,24 @@ describe('a refusal', () => {
 		]);
 		expect(reopened.querySelectorAll('[role="alert"]')).toHaveLength(0);
 	});
+
+	it('leaves no flagged box on a card the switch opens again after Disable', async () => {
+		const { root, posted } = await screen(OFF, landing);
+		let stocks = await turnOn(root, 'Stocks');
+		await press(button(stocks, 'Save'));
+		for (const label of STOCK_BOXES) {
+			expect(box(stocks, label).getAttribute('aria-invalid'), label).toBe('true');
+		}
+		expect(alerts(root)).toHaveLength(STOCK_BOXES.length);
+
+		await press(button(stocks, 'Disable stocks'));
+		expect(switchOf(root, 'Stocks')).not.toBeNull();
+		stocks = await turnOn(root, 'Stocks');
+
+		expect(stocks.querySelectorAll('[aria-invalid="true"]')).toHaveLength(0);
+		expect(alerts(root)).toEqual([]);
+		expect(stocks.textContent).not.toContain('required');
+		expect(document.activeElement).toBe(box(stocks, 'Brokerage name'));
+		expect(posted).toHaveLength(0);
+	});
 });
