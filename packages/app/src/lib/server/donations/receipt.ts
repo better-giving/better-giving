@@ -122,6 +122,8 @@ export type ReceiptTarget = {
 	 * caller off the settled `payment` row, with the coin's name from the list the donor picked from.
 	 */
 	readonly crypto: CryptoReceived | null;
+	/** the shares a received stock pledge arrived as (./receive-pledge.ts); absent on every other rail. */
+	readonly shares?: string;
 };
 
 /**
@@ -160,6 +162,7 @@ export async function sendReceipt(
 			tribute: target.tribute,
 			program: target.program,
 			crypto: target.crypto,
+			...(target.shares === undefined ? {} : { shares: target.shares }),
 			...(giftPageUrl === null ? {} : { giftPageUrl })
 		});
 		if (rendered.ok) return rendered;

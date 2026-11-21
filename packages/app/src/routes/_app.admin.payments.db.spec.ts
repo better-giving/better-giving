@@ -5,6 +5,7 @@ import { client, first, run, stmt } from '$lib/server/db/database.testing';
 import type { PostableAccountId } from '$lib/server/db/postable';
 import { recordDonation } from '$lib/server/donations/record';
 import { SUBSCRIBED_EVENT_TYPES as PAYPAL_EVENTS } from '@better-giving/operator/paypal/webhook-listener';
+import { REQUIRED } from '@better-giving/operator/console/org-rules';
 import { secretFingerprint } from '@better-giving/operator/stripe/secret-fingerprint';
 import { SUBSCRIBED_EVENT_TYPES as STRIPE_EVENTS } from '@better-giving/operator/stripe/webhook-endpoint';
 import { createNowpaymentsProvider } from '$lib/server/payments/nowpayments';
@@ -150,7 +151,7 @@ async function drawn(env: Env = deployed()): Promise<Drawn> {
 }
 
 /** the loader's answer as it crosses the wire, which is JSON of exactly this. */
-type Drawn = PaymentsScreen;
+type Drawn = Awaited<ReturnType<typeof screen.loader>>;
 
 /** a deployment holding no processor key at all, which is every fork before payments are set up. */
 const NO_STRIPE = { STRIPE_SECRET_KEY: undefined, STRIPE_PUBLISHABLE_KEY: undefined };
@@ -979,5 +980,108 @@ describe('Register all sites', () => {
 			detail: 'Stripe refused STRIPE_SECRET_KEY.'
 		});
 		expect(registered).toEqual([]);
+	});
+});
+
+describe('the stock and IRA (QCD) rails', () => {
+	const STOCK = {
+		brokerage_name: 'Harbor Street Securities',
+		dtc_number: '0164',
+		account_number: 'Z12-345678',
+		account_name: 'Cedar Fork Community Pantry Inc.'
+	};
+	const IRA = {
+		payee_name: 'Cedar Fork Community Pantry Inc.',
+		mailing_address: '412 Alder Lane, Suite 3\nCedar Fork, OR 97330'
+	};
+
+	beforeEach(async () => {
+		await run(stmt('delete from pledge_rail'));
+	});
+
+	/** the rails as the loader draws them, on a deployment that reads no processor. */
+	async function railsDrawn(): Promise<Drawn['pledgeRails']> {
+		return (await drawn(deployed(NO_STRIPE))).pledgeRails;
+	}
+
+	/** the field errors a rejected press carries, keyed by box. */
+	async function errorsOf(response: Response): Promise<Record<string, string[] | null>> {
+		const body = (await response.json()) as {
+			form: { result: { error: Record<string, string[] | null> } };
+		};
+		return body.form.result.error;
+	}
+
+	it('draws both rails off, every detail blank, on a deployment that never saved one', async () => {
+		expect(await railsDrawn()).toEqual({
+			stock: {
+				enabled: false,
+				details: { brokerage_name: '', dtc_number: '', account_number: '', account_name: '' }
+			},
+			ira_qcd: { enabled: false, details: { payee_name: '', mailing_address: '' } }
+		});
+	});
+
+	it('saves nothing and flags every blank box at once where Save is pressed with boxes empty', async () => {
+		const response = await post(
+			deployer,
+			bodyOf('payments-stock', { ...STOCK, dtc_number: '', account_name: '   ' }),
+			deployed(NO_STRIPE)
+		);
+
+		expect(response.status).toBe(400);
+		const errors = await errorsOf(response);
+		expect(errors.dtc_number).toEqual([REQUIRED]);
+		expect(errors.account_name).toEqual([REQUIRED]);
+		expect(errors.brokerage_name ?? null).toBeNull();
+		expect(errors.account_number ?? null).toBeNull();
+		expect((await railsDrawn()).stock.enabled).toBe(false);
+		expect(await first(stmt('select count(*) as n from pledge_rail'))).toEqual({ n: 0 });
+	});
+
+	it('saves nothing where a box never arrived, and flags it', async () => {
+		const { mailing_address: _, ...partial } = IRA;
+		const response = await post(deployer, bodyOf('payments-ira-qcd', partial), deployed(NO_STRIPE));
+
+		expect(response.status).toBe(400);
+		expect((await errorsOf(response)).mailing_address).toEqual([REQUIRED]);
+		expect((await railsDrawn()).ira_qcd.enabled).toBe(false);
+	});
+
+	it('turns the rail on with every box filled, and Disable keeps the details for the next Save', async () => {
+		const saved = await post(deployer, bodyOf('payments-stock', STOCK), deployed(NO_STRIPE));
+		expect(saved.status).toBe(200);
+		expect(await saved.json()).toEqual({ pledgeRail: { rail: 'stock', outcome: 'saved' } });
+		expect((await railsDrawn()).stock).toEqual({ enabled: true, details: STOCK });
+
+		const off = await post(deployer, bodyOf('payments-stock-off'), deployed(NO_STRIPE));
+		expect(off.status).toBe(200);
+		expect(await off.json()).toEqual({ pledgeRail: { rail: 'stock', outcome: 'disabled' } });
+		expect((await railsDrawn()).stock).toEqual({ enabled: false, details: STOCK });
+		// the other rail is untouched by either press.
+		expect((await railsDrawn()).ira_qcd.enabled).toBe(false);
+	});
+
+	it('turns the IRA (QCD) rail on and off the same way', async () => {
+		await post(deployer, bodyOf('payments-ira-qcd', IRA), deployed(NO_STRIPE));
+		expect((await railsDrawn()).ira_qcd).toEqual({ enabled: true, details: IRA });
+
+		await post(deployer, bodyOf('payments-ira-qcd-off'), deployed(NO_STRIPE));
+		expect((await railsDrawn()).ira_qcd).toEqual({ enabled: false, details: IRA });
+	});
+
+	it('refuses a member’s Save and Disable with not-found, and changes nothing', async () => {
+		await post(deployer, bodyOf('payments-ira-qcd', IRA), deployed(NO_STRIPE));
+		const member = await signInAsMember(db, DEPLOYMENT);
+
+		const save = await post(member, bodyOf('payments-stock', STOCK), deployed(NO_STRIPE));
+		const disable = await post(member, bodyOf('payments-ira-qcd-off'), deployed(NO_STRIPE));
+
+		expect(save.status).toBe(404);
+		expect(disable.status).toBe(404);
+		expect((await get(member, deployed(NO_STRIPE))).status).toBe(404);
+		const rails = await railsDrawn();
+		expect(rails.stock.enabled).toBe(false);
+		expect(rails.ira_qcd.enabled).toBe(true);
 	});
 });

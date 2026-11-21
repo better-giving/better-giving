@@ -85,6 +85,11 @@ export interface ReceiptInput {
 	 */
 	readonly crypto: CryptoReceived | null;
 	/**
+	 * the shares a stock gift arrived as, `50 shares of AAPL`; absent on every other rail. the dollar
+	 * figure it prints beside them is `contribution.totalMinor`, the value staff recorded.
+	 */
+	readonly shares?: string;
+	/**
 	 * the address of the donor's own page for this gift. given, the receipt closes on the employer
 	 * match note that links to it; absent, it is the receipt it always was.
 	 */
@@ -286,6 +291,7 @@ export async function renderReceipt(input: ReceiptInput): Promise<ReceiptResult>
 							},
 				program: input.program,
 				crypto: input.crypto,
+				...(input.shares === undefined ? {} : { shares: input.shares }),
 				...(input.giftPageUrl === undefined ? {} : { giftPageUrl: input.giftPageUrl })
 			})
 		)

@@ -563,6 +563,28 @@ describe('receipt.template — a gift given in crypto', () => {
 	});
 });
 
+describe('receipt.template — a gift given in stock', () => {
+	const SHARES = '50 shares of AAPL';
+
+	it('states the shares received and their value when received in place of the amount', async () => {
+		for (const arm of await arms({ shares: SHARES })) {
+			expect(arm.indexOf('Date')).toBeLessThan(arm.indexOf('Shares received'));
+			expect(arm.indexOf('Shares received')).toBeLessThan(arm.indexOf('Value when received'));
+			expect(arm).toContain(SHARES);
+			expect(arm).toContain('USD 100.00');
+			expect(arm).not.toMatch(/\bAmount\b/);
+		}
+	});
+
+	it('lines its rows up in a column the longest label sets, and emphasises the shares', async () => {
+		const { text, html } = await rendered({ shares: SHARES });
+		expect(text).toContain('\nShares received      50 shares of AAPL\n');
+		expect(text).toContain('\nValue when received  USD 100.00\n');
+		expect(html).toContain(`<strong>${SHARES}</strong>`);
+		expect(html).not.toContain('<strong>USD 100.00</strong>');
+	});
+});
+
 describe('receipt.template — the processing fee the donor added', () => {
 	/**
 	 * the donor sees one figure: the total they paid. what it was made of is bookkeeping —

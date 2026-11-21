@@ -5,6 +5,7 @@ import { settledGiftWrites, type Writes } from '../books/writes';
 import type { ParsedContact } from '../contacts/contact-input';
 import { donationRevenueAccount } from '../db/accounts';
 import type { Db } from '../db/client';
+import type { PostableAccountId } from '../db/postable';
 import { sqliteResultCode } from '../db/rejection';
 import {
 	donation,
@@ -12,8 +13,10 @@ import {
 	payment,
 	type NewDonation,
 	type NewLineItem,
-	type NewPayment
+	type NewPayment,
+	type PledgeMethod
 } from '../db/schema';
+import type { Posting } from '../ledger/posting';
 import { giftMatchInsert } from '../matching/match';
 import { type ResolvedDonor, resolveDonor } from './donor';
 import type { RecordedGift } from './queries';
@@ -150,40 +153,20 @@ export async function recordGiftInHand(db: Db, gift: GiftInHand): Promise<GiftIn
 			note: gift.note ?? null,
 			programId: gift.programId
 		};
-		const lineRow: NewLineItem = {
-			id: uuidv7(),
-			donationId: gift.donationId,
-			label: 'Donation',
-			revenueAccountId,
-			unitPriceMinor: gift.amountMinor,
-			lineTotalMinor: gift.amountMinor
-		};
-		const paymentRow: NewPayment = {
-			id: gift.paymentId,
-			donationId: gift.donationId,
-			amountMinor: gift.amountMinor,
-			currency: FORM_CURRENCY,
-			direction: 'inbound',
-			method: gift.method,
-			status: 'succeeded',
-			// `manual` mints no transaction id, and `NON_PROCESSOR_PROVIDERS` in ../db/schema.ts is what
-			// lets the column stay null for it.
-			provider: 'manual',
-			occurredAt: gift.dated
-		};
-
-		// foreign-key order: the donor, the gift, what names the gift and its employer match row
-		// (../matching/match.ts), then the books, then what the
-		// books owe QuickBooks — `quickbooks_sync.entry_group_id` points at the group above it — then
-		// what the gift owes each listening Zap and destination, about the payment above.
-		const rows: Writes = [
+		await db.batch([
+			...donor.statements,
 			db.insert(donation).values(donationRow),
-			db.insert(lineItem).values(lineRow),
-			db.insert(payment).values(paymentRow),
-			giftMatchInsert(db, gift.donationId),
-			...settledGiftWrites(db, { charge: posting, fee: null, contactId: donor.contactId })
-		];
-		await db.batch([...donor.statements, ...rows]);
+			...inHandWrites(db, {
+				donationId: gift.donationId,
+				paymentId: gift.paymentId,
+				contactId: donor.contactId,
+				amountMinor: gift.amountMinor,
+				dated: gift.dated,
+				method: gift.method,
+				revenueAccountId,
+				posting
+			})
+		]);
 
 		return { ok: true, contactId: donor.contactId, donorWasCreated: donor.created };
 	} catch (error) {
@@ -204,6 +187,61 @@ export async function recordGiftInHand(db: Db, gift: GiftInHand): Promise<GiftIn
 		}
 		return { ok: false, reason: 'write_failed' };
 	}
+}
+
+/** what follows a gift in hand's `donation` row into its batch. */
+export type InHandWrite = {
+	readonly donationId: string;
+	readonly paymentId: string;
+	readonly contactId: string;
+	/** minor units, positive, in `FORM_CURRENCY`. */
+	readonly amountMinor: number;
+	readonly dated: Date;
+	/** cash or a cheque, or a received stock or IRA (QCD) pledge (./receive-pledge.ts). */
+	readonly method: InHandMethod | PledgeMethod;
+	readonly revenueAccountId: PostableAccountId;
+	/** `receivedInHandEntry` over the same payment, built by the caller ahead of its `try`. */
+	readonly posting: Posting;
+};
+
+/**
+ * the rows a gift in hand writes after its `donation` row: its one line, a `succeeded` `manual`
+ * payment, its employer match row and its entry in the books, with no fee. this module and
+ * ./receive-pledge.ts each splice them into their own batch.
+ */
+export function inHandWrites(db: Db, gift: InHandWrite): Writes {
+	const lineRow: NewLineItem = {
+		id: uuidv7(),
+		donationId: gift.donationId,
+		label: 'Donation',
+		revenueAccountId: gift.revenueAccountId,
+		unitPriceMinor: gift.amountMinor,
+		lineTotalMinor: gift.amountMinor
+	};
+	const paymentRow: NewPayment = {
+		id: gift.paymentId,
+		donationId: gift.donationId,
+		amountMinor: gift.amountMinor,
+		currency: FORM_CURRENCY,
+		direction: 'inbound',
+		method: gift.method,
+		status: 'succeeded',
+		// `manual` mints no transaction id, and `NON_PROCESSOR_PROVIDERS` in ../db/schema.ts is what
+		// lets the column stay null for it.
+		provider: 'manual',
+		occurredAt: gift.dated
+	};
+
+	// foreign-key order, after the donor and the gift: what names the gift and its employer match row
+	// (../matching/match.ts), then the books, then what the
+	// books owe QuickBooks — `quickbooks_sync.entry_group_id` points at the group above it — then
+	// what the gift owes each listening Zap and destination, about the payment above.
+	return [
+		db.insert(lineItem).values(lineRow),
+		db.insert(payment).values(paymentRow),
+		giftMatchInsert(db, gift.donationId),
+		...settledGiftWrites(db, { charge: gift.posting, fee: null, contactId: gift.contactId })
+	];
 }
 
 /** a gift in hand as a press or a call submitted it, to compare with what its ids already hold. */

@@ -25,10 +25,22 @@ import { screenTitle } from '$lib/admin/screen-title';
 import { formPress } from '$lib/admin/unreached';
 import { resultFor, whichForm } from '$lib/admin/use-admin-form';
 import { defineForm, type FormRejection } from '$lib/forms/definition';
+import {
+	DISABLE_RAIL_INPUT,
+	IRA_QCD_RAIL_INPUT,
+	PLEDGE_RAIL_FORMS,
+	STOCK_RAIL_INPUT
+} from '$lib/payments/pledge-rail-forms';
 import { STAFF_USER_ID } from '$lib/server/auth';
 import { invalid, parseForm, submittedForm } from '$lib/server/conform';
+import type { PledgeMethod } from '$lib/server/db/schema';
 import { notFound } from '$lib/server/db/load-failure';
 import { createPaymentProviders } from '$lib/server/payments/factory';
+import {
+	disablePledgeRail,
+	enablePledgeRail,
+	readPledgeRails
+} from '$lib/server/payments/pledge-rails';
 import { readPaymentsScreen } from '$lib/server/payments/processor-cards';
 import {
 	PROCESSOR_LABELS,
@@ -52,7 +64,22 @@ const NOT_HERE =
 /** the two presses, as the literals a body names itself with. */
 const RECURRING_FORM_ID = 'payments-recurring';
 const WALLETS_FORM_ID = 'payments-wallets';
-const SCREEN_FORMS = [RECURRING_FORM_ID, WALLETS_FORM_ID] as const;
+const SCREEN_FORMS = [
+	RECURRING_FORM_ID,
+	WALLETS_FORM_ID,
+	PLEDGE_RAIL_FORMS.stock,
+	PLEDGE_RAIL_FORMS.stockOff,
+	PLEDGE_RAIL_FORMS.iraQcd,
+	PLEDGE_RAIL_FORMS.iraQcdOff
+] as const;
+
+const STOCK_FORM = defineForm({ id: PLEDGE_RAIL_FORMS.stock, schema: STOCK_RAIL_INPUT });
+const IRA_QCD_FORM = defineForm({ id: PLEDGE_RAIL_FORMS.iraQcd, schema: IRA_QCD_RAIL_INPUT });
+const STOCK_OFF_FORM = defineForm({ id: PLEDGE_RAIL_FORMS.stockOff, schema: DISABLE_RAIL_INPUT });
+const IRA_QCD_OFF_FORM = defineForm({
+	id: PLEDGE_RAIL_FORMS.iraQcdOff,
+	schema: DISABLE_RAIL_INPUT
+});
 
 /**
  * Set up recurring gifts, on the one account its card is about. the name is checked against the
@@ -75,7 +102,35 @@ export function meta({ matches }: Route.MetaArgs): Route.MetaDescriptors {
 
 export async function loader({ context, request }: Route.LoaderArgs) {
 	if (context.get(staff).id !== STAFF_USER_ID) notFound(NOT_HERE);
-	return readPaymentsScreen(context.get(platform).env, context.get(database), request.url);
+	const db = context.get(database);
+	const [screen, rails] = await Promise.all([
+		readPaymentsScreen(context.get(platform).env, db, request.url),
+		readPledgeRails(db)
+	]);
+	// keyed by the boxes the Save form names, so each seeds its box as it stands; a detail never
+	// saved crosses as a blank box.
+	const { stock, ira_qcd } = rails;
+	return {
+		...screen,
+		pledgeRails: {
+			stock: {
+				enabled: stock.enabled,
+				details: {
+					brokerage_name: stock.details.brokerageName ?? '',
+					dtc_number: stock.details.dtcNumber ?? '',
+					account_number: stock.details.accountNumber ?? '',
+					account_name: stock.details.accountName ?? ''
+				}
+			},
+			ira_qcd: {
+				enabled: ira_qcd.enabled,
+				details: {
+					payee_name: ira_qcd.details.payeeName ?? '',
+					mailing_address: ira_qcd.details.mailingAddress ?? ''
+				}
+			}
+		}
+	};
 }
 
 /**
@@ -91,6 +146,14 @@ export async function action(args: Route.ActionArgs) {
 			return setUpRecurring(args, body);
 		case WALLETS_FORM_ID:
 			return registerSites(args, body);
+		case PLEDGE_RAIL_FORMS.stock:
+			return saveStock(args, body);
+		case PLEDGE_RAIL_FORMS.iraQcd:
+			return saveIraQcd(args, body);
+		case PLEDGE_RAIL_FORMS.stockOff:
+			return disable(args, parseForm(body, STOCK_OFF_FORM), 'stock');
+		case PLEDGE_RAIL_FORMS.iraQcdOff:
+			return disable(args, parseForm(body, IRA_QCD_OFF_FORM), 'ira_qcd');
 	}
 
 	// the arms are declared inside the action because react router strips the `action` export from
@@ -144,6 +207,49 @@ export async function action(args: Route.ActionArgs) {
 			host.detail === null ? [] : [{ host: host.standing.host, detail: host.detail }]
 		);
 		return { wallets: { state: 'levelled' as const, failed } };
+	}
+
+	/**
+	 * Save on the Stocks card: every box filled turns the rail on with those details, replacing what
+	 * was saved; any box blank or missing saves nothing and flags each such box at once.
+	 */
+	async function saveStock({ context }: Route.ActionArgs, body: FormData) {
+		const submission = parseForm(body, STOCK_FORM);
+		if (!submission.ok) return invalid(400, submission.reject());
+		const { brokerage_name, dtc_number, account_number, account_name } = submission.value;
+		await enablePledgeRail(context.get(database), {
+			rail: 'stock',
+			details: {
+				brokerageName: brokerage_name,
+				dtcNumber: dtc_number,
+				accountNumber: account_number,
+				accountName: account_name
+			}
+		});
+		return { pledgeRail: { rail: 'stock' as const, outcome: 'saved' as const } };
+	}
+
+	/** Save on the IRA (QCD) card, on `saveStock`'s terms. */
+	async function saveIraQcd({ context }: Route.ActionArgs, body: FormData) {
+		const submission = parseForm(body, IRA_QCD_FORM);
+		if (!submission.ok) return invalid(400, submission.reject());
+		const { payee_name, mailing_address } = submission.value;
+		await enablePledgeRail(context.get(database), {
+			rail: 'ira_qcd',
+			details: { payeeName: payee_name, mailingAddress: mailing_address }
+		});
+		return { pledgeRail: { rail: 'ira_qcd' as const, outcome: 'saved' as const } };
+	}
+
+	/** Disable: the rail off, its details kept, and its waiting pledges left on Gifts. */
+	async function disable(
+		{ context }: Route.ActionArgs,
+		submission: ReturnType<typeof parseForm<typeof DISABLE_RAIL_INPUT>>,
+		rail: PledgeMethod
+	) {
+		if (!submission.ok) return invalid(400, submission.reject());
+		await disablePledgeRail(context.get(database), rail);
+		return { pledgeRail: { rail, outcome: 'disabled' as const } };
 	}
 }
 

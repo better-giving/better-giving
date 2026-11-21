@@ -190,6 +190,12 @@ export interface ReceiptData {
 	 */
 	readonly crypto: CryptoReceived | null;
 	/**
+	 * the shares a stock gift arrived as — `50 shares of AAPL` — printed verbatim. given, the amount
+	 * row is labelled for what it is, the value staff recorded when the shares arrived; absent, the
+	 * receipt is the one every other rail gets.
+	 */
+	readonly shares?: string;
+	/**
 	 * the address of the donor's own page for this gift, where the filing details an employer's
 	 * giving portal asks for are printed. given, the receipt closes on `MATCH_NOTE`; absent, it is
 	 * the receipt it was before the note existed, byte for byte.
@@ -246,7 +252,12 @@ export function template(data: ReceiptData): EmailTemplate {
 		...(data.donorName === null ? [] : [{ label: RECEIPT_LABELS.donor, value: data.donorName }]),
 		{ label: RECEIPT_LABELS.recipient, value: org.legalName },
 		{ label: RECEIPT_LABELS.date, value: date },
-		...amountRows(data.crypto, amount),
+		...(data.shares === undefined
+			? amountRows(data.crypto, amount)
+			: [
+					{ label: STOCK_LABELS.shares, value: data.shares },
+					{ label: CRYPTO_LABELS.valueWhenReceived, value: amount }
+				]),
 		// after the four and never among them: the quartet is what the law asks a receipt for and
 		// its order is settled, and this is a fact about the gift the donor stated and the document
 		// states back. a gift given for nobody drops the row, the way an unnamed donor drops theirs.
@@ -331,17 +342,20 @@ const CRYPTO_LABELS = {
 	valueWhenReceived: 'Value when received'
 } as const;
 
+/** a stock gift's shares, in the row a crypto gift's coin takes, above the same value row. */
+const STOCK_LABELS = { shares: 'Shares received' } as const;
+
 /**
  * the label column in the text arm, widened by the longest label printed rather than by a guess.
  *
- * the crypto labels widen it on a crypto receipt alone, so every other receipt's column stays
- * where it was.
+ * the crypto and stock labels widen it on those receipts alone, so every other receipt's column
+ * stays where it was.
  */
 function labelWidth(rows: readonly RecordRow[]): number {
-	const crypto = rows.some((row) => row.label === CRYPTO_LABELS.valueWhenReceived);
+	const valued = rows.some((row) => row.label === CRYPTO_LABELS.valueWhenReceived);
 	const labels = [
 		...Object.values(RECEIPT_LABELS),
-		...(crypto ? Object.values(CRYPTO_LABELS) : [])
+		...(valued ? [...Object.values(CRYPTO_LABELS), ...Object.values(STOCK_LABELS)] : [])
 	];
 	return Math.max(...labels.map((label) => label.length)) + 2;
 }
@@ -536,9 +550,14 @@ const DISCLOSURE_HEADING_STYLE: CSSProperties = {
 /**
  * the rows set apart in the HTML arm. only the amount is emphasised: it is the figure the donor's
  * bank shows and the one an eye scanning the document is looking for. on a crypto gift that is the
- * amount received, the figure the donor's wallet shows.
+ * amount received, the figure the donor's wallet shows, and on a stock gift the shares, which their
+ * brokerage statement shows.
  */
-const EMPHASISED: readonly string[] = [RECEIPT_LABELS.amount, CRYPTO_LABELS.amountReceived];
+const EMPHASISED: readonly string[] = [
+	RECEIPT_LABELS.amount,
+	CRYPTO_LABELS.amountReceived,
+	STOCK_LABELS.shares
+];
 
 /** one line of the identity block: which detail it came from, and the text to print. */
 interface IdentityLine {
