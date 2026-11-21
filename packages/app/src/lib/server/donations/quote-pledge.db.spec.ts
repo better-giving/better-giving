@@ -1,6 +1,6 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDb, type Db } from '../db/client';
-import { ticker } from '../db/schema';
+import { sqliteResultCode } from '../db/rejection';
 import type { TurnstileCheck, TurnstileResult } from '../api/turnstile';
 import type { EmailProvider } from '../email/provider';
 import { campaignRaised } from '../pages/goal';
@@ -376,23 +376,22 @@ describe('mintQuote() — what every pledge is refused over', () => {
 describe('mintQuote() — a pledge the database fails', () => {
 	it('answers `internal_error` rather than throwing, so the route still sends its CORS', async () => {
 		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
-		// `tickerListed` (./tickers.ts) is the one select naming `ticker.symbol`; the config read
-		// before it is the real database.
-		const failing = new Proxy(db, {
-			get: (target, key, receiver) =>
-				key === 'select'
-					? (fields?: Record<string, unknown>) => {
-							if (fields?.symbol === ticker.symbol) throw new Error('SQLITE_IOERR: disk I/O error');
-							return target.select(fields as never);
-						}
-					: Reflect.get(target, key, receiver)
-		});
-
-		const result = await save(stock(), { ...deps(), db: failing });
+		// `ticker.symbol` is the one column of the real file only `tickerListed` (./tickers.ts) reads:
+		// the config read before it counts the list and reads its date, and so still succeeds.
+		await run(stmt('alter table ticker rename column symbol to symbol_gone'));
+		let result: Awaited<ReturnType<typeof save>>;
+		try {
+			result = await save(stock());
+		} finally {
+			await run(stmt('alter table ticker rename column symbol_gone to symbol'));
+		}
 
 		expect(result).toMatchObject({ ok: false, reason: 'internal_error' });
 		expect(await pledges()).toHaveLength(0);
-		expect(logged.mock.calls.flat().join(' ')).toContain('SQLITE_IOERR');
+		const [message, error] =
+			logged.mock.calls.find(([m]) => m === 'a pledge could not be saved:') ?? [];
+		expect(message).toBe('a pledge could not be saved:');
+		expect(sqliteResultCode(error)).toBe('SQLITE_ERROR');
 	});
 });
 

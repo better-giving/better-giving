@@ -154,16 +154,20 @@ export async function noteGift(
 	return { txn, donationId };
 }
 
+/** how far above what `receivedPledge` marks received its IRA (QCD) pledge was for. */
+const IRA_PLEDGED_ABOVE_RECEIVED = 50_000;
+
 /**
  * a stock or IRA (QCD) pledge from the returning donor through `formId`, saved by `savePledge` and
- * marked received by `receivePledge` at `amountMinor` on the settled day; its gift's id, which is
- * the pledge's.
+ * left waiting: it is no gift until `receivePledge` marks it received. an IRA pledge is for
+ * `pledgedMinor`; a stock pledge states 50 shares and no amount. its id, which is its gift's id once
+ * received.
  */
-export async function receivedPledge(
+export async function waitingPledge(
 	db: Db,
 	formId: string,
 	method: PledgeMethod,
-	amountMinor: number
+	pledgedMinor = 300_000
 ): Promise<string> {
 	sequence += 1;
 	const id = crypto.randomUUID();
@@ -184,7 +188,7 @@ export async function receivedPledge(
 			pledged:
 				method === 'stock'
 					? { method, ticker: 'AAPL', sharesMillionths: 50_000_000 }
-					: { method, amountMinor, custodian: 'Fidelity Investments' },
+					: { method, amountMinor: pledgedMinor, custodian: 'Fidelity Investments' },
 			donor: donor.value,
 			consentedToContact: false,
 			note: undefined,
@@ -195,6 +199,21 @@ export async function receivedPledge(
 		() => `CFCP-GOAL-${sequence}`
 	);
 	if (!saved.ok) throw new Error(`the fixture pledge was not saved: ${saved.detail}`);
+	return id;
+}
+
+/**
+ * `waitingPledge`, marked received by `receivePledge` at `amountMinor` on the settled day. an IRA
+ * pledge was for `IRA_PLEDGED_ABOVE_RECEIVED` more than that, so a read of the pledged amount where
+ * the received one is owed shows. its gift's id, which is the pledge's.
+ */
+export async function receivedPledge(
+	db: Db,
+	formId: string,
+	method: PledgeMethod,
+	amountMinor: number
+): Promise<string> {
+	const id = await waitingPledge(db, formId, method, amountMinor + IRA_PLEDGED_ABOVE_RECEIVED);
 	const received = await receivePledge(db, {
 		pledgeId: id,
 		amountMinor,

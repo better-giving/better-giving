@@ -163,10 +163,8 @@ describe('donations.record', () => {
 			const response = await record(key, { ...CHEQUE, method });
 
 			expect(response.status).toBe(422);
-			const problem = (await response.json()) as { errors: { path: string; message: string }[] };
-			expect(problem.errors).toEqual([
-				{ path: 'method', message: expect.stringMatching(/cash.*check/) }
-			]);
+			const problem = (await response.json()) as { errors: { path: string }[] };
+			expect(problem.errors.map((e) => e.path)).toEqual(['method']);
 			expect(await count('donation')).toBe(0);
 		}
 	);

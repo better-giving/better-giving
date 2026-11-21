@@ -5,7 +5,8 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDb, type Db } from '../db/client';
 import { postableId } from '../db/accounts';
 import { contact, dispute, donation, form, payment, type ZapierTrigger } from '../db/schema';
-import { receivedPledge } from '../pages/settled-gifts.testing';
+import { receivePledge } from '../donations/receive-pledge';
+import { receivedPledge, waitingPledge } from '../pages/settled-gifts.testing';
 import { MINUTE_RUN, PACE } from '../outbox/budget';
 import { POST_TIMEOUT_MS, sendDueZapierEvents } from './deliver';
 import { giftRefundedStatements, zapierStatements } from './events';
@@ -244,6 +245,46 @@ describe('sendDueZapierEvents()', () => {
 			].sort()
 		);
 		expect((await deliveryRows()).map((row) => row.status)).toEqual(['sent', 'sent']);
+	});
+
+	it('queues and posts nothing for a stock or IRA (QCD) pledge until it is received', async () => {
+		const formId = '019fb800-0000-7000-8000-000000000001';
+		await db
+			.insert(form)
+			.values({
+				id: formId,
+				name: 'General Fund',
+				status: 'live',
+				revenueAccountId: postableId('donationsDeductible'),
+				currency: 'USD',
+				minMinor: 500,
+				maxMinor: 1_000_000
+			})
+			.onConflictDoNothing();
+		await listen();
+		const stock = await waitingPledge(db, formId, 'stock');
+		const ira = await waitingPledge(db, formId, 'ira_qcd');
+		const zapier = hooksAnswering();
+		const later = new Date(Date.now() + 1_000);
+
+		await sendDueZapierEvents({ db, fetch: zapier.fetch }, later);
+
+		expect(await deliveryRows()).toEqual([]);
+		expect(zapier.posts).toEqual([]);
+
+		// the same read is live: marking one received queues its gift and posts it.
+		const received = await receivePledge(db, {
+			pledgeId: ira,
+			amountMinor: 480_000,
+			dated: new Date('2026-09-10T00:00:00.000Z')
+		});
+		expect(received.ok).toBe(true);
+		await sendDueZapierEvents({ db, fetch: zapier.fetch }, new Date(later.getTime() + MINUTE));
+
+		expect(zapier.posts.map((p) => [p.body.donation_id, p.body.amount_minor])).toEqual([
+			[ira, 480_000]
+		]);
+		expect(zapier.posts.map((p) => p.body.donation_id)).not.toContain(stock);
 	});
 
 	it('posts a refund to its gift_refunded hook: the amount refunded, and the gift it came out of', async () => {

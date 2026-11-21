@@ -5,6 +5,8 @@ import { mountRoutes } from '../route-request.testing';
 import * as told from './api.v1.forms.$id.donations.$pledgeId.told';
 import * as surface from './api.v1';
 import { client, first, run, stmt } from '$lib/server/db/database.testing';
+import { sqliteResultCode } from '$lib/server/db/rejection';
+import { busyError } from '$lib/server/db/rejection.testing';
 import { readContactSummaries } from '$lib/server/contacts/queries';
 
 // the donor's "I've contacted my broker" / "I've asked my custodian", driven through react router
@@ -213,7 +215,7 @@ describe('telling the organisation', () => {
 	});
 
 	it('hands the stamp back when the donor cannot be read, so the press again tells the organisation once', async () => {
-		vi.mocked(readContactSummaries).mockRejectedValueOnce(new Error('SQLITE_BUSY'));
+		vi.mocked(readContactSummaries).mockRejectedValueOnce(busyError());
 		vi.spyOn(console, 'error').mockImplementation(() => {});
 
 		const failed = press();
@@ -236,7 +238,7 @@ describe('telling the organisation', () => {
 	});
 
 	it('answers a failed read with a refusal the pending screen can read, carrying the form’s CORS, and logs why', async () => {
-		const failure = new Error('SQLITE_BUSY');
+		const failure = busyError();
 		vi.mocked(readContactSummaries).mockRejectedValueOnce(failure);
 		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
 
@@ -251,6 +253,8 @@ describe('telling the organisation', () => {
 			fix: 'This is a fault in this deployment rather than anything about the request. The app’s log has the cause: `docker compose logs app`.'
 		});
 		expect(logged).toHaveBeenCalledWith(expect.stringContaining('told'), failure);
+		const [, cause] = logged.mock.calls.find(([message]) => String(message).includes('told')) ?? [];
+		expect(sqliteResultCode(cause)).toBe('SQLITE_BUSY');
 		expect(mail.sent).toHaveLength(0);
 	});
 

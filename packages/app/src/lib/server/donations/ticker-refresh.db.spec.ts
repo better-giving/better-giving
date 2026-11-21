@@ -95,6 +95,24 @@ describe('refreshTickers', () => {
 		expect(sent).toEqual([]);
 	});
 
+	it('fetches nothing when the list held was replaced a millisecond under ten minutes ago', async () => {
+		await holdOldList(10 * MINUTE - 1);
+		const sec = wholeFiles();
+
+		await refresh(sec, recordingEmail().email);
+
+		expect(sec.requests).toEqual([]);
+	});
+
+	it('refreshes a list replaced exactly ten minutes ago', async () => {
+		await holdOldList(10 * MINUTE);
+		const sec = wholeFiles();
+
+		await refresh(sec, recordingEmail().email);
+
+		expect(sec.requests).toHaveLength(2);
+	});
+
 	it('refreshes a list replaced eleven minutes ago', async () => {
 		await holdOldList(11 * MINUTE);
 		const sec = wholeFiles();

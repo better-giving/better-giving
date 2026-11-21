@@ -4,6 +4,8 @@ import { readContactSummaries } from '$lib/server/contacts/queries';
 import { resolveAuthSecret } from '$lib/server/auth/signing-key';
 import { beforeNextBatch } from '$lib/server/db/batch.testing';
 import { createDb, type Db } from '$lib/server/db/client';
+import { sqliteResultCode } from '$lib/server/db/rejection';
+import { busyError } from '$lib/server/db/rejection.testing';
 import { client, first, run, stmt } from '$lib/server/db/database.testing';
 import { campaignRaised } from '$lib/server/pages/goal';
 import { createDeferredWork } from '$lib/server/runtime/deferred';
@@ -422,15 +424,17 @@ describe('Mark received', () => {
 	});
 
 	it('sends the receipt for the recorded gift on the press again after the first could not read the donor', async () => {
-		vi.mocked(readContactSummaries).mockRejectedValueOnce(new Error('SQLITE_BUSY'));
+		vi.mocked(readContactSummaries).mockRejectedValueOnce(busyError());
 		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
 		const IRA_RECEIVED = { pledge_id: IRA_PLEDGE, received_on: '2026-11-17' };
 
 		const pressed = await markReceived({ ...IRA_RECEIVED, value: '4800.00' });
 		const again = await markReceived({ ...IRA_RECEIVED, value: '5000.00' });
 		const third = await markReceived({ ...IRA_RECEIVED, value: '5000.00' });
+		const causes = logged.mock.calls.map(([, cause]) => sqliteResultCode(cause));
 		logged.mockRestore();
 
+		expect(causes).toContain('SQLITE_BUSY');
 		expect(pressed.status).toBe(500);
 		expect(again.status).toBe(409);
 		expect(third.status).toBe(409);

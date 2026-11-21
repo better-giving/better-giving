@@ -6,6 +6,7 @@ import { createCampaign } from '$lib/server/pages/campaign';
 import {
 	gift,
 	receivedPledge,
+	waitingPledge,
 	refund,
 	repeatingGift
 } from '$lib/server/pages/settled-gifts.testing';
@@ -231,6 +232,24 @@ describe('donations.list', () => {
 			gifts: { data: { method: string }[] };
 		};
 		expect(file.gifts.data.map((g) => g.method).sort()).toEqual(['ira_qcd', 'stock']);
+	});
+
+	it('leaves a saved stock and IRA (QCD) pledge out of the list, the results and the donor file until it is received', async () => {
+		const key = await connect();
+		const coats = await campaign('Winter coats');
+		await waitingPledge(h.db, coats.formId, 'stock');
+		await waitingPledge(h.db, coats.formId, 'ira_qcd');
+		const received = await receivedPledge(h.db, coats.formId, 'ira_qcd', 480_000);
+
+		const listed = await call('donations', `/donations?campaign_id=${coats.id}`, { key });
+		const { data } = (await listed.json()) as Listed;
+		expect(data.map((g) => [g.donation_id, g.amount])).toEqual([[received, '4800.00']]);
+		const summary = await call('results', `/results?campaign_id=${coats.id}`, { key });
+		expect(await summary.json()).toMatchObject({ total: usd('4800.00'), gift_count: 1 });
+		const file = (await (
+			await call('donor', `/donors/${String(data[0]?.donor_id)}`, { key })
+		).json()) as { gifts: { data: { donation_id: string }[] } };
+		expect(file.gifts.data.map((g) => g.donation_id)).toEqual([received]);
 	});
 
 	it('refuses a cursor it did not issue and a campaign that is not there', async () => {

@@ -18,7 +18,7 @@ import { postableId } from '$lib/server/db/accounts';
 import { mintApiKey, revokeApiKey } from '$lib/server/integrations/keys';
 import { openApiDocument } from '$lib/server/integrations/openapi';
 import { schemaErrors } from '$lib/server/integrations/openapi.testing';
-import { receivedPledge } from '$lib/server/pages/settled-gifts.testing';
+import { receivedPledge, waitingPledge } from '$lib/server/pages/settled-gifts.testing';
 import { post, postingStatements } from '$lib/server/ledger/posting';
 import { mountRoutes, type RouteRequester } from '../route-request.testing';
 import * as surface from './integrations.v1';
@@ -362,6 +362,32 @@ describe('a received stock or IRA (QCD) pledge', () => {
 				].sort()
 			);
 			for (const gift of data) expect(schemaErrors(document, 'Gift', gift)).toEqual([]);
+		}
+	});
+
+	it('is no gift while it waits: a saved stock and IRA (QCD) pledge shows in neither walk, beside a received one that does', async () => {
+		const key = await apiKey();
+		await run(
+			stmt(
+				`insert or ignore into form (id, name, status, revenue_account_id, currency, min_minor,
+				                             max_minor, suggested_amounts, allowed_origins, created_at,
+				                             updated_at)
+				 values (?, 'General Fund', 'live', ?, 'USD', 500, 1000000, '[2500]', '[]', 0, 0)`,
+				FORM_ID,
+				postableId('donationsDeductible')
+			)
+		);
+		await waitingPledge(db, FORM_ID, 'stock');
+		await waitingPledge(db, FORM_ID, 'ira_qcd');
+		const received = await receivedPledge(db, FORM_ID, 'ira_qcd', 480_000);
+
+		for (const query of ['', '?updated_since=2026-01-01T00:00:00Z']) {
+			const response = await giftsRoute(new Request(`${GIFTS}${query}`, bearer(key)));
+			expect(response.status).toBe(200);
+			const { data } = (await response.json()) as Page;
+			expect(data.map((g) => [g.donation_id, g.method, g.amount_minor])).toEqual([
+				[received, 'ira_qcd', 480_000]
+			]);
 		}
 	});
 });

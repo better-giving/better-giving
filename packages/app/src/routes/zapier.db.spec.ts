@@ -6,7 +6,7 @@ import { postableId } from '$lib/server/db/accounts';
 import { createDb, type Db } from '$lib/server/db/client';
 import { mintApiKey } from '$lib/server/integrations/keys';
 import { contact, donation, form, orgProfile, payment } from '$lib/server/db/schema';
-import { receivedPledge } from '$lib/server/pages/settled-gifts.testing';
+import { receivedPledge, waitingPledge } from '$lib/server/pages/settled-gifts.testing';
 import { post, postingStatements } from '$lib/server/ledger/posting';
 import { makeZapierKey, readZapierKey, replaceZapierKey } from '$lib/server/zapier/key';
 import {
@@ -346,6 +346,35 @@ describe('the samples the Zap editor shows', () => {
 			data.map((g) => g.id)
 		);
 		expect(data).toEqual(data.map((g) => live.get(g.id)));
+	});
+
+	it('leave out a stock and IRA (QCD) pledge nobody has received, beside a received one they list', async () => {
+		const formId = '019fb800-0000-7000-8000-000000000003';
+		await db.insert(form).values({
+			id: formId,
+			name: 'General Fund',
+			status: 'live',
+			revenueAccountId: postableId('donationsDeductible'),
+			currency: 'USD',
+			minMinor: 500,
+			maxMinor: 1_000_000
+		});
+		await waitingPledge(db, formId, 'stock');
+		await waitingPledge(db, formId, 'ira_qcd');
+		const received = await receivedPledge(db, formId, 'ira_qcd', 480_000);
+
+		for (const [trigger, giftOf] of [
+			['new_gift', (event: GiftEvent) => event],
+			['new_donor', (event: { first_gift: GiftEvent }) => event.first_gift]
+		] as const) {
+			const response = await samplesOf(trigger);
+
+			expect(response.status).toBe(200);
+			const { data } = (await response.json()) as { data: never[] };
+			expect(data.map((e) => [giftOf(e).donation_id, giftOf(e).method])).toEqual([
+				[received, 'ira_qcd']
+			]);
+		}
 	});
 
 	it('answers gift_refunded with the live refund event, never a gift', async () => {

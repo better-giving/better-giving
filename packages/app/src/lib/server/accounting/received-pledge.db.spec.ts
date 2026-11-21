@@ -3,7 +3,8 @@ import { postableId } from '../db/accounts';
 import { createDb, type Db } from '../db/client';
 import type { PledgeMethod } from '../db/schema';
 import type { EmailProvider } from '../email/provider';
-import { receivedPledge } from '../pages/settled-gifts.testing';
+import { receivePledge } from '../donations/receive-pledge';
+import { receivedPledge, waitingPledge } from '../pages/settled-gifts.testing';
 import { connectQuickbooks, saveQuickbooksAccounts } from './connection';
 import { sendDueEntries } from './deliver';
 import { createAccountingProvider } from './factory';
@@ -178,6 +179,32 @@ describe('a received pledge', () => {
 			expect(await queueRows()).toEqual([{ status: 'sent', remote_id: '1201', last_error: null }]);
 		}
 	);
+
+	it('queues nothing for a saved stock or IRA (QCD) pledge until it is received, and the receipt queues one entry', async () => {
+		await picked();
+		await waitingPledge(db, FORM_ID, 'stock');
+		const ira = await waitingPledge(db, FORM_ID, 'ira_qcd');
+		const posted = intuit();
+
+		await runDelivery();
+
+		expect(posted).toEqual([]);
+		expect(await queueRows()).toEqual([]);
+
+		const received = await receivePledge(db, {
+			pledgeId: ira,
+			amountMinor: 480_000,
+			dated: new Date('2026-09-10T00:00:00.000Z')
+		});
+		expect(received.ok).toBe(true);
+		await runDelivery();
+
+		expect(sides(posted[0])).toEqual([
+			[UNDEPOSITED, 'Debit', 4_800, DONOR],
+			[INCOME, 'Credit', 4_800, DONOR]
+		]);
+		expect(posted).toHaveLength(1);
+	});
 
 	it('waits while Undeposited Funds is unpicked, and goes over once it is picked', async () => {
 		await picked(null);

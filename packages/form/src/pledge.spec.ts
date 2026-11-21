@@ -106,9 +106,65 @@ describe('a pledge a screen may draw', () => {
 		['another rail', STOCK, 'ira_qcd'],
 		['a blank reference', { ...STOCK, reference: ' ' }, 'stock'],
 		['a missing DTC number', { ...STOCK, dtcNumber: undefined }, 'stock'],
-		['an amount that is not whole', { ...IRA, id: 'p1', amountMinor: 10.5 }, 'ira_qcd'],
-		['no pledge at all', undefined, 'stock']
+		['no pledge at all', undefined, 'stock'],
+		['null', null, 'stock'],
+		['a string', 'p1', 'stock']
 	] as const)('refuses %s', (_case, value, method) => {
 		expect(pledgeIsUsable(value, method, 'p1')).toBe(false);
+	});
+
+	it.each(['id', 'reference', 'receiptTo'] as const)(
+		'refuses an IRA (QCD) pledge answered without its %s',
+		(field) => {
+			expect(pledgeIsUsable({ ...IRA, [field]: undefined }, 'ira_qcd', 'p2')).toBe(false);
+		}
+	);
+
+	it('refuses an IRA (QCD) pledge answered for another id', () => {
+		expect(pledgeIsUsable(IRA, 'ira_qcd', 'p9')).toBe(false);
+	});
+
+	it.each(['ticker', 'shares', 'deliverTo', 'dtcNumber', 'accountNumber', 'accountName'] as const)(
+		'refuses a stock pledge whose %s is missing, blank or not text',
+		(field) => {
+			for (const value of [undefined, '', '   ', null, 50]) {
+				expect(pledgeIsUsable({ ...STOCK, [field]: value }, 'stock', 'p1')).toBe(false);
+			}
+		}
+	);
+
+	it.each(['custodian', 'payeeName', 'ein', 'mailingAddress'] as const)(
+		'refuses an IRA (QCD) pledge whose %s is missing, blank or not text',
+		(field) => {
+			for (const value of [undefined, '', '   ', null, 47]) {
+				expect(pledgeIsUsable({ ...IRA, [field]: value }, 'ira_qcd', 'p2')).toBe(false);
+			}
+		}
+	);
+
+	it.each([
+		['missing', undefined],
+		['zero', 0],
+		['negative', -100],
+		['not whole', 10.5],
+		['not a number', Number.NaN],
+		['infinite', Number.POSITIVE_INFINITY],
+		['past the safe integers', Number.MAX_SAFE_INTEGER + 1],
+		['text', '10000']
+	])('refuses an IRA (QCD) pledge whose amount is %s', (_case, amountMinor) => {
+		expect(pledgeIsUsable({ ...IRA, amountMinor }, 'ira_qcd', 'p2')).toBe(false);
+	});
+
+	it('takes the smallest amount, one minor unit', () => {
+		expect(pledgeIsUsable({ ...IRA, amountMinor: 1 }, 'ira_qcd', 'p2')).toBe(true);
+	});
+
+	it.each([
+		['an IRA (QCD) pledge on the stock rail', IRA, 'stock', 'p2'],
+		['a stock pledge on the IRA (QCD) rail', STOCK, 'ira_qcd', 'p1'],
+		['an IRA (QCD) pledge claiming the stock method', { ...IRA, method: 'stock' }, 'ira_qcd', 'p2'],
+		['a stock pledge claiming the IRA (QCD) method', { ...STOCK, method: 'ira_qcd' }, 'stock', 'p1']
+	] as const)('refuses %s, though the id matches', (_case, value, method, id) => {
+		expect(pledgeIsUsable(value, method, id)).toBe(false);
 	});
 });
