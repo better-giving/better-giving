@@ -223,6 +223,18 @@ describe('the published manifest', () => {
 		expect(payment?.description).toContain('IRA (QCD)');
 	});
 
+	it('says what `summary` and `action` hold on the IRA (QCD) review step', () => {
+		// a pledge is charged nothing, so that step's receipt hides the fee row and the total and its
+		// `submit` press reads Continue with no receipt line over it (`pledging` in src/views.ts).
+		const summary = element?.cssParts?.find((cssPart) => cssPart.name === 'summary');
+		const action = element?.cssParts?.find((cssPart) => cssPart.name === 'action');
+
+		expect(summary?.description).toContain('On the IRA (QCD) review step');
+		expect(summary?.description).toContain('no fee switch and no total');
+		expect(action?.description).toContain('on the IRA (QCD) review step');
+		expect(action?.description).toContain('labelled `Continue`');
+	});
+
 	it('says the custodian box carries `field` and `label` where the element’s own rule cannot reach', () => {
 		// the box stands in a shadow root of its own inside the `payment` slot (src/ira-panel.ts), so a
 		// rule on the element's parts misses it; a description saying "every text input" would promise
