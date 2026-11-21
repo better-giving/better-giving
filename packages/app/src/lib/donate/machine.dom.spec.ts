@@ -39,27 +39,6 @@ import { createReactPropTypes } from './normalize';
 // under a handle nothing here ever sees — removing the nodes they painted in collects the DOM and
 // tells neither script anything.
 
-// the told press's answers, where a spec sets them: `createPledgeTold` throws one uncoded error for
-// every refusal, so a refusal coded `pledge_not_found` reaches the flow only through this seam, as
-// it does in packages/form/src/element.dom.spec.ts through the element's `told` port.
-const toldSeam = vi.hoisted(() => ({
-	answers: null as ((args: { readonly pledgeId: string }) => Promise<void>)[] | null
-}));
-vi.mock('@better-giving/form/embed/api', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('@better-giving/form/embed/api')>();
-	return {
-		...actual,
-		createPledgeTold: (origin: string | null) => {
-			const real = actual.createPledgeTold(origin);
-			return (args: Parameters<typeof real>[0]) =>
-				toldSeam.answers === null ? real(args) : (toldSeam.answers.shift() ?? real)(args);
-		}
-	};
-});
-afterEach(() => {
-	toldSeam.answers = null;
-});
-
 const FEE_RULES: FeeRules = {
 	card: { percent: 0.029, fixedMinor: 30 },
 	apple_pay: { percent: 0.029, fixedMinor: 30 },
@@ -390,9 +369,18 @@ it('saves a pledge the told press could not find again on a fresh token, and res
 	const challenge = challengeProvider();
 	const timer = clock();
 	const saves: Record<string, unknown>[] = [];
+	// the first told press finds no pledge and the second is taken, through the real `createPledgeTold`.
+	const told: string[] = [];
 	vi.stubGlobal(
 		'fetch',
-		vi.fn(async (_url: string, init?: RequestInit) => {
+		vi.fn(async (url: string, init?: RequestInit) => {
+			const tellsFor = /\/donations\/([^/]+)\/told$/.exec(url)?.[1];
+			if (tellsFor !== undefined) {
+				told.push(decodeURIComponent(tellsFor));
+				return told.length === 1
+					? Response.json({ error: 'pledge_not_found' }, { status: 404 })
+					: Response.json({ ok: true });
+			}
 			const request = JSON.parse(String(init?.body)) as Record<string, unknown>;
 			saves.push(request);
 			return Response.json({
@@ -413,19 +401,6 @@ it('saves a pledge the told press could not find again on a fresh token, and res
 			});
 		})
 	);
-	const notFound = Object.assign(new Error('This gift isn’t saved here.'), {
-		code: 'pledge_not_found'
-	});
-	const told: string[] = [];
-	toldSeam.answers = [
-		async ({ pledgeId }) => {
-			told.push(pledgeId);
-			throw notFound;
-		},
-		async ({ pledgeId }) => {
-			told.push(pledgeId);
-		}
-	];
 
 	const checkout = startCheckout(WITH_IRA, {
 		paymentMount,

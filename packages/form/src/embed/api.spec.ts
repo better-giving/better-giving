@@ -364,4 +364,27 @@ describe('a pledge’s save and its told press', () => {
 			createPledgeTold(DEPLOYMENT)({ formId: 'frm_a8x2k9', pledgeId: 'p1' })
 		).rejects.toThrow('/told');
 	});
+
+	// the code is what makes the next press save the pledge again before it tells (`pledgeLost` in
+	// ../checkout.machine.ts).
+	it('carries the endpoint’s own code with a told refusal', async () => {
+		stubFetch(json({ error: 'pledge_not_found', message: 'No such pledge.' }, 404));
+
+		const failure = await refusal(
+			createPledgeTold(DEPLOYMENT)({ formId: 'frm_a8x2k9', pledgeId: 'p1' })
+		);
+
+		expect((failure as { code?: string }).code).toBe('pledge_not_found');
+	});
+
+	it('refuses a told refusal whose body is not JSON, with no code', async () => {
+		stubFetch(new Response('<html>', { status: 502 }));
+
+		const failure = await refusal(
+			createPledgeTold(DEPLOYMENT)({ formId: 'frm_a8x2k9', pledgeId: 'p1' })
+		);
+
+		expect(failure.message).toContain('502');
+		expect((failure as { code?: string }).code).toBeUndefined();
+	});
 });
