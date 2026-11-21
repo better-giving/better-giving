@@ -27,7 +27,12 @@ import { readPublishedConfig } from '../forms/published-config';
 import { cachedRails } from '../forms/rail-cache';
 import { giftLinkOrigin, giftPageUrl } from '../matching/links';
 import { processorSetupFix, type Processors } from '../payments/factory';
-import { type PledgeRails, readPledgeRails } from '../payments/pledge-rails';
+import {
+	type IraQcdDetails,
+	type PledgeRails,
+	readPledgeRails,
+	type StockDetails
+} from '../payments/pledge-rails';
 import {
 	commitmentMetadata,
 	type DepositInstructions,
@@ -54,6 +59,7 @@ import {
 	type DafAuthorization,
 	type Giver,
 	type ParsedQuoteRequest,
+	type PledgedInput,
 	type PledgeField,
 	parsePledgeRequest,
 	parseQuoteRequest
@@ -629,8 +635,8 @@ async function mintPledge(
 	}
 	const { pledgeId, pledged, giver } = parsed.value;
 
-	const rails = await readPledgeRails(deps.db);
-	if (!rails[pledged.method].enabled) return pledgeRailOff(form, pledged.method);
+	const onRail = railTaking(await readPledgeRails(deps.db), pledged);
+	if (onRail === null) return pledgeRailOff(form, pledged.method);
 	if (pledged.method === 'stock' && !(await tickerListed(deps.db, pledged.ticker))) {
 		return {
 			...refuse(
@@ -678,9 +684,7 @@ async function mintPledge(
 		return pledgeNotSaved(form);
 	}
 
-	const instructions = pledgeOnWire(saved.value, rails, config, giver.donor.primaryEmail);
-	// a resend may name a pledge saved on the other rail, which has since been turned off.
-	if (instructions === null) return pledgeRailOff(form, saved.value.pledged.method);
+	const instructions = pledgeOnWire(saved.value, onRail, config, giver.donor.primaryEmail);
 	return {
 		ok: true,
 		quote: {
@@ -714,22 +718,45 @@ function pledgeNotSaved(form: FormRecord): QuoteResult {
 	);
 }
 
+/** a pledge the donor asked for, beside the details of its rail, which is on. */
+type PledgeOnRail =
+	| {
+			readonly method: 'stock';
+			readonly pledged: Extract<PledgedInput, { method: 'stock' }>;
+			readonly details: StockDetails;
+	  }
+	| {
+			readonly method: 'ira_qcd';
+			readonly pledged: Extract<PledgedInput, { method: 'ira_qcd' }>;
+			readonly details: IraQcdDetails;
+	  };
+
+/** the pledge beside its rail's details, or `null` where that rail is off. */
+function railTaking(rails: PledgeRails, pledged: PledgedInput): PledgeOnRail | null {
+	const { method } = pledged;
+	if (method === 'stock') {
+		return rails.stock.enabled ? { method, pledged, details: rails.stock.details } : null;
+	}
+	return rails.ira_qcd.enabled ? { method, pledged, details: rails.ira_qcd.details } : null;
+}
+
 /**
  * the saved pledge with the organisation's transfer details beside it, as `Pledge` in
- * packages/form/src/v1.ts carries it — or `null` where the pledge's rail is off and has no
- * details to print.
+ * packages/form/src/v1.ts carries it.
+ *
+ * the figures are the request's: `savePledge` in ./pledges.ts answers a held pledge only where its
+ * rail and figures are the request's own, and refuses any other as `id_taken`, so a resend never
+ * reaches here naming a rail the check in `mintPledge` did not read as on.
  */
 function pledgeOnWire(
 	saved: SavedPledge,
-	rails: PledgeRails,
+	onRail: PledgeOnRail,
 	config: FormConfig,
 	typedEmail: string | null
-): Pledge | null {
+): Pledge {
 	const receiptTo = saved.receiptTo ?? typedEmail ?? '';
-	const { pledged } = saved;
-	if (pledged.method === 'stock') {
-		const rail = rails.stock;
-		if (!rail.enabled) return null;
+	if (onRail.method === 'stock') {
+		const { pledged, details } = onRail;
 		return {
 			id: saved.id,
 			method: 'stock',
@@ -737,14 +764,13 @@ function pledgeOnWire(
 			receiptTo,
 			ticker: pledged.ticker,
 			shares: sharesText(pledged.sharesMillionths),
-			deliverTo: rail.details.brokerageName,
-			dtcNumber: rail.details.dtcNumber,
-			accountNumber: rail.details.accountNumber,
-			accountName: rail.details.accountName
+			deliverTo: details.brokerageName,
+			dtcNumber: details.dtcNumber,
+			accountNumber: details.accountNumber,
+			accountName: details.accountName
 		};
 	}
-	const rail = rails.ira_qcd;
-	if (!rail.enabled) return null;
+	const { pledged, details } = onRail;
 	return {
 		id: saved.id,
 		method: 'ira_qcd',
@@ -752,9 +778,9 @@ function pledgeOnWire(
 		receiptTo,
 		amountMinor: pledged.amountMinor,
 		custodian: pledged.custodian,
-		payeeName: rail.details.payeeName,
+		payeeName: details.payeeName,
 		ein: config.ein,
-		mailingAddress: rail.details.mailingAddress
+		mailingAddress: details.mailingAddress
 	};
 }
 

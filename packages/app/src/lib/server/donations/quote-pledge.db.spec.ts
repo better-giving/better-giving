@@ -460,6 +460,15 @@ describe('mintQuote() — the same press twice', () => {
 		expect(await contacts()).toHaveLength(1);
 	});
 
+	it('refuses a resend once its rail is off, on that rail or the other, saving nothing', async () => {
+		expect((await save(stock())).ok).toBe(true);
+		await run(stmt(`update pledge_rail set enabled = 0 where id = 'stock'`));
+
+		expect(await save(stock())).toMatchObject({ ok: false, reason: 'payments_not_configured' });
+		expect(await save(ira())).toMatchObject({ ok: false, reason: 'pledge_id_taken' });
+		expect(await pledges()).toMatchObject([{ method: 'stock', ticker: 'AAPL' }]);
+	});
+
 	it.each([
 		['amount', { amountMinor: 20_000 }],
 		['custodian', { custodian: 'Vanguard' }]
