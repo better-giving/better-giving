@@ -4,6 +4,7 @@ import type {
 	RailCapabilityState,
 	PaymentProvider,
 	ProcessorName,
+	QuotedRail,
 	RailSwitchboard
 } from './provider';
 
@@ -161,7 +162,7 @@ export async function readRailChargeability(provider: PaymentProvider): Promise<
 	const account = chargeability.value;
 	const rails: Partial<Record<PaymentMethod, RailStanding>> = {};
 	for (const [rail, capability] of Object.entries(account.rails) as [
-		PaymentMethod,
+		QuotedRail,
 		RailCapabilityState
 	][]) {
 		rails[rail] = standingOf(account.chargesEnabled, capability, switchboard.value[rail]);

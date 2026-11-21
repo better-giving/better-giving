@@ -3,7 +3,7 @@ import { createDb, type Db } from '../db/client';
 import { client, MIGRATIONS, openUnmigrated } from '../db/database.testing';
 import { applyMigrations } from '../db/migrate';
 import { rejectionCode } from '../db/rejection.testing';
-import { replaceTickers, searchTickers, tickersReplacedAt } from './tickers';
+import { replaceTickers, searchTickers, tickerListed, tickersReplacedAt } from './tickers';
 
 // the stock step's ticker list, against a real database: the whole-list swap the fetch job makes
 // and the search a donor's typing runs.
@@ -175,5 +175,25 @@ describe('tickersReplacedAt', () => {
 		const replacedAt = await tickersReplacedAt(db);
 		expect(replacedAt?.getTime()).toBeGreaterThanOrEqual(before);
 		expect(replacedAt?.getTime()).toBeLessThanOrEqual(Date.now());
+	});
+});
+
+describe('tickerListed', () => {
+	beforeAll(async () => {
+		await replaceTickers(db, [
+			{ symbol: 'AAPL', name: 'Apple Inc.', exchange: 'Nasdaq', kind: 'company' },
+			{ symbol: 'BRK-B', name: 'BERKSHIRE HATHAWAY INC', exchange: 'NYSE', kind: 'company' }
+		]);
+	});
+
+	it('answers for a symbol the list holds, exactly as it holds it', async () => {
+		expect(await tickerListed(db, 'AAPL')).toBe(true);
+		expect(await tickerListed(db, 'BRK-B')).toBe(true);
+	});
+
+	it('answers no for a symbol it does not, and for a prefix or another spelling of one', async () => {
+		expect(await tickerListed(db, 'ZZQ')).toBe(false);
+		expect(await tickerListed(db, 'AAP')).toBe(false);
+		expect(await tickerListed(db, 'aapl')).toBe(false);
 	});
 });

@@ -233,6 +233,12 @@ const PUBLIC_ROUTE_FILES: readonly string[] = [
 	// the capability is the gift page token the challenge-gated endpoint above handed out, the write
 	// names an employer and nothing else, and it mails that gift's donor one pack at most.
 	'routes/api.v1.forms.$id.gifts.$token.employer.ts',
+	// the donor saying they asked their broker or custodian, from a stock or IRA (QCD) pledge's
+	// pending screen on that same page. CORS from the form's own `allowed_origins` and the limit from
+	// the layout above it; no spam check, as its header argues: the capability is the pledge id the
+	// challenge-gated endpoint above saved, the write is one stamp, and it mails the organisation
+	// once per pledge at most.
+	'routes/api.v1.forms.$id.donations.$pledgeId.told.ts',
 	// the payment processors' callbacks, delivered by machines belonging to somebody else. they are
 	// unauthenticated because there is no session a processor could hold and no page any of them is
 	// answering: no origin to echo, no visitor to challenge, no form id in the path. what stands

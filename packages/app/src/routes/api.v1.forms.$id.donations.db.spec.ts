@@ -333,6 +333,45 @@ describe('POST /api/v1/forms/:id/donations — this deployment’s own origin', 
 });
 
 describe('POST /api/v1/forms/:id/donations — the status each refusal carries', () => {
+	// both stop before the challenge, so nothing here reaches the network.
+	describe('a stock pledge', () => {
+		beforeEach(async () => {
+			await run(stmt('delete from pledge_rail'));
+			await run(
+				stmt(`insert into pledge_rail (id, enabled, brokerage_name, dtc_number, account_number,
+				                               account_name, created_at, updated_at)
+				      values ('stock', 1, 'Harbor Street Securities', '0164', 'Z12-345678', 'Hope Foundation', 0, 0)`)
+			);
+		});
+
+		const stock = (over: Record<string, unknown>) => ({
+			method: 'stock',
+			amountMinor: undefined,
+			pledgeId: '0b5f7a52-3d1e-4c8a-9f2b-6e4d1c0a7b93',
+			ticker: 'AAPL',
+			shares: '50',
+			...over
+		});
+
+		it('answers 400 naming the field for shares that are not a share count', async () => {
+			const response = await post(stock({ shares: '1.0000001' }));
+
+			expect(response.status).toBe(400);
+			expect(await response.json()).toMatchObject({
+				error: 'pledge_detail_invalid',
+				field: 'shares'
+			});
+			expect(response.headers.get('access-control-allow-origin')).toBe(ALLOWED);
+		});
+
+		it('answers 422 naming the field for a ticker the list does not hold', async () => {
+			const response = await post(stock({ ticker: 'ZZQ' }));
+
+			expect(response.status).toBe(422);
+			expect(await response.json()).toMatchObject({ error: 'ticker_not_listed', field: 'ticker' });
+		});
+	});
+
 	it('answers 404 for an id this deployment never had', async () => {
 		const response = await post({}, { id: 'frm_nosuchform00001' });
 

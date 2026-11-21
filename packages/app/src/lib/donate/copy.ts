@@ -345,6 +345,10 @@ function waitingOn(method: PaymentMethod | undefined): Waiting {
 		// sent from the donor's own wallet, so no window or bank is waited on and none is named.
 		case 'crypto':
 			return { kind: 'unknown' };
+		// sent later by the donor's broker or custodian, and nothing on this page waits on either.
+		case 'stock':
+		case 'ira_qcd':
+			return { kind: 'unknown' };
 	}
 }
 

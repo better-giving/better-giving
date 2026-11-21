@@ -39,7 +39,9 @@ const CONFIG: FormConfig = {
 		paypal: { percent: 0.0349, fixedMinor: 49 },
 		venmo: { percent: 0.0349, fixedMinor: 49 },
 		daf: { percent: 0.029, fixedMinor: 0, roundUpMinor: 100 },
-		crypto: { percent: 0.01, fixedMinor: 0 }
+		crypto: { percent: 0.01, fixedMinor: 0 },
+		stock: { percent: 0, fixedMinor: 0 },
+		ira_qcd: { percent: 0, fixedMinor: 0 }
 	},
 	locale: 'en-US',
 	orgLegalName: 'Acme Relief Fund',
@@ -1169,7 +1171,9 @@ describe('where the correction screen is and is not shown', () => {
 					paypal: { percent: 0.0349, fixedMinor: 49 },
 					venmo: { percent: 0.0349, fixedMinor: 49 },
 					daf: { percent: 0.029, fixedMinor: 0, roundUpMinor: 100 },
-					crypto: { percent: 0.01, fixedMinor: 0 }
+					crypto: { percent: 0.01, fixedMinor: 0 },
+					stock: { percent: 0, fixedMinor: 0 },
+					ira_qcd: { percent: 0, fixedMinor: 0 }
 				} as FormConfig['feeRules']
 			},
 			quote: async () => ({ paymentToken: 'pi_1_secret_x', feeMinor: 0, totalMinor: 2500 })
@@ -1212,7 +1216,9 @@ describe('where the correction screen is and is not shown', () => {
 					paypal: { percent: 0.0349, fixedMinor: 49 },
 					venmo: { percent: 0.0349, fixedMinor: 49 },
 					daf: { percent: 0.029, fixedMinor: 0, roundUpMinor: 100 },
-					crypto: { percent: 0.01, fixedMinor: 0 }
+					crypto: { percent: 0.01, fixedMinor: 0 },
+					stock: { percent: 0, fixedMinor: 0 },
+					ira_qcd: { percent: 0, fixedMinor: 0 }
 				} as FormConfig['feeRules']
 			},
 			quote: async () => ({ paymentToken: 'pi_1_secret_x', feeMinor: 175, totalMinor: 2675 })
@@ -1903,7 +1909,9 @@ describe('a config the wire mangled', () => {
 					paypal: { percent: 0.0349, fixedMinor: 49 },
 					venmo: { percent: 0.0349, fixedMinor: 49 },
 					daf: { percent: 0.029, fixedMinor: 0, roundUpMinor: 100 },
-					crypto: { percent: 0.01, fixedMinor: 0 }
+					crypto: { percent: 0.01, fixedMinor: 0 },
+					stock: { percent: 0, fixedMinor: 0 },
+					ira_qcd: { percent: 0, fixedMinor: 0 }
 				} as FormConfig['feeRules']
 			}
 		});

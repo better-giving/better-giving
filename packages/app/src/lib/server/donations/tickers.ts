@@ -1,10 +1,11 @@
-import { getTableColumns, sql } from 'drizzle-orm';
+import { eq, getTableColumns, sql } from 'drizzle-orm';
 import type { Db } from '../db/client';
 import { type TickerKind, ticker } from '../db/schema';
 
 // the stock step's ticker list: every symbol the SEC's two public files name, stored here so a
 // donor's search never reaches sec.gov. the job that fetches the files hands the whole list to
-// `replaceTickers`; a donor's typing runs `searchTickers`. `ticker` in ../db/schema.ts argues the
+// `replaceTickers`; a donor's typing runs `searchTickers`, and a stock pledge's ticker is checked by
+// `tickerListed`. `ticker` in ../db/schema.ts argues the
 // table, and migrations/0043_stock_tickers.sql the full-text table beside it.
 
 export type TickerRow = {
@@ -123,6 +124,19 @@ export async function searchTickers(db: Db, query: string, limit: number): Promi
 		order by hit.tier, hit.pos
 		limit ${limit}
 	`);
+}
+
+/**
+ * whether the list holds this symbol, spelled exactly as it is stored: uppercase, class shares
+ * with the SEC's dash. a stock pledge is refused on a symbol it does not hold.
+ */
+export async function tickerListed(db: Db, symbol: string): Promise<boolean> {
+	const [row] = await db
+		.select({ symbol: ticker.symbol })
+		.from(ticker)
+		.where(eq(ticker.symbol, symbol))
+		.limit(1);
+	return row !== undefined;
 }
 
 /** when the list the database holds replaced the one before, or null before any list has. */

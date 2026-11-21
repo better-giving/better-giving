@@ -7,6 +7,7 @@ import type {
 	PaymentMethod,
 	Program
 } from '@better-giving/form/v1';
+import { PLEDGE_RAILS, type PledgeRail } from '@better-giving/form/embed/rails';
 import { IDENTITY_FOLD } from '@better-giving/operator/setup-folds';
 import { OFFERED_PAYMENT_METHODS } from '../../forms/offered-rails';
 import { challengeKind } from '../api/challenge';
@@ -18,6 +19,7 @@ import { servedDeductibilityStatement } from '../org/deductibility';
 import { readOrgProfile } from '../org/queries';
 import { present } from '../org/receipt-fields';
 import { paypalFeeRules, servedFeeRules } from '../payments/fees';
+import { readPledgeRails } from '../payments/pledge-rails';
 import { servedProcessors } from '../payments/factory';
 import { PROCESSOR_LABELS, processorOf, type ProcessorName } from '../payments/provider';
 import { readActivePrograms, readProgram } from '../programs/queries';
@@ -173,6 +175,14 @@ export interface PublishedConfigSources {
 	 * about that is `servedProgram` below, which is the one judgement this half makes over it.
 	 */
 	readonly program: Program | null;
+	/**
+	 * the pledge rails whose `pledge_rail` row is on, already read (`readPledgeRails` in
+	 * ../payments/pledge-rails.ts). absent is neither.
+	 *
+	 * beside `rails` rather than inside it: no processor settles either, so the account's rail read
+	 * never names one, and a rail turned on under Payments is offered with no processor asked.
+	 */
+	readonly pledgeRails?: readonly PledgeRail[];
 }
 
 /**
@@ -259,16 +269,18 @@ export async function readPublishedConfig(
 		});
 	}
 
-	const [owner, fundraiser, profile, cadences, rails, coins, program] = await Promise.all([
-		readOwningPage(db, stored.id, now),
-		fundraiserTakingGifts(db, stored.id),
-		readOrgProfile(db),
-		readCadences(),
-		readRails(),
-		readCoins(),
-		// the status `asEnded` may change decides nothing in the cause's read.
-		readFormProgram(db, drafted(stored))
-	]);
+	const [owner, fundraiser, profile, cadences, rails, coins, program, pledgeRails] =
+		await Promise.all([
+			readOwningPage(db, stored.id, now),
+			fundraiserTakingGifts(db, stored.id),
+			readOrgProfile(db),
+			readCadences(),
+			readRails(),
+			readCoins(),
+			// the status `asEnded` may change decides nothing in the cause's read.
+			readFormProgram(db, drafted(stored)),
+			readPledgeRails(db)
+		]);
 	const form = drafted(asEnded(stored, owner));
 	return publishedConfig({
 		id,
@@ -280,7 +292,8 @@ export async function readPublishedConfig(
 		cadences,
 		rails,
 		coins,
-		program
+		program,
+		pledgeRails: PLEDGE_RAILS.filter((rail) => pledgeRails[rail].enabled)
 	});
 }
 
@@ -558,8 +571,11 @@ export function publishedConfig(sources: PublishedConfigSources): PublishedConfi
 	const challenge = challengeKind(sources.env);
 	const program = servedProgram(sources.program);
 	const coins = sources.coins ?? [];
-	const paymentMethods =
-		coins.length > 0 ? sources.rails : sources.rails.filter((rail) => rail !== 'crypto');
+	// the pledge rails last, which is where `PAYMENT_METHODS` in packages/form/src/v1.ts puts them.
+	const paymentMethods = [
+		...(coins.length > 0 ? sources.rails : sources.rails.filter((rail) => rail !== 'crypto')),
+		...(sources.pledgeRails ?? [])
+	];
 
 	const config = {
 		formId: form.id,

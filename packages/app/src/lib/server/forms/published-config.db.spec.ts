@@ -3,6 +3,7 @@ import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { OFFERED_PAYMENT_METHODS } from '$lib/forms/offered-rails';
 import { createDb, type Db } from '$lib/server/db/client';
 import { readPublishedConfig } from '$lib/server/forms/published-config';
+import { disablePledgeRail, enablePledgeRail } from '$lib/server/payments/pledge-rails';
 import { parseOrgProfile } from '$lib/server/org/org-input';
 import { saveOrgProfile } from '$lib/server/org/queries';
 import { client, first, run, stmt } from '$lib/server/db/database.testing';
@@ -427,4 +428,56 @@ describe('readPublishedConfig', () => {
 			expect(result.config).not.toHaveProperty('program');
 		});
 	});
+
+	// the two pledge rails are no processor's, so the account's rail read never names them: each is
+	// offered exactly while its own `pledge_rail` row is on.
+	describe('the pledge rails', () => {
+		beforeEach(async () => {
+			await run(stmt('delete from pledge_rail'));
+		});
+
+		const served = async () => {
+			const result = await readPublishedConfig(db, FORM_ID, STRIPE, READY, BOTH_RAILS, ONE_COIN);
+			if (!result.ok) throw new Error(`refused: ${result.reason}`);
+			return result.config;
+		};
+
+		it('offers neither while neither rail was ever turned on', async () => {
+			const config = await served();
+			expect(config.paymentMethods).not.toContain('stock');
+			expect(config.paymentMethods).not.toContain('ira_qcd');
+		});
+
+		it('offers each rail turned on, after the processor rails, at no fee', async () => {
+			await enablePledgeRail(db, { rail: 'stock', details: STOCK_DETAILS });
+			await enablePledgeRail(db, { rail: 'ira_qcd', details: IRA_DETAILS });
+
+			const config = await served();
+			expect(config.paymentMethods).toEqual([...OFFERED_PAYMENT_METHODS, 'stock', 'ira_qcd']);
+			expect(config.feeRules.stock).toEqual({ percent: 0, fixedMinor: 0 });
+			expect(config.feeRules.ira_qcd).toEqual({ percent: 0, fixedMinor: 0 });
+		});
+
+		it('stops offering a rail once it is disabled, keeping the other', async () => {
+			await enablePledgeRail(db, { rail: 'stock', details: STOCK_DETAILS });
+			await enablePledgeRail(db, { rail: 'ira_qcd', details: IRA_DETAILS });
+			await disablePledgeRail(db, 'stock');
+
+			const config = await served();
+			expect(config.paymentMethods).not.toContain('stock');
+			expect(config.paymentMethods).toContain('ira_qcd');
+		});
+	});
 });
+
+const STOCK_DETAILS = {
+	brokerageName: 'Harbor Street Securities',
+	dtcNumber: '0164',
+	accountNumber: 'Z12-345678',
+	accountName: 'Hope Foundation'
+};
+
+const IRA_DETAILS = {
+	payeeName: 'Hope Foundation',
+	mailingAddress: '412 Alder Lane, Suite 3\nCedar Fork, OR 97330'
+};

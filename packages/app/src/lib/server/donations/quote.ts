@@ -1,13 +1,23 @@
 import { and, eq } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
+import { PLEDGE_RAILS } from '@better-giving/form/embed/rails';
 import { estimateDeductedFee, estimateFee } from '@better-giving/form/fee';
-import type { ApiErrorCode, Deposit, FormConfig, Frequency, Quote } from '@better-giving/form/v1';
+import {
+	type ApiErrorCode,
+	type Deposit,
+	type FormConfig,
+	type Frequency,
+	PAYMENT_METHOD_LABELS,
+	type Pledge,
+	type Quote
+} from '@better-giving/form/v1';
 import { LOGS_SAY_WHY } from '../../deployment-logs';
 import { formatMinor } from '../../donations/money';
+import { sharesText } from '../../donations/shares';
 import { majorText } from '../../forms/amounts';
 import { type ChallengeCheck, type ChallengeResult, challengeKind } from '../api/challenge';
 import type { Db } from '../db/client';
-import { donation, mintGiftMatchToken, payment } from '../db/schema';
+import { donation, mintGiftMatchToken, payment, type PledgeMethod } from '../db/schema';
 import { mailDelivers } from '../email/delivers';
 import type { EmailProvider } from '../email/provider';
 import type { FormRecord } from '../forms/form-input';
@@ -17,6 +27,7 @@ import { readPublishedConfig } from '../forms/published-config';
 import { cachedRails } from '../forms/rail-cache';
 import { giftLinkOrigin, giftPageUrl } from '../matching/links';
 import { processorSetupFix, type Processors } from '../payments/factory';
+import { type PledgeRails, readPledgeRails } from '../payments/pledge-rails';
 import {
 	commitmentMetadata,
 	type DepositInstructions,
@@ -37,8 +48,18 @@ import { depositQr } from './deposit-qr';
 import { commitDonor } from './donor';
 import { sendCryptoPending } from './crypto-pending';
 import { sendGrantRequested } from './grant-requested';
-import { parseQuoteRequest, type DafAuthorization, type ParsedQuoteRequest } from './quote-input';
+import { mintPledgeReference, orgInitials } from './pledge-reference';
+import { type SavedPledge, savePledge } from './pledges';
+import {
+	type DafAuthorization,
+	type Giver,
+	type ParsedQuoteRequest,
+	type PledgeField,
+	parsePledgeRequest,
+	parseQuoteRequest
+} from './quote-input';
 import { recordAuthorizedGift, recordDonation } from './record';
+import { tickerListed } from './tickers';
 
 // one donation attempt, from a posted body to a payment token — the server half of
 // `POST /api/v1/forms/:id/donations`.
@@ -164,6 +185,13 @@ export const QUOTE_REFUSALS = [
 	'below_minimum',
 	/** a crypto gift NOWPayments refused as more than it takes in the coin. no address was minted. */
 	'above_maximum',
+	/**
+	 * a stock or IRA (QCD) pledge whose ticker, shares or custodian the donor left out or got wrong.
+	 * nothing was saved; `field` names the box.
+	 */
+	'pledge_detail_invalid',
+	/** a stock pledge on a ticker the deployment's list does not hold. nothing was saved. */
+	'ticker_not_listed',
 	/** a defect of ours. nothing about the request or the deployment fixes it. */
 	'internal_error'
 ] as const;
@@ -189,7 +217,9 @@ export const QUOTE_REFUSAL_CODES = [
 	'daf_grant_declined',
 	'coin_not_accepted',
 	'below_minimum',
-	'above_maximum'
+	'above_maximum',
+	'pledge_detail_invalid',
+	'ticker_not_listed'
 ] as const satisfies readonly ApiErrorCode[];
 
 /** whether a refusal carries an `error` code on the wire, or only a sentence. */
@@ -221,6 +251,8 @@ export type QuoteResult =
 			 * covered fee left out.
 			 */
 			readonly minAmountMinor?: number;
+			/** `pledge_detail_invalid` and `ticker_not_listed` only: the wire field refused. */
+			readonly field?: PledgeField;
 	  };
 
 /** everything this needs that it may not build for itself. */
@@ -330,46 +362,18 @@ export async function mintQuote(deps: QuoteDeps, attempt: QuoteAttempt): Promise
 	}
 	const { config, form } = served;
 
+	// a stock or IRA (QCD) gift is a pledge saved rather than a payment minted, and its own branch:
+	// the same ladder above it and the same challenge inside it, and no processor anywhere.
+	if (postsPledge(attempt.body)) return mintPledge(deps, config, form, attempt, origin);
+
 	const parsed = parseQuoteRequest(attempt.body, config);
 	if (!parsed.ok) {
 		return refuse(form, 'invalid_request', parsed.message, parsed.fix);
 	}
 	const submission = parsed.value;
 
-	const challenge = await deps.verifyChallenge({
-		secretKey: readTurnstileSecret(deps.env),
-		siteKey: readTurnstileSiteKey(deps.env),
-		token: submission.turnstileToken,
-		altchaPayload: submission.altchaPayload,
-		allowedHostnames: acceptableHostnames(form.allowedOrigins, origin),
-		request: attempt.request
-	});
-	if (!challenge.ok) {
-		if (challenge.operatorFix !== null) {
-			// the one sentence on this path written for whoever runs the deployment rather than for
-			// whoever sent the request. it names a deploy-time variable, so it goes to the log and
-			// never into the body — see `TurnstileResult` in ../api/turnstile.ts.
-			console.error('a donation was refused by the challenge check:', challenge.operatorFix);
-		}
-		if (challenge.reason === 'rejected') {
-			// the donor's own token, so its words are theirs to read.
-			return refuse(
-				form,
-				'challenge_failed',
-				challenge.detail,
-				CHALLENGE_RETRY_FIX[challengeKind(readTurnstileKeys(deps.env))]
-			);
-		}
-		// a transport's raw error, or a deployment holding no keys: staff's to read, not the donor's.
-		console.error('a donation could not be checked for a challenge:', challenge.detail);
-		return refuse(
-			form,
-			'challenge_unavailable',
-			CHALLENGE_UNAVAILABLE,
-			'Nothing about the request is wrong and nothing was charged. Try again shortly; if it ' +
-				'persists, this deployment’s Turnstile keys need checking, and the cause is in its logs.'
-		);
-	}
+	const challenged = await challengeRefusal(deps, form, submission, attempt, origin);
+	if (challenged !== null) return challenged;
 
 	// a donor-advised fund gift has been authorized in the fund's window already, so its figures
 	// come from that authorization rather than from the form's amount. after the challenge, like
@@ -533,6 +537,203 @@ export async function mintQuote(deps: QuoteDeps, attempt: QuoteAttempt): Promise
 	}
 
 	return { ok: true, quote: { ...quote, ...giftPageOf(deps, attempt, giftToken) }, form };
+}
+
+/**
+ * the anti-abuse challenge on the submission's token, or `null` where it cleared — run before
+ * anything is minted or saved, on every rail.
+ */
+async function challengeRefusal(
+	deps: QuoteDeps,
+	form: FormRecord,
+	presented: Pick<Giver, 'turnstileToken' | 'altchaPayload'>,
+	attempt: QuoteAttempt,
+	origin: string
+): Promise<QuoteResult | null> {
+	const challenge = await deps.verifyChallenge({
+		secretKey: readTurnstileSecret(deps.env),
+		siteKey: readTurnstileSiteKey(deps.env),
+		token: presented.turnstileToken,
+		altchaPayload: presented.altchaPayload,
+		allowedHostnames: acceptableHostnames(form.allowedOrigins, origin),
+		request: attempt.request
+	});
+	if (challenge.ok) return null;
+	if (challenge.operatorFix !== null) {
+		// the one sentence on this path written for whoever runs the deployment rather than for
+		// whoever sent the request. it names a deploy-time variable, so it goes to the log and
+		// never into the body — see `TurnstileResult` in ../api/turnstile.ts.
+		console.error('a donation was refused by the challenge check:', challenge.operatorFix);
+	}
+	if (challenge.reason === 'rejected') {
+		// the donor's own token, so its words are theirs to read.
+		return refuse(
+			form,
+			'challenge_failed',
+			challenge.detail,
+			CHALLENGE_RETRY_FIX[challengeKind(readTurnstileKeys(deps.env))]
+		);
+	}
+	// a transport's raw error, or a deployment holding no keys: staff's to read, not the donor's.
+	console.error('a donation could not be checked for a challenge:', challenge.detail);
+	return refuse(
+		form,
+		'challenge_unavailable',
+		CHALLENGE_UNAVAILABLE,
+		'Nothing about the request is wrong and nothing was charged. Try again shortly; if it ' +
+			'persists, this deployment’s Turnstile keys need checking, and the cause is in its logs.'
+	);
+}
+
+/**
+ * the pledge half: a stock or IRA (QCD) gift checked, its rail's details read, the challenge
+ * cleared, and the pledge and its donor saved — no processor asked, and nothing in the books
+ * (`pledge` in ../db/schema.ts). the answer is the pending screen's whole content
+ * (`Quote.pledge` in packages/form/src/v1.ts).
+ *
+ * every refusal a donor can meet without a read runs first, then the two that need one — the rail
+ * being on and the ticker being listed — and only then the challenge, so a token is never spent on
+ * a pledge that was always going to be refused.
+ */
+async function mintPledge(
+	deps: QuoteDeps,
+	config: FormConfig,
+	form: FormRecord,
+	attempt: QuoteAttempt,
+	origin: string
+): Promise<QuoteResult> {
+	const parsed = parsePledgeRequest(attempt.body, config);
+	if (!parsed.ok) {
+		if (parsed.field === undefined)
+			return refuse(form, 'invalid_request', parsed.message, parsed.fix);
+		return {
+			...refuse(form, 'pledge_detail_invalid', parsed.message, parsed.fix),
+			field: parsed.field
+		};
+	}
+	const { pledgeId, pledged, giver } = parsed.value;
+
+	const rails = await readPledgeRails(deps.db);
+	if (!rails[pledged.method].enabled) return pledgeRailOff(form, pledged.method);
+	if (pledged.method === 'stock' && !(await tickerListed(deps.db, pledged.ticker))) {
+		return {
+			...refuse(
+				form,
+				'ticker_not_listed',
+				'We don’t take gifts of that stock here. Pick a ticker from the list.',
+				'Send `ticker` as one `symbol` from `GET /api/v1/forms/{formId}/tickers`. Nothing was saved.'
+			),
+			field: 'ticker'
+		};
+	}
+
+	const challenged = await challengeRefusal(deps, form, giver, attempt, origin);
+	if (challenged !== null) return challenged;
+
+	const initials = orgInitials(config.orgLegalName);
+	const saved = await savePledge(
+		deps.db,
+		{
+			id: pledgeId,
+			formId: form.id,
+			origin: attributedOrigin(attempt.request, form.allowedOrigins),
+			currency: config.currency,
+			pledged,
+			donor: giver.donor,
+			consentedToContact: giver.consentedToContact,
+			note: giver.note,
+			noteOnPage: giver.noteOnPage,
+			tribute: giver.tribute,
+			programId: creditedProgram(form, giver)
+		},
+		() => mintPledgeReference(initials, pledged)
+	);
+	if (!saved.ok) {
+		if (saved.reason === 'id_taken') {
+			return refuse(
+				form,
+				'invalid_request',
+				'`pledgeId` already names a pledge on another form, so nothing was saved.',
+				'Mint a fresh UUID for each pledge (`crypto.randomUUID()`).'
+			);
+		}
+		logWriteFailure(saved.detail);
+		return refuse(
+			form,
+			'internal_error',
+			'We couldn’t save this gift. Try again in a moment.',
+			`This is a fault in this deployment rather than anything about the request. ${LOGS_SAY_WHY}`
+		);
+	}
+
+	const instructions = pledgeOnWire(saved.value, rails, config, giver.donor.primaryEmail);
+	// a resend may name a pledge saved on the other rail, which has since been turned off.
+	if (instructions === null) return pledgeRailOff(form, saved.value.pledged.method);
+	return {
+		ok: true,
+		quote: {
+			paymentToken: instructions.id,
+			feeMinor: 0,
+			totalMinor: instructions.method === 'ira_qcd' ? instructions.amountMinor : 0,
+			pledge: instructions
+		},
+		form
+	};
+}
+
+/** a pledge on a rail the organisation has not turned on, as any rail it cannot take is refused. */
+function pledgeRailOff(form: FormRecord, rail: PledgeMethod): QuoteResult {
+	return refuse(
+		form,
+		'payments_not_configured',
+		NOT_CONFIGURED,
+		`${PAYMENT_METHOD_LABELS[rail]} is turned off under Payments in /admin. Whoever runs this ` +
+			'site turns it on there with its transfer details.'
+	);
+}
+
+/**
+ * the saved pledge with the organisation's transfer details beside it, as `Pledge` in
+ * packages/form/src/v1.ts carries it — or `null` where the pledge's rail is off and has no
+ * details to print.
+ */
+function pledgeOnWire(
+	saved: SavedPledge,
+	rails: PledgeRails,
+	config: FormConfig,
+	typedEmail: string | null
+): Pledge | null {
+	const receiptTo = saved.receiptTo ?? typedEmail ?? '';
+	const { pledged } = saved;
+	if (pledged.method === 'stock') {
+		const rail = rails.stock;
+		if (!rail.enabled) return null;
+		return {
+			id: saved.id,
+			method: 'stock',
+			reference: saved.reference,
+			receiptTo,
+			ticker: pledged.ticker,
+			shares: sharesText(pledged.sharesMillionths),
+			deliverTo: rail.details.brokerageName,
+			dtcNumber: rail.details.dtcNumber,
+			accountNumber: rail.details.accountNumber,
+			accountName: rail.details.accountName
+		};
+	}
+	const rail = rails.ira_qcd;
+	if (!rail.enabled) return null;
+	return {
+		id: saved.id,
+		method: 'ira_qcd',
+		reference: saved.reference,
+		receiptTo,
+		amountMinor: pledged.amountMinor,
+		custodian: pledged.custodian,
+		payeeName: rail.details.payeeName,
+		ein: config.ein,
+		mailingAddress: rail.details.mailingAddress
+	};
 }
 
 /**
@@ -1067,7 +1268,7 @@ function grantRefusal(
  * options are all retired is served as no program at all, and a donor who sent nothing is written
  * null either way.
  */
-function creditedProgram(form: FormRecord, submission: ParsedQuoteRequest): string | null {
+function creditedProgram(form: FormRecord, submission: Pick<Giver, 'programId'>): string | null {
 	if (form.programMode === 'pinned') return form.programId;
 	if (form.programMode === 'choice') return submission.programId ?? null;
 	return null;
@@ -1172,6 +1373,13 @@ function hostnamesOf(origins: readonly string[]): string[] {
 function attributedOrigin(request: Request, allowedOrigins: readonly string[]): string | null {
 	const origin = request.headers.get('origin');
 	return origin !== null && allowedOrigins.includes(origin) ? origin : null;
+}
+
+/** whether an unparsed body names a pledge rail. */
+function postsPledge(body: unknown): boolean {
+	if (typeof body !== 'object' || body === null) return false;
+	const { method } = body as { method?: unknown };
+	return typeof method === 'string' && (PLEDGE_RAILS as readonly string[]).includes(method);
 }
 
 /** whether an unparsed body names the crypto rail. */
