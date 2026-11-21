@@ -1,46 +1,22 @@
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDb, type Db } from '../db/client';
 import { client, run, stmt } from '../db/database.testing';
 import type { EmailMessage, EmailProvider } from '../email/provider';
 import { saveProfile } from '../org/profile.testing';
-import { EXCHANGE_FILE_URL, FUND_FILE_URL, refreshTickers } from './ticker-refresh';
+import {
+	EXCHANGE_FILE_URL,
+	FUND_FILE_URL,
+	refreshTickers,
+	refreshTickersIfNoneHeld
+} from './ticker-refresh';
+import { exchangeFile, fundFile, ok, secStandIn, wholeFiles } from './ticker-refresh.testing';
 import { replaceTickers, searchTickers } from './tickers';
 
 // the daily ticker refresh against a real database, with sec.gov stood in by a function that
-// answers each of the two files from what the case hands it.
+// answers each of the two files from what the case hands it (./ticker-refresh.testing.ts).
 
 const NOW = new Date('2026-11-21T04:20:00.000Z');
 const HOUR = 60 * 60_000;
-
-/** the exchange file as sec.gov writes it, `count` companies after the ones given. */
-function exchangeFile(count: number, first: unknown[][] = []) {
-	const data = [...first];
-	for (let n = 0; n < count; n += 1) data.push([n + 1, `Company ${n}`, `C${n}`, 'NYSE']);
-	return { fields: ['cik', 'name', 'ticker', 'exchange'], data };
-}
-
-/** the fund file as sec.gov writes it, `count` fund classes after the ones given. */
-function fundFile(count: number, first: unknown[][] = []) {
-	const data = [...first];
-	for (let n = 0; n < count; n += 1) data.push([n + 1, `S${n}`, `C${n}`, `F${n}X`]);
-	return { fields: ['cik', 'seriesId', 'classId', 'symbol'], data };
-}
-
-type Answer = { status: number; body: unknown };
-
-/** a stand-in fetch: each file's answer, and every request it was handed. */
-function secStandIn(answers: { exchange: Answer; fund: Answer }) {
-	const requests: Request[] = [];
-	const fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-		const request = new Request(input, init);
-		requests.push(request);
-		const answer = request.url === EXCHANGE_FILE_URL ? answers.exchange : answers.fund;
-		return Response.json(answer.body, { status: answer.status });
-	}) as typeof globalThis.fetch;
-	return { fetch, requests };
-}
-
-const ok = (body: unknown): Answer => ({ status: 200, body });
 
 function recordingEmail() {
 	const sent: EmailMessage[] = [];
@@ -71,6 +47,10 @@ beforeEach(async () => {
 	await holdOldList(2 * 24 * HOUR);
 });
 
+afterEach(() => {
+	vi.restoreAllMocks();
+});
+
 /** one run at `NOW`, against the stand-in. */
 function refresh(
 	sec: ReturnType<typeof secStandIn>,
@@ -79,9 +59,6 @@ function refresh(
 ): Promise<void> {
 	return refreshTickers({ db, fetch: sec.fetch, email, mailFrom }, NOW);
 }
-
-const wholeFiles = () =>
-	secStandIn({ exchange: ok(exchangeFile(6_000)), fund: ok(fundFile(15_000)) });
 
 describe('refreshTickers', () => {
 	it('fetches nothing when the list held was replaced under a day ago', async () => {
@@ -130,7 +107,6 @@ describe('refreshTickers', () => {
 		expect(logged.mock.calls.map(([line]) => line)).toEqual([
 			'The stock ticker list did not refresh:'
 		]);
-		logged.mockRestore();
 	});
 
 	it('replaces the list from both files, a ticker on both keeping its company name', async () => {
@@ -196,5 +172,32 @@ describe('refreshTickers', () => {
 		expect((await searchTickers(db, 'OLD', 8)).map((row) => row.symbol)).toEqual(['OLD']);
 		expect(sent).toHaveLength(1);
 		expect(sent[0]?.text).toContain(FUND_FILE_URL);
+	});
+});
+
+describe('refreshTickersIfNoneHeld', () => {
+	const refreshIfNone = (sec: ReturnType<typeof secStandIn>) =>
+		refreshTickersIfNoneHeld(
+			{ db, fetch: sec.fetch, email: recordingEmail().email, mailFrom: null },
+			NOW
+		);
+
+	it('fetches nothing where a list is held, however old, leaving it to the daily run', async () => {
+		const sec = wholeFiles();
+
+		await refreshIfNone(sec);
+
+		expect(sec.requests).toEqual([]);
+		expect((await searchTickers(db, 'OLD', 8)).map((row) => row.symbol)).toEqual(['OLD']);
+	});
+
+	it('fetches the list where none was ever stored', async () => {
+		await run(stmt('delete from ticker'));
+		const sec = wholeFiles();
+
+		await refreshIfNone(sec);
+
+		expect(sec.requests).toHaveLength(2);
+		expect(await searchTickers(db, 'C0', 1)).toHaveLength(1);
 	});
 });

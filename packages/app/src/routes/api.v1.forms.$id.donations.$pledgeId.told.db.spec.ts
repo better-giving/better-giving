@@ -164,6 +164,37 @@ describe('telling the organisation', () => {
 		expect(mail.sent).toHaveLength(1);
 	});
 
+	it('stamps once and mails once when two presses arrive together', async () => {
+		const [one, two] = [press(), press()];
+		const answers = await Promise.all([one.response, two.response]);
+		await Promise.all([one.settled(), two.settled()]);
+
+		expect(answers.map((a) => a.status)).toEqual([200, 200]);
+		expect(await Promise.all(answers.map((a) => a.json()))).toEqual([{ ok: true }, { ok: true }]);
+		expect(mail.sent).toHaveLength(1);
+	});
+
+	it('answers ok and mails nobody for a pledge staff already marked received', async () => {
+		await client.batch([
+			stmt(
+				`insert into donation (id, contact_id, total_minor, currency, received_at, created_at)
+				 values (?, ?, 951240, 'USD', 0, 0)`,
+				STOCK_ID,
+				CONTACT_ID
+			),
+			stmt('update pledge set donation_id = ? where id = ?', STOCK_ID, STOCK_ID)
+		]);
+
+		const { response, settled } = press();
+		const answer = await response;
+		await settled();
+
+		expect(answer.status).toBe(200);
+		expect(await answer.json()).toEqual({ ok: true });
+		expect(mail.sent).toHaveLength(0);
+		expect((await toldAt(STOCK_ID))?.told_at).toBeNull();
+	});
+
 	it('still answers ok when the mail fails, and alerts the operator through the logs', async () => {
 		mail.answer = {
 			ok: false,

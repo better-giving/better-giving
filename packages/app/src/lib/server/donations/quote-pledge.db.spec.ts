@@ -6,6 +6,8 @@ import { campaignRaised } from '../pages/goal';
 import { enablePledgeRail } from '../payments/pledge-rails';
 import { soleProcessor } from '../payments/processors.testing';
 import { refusing } from '../payments/provider';
+import { parseContact } from '../contacts/contact-input';
+import { type PledgeToSave, REFERENCE_DRAWS, savePledge } from './pledges';
 import { mintQuote, type QuoteDeps } from './quote';
 import { replaceTickers } from './tickers';
 import { client, first, run, stmt } from '$lib/server/db/database.testing';
@@ -17,6 +19,8 @@ import { client, first, run, stmt } from '$lib/server/db/database.testing';
 
 const FORM_ID = 'frm_quotepledge0001';
 const OTHER_FORM_ID = 'frm_quotepledge0002';
+const FUNDRAISER_FORM_ID = 'frm_quotepledge0003';
+const FUNDRAISER_PAGE_ID = '019fb600-0000-7000-8000-0000000000f2';
 const ALLOWED = 'https://acme.org';
 const PLEDGE_ID = '0b5f7a52-3d1e-4c8a-9f2b-6e4d1c0a7b93';
 
@@ -46,7 +50,7 @@ beforeAll(async () => {
 	const account = await first<{ id: string }>(
 		stmt(`select id from account where is_postable = 1 and code = '4110'`)
 	);
-	for (const id of [FORM_ID, OTHER_FORM_ID]) {
+	for (const id of [FORM_ID, OTHER_FORM_ID, FUNDRAISER_FORM_ID]) {
 		await run(
 			stmt(
 				`insert into form (id, name, status, revenue_account_id, currency, min_minor, max_minor,
@@ -58,6 +62,22 @@ beforeAll(async () => {
 			)
 		);
 	}
+	await run(
+		stmt(
+			`insert into supporter (id, email, name, created_at)
+			 values ('019fb600-0000-7000-8000-0000000000f1', 'ada@example.org', 'Ada Rivera', 0)`
+		)
+	);
+	await run(
+		stmt(
+			`insert into supporter_page (id, supporter_id, slug, title, story, goal_minor, currency,
+			                            form_id, status, published_at, created_at, updated_at)
+			 values (?, '019fb600-0000-7000-8000-0000000000f1', 'run-for-the-pantry',
+			         'Run for the pantry', 'I am running.', 50000, 'USD', ?, 'live', 0, 0, 0)`,
+			FUNDRAISER_PAGE_ID,
+			FUNDRAISER_FORM_ID
+		)
+	);
 	await replaceTickers(db, [
 		{ symbol: 'AAPL', name: 'Apple Inc.', exchange: 'Nasdaq', kind: 'company' }
 	]);
@@ -183,9 +203,20 @@ describe('mintQuote() — a stock pledge', () => {
 			origin: ALLOWED,
 			note: 'For the pantry',
 			told_at: null,
-			donation_id: null
+			donation_id: null,
+			supporter_page_id: null
 		});
 		expect(await contacts()).toHaveLength(1);
+	});
+
+	it('names the supporter’s fundraiser whose form it was made on', async () => {
+		const result = await save(stock({ formId: FUNDRAISER_FORM_ID }), deps(), FUNDRAISER_FORM_ID);
+
+		expect(result.ok).toBe(true);
+		expect((await pledges())[0]).toMatchObject({
+			form_id: FUNDRAISER_FORM_ID,
+			supporter_page_id: FUNDRAISER_PAGE_ID
+		});
 	});
 
 	it('takes a fractional share to six places', async () => {
@@ -331,23 +362,65 @@ describe('mintQuote() — the same press twice', () => {
 	});
 });
 
-describe('mintQuote() — a reference already taken', () => {
-	it('draws another and saves', async () => {
-		await save(stock());
-		const [taken] = await pledges();
+describe('savePledge() — a reference already taken', () => {
+	const TAKEN = 'CFCP-AAPL-7Q2D';
 
-		// the first draw lands on the taken reference's suffix, the second on anything else.
-		const suffix = String(taken?.reference).slice(-4);
-		const alphabet = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
-		const bytes = [...suffix].map((c) => alphabet.indexOf(c));
-		vi.spyOn(crypto, 'getRandomValues').mockImplementationOnce((array) => {
-			(array as Uint8Array).set(bytes);
-			return array;
+	/** a second pledge to save, and a draw that answers `references` in turn, counting each. */
+	function secondPledge(references: readonly string[]) {
+		const parsed = parseContact({
+			kind: 'individual',
+			first_name: 'Ada',
+			last_name: 'Okafor',
+			primary_email: 'ada@example.org'
 		});
+		if (!parsed.ok) throw new Error('the fixture donor did not parse');
+		const input: PledgeToSave = {
+			id: '6f1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d',
+			formId: FORM_ID,
+			origin: null,
+			currency: 'USD',
+			pledged: { method: 'stock', ticker: 'AAPL', sharesMillionths: 1_000_000 },
+			donor: parsed.value,
+			consentedToContact: null,
+			note: undefined,
+			noteOnPage: undefined,
+			tribute: null,
+			programId: null
+		};
+		const drawn: string[] = [];
+		const draw = () => {
+			const reference = references[Math.min(drawn.length, references.length - 1)] ?? TAKEN;
+			drawn.push(reference);
+			return reference;
+		};
+		return { input, draw, drawn };
+	}
 
-		const result = await save(stock({ pledgeId: '6f1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d' }));
-		expect(result.ok).toBe(true);
-		expect(result.ok && result.quote.pledge?.reference).not.toBe(taken?.reference);
+	beforeEach(async () => {
+		expect((await save(stock())).ok).toBe(true);
+		await run(stmt('update pledge set reference = ?', TAKEN));
+	});
+
+	it('draws another and saves', async () => {
+		const { input, draw, drawn } = secondPledge([TAKEN, 'CFCP-AAPL-9W4E']);
+
+		const result = await savePledge(db, input, draw);
+
+		expect(drawn).toEqual([TAKEN, 'CFCP-AAPL-9W4E']);
+		expect(result).toMatchObject({ ok: true, value: { reference: 'CFCP-AAPL-9W4E' } });
 		expect(await pledges()).toHaveLength(2);
+	});
+
+	it('gives up after its last draw, saving neither the pledge nor its donor', async () => {
+		const { input, draw, drawn } = secondPledge([TAKEN]);
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+		const result = await savePledge(db, input, draw);
+
+		expect(drawn).toHaveLength(REFERENCE_DRAWS);
+		expect(result).toMatchObject({ ok: false, reason: 'failed' });
+		expect(await pledges()).toHaveLength(1);
+		expect(await contacts()).toHaveLength(1);
+		expect(logged).not.toHaveBeenCalled();
 	});
 });

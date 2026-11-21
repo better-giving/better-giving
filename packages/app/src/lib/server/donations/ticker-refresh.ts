@@ -6,7 +6,8 @@ import { readOrgProfile } from '../org/queries';
 import { replaceTickers, type TickerRow, tickersReplacedAt } from './tickers';
 
 // the stock step's ticker list, fetched from the SEC's two public files once a day and handed whole
-// to `replaceTickers` (./tickers.ts). ../../../cron-runs.ts fires it.
+// to `replaceTickers` (./tickers.ts). ../../../cron-runs.ts fires it, and the Stocks Save on
+// /admin/payments fires it once where no list is held yet (`refreshTickersIfNoneHeld`).
 //
 // sec.gov answers 403 to a request whose User-Agent names no contact
 // (https://www.sec.gov/os/accessing-edgar-data), so the contact is the notification address saved
@@ -99,6 +100,22 @@ export async function refreshTickers(deps: TickerRefreshDeps, now: Date): Promis
 	} catch (error) {
 		await tellOperator(deps, error);
 	}
+}
+
+/**
+ * `refreshTickers`, where no list has ever been stored: a stock pledge on a ticker the list does not
+ * hold is refused (`mintPledge` in ./quote.ts), so the Stocks Save on /admin/payments starts one
+ * rather than leave every stock gift refused until the next 04:20 run. a list already held, however
+ * old, is that run's to replace. never throws.
+ */
+export async function refreshTickersIfNoneHeld(deps: TickerRefreshDeps, now: Date): Promise<void> {
+	try {
+		if ((await tickersReplacedAt(deps.db)) !== null) return;
+	} catch (error) {
+		await tellOperator(deps, error);
+		return;
+	}
+	await refreshTickers(deps, now);
 }
 
 async function fetchTickers(deps: TickerRefreshDeps, userAgent: string): Promise<TickerRow[]> {

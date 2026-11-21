@@ -36,6 +36,8 @@ import { STAFF_USER_ID } from '$lib/server/auth';
 import { invalid, parseForm, submittedForm } from '$lib/server/conform';
 import type { PledgeMethod } from '$lib/server/db/schema';
 import { notFound } from '$lib/server/db/load-failure';
+import { refreshTickersIfNoneHeld } from '$lib/server/donations/ticker-refresh';
+import { createEmailProvider } from '$lib/server/email/factory';
 import { createPaymentProviders } from '$lib/server/payments/factory';
 import {
 	disablePledgeRail,
@@ -212,13 +214,16 @@ export async function action(args: Route.ActionArgs) {
 
 	/**
 	 * Save on the Stocks card: every box filled turns the rail on with those details, replacing what
-	 * was saved; any box blank or missing saves nothing and flags each such box at once.
+	 * was saved; any box blank or missing saves nothing and flags each such box at once. a deployment
+	 * that has never fetched its ticker list fetches it after the answer, and a failure there is the
+	 * operator's alert, never this press's.
 	 */
 	async function saveStock({ context }: Route.ActionArgs, body: FormData) {
 		const submission = parseForm(body, STOCK_FORM);
 		if (!submission.ok) return invalid(400, submission.reject());
 		const { brokerage_name, dtc_number, account_number, account_name } = submission.value;
-		await enablePledgeRail(context.get(database), {
+		const db = context.get(database);
+		await enablePledgeRail(db, {
 			rail: 'stock',
 			details: {
 				brokerageName: brokerage_name,
@@ -227,6 +232,13 @@ export async function action(args: Route.ActionArgs) {
 				accountName: account_name
 			}
 		});
+		const { env, deferred } = context.get(platform);
+		deferred.waitUntil(
+			refreshTickersIfNoneHeld(
+				{ db, fetch, email: createEmailProvider(env), mailFrom: env.MAIL_FROM ?? null },
+				new Date()
+			)
+		);
 		return { pledgeRail: { rail: 'stock' as const, outcome: 'saved' as const } };
 	}
 

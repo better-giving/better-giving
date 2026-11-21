@@ -1,9 +1,13 @@
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parseContact } from '$lib/server/contacts/contact-input';
 import { createDb, type Db } from '$lib/server/db/client';
 import { client, first, run, stmt } from '$lib/server/db/database.testing';
 import type { PostableAccountId } from '$lib/server/db/postable';
 import { recordDonation } from '$lib/server/donations/record';
+import { EXCHANGE_FILE_URL, FUND_FILE_URL } from '$lib/server/donations/ticker-refresh';
+import { secStandIn, wholeFiles } from '$lib/server/donations/ticker-refresh.testing';
+import { replaceTickers, tickerListed } from '$lib/server/donations/tickers';
+import { createDeferredWork } from '$lib/server/runtime/deferred';
 import { SUBSCRIBED_EVENT_TYPES as PAYPAL_EVENTS } from '@better-giving/operator/paypal/webhook-listener';
 import { REQUIRED } from '@better-giving/operator/console/org-rules';
 import { secretFingerprint } from '@better-giving/operator/stripe/secret-fingerprint';
@@ -41,6 +45,16 @@ const PASSWORD = 'a-very-long-random-staff-password';
 
 const stub = vi.hoisted(() => ({
 	ports: {} as Partial<Record<ProcessorName, PaymentProvider>>
+}));
+
+// the mail transport, stood in for: a Stocks Save's ticker refresh alerts through it when sec.gov
+// refuses, and no case here may reach an SMTP host.
+vi.mock('$lib/server/email/factory', () => ({
+	createEmailProvider: () => ({
+		async send() {
+			return { ok: true as const };
+		}
+	})
 }));
 
 vi.mock('$lib/server/payments/factory', async (importOriginal) => {
@@ -997,6 +1011,10 @@ describe('the stock and IRA (QCD) rails', () => {
 
 	beforeEach(async () => {
 		await run(stmt('delete from pledge_rail'));
+		// a list held, so a Stocks Save fetches nothing from sec.gov unless a case empties it.
+		await replaceTickers(db, [
+			{ symbol: 'AAPL', name: 'Apple Inc.', exchange: 'Nasdaq', kind: 'company' }
+		]);
 	});
 
 	/** the rails as the loader draws them, on a deployment that reads no processor. */
@@ -1083,5 +1101,89 @@ describe('the stock and IRA (QCD) rails', () => {
 		const rails = await railsDrawn();
 		expect(rails.stock.enabled).toBe(false);
 		expect(rails.ira_qcd.enabled).toBe(true);
+	});
+
+	describe('a Save on a deployment that has never fetched its ticker list', () => {
+		beforeEach(async () => {
+			await run(stmt('delete from ticker'));
+		});
+
+		afterEach(() => {
+			vi.unstubAllGlobals();
+			vi.restoreAllMocks();
+		});
+
+		/** one Stocks Save, its after-response work waited for. */
+		async function saveStock(): Promise<Response> {
+			const deferred = createDeferredWork();
+			const response = await request(
+				new Request(`${ORIGIN}${SCREEN}`, {
+					method: 'POST',
+					headers: { cookie: deployer, origin: ORIGIN },
+					body: bodyOf('payments-stock', STOCK)
+				}),
+				{ env: deployed(NO_STRIPE), deferred }
+			);
+			await deferred.settled();
+			return response;
+		}
+
+		it('fetches the list after the answer, so the first stock gift need not wait for 04:20', async () => {
+			const sec = wholeFiles();
+			vi.stubGlobal('fetch', sec.fetch);
+
+			const saved = await saveStock();
+
+			expect(await saved.json()).toEqual({ pledgeRail: { rail: 'stock', outcome: 'saved' } });
+			expect(sec.requests.map((r) => r.url)).toEqual([EXCHANGE_FILE_URL, FUND_FILE_URL]);
+			expect(await tickerListed(db, 'C0')).toBe(true);
+		});
+
+		it('still saves when sec.gov refuses, and alerts the operator', async () => {
+			vi.stubGlobal(
+				'fetch',
+				secStandIn({ exchange: { status: 503, body: {} }, fund: { status: 503, body: {} } }).fetch
+			);
+			const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+			const saved = await saveStock();
+
+			expect(saved.status).toBe(200);
+			expect((await railsDrawn()).stock).toEqual({ enabled: true, details: STOCK });
+			expect(logged).toHaveBeenCalledWith(
+				'The stock ticker list did not refresh:',
+				expect.stringContaining('sec.gov answered 503')
+			);
+		});
+
+		it('fetches nothing where a list is already held', async () => {
+			await replaceTickers(db, [
+				{ symbol: 'AAPL', name: 'Apple Inc.', exchange: 'Nasdaq', kind: 'company' }
+			]);
+			const sec = wholeFiles();
+			vi.stubGlobal('fetch', sec.fetch);
+
+			await saveStock();
+
+			expect(sec.requests).toEqual([]);
+		});
+
+		it('fetches nothing on an IRA (QCD) Save', async () => {
+			const sec = wholeFiles();
+			vi.stubGlobal('fetch', sec.fetch);
+			const deferred = createDeferredWork();
+
+			await request(
+				new Request(`${ORIGIN}${SCREEN}`, {
+					method: 'POST',
+					headers: { cookie: deployer, origin: ORIGIN },
+					body: bodyOf('payments-ira-qcd', IRA)
+				}),
+				{ env: deployed(NO_STRIPE), deferred }
+			);
+			await deferred.settled();
+
+			expect(sec.requests).toEqual([]);
+		});
 	});
 });

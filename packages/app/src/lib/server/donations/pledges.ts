@@ -4,6 +4,7 @@ import { readContactSummaries } from '../contacts/queries';
 import type { Db } from '../db/client';
 import { sqliteResultCode } from '../db/rejection';
 import { pledge } from '../db/schema';
+import { supporterPageOf } from '../supporters/gifts';
 import { resolveDonor } from './donor';
 import type { NoteOnPage, PledgedInput, Tribute } from './quote-input';
 import { noteOnPageColumns, tributeColumns } from './record';
@@ -158,7 +159,7 @@ export type SavePledgeResult =
 	| { readonly ok: false; readonly reason: 'id_taken' | 'failed'; readonly detail: string };
 
 /** how many references one save draws before it gives up: a fifth collision is not chance. */
-const REFERENCE_DRAWS = 5;
+export const REFERENCE_DRAWS = 5;
 
 /**
  * the pledge and its donor, written in one `batch()` — or, where a pledge already has this id on
@@ -191,6 +192,9 @@ export async function savePledge(
 					reference,
 					...pledgedColumns(input.pledged),
 					formId: input.formId,
+					// as the opening gift names its page (../supporters/gifts.ts): `readPublishedConfig`
+					// in ../forms/published-config.ts has already refused a fundraiser not taking gifts.
+					supporterPageId: supporterPageOf(input.formId),
 					origin: input.origin,
 					programId: input.programId,
 					note: input.note ?? null,
@@ -290,15 +294,19 @@ export type ToldPledge = {
 export type MarkToldResult =
 	/** `claimed`: this press set `told_at`, and the organisation is owed its message. */
 	| { readonly found: true; readonly claimed: true; readonly pledge: ToldPledge }
-	/** told already, by an earlier press: nobody is told twice. */
+	/**
+	 * told already, by an earlier press, or received already at Mark received: nobody is told twice,
+	 * and nobody is told a received gift is on its way.
+	 */
 	| { readonly found: true; readonly claimed: false }
 	/** no pledge on this form has the id. */
 	| { readonly found: false };
 
 /**
  * the donor's "I've contacted my broker" or "I've asked my custodian": `told_at` stamped where it
- * is still null, by one guarded update that hands back the row it claimed. a second press, or two
- * at once, claim nothing, so only one of them owes the organisation a message.
+ * is still null and the pledge not yet received, by one guarded update that hands back the row it
+ * claimed. a second press, or two at once, claim nothing, so only one of them owes the
+ * organisation a message; a press after Mark received claims nothing either.
  *
  * the id is the capability and the form scopes it: an id on another form's pledge is not found.
  */
@@ -311,7 +319,7 @@ export async function markPledgeTold(
 	const [claimed] = await db
 		.update(pledge)
 		.set({ toldAt: at })
-		.where(and(scope, isNull(pledge.toldAt)))
+		.where(and(scope, isNull(pledge.toldAt), isNull(pledge.donationId)))
 		.returning();
 	if (claimed === undefined) {
 		const [held] = await db.select({ id: pledge.id }).from(pledge).where(scope).limit(1);

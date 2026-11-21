@@ -18,13 +18,18 @@ import * as donations from './_app.admin.donations._index';
 // gives: the session gate is a middleware on ./_app.tsx.
 
 const sent = vi.hoisted(() => [] as { to: string; subject: string; text: string }[]);
+const mail = vi.hoisted(() => ({
+	answer: { ok: true } as
+		| { ok: true }
+		| { ok: false; reason: string; detail: string; indeterminate: boolean }
+}));
 
 // the mail transport, captured. the receipt itself is rendered for real from the org profile.
 vi.mock('$lib/server/email/factory', () => ({
 	createEmailProvider: () => ({
 		async send(message: { to: string; subject: string; html: string; text: string }) {
 			sent.push(message);
-			return { ok: true as const };
+			return mail.answer;
 		}
 	})
 }));
@@ -57,6 +62,7 @@ beforeAll(async () => {
 
 beforeEach(async () => {
 	sent.length = 0;
+	mail.answer = { ok: true };
 	for (const table of [
 		'ledger_entry',
 		'entry_group',
@@ -66,6 +72,8 @@ beforeEach(async () => {
 		'gift_match',
 		'donation',
 		'contact',
+		'supporter_page',
+		'supporter',
 		'form',
 		'program',
 		'org_profile'
@@ -270,6 +278,66 @@ describe('Mark received', () => {
 		expect(sent[0]?.text).toContain('50 shares of AAPL');
 		expect(sent[0]?.text).toContain('Value when received  USD 9,512.40');
 		expect(sent[0]?.text).toContain('In memory of Ruth Hale');
+	});
+
+	it('counts the gift on the supporter’s fundraiser the pledge was made on', async () => {
+		const page = '019fb600-0000-7000-8000-0000000000f2';
+		await run(
+			stmt(
+				`insert into supporter (id, email, name, created_at)
+				 values ('019fb600-0000-7000-8000-0000000000e1', 'ada@example.org', 'Ada Rivera', 0)`
+			)
+		);
+		await run(
+			stmt(
+				`insert into supporter_page (id, supporter_id, slug, title, story, goal_minor, currency,
+				                            form_id, status, published_at, created_at, updated_at)
+				 values (?, '019fb600-0000-7000-8000-0000000000e1', 'run-for-the-pantry',
+				         'Run for the pantry', 'I am running.', 50000, 'USD', ?, 'live', 0, 0, 0)`,
+				page,
+				FORM_ID
+			)
+		);
+		await run(stmt('update pledge set supporter_page_id = ? where id = ?', page, STOCK_PLEDGE));
+
+		await markReceived(STOCK_RECEIVED);
+
+		expect(
+			await first(stmt('select supporter_page_id from donation where id = ?', STOCK_PLEDGE))
+		).toEqual({ supporter_page_id: page });
+	});
+
+	it('records one gift and sends one receipt when two presses arrive together', async () => {
+		const answers = await Promise.all([
+			markReceived(STOCK_RECEIVED),
+			markReceived({ ...STOCK_RECEIVED, value: '10000.00' })
+		]);
+
+		expect(answers.map((a) => a.status).sort()).toEqual([200, 409]);
+		expect(await count('donation')).toBe(1);
+		expect(await count('payment')).toBe(1);
+		expect(await booked()).toBeOneOf([951240, 1_000_000]);
+		expect(sent).toHaveLength(1);
+	});
+
+	it('keeps the gift and alerts the operator when the receipt cannot be sent', async () => {
+		mail.answer = {
+			ok: false,
+			reason: 'timeout',
+			detail: 'the host went quiet',
+			indeterminate: true
+		};
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+		const response = await markReceived(STOCK_RECEIVED);
+
+		expect(response.status).toBe(200);
+		expect(await booked()).toBe(951240);
+		expect(
+			await first(stmt('select receipt_sent_at from donation where id = ?', STOCK_PLEDGE))
+		).toEqual({ receipt_sent_at: null });
+		expect(logged).toHaveBeenCalledWith('A donor’s receipt wasn’t sent:', expect.any(String));
+		logged.mockRestore();
 	});
 
 	it('records nothing on a second press, and says so', async () => {
