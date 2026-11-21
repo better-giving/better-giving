@@ -295,6 +295,13 @@
       "when": 1795134115130,
       "tag": "0041_fraud_loss_account",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "6",
+      "when": 1795223725182,
+      "tag": "0042_stock_and_ira_qcd_pledges",
+      "breakpoints": true
     }
   ]
 }

@@ -26,7 +26,9 @@ export const RAIL_LABELS: Record<PaymentMethod, string> = {
 	paypal: 'PayPal',
 	venmo: 'Venmo',
 	daf: 'Donor-advised fund',
-	crypto: 'Crypto'
+	crypto: 'Crypto',
+	stock: 'Stocks',
+	ira_qcd: 'IRA (QCD)'
 };
 
 /** whether the gift's money arrived in hand, which dates it by a day rather than an instant. */
