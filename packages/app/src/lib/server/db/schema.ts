@@ -4097,6 +4097,47 @@ export const pledge = sqliteTable(
 export type Pledge = typeof pledge.$inferSelect;
 export type NewPledge = typeof pledge.$inferInsert;
 
+export const TICKER_KINDS = ['company', 'fund'] as const;
+export type TickerKind = (typeof TICKER_KINDS)[number];
+
+/**
+ * every ticker a donor can pick on the stock step, from the SEC's public lists: a company or ETF
+ * from company_tickers_exchange.json, a mutual fund class from company_tickers_mf.json. reference
+ * data the process refreshes for itself, never typed by anyone, and searched here so a donor never
+ * reaches sec.gov.
+ *
+ * the list is only ever replaced whole, in one `batch()`, by `replaceTickers` in
+ * ../donations/tickers.ts, which is every read and write. `ticker_name`, an FTS5 table the
+ * migration creates beside this one and drizzle cannot declare, holds each company's name for the
+ * word-prefix search and is refilled in the same batch.
+ */
+export const ticker = sqliteTable(
+	'ticker',
+	{
+		/** uppercase, class shares in the SEC's dash form: `BRK-B`. */
+		symbol: text('symbol').primaryKey(),
+		/** the company's name as the SEC writes it. null on a fund: the SEC's fund list has no names. */
+		name: text('name'),
+		/** the listing exchange, null where the SEC states none and on every fund. */
+		exchange: text('exchange'),
+		kind: text('kind').$type<TickerKind>().notNull(),
+		/** when the list this row came in with replaced the one before; every row holds the same value. */
+		replacedAt: at('replaced_at').notNull()
+		// append new columns below this line — see rule 1 at the top of this file.
+	},
+	(t) => [
+		check('ticker_kind_check', enumCheck(t.kind, TICKER_KINDS)),
+		check('ticker_symbol_not_blank_check', notBlank(t.symbol)),
+		check('ticker_symbol_uppercase_check', sql`${t.symbol} = upper(${t.symbol})`),
+		check('ticker_name_not_blank_check', optionalNotBlank(t.name)),
+		check('ticker_exchange_not_blank_check', optionalNotBlank(t.exchange)),
+		check('ticker_fund_has_no_name_check', sql`${t.kind} <> 'fund' or ${t.name} is null`)
+	]
+);
+
+export type Ticker = typeof ticker.$inferSelect;
+export type NewTicker = typeof ticker.$inferInsert;
+
 export type Supporter = typeof supporter.$inferSelect;
 export type NewSupporter = typeof supporter.$inferInsert;
 export type SupporterPage = typeof supporterPage.$inferSelect;

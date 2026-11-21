@@ -302,6 +302,13 @@
       "when": 1795223725182,
       "tag": "0042_stock_and_ira_qcd_pledges",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "6",
+      "when": 1795225039320,
+      "tag": "0043_stock_tickers",
+      "breakpoints": true
     }
   ]
 }
