@@ -29,7 +29,7 @@ import {
 } from './deposit';
 import { createIraPanel } from './ira-panel';
 import { instructionsMailto, pledgeDetails, pledgeSummary } from './pledge';
-import { BENEFITS, createPledgeBlock, type PledgeScreen } from './pledge-screen';
+import { BENEFITS, createPledgeBlock, type PledgeNotice, type PledgeScreen } from './pledge-screen';
 import type { AmountDecision, PayerField } from './value';
 import { RECONCILIATION_LABELS, type DeductedFee } from './fee';
 import { currencySymbol, formatFigure, formatMinor, formatOffer, parseMinor } from './money';
@@ -607,16 +607,20 @@ function pledgedScreen(
 	const { pledge } = state;
 	const stock = pledge.method === 'stock';
 	const summary = pledgeSummary(pledge, money);
+	// the notice's words, for the card's live region (`notice` in ./pledge-screen.ts).
+	const spoken = (notice: PledgeNotice) => `${notice.title}. ${notice.body}`;
 	if (state.phase === 'told') {
+		const told: PledgeNotice = {
+			tone: 'info',
+			title: 'We’ve told the organization',
+			body: `Your gift counts when ${stock ? 'the shares arrive' : 'it arrives'}. We’ll email a receipt to ${pledge.receiptTo} then.`
+		};
 		return {
 			...BLANK,
 			heading: 'Thank you',
+			arrival: spoken(told),
 			pledge: {
-				notice: {
-					tone: 'info',
-					title: 'We’ve told the organization',
-					body: `Your gift counts when ${stock ? 'the shares arrive' : 'it arrives'}. We’ll email a receipt to ${pledge.receiptTo} then.`
-				},
+				notice: told,
 				summary,
 				details: null,
 				benefits: null
@@ -624,20 +628,23 @@ function pledgedScreen(
 			secondary: { label: 'Done', filled: true }
 		};
 	}
+	const refusal: PledgeNotice | null = state.refused
+		? {
+				tone: 'destructive',
+				title: 'We couldn’t tell the organization',
+				body: 'Your gift is saved. Check your connection and try again.'
+			}
+		: null;
 	return {
 		...BLANK,
 		heading: stock ? 'Your stock gift is pending' : 'Your IRA (QCD) gift is pending',
 		body: stock
 			? 'Ask your broker to transfer these shares using the details below. Your gift counts when they arrive.'
 			: 'Ask your custodian to send this gift using the details below. Your gift counts when it arrives.',
+		// not while the next press is in flight, so a second refusal arrives into a cleared region.
+		announce: refusal === null || state.phase === 'telling' ? '' : spoken(refusal),
 		pledge: {
-			notice: state.refused
-				? {
-						tone: 'destructive',
-						title: 'We couldn’t tell the organization',
-						body: 'Your gift is saved. Check your connection and try again.'
-					}
-				: null,
+			notice: refusal,
 			summary,
 			details: pledgeDetails(pledge),
 			benefits: BENEFITS[pledge.method]

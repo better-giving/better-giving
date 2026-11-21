@@ -351,19 +351,27 @@ export type CheckoutContext = {
 	 * since one landed.
 	 */
 	readonly employerWriteRefusal: Exclude<EmployerRefusal, 'blank'> | null;
-	/**
-	 * the id the pledge this card saves is saved under, minted by the first save and sent again on
-	 * every save after it, so a resend answers the pledge already saved rather than saving a second
-	 * (`QuoteRequest.pledgeId` in ./v1.ts). kept for the card's life: a save whose answer was lost may
-	 * have landed, and the next press must name that pledge.
-	 */
+	/** the id the last pledge save was sent under, which the told press names. */
 	readonly pledgeId: string | null;
+	/**
+	 * each distinct pledge request this card has sent, keyed by `pledgeRequestKey`, and the id it was
+	 * sent under. kept for the card's life: a save whose answer was lost may have landed, so a resend
+	 * of the same request names that pledge and is answered with it rather than saving a second
+	 * (`QuoteRequest.pledgeId` in ./v1.ts), while a changed request is a pledge of its own, since the
+	 * endpoint answers a known id with the pledge it saved, whatever else the request carries.
+	 */
+	readonly pledgeIds: Readonly<Record<string, string>>;
 	/** the shares a stock pledge gives, from the `PLEDGE_STOCK` that started it. */
 	readonly stock: StockPick | null;
 	/** the endpoint refused the custodian a save named (`pledge_detail_invalid`), until it is retyped. */
 	readonly custodianRefused: boolean;
 	/** the last told press did not reach the organisation, until one does. */
 	readonly toldRefused: boolean;
+	/**
+	 * the last told press was refused `pledge_not_found`: the endpoint holds no pledge under
+	 * `pledgeId`, so the next press saves it again before it tells. until a save answers the pledge.
+	 */
+	readonly pledgeLost: boolean;
 };
 
 /** a stock pledge's ticker and shares, as `StockPledgeRequest` in ./v1.ts carries them. */
@@ -586,9 +594,9 @@ const CHECK_UNFINISHED =
 const GENERIC_FAILURE = 'This gift was not started, and nothing was charged. Try again.';
 
 /**
- * what a donor is told when a pledge's save answered without the pledge. it may have been saved, and
- * a Try again sends the same `pledgeId`, which the endpoint answers with that pledge rather than a
- * second one.
+ * what a donor is told when a pledge's save answered without the pledge, or its answer was lost
+ * (`pledgeMayBeSaved` below). it may have been saved, and a Try again of the same request sends the
+ * same `pledgeId`, which the endpoint answers with that pledge rather than a second one.
  */
 const PLEDGE_UNSAVED =
 	'We couldn’t confirm your gift was saved. Try again; it will not be saved twice.';
@@ -673,6 +681,17 @@ function wentUnanswered(error: unknown): boolean {
 	);
 }
 
+/**
+ * a failed pledge save after which the pledge may nonetheless be saved: every failure but a refusal
+ * the endpoint coded — an unanswered request, and an answer that was not the endpoint's own words
+ * (a proxy's error page, a body that is not json), each of which may follow the write.
+ */
+function pledgeMayBeSaved(context: CheckoutContext, error: unknown): boolean {
+	return (
+		context.payer !== null && isPledgeRail(context.payer.method) && errorCode(error) === undefined
+	);
+}
+
 /** a failed send of a fund's approval after which the grant may nonetheless exist. */
 function maybeSentGrant(error: unknown): boolean {
 	return errorCode(error) === 'payments_unavailable' || wentUnanswered(error);
@@ -734,23 +753,39 @@ type Minting =
 function minting(context: CheckoutContext, payer: Payer): Minting {
 	if (!isPledgeRail(payer.method)) return { kind: 'quote', body: quoteRequest(context, payer) };
 	if (context.pledgeId === null) throw new Error('unreachable: `quoting` mints the id on entry');
+	return { kind: 'pledge', body: pledgeRequest(context, payer, context.pledgeId) };
+}
+
+/** a pledge's save under `pledgeId`, from everything decided so far. */
+function pledgeRequest(
+	context: CheckoutContext,
+	payer: Payer,
+	pledgeId: string
+): QuoteRequest | StockPledgeRequest {
 	// the donor fields, the note, the cause and the tribute ride as on every gift. a pledge covers
 	// no fee, because nothing is charged.
 	const gift = quoteRequest(context, payer);
-	const pledgeId = context.pledgeId;
 	if (payer.method === 'ira_qcd') {
-		return {
-			kind: 'pledge',
-			body: { ...gift, coversFee: false, pledgeId, custodian: payer.custodian ?? '' }
-		};
+		return { ...gift, coversFee: false, pledgeId, custodian: payer.custodian ?? '' };
 	}
 	if (context.stock === null)
 		throw new Error('unreachable: a stock payer is set by `PLEDGE_STOCK`');
 	const { amountMinor: _amount, coversFee: _covers, method: _method, ...rest } = gift;
-	return {
-		kind: 'pledge',
-		body: { ...rest, method: 'stock', pledgeId, ...context.stock }
-	};
+	return { ...rest, method: 'stock', pledgeId, ...context.stock };
+}
+
+/**
+ * what makes two pledge saves the same request: everything the save sends but its id and the
+ * challenge token, which is valid once and so differs on every send.
+ */
+function pledgeRequestKey(context: CheckoutContext, payer: Payer): string {
+	const {
+		pledgeId: _id,
+		turnstileToken: _turnstile,
+		altchaPayload: _altcha,
+		...request
+	} = pledgeRequest(context, payer, '');
+	return JSON.stringify(request);
 }
 
 /**
@@ -1320,6 +1355,9 @@ export const checkoutMachine = setup({
 			);
 		},
 
+		/** the last told press was refused `pledge_not_found`, so the next one saves the pledge first. */
+		pledgeIsLost: ({ context }) => context.pledgeLost,
+
 		/** the press was a pledge's save, so an answer that is not its pledge is no pledge at all. */
 		savesPledge: ({ context }) => context.payer !== null && isPledgeRail(context.payer.method),
 
@@ -1473,6 +1511,9 @@ export const checkoutMachine = setup({
 			heldChallenge: null
 		}),
 
+		/** a told press that did not reach the organisation, for whatever reason. */
+		refuseTold: assign({ toldRefused: true }),
+
 		/** the one place a donor draft becomes the payer an intent is minted for. */
 		commitPayer: assign({
 			payer: ({ context }) => completePayer(context.payerDraft, context.config)
@@ -1619,9 +1660,11 @@ export const checkoutMachine = setup({
 		employerRefusal: null,
 		employerWriteRefusal: null,
 		pledgeId: null,
+		pledgeIds: {},
 		stock: null,
 		custodianRefused: false,
-		toldRefused: false
+		toldRefused: false,
+		pledgeLost: false
 	}),
 	// four reports from surfaces that resolve on their own schedule. none of them is a step in the
 	// flow and none moves it from here, so all four are accepted wherever the machine happens to be.
@@ -2163,14 +2206,17 @@ export const checkoutMachine = setup({
 		 * to bypass. It bounds the double press, not the determined caller — see the header.
 		 */
 		quoting: {
-			entry: assign({
-				sentToken: ({ context }) => context.turnstileToken,
-				// minted by the first save on a pledge rail and kept from there (`pledgeId` on the context).
-				pledgeId: ({ context }) =>
-					context.pledgeId ??
-					(context.payer !== null && isPledgeRail(context.payer.method)
-						? (context.ports.pledges?.id() ?? null)
-						: null)
+			entry: assign(({ context }) => {
+				const sentToken = context.turnstileToken;
+				const payer = context.payer;
+				const ports = context.ports.pledges;
+				if (payer === null || !isPledgeRail(payer.method) || ports === undefined) {
+					return { sentToken };
+				}
+				// one id per distinct request (`pledgeIds` on the context).
+				const key = pledgeRequestKey(context, payer);
+				const pledgeId = context.pledgeIds[key] ?? ports.id();
+				return { sentToken, pledgeId, pledgeIds: { ...context.pledgeIds, [key]: pledgeId } };
 			}),
 			invoke: {
 				src: 'mintQuote',
@@ -2260,6 +2306,9 @@ export const checkoutMachine = setup({
 								if (context.authorization !== null && maybeSentGrant(event.error)) {
 									return { ...failure, message: FUND_REQUEST_MAY_BE_SENT };
 								}
+								if (pledgeMayBeSaved(context, event.error)) {
+									return { ...failure, message: PLEDGE_UNSAVED };
+								}
 								switch (errorCode(event.error)) {
 									case 'daf_authorization_expired':
 										return { ...failure, message: FUND_APPROVAL_EXPIRED };
@@ -2282,13 +2331,24 @@ export const checkoutMachine = setup({
 				portTimeout: {
 					target: 'failed',
 					actions: assign({
-						failure: ({ context }): Failure => ({
-							message: context.authorization === null ? GENERIC_FAILURE : FUND_REQUEST_MAY_BE_SENT,
-							fix:
-								context.authorization === null
-									? `POST /api/v1/forms/:id/donations did not answer within ${PORT_TIMEOUT_MS}ms. Nothing was authorized, so this attempt can be made again.`
-									: `POST /api/v1/forms/:id/donations did not answer within ${PORT_TIMEOUT_MS}ms. The fund's approval is kept, and the next attempt sends it again.`
-						})
+						failure: ({ context }): Failure => {
+							if (context.authorization !== null) {
+								return {
+									message: FUND_REQUEST_MAY_BE_SENT,
+									fix: `POST /api/v1/forms/:id/donations did not answer within ${PORT_TIMEOUT_MS}ms. The fund's approval is kept, and the next attempt sends it again.`
+								};
+							}
+							if (context.payer !== null && isPledgeRail(context.payer.method)) {
+								return {
+									message: PLEDGE_UNSAVED,
+									fix: `POST /api/v1/forms/:id/donations did not answer within ${PORT_TIMEOUT_MS}ms. The pledge may be saved, and the next attempt on the same request sends the same \`pledgeId\`.`
+								};
+							}
+							return {
+								message: GENERIC_FAILURE,
+								fix: `POST /api/v1/forms/:id/donations did not answer within ${PORT_TIMEOUT_MS}ms. Nothing was authorized, so this attempt can be made again.`
+							};
+						}
 					})
 				}
 			}
@@ -2613,7 +2673,9 @@ export const checkoutMachine = setup({
 		 * (`TELL_ORGANIZATION`). terminal without being `final`, for `success`'s reason below.
 		 *
 		 * a told press that fails goes back to `pending` with the refusal standing, and the press is
-		 * the same event again. the pledge is saved either way, which is what the refusal says.
+		 * the same event again. the pledge is saved either way, which is what the refusal says, except
+		 * where the endpoint answered `pledge_not_found`: the next press saves it again first
+		 * (`pledgeLost` on the context).
 		 */
 		pledged: {
 			initial: 'pending',
@@ -2621,24 +2683,81 @@ export const checkoutMachine = setup({
 				pending: {
 					on: { TELL_ORGANIZATION: { target: 'telling' } }
 				},
+				/**
+				 * the told press in flight, and before it, where the endpoint found no pledge under this
+				 * id, the save again: the same request under the same id, on a fresh challenge token,
+				 * which the endpoint saves anew since nothing holds the id (`savePledge` in the app's
+				 * $lib/server/donations/pledges.ts). its answer is the pledge the screen draws from then
+				 * on, reference included.
+				 */
 				telling: {
-					invoke: {
-						src: 'tellOrganization',
-						input: ({ context }) => {
-							if (context.pledgeId === null) {
-								throw new Error('unreachable: a pledge is shown only once it is saved');
-							}
-							return {
-								ports: context.ports,
-								formId: context.config.formId,
-								pledgeId: context.pledgeId
-							};
+					initial: 'choosing',
+					states: {
+						choosing: {
+							always: [{ guard: 'pledgeIsLost', target: 'awaitingToken' }, { target: 'posting' }]
 						},
-						onDone: { target: 'told', actions: assign({ toldRefused: false }) },
-						onError: { target: 'pending', actions: assign({ toldRefused: true }) }
-					},
-					after: {
-						portTimeout: { target: 'pending', actions: assign({ toldRefused: true }) }
+						awaitingToken: {
+							always: { guard: 'tokenIsFresh', target: 'saving' },
+							after: {
+								portTimeout: { target: '#checkout.pledged.pending', actions: 'refuseTold' }
+							}
+						},
+						saving: {
+							entry: assign({ sentToken: ({ context }) => context.turnstileToken }),
+							invoke: {
+								src: 'mintQuote',
+								input: ({ context }) => {
+									if (context.payer === null) {
+										throw new Error('unreachable: a pledge is shown only once it is saved');
+									}
+									return { ports: context.ports, request: minting(context, context.payer) };
+								},
+								onDone: [
+									{
+										guard: {
+											type: 'quoteIsPledge',
+											params: ({ event }) => ({ quote: event.output })
+										},
+										target: 'posting',
+										actions: assign({ quote: ({ event }) => event.output, pledgeLost: false })
+									},
+									{ target: '#checkout.pledged.pending', actions: 'refuseTold' }
+								],
+								onError: { target: '#checkout.pledged.pending', actions: 'refuseTold' }
+							},
+							after: {
+								portTimeout: { target: '#checkout.pledged.pending', actions: 'refuseTold' }
+							}
+						},
+						posting: {
+							invoke: {
+								src: 'tellOrganization',
+								input: ({ context }) => {
+									if (context.pledgeId === null) {
+										throw new Error('unreachable: a pledge is shown only once it is saved');
+									}
+									return {
+										ports: context.ports,
+										formId: context.config.formId,
+										pledgeId: context.pledgeId
+									};
+								},
+								onDone: {
+									target: '#checkout.pledged.told',
+									actions: assign({ toldRefused: false })
+								},
+								onError: {
+									target: '#checkout.pledged.pending',
+									actions: assign({
+										toldRefused: true,
+										pledgeLost: ({ event }) => errorCode(event.error) === 'pledge_not_found'
+									})
+								}
+							},
+							after: {
+								portTimeout: { target: '#checkout.pledged.pending', actions: 'refuseTold' }
+							}
+						}
 					}
 				},
 				told: {}

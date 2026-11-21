@@ -230,9 +230,10 @@ export type CheckoutPorts = {
 /**
  * what a stock or IRA (QCD) pledge reaches the world through.
  *
- * `id` mints the `pledgeId` a save carries, once per pledge: every resend of that save carries the
- * same one, which the endpoint answers with the pledge already saved (`QuoteRequest.pledgeId` in
- * ./v1.ts). a UUID, which `crypto.randomUUID()` is in a browser.
+ * `id` mints the `pledgeId` a save carries, once per distinct request: every resend of that request
+ * carries the same one, which the endpoint answers with the pledge already saved (`QuoteRequest.pledgeId`
+ * in ./v1.ts). a UUID, drawn without `crypto.randomUUID()`, which an http page does not have
+ * (`pledgeUuid` in ./embed/runtime.ts).
  *
  * `save` is `POST /api/v1/forms/:id/donations` with a pledge's body, timed out by the machine as
  * `quote` is. its answer is a `Quote` carrying `pledge`, which the machine checks before any screen

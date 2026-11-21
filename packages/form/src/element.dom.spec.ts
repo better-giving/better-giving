@@ -8515,6 +8515,8 @@ describe('a stock or IRA (QCD) pledge', () => {
 			body: node.querySelector('.ds-notice-card-body')?.textContent
 		}));
 	};
+	/** what the card's own live region last said. */
+	const said = (card: Mounted) => card.text('.vh[role="status"]');
 	const benefits = (card: Mounted) =>
 		card
 			.all('.pledge .benefits > *')
@@ -8692,19 +8694,56 @@ describe('a stock or IRA (QCD) pledge', () => {
 		expect(heading(card)).toBe('Your IRA (QCD) gift is pending');
 		expect(notice(card)).toEqual([
 			{
-				role: 'alert',
+				role: null,
 				title: 'We couldn’t tell the organization',
 				body: 'Your gift is saved. Check your connection and try again.'
 			}
 		]);
+		expect(said(card)).toBe(
+			'We couldn’t tell the organization. Your gift is saved. Check your connection and try again.'
+		);
 		expect(shows(card, '.takeover > [part~="action"] .action-label')).toBe('Try again');
 		expect(emailLink(card).textContent).toBe('Email these instructions');
 		expect(disabled(card)).toEqual([]);
+
+		// a second press refused the same way is said again: the region is cleared while it is in flight.
+		primary(card).click();
+		expect(said(card)).toBe('');
+		await settle();
+		expect(said(card)).toBe(
+			'We couldn’t tell the organization. Your gift is saved. Check your connection and try again.'
+		);
 
 		answer = async () => {};
 		primary(card).click();
 		await settle();
 		expect(heading(card)).toBe('Thank you');
+	});
+
+	it('saves again on a fresh token after the endpoint found no pledge, and resets the widget after', async () => {
+		let resets = 0;
+		const saves: (QuoteRequest | StockPledgeRequest)[] = [];
+		const notFound = Object.assign(new Error('This gift isn’t saved here.'), {
+			code: 'pledge_not_found'
+		});
+		const card = await iraPending({
+			saves,
+			resets: () => (resets += 1),
+			told: () => Promise.reject(notFound)
+		});
+		expect(resets).toBe(1);
+
+		primary(card).click();
+		await settle();
+		primary(card).click();
+		await settle();
+
+		// the second save carries the token the first save's reset minted, and spends it.
+		expect(saves.map((save) => [save.pledgeId, save.turnstileToken])).toEqual([
+			['pledge-1', 'tk_widget_1'],
+			['pledge-1', 'tk_widget_2']
+		]);
+		expect(resets).toBe(2);
 	});
 
 	it('thanks the donor once the organisation is told, and Done starts a new gift', async () => {
@@ -8718,11 +8757,15 @@ describe('a stock or IRA (QCD) pledge', () => {
 		expect(card.shadow.activeElement).toBe(card.find('.takeover [part~="heading"]'));
 		expect(notice(card)).toEqual([
 			{
-				role: 'status',
+				role: null,
 				title: 'We’ve told the organization',
 				body: 'Your gift counts when it arrives. We’ll email a receipt to maya.okafor@example.org then.'
 			}
 		]);
+		// said by the card's own region, which is on the page before the words arrive in it.
+		expect(said(card)).toBe(
+			'We’ve told the organization. Your gift counts when it arrives. We’ll email a receipt to maya.okafor@example.org then.'
+		);
 		expect(rows(card, '.pledge-summary')).toEqual([
 			['Amount', '$25.00'],
 			['Custodian', 'Fidelity Investments']
@@ -8777,11 +8820,14 @@ describe('a stock or IRA (QCD) pledge', () => {
 		await settle();
 		expect(notice(card)).toEqual([
 			{
-				role: 'alert',
+				role: null,
 				title: 'We couldn’t tell the organization',
 				body: 'Your gift is saved. Check your connection and try again.'
 			}
 		]);
+		expect(said(card)).toBe(
+			'We couldn’t tell the organization. Your gift is saved. Check your connection and try again.'
+		);
 		expect(shows(card, '.takeover > [part~="action"] .action-label')).toBe('Try again');
 
 		answer = async () => {};
@@ -8790,11 +8836,14 @@ describe('a stock or IRA (QCD) pledge', () => {
 		expect(heading(card)).toBe('Thank you');
 		expect(notice(card)).toEqual([
 			{
-				role: 'status',
+				role: null,
 				title: 'We’ve told the organization',
 				body: 'Your gift counts when the shares arrive. We’ll email a receipt to maya.okafor@example.org then.'
 			}
 		]);
+		expect(said(card)).toBe(
+			'We’ve told the organization. Your gift counts when the shares arrive. We’ll email a receipt to maya.okafor@example.org then.'
+		);
 		expect(rows(card, '.pledge-summary')).toEqual([
 			['Shares', '50'],
 			['Ticker', 'AAPL']

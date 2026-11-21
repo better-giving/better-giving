@@ -100,9 +100,10 @@ export function createPledgeBlock(
 	};
 
 	/**
-	 * one notice, in its tone. the role is the tone's (the usage file's Accessibility): an error is
-	 * `alert` and the thank-you's news is `status`, each set as the notice is written so the words
-	 * arrive into a region that is already there.
+	 * one notice, in its tone, and no live region of its own. a role set in the patch that shows the
+	 * card is a region created and filled in one breath, which assistive technology drops
+	 * (`createAnnouncer` in ./views.ts); its words are said by the card's own region instead, which is
+	 * already on the page (`announce` and `arrival` in `pledgedScreen`, ./views.ts).
 	 */
 	const notice = (id: string) => {
 		const icon = make('span', 'ds-notice-card-icon');
@@ -120,13 +121,9 @@ export function createPledgeBlock(
 			node,
 			set(next: PledgeNotice | null) {
 				node.hidden = next === null;
-				if (next === null) {
-					node.removeAttribute('role');
-					return;
-				}
+				if (next === null) return;
 				const mark: GlyphName = next.tone === 'info' ? 'info' : 'alert';
 				node.className = `ds-notice-card ds-notice-card-${next.tone}`;
-				node.setAttribute('role', next.tone === 'info' ? 'status' : 'alert');
 				icon.replaceChildren(glyph(doc, mark, 'notice-glyph'));
 				if (title.textContent !== next.title) title.textContent = next.title;
 				if (body.textContent !== next.body) body.textContent = next.body;

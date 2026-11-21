@@ -116,6 +116,21 @@ function createLoadConfig(origin: string | null): FormRuntime['loadConfig'] {
 	};
 }
 
+/**
+ * a version 4 UUID (RFC 9562), the `pledgeId` a pledge's save carries.
+ *
+ * drawn from `crypto.getRandomValues`, the one `Crypto` member an insecure context keeps (MDN,
+ * Crypto.getRandomValues): the host page may be served over http, where `crypto.randomUUID` does not
+ * exist and the press that called it would throw.
+ */
+function pledgeUuid(): string {
+	const bytes = crypto.getRandomValues(new Uint8Array(16));
+	bytes[6] = ((bytes[6] ?? 0) & 0x0f) | 0x40;
+	bytes[8] = ((bytes[8] ?? 0) & 0x3f) | 0x80;
+	const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+	return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 /** everything the element cannot build for itself, for one deployment. */
 export function createFormRuntime(origin: string | null, doc: Document): FormRuntime {
 	// built per configuration rather than once, which is what `FormRuntime.checkout` in
@@ -212,7 +227,7 @@ export function createFormRuntime(origin: string | null, doc: Document): FormRun
 						employer,
 						// a pledge's save is the press's own write with a pledge's body, told to no payment
 						// surface: no processor stands behind either pledge rail.
-						pledges: { id: () => crypto.randomUUID(), save: post, told: pledgeTold }
+						pledges: { id: pledgeUuid, save: post, told: pledgeTold }
 					},
 					...(resumeToken === null ? {} : { resume: { paymentToken: resumeToken } })
 				},

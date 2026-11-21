@@ -316,6 +316,16 @@ describe('the pledge ports the shipped runtime makes', () => {
 		expect(ports?.id()).not.toBe(first);
 	});
 
+	it('mints one on an http page too, where `crypto.randomUUID` is not offered', () => {
+		// an insecure context's `crypto` keeps `getRandomValues` alone (MDN, Crypto.getRandomValues).
+		const random = crypto.getRandomValues.bind(crypto);
+		vi.stubGlobal('crypto', { getRandomValues: random });
+		const ports = pledges();
+		const first = ports?.id();
+		expect(first).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+		expect(ports?.id()).not.toBe(first);
+	});
+
 	it('saves to the donations write and tells on the pledge, on the deployment that served it', async () => {
 		const fetched = stubFetch(json({ ok: true }));
 		const ports = pledges();

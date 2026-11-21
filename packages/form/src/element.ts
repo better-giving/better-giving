@@ -1288,6 +1288,8 @@ export function donateFormClass(runtime: FormRuntime): CustomElementConstructor 
 
 			/** the step the last reading was on, which is what makes a reading a transition. */
 			let previous: State['step'] | null = null;
+			/** whether the last reading was a pledge's second save, which spends a token too. */
+			let resaving = false;
 			// the cadence goes out before the card is patched, so the provider's own fields and the
 			// figures beside them are never a frame apart on what gift is being made. it is told on
 			// every reading rather than on a change: this element holds no memory of what it last
@@ -1338,6 +1340,11 @@ export function donateFormClass(runtime: FormRuntime): CustomElementConstructor 
 				// on the press that leaves it races the press after it. a reset works with the step
 				// hidden, which is what a takeover screen leaves it.
 				if (previous === 'working' && step !== 'working') this.#challenge?.reset();
+				// the same for the save a told press makes again on the pending screen, which spends
+				// one without leaving `pledged` (`telling` in ./checkout.machine.ts).
+				const saving = snapshot.matches({ pledged: { telling: 'saving' } });
+				if (resaving && !saving) this.#challenge?.reset();
+				resaving = saving;
 				const arrived = step !== previous;
 				previous = step;
 				// on arrival only, so a reading that changes nothing on the receipt says nothing again;
