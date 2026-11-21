@@ -173,6 +173,7 @@ describe('pledge', () => {
 	it('refuses a second pledge claiming a gift one pledge already became', async () => {
 		const into = (id: string) =>
 			run(stmt(`update pledge set donation_id = ? where id = ?`, DONATION_ID, id));
+		await stockPledge('019fb500-0000-7000-8000-000000000107', 'CFCP-AAPL-3T5G');
 		await insertPledge({
 			id: '019fb500-0000-7000-8000-000000000106',
 			method: 'ira_qcd',
@@ -180,7 +181,12 @@ describe('pledge', () => {
 			custodian: 'Fidelity Investments',
 			amountMinor: 500_000
 		});
-		await into('019fb500-0000-7000-8000-000000000101');
+		await into('019fb500-0000-7000-8000-000000000107');
+		expect(
+			await first(
+				stmt('select donation_id from pledge where id = ?', '019fb500-0000-7000-8000-000000000107')
+			)
+		).toEqual({ donation_id: DONATION_ID });
 		expect(await rejectionCode(() => into('019fb500-0000-7000-8000-000000000106'))).toContain(
 			SQLITE_CONSTRAINT_UNIQUE
 		);

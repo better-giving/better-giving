@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { SUGGESTED_DEDUCTIBILITY_STATEMENT } from '@better-giving/operator/deductibility';
 import { readFormConfig } from '@better-giving/form/config';
-import { PAYPAL_RAILS, STRIPE_RAILS } from '@better-giving/form/embed/rails';
+import { PAYPAL_RAILS, type PledgeRail, STRIPE_RAILS } from '@better-giving/form/embed/rails';
 import { OFFERED_PAYMENT_METHODS } from '../../forms/offered-rails';
 import { postableFromAccount, type PostableAccountId } from '../db/postable';
 import type { OrgProfile } from '../db/schema';
@@ -652,6 +652,33 @@ describe('renderableConfig', () => {
 		expect(result.error.message).toContain('NOWPayments account has no coin');
 		expect(result.error.fix).toContain('NOWPayments dashboard');
 		expect(result.error.fix).not.toContain('Try again');
+	});
+
+	/** the served config with the pledge rails Payments has switched on, beside no processor rail. */
+	const pledgesOnly = (pledgeRails: readonly PledgeRail[]) =>
+		publishedConfig({
+			id: FORM_ID,
+			cadences: SERVED_CADENCES,
+			program: null,
+			rails: [],
+			coins: [],
+			pledgeRails,
+			form: formRecord(),
+			owner: null,
+			profile: orgProfile(),
+			env: STRIPE
+		});
+
+	it('refuses a config whose only rail is stock, which no donation form screen offers', () => {
+		const result = renderableConfig(pledgesOnly(['stock']));
+		expect(result.ok).toBe(false);
+		expect(result.ok === false && result.reason).toBe('payments_not_configured');
+	});
+
+	it('passes a config offering IRA (QCD) alone, still serving stock beside it', () => {
+		const answered = pledgesOnly(['stock', 'ira_qcd']);
+		expect(renderableConfig(answered)).toBe(answered);
+		expect(answered.ok && answered.config.paymentMethods).toEqual(['stock', 'ira_qcd']);
 	});
 
 	it.each([

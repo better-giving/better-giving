@@ -1,7 +1,7 @@
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createDb, type Db } from '../db/client';
 import { client, run, stmt } from '../db/database.testing';
-import { listWaitingPledges } from './pledges';
+import { listWaitingPledges, WAITING_PLEDGE_LIMIT } from './pledges';
 
 // the Gifts screen's "Waiting to arrive" read, against a real database.
 
@@ -121,5 +121,50 @@ describe('listWaitingPledges', () => {
 			createdAt: 1_794_000_000_000
 		});
 		expect(await listWaitingPledges(db)).toEqual({ total: 0, pledges: [] });
+	});
+
+	it('lists the newest WAITING_PLEDGE_LIMIT and counts every one waiting', async () => {
+		const held = WAITING_PLEDGE_LIMIT + 1;
+		const ids = Array.from(
+			{ length: held },
+			(_, n) => `019fb600-0000-7000-8000-${String(n).padStart(12, '0')}`
+		);
+		await client.batch(
+			ids.map((id, n) =>
+				stmt(
+					`insert into pledge (id, method, contact_id, currency, reference, ticker, shares_millionths, created_at)
+					 values (?, 'stock', ?, 'USD', ?, 'AAPL', 50000000, ?)`,
+					id,
+					MAYA,
+					`CFCP-AAPL-${String(n).padStart(4, '0')}`,
+					1_794_000_000_000 + n
+				)
+			)
+		);
+
+		const { total, pledges } = await listWaitingPledges(db);
+
+		expect(total).toBe(held);
+		expect(pledges).toHaveLength(WAITING_PLEDGE_LIMIT);
+		expect(pledges[0]?.id).toBe(ids[held - 1]);
+		expect(pledges.map((p) => p.id)).not.toContain(ids[0]);
+	});
+
+	it('orders two pledges made in the same millisecond by id, the later id first', async () => {
+		await stockPledge({
+			id: '019fb600-0000-7000-8000-000000000201',
+			reference: 'CFCP-AAPL-2A2A',
+			createdAt: 1_794_000_000_000
+		});
+		await stockPledge({
+			id: '019fb600-0000-7000-8000-000000000202',
+			reference: 'CFCP-AAPL-2B2B',
+			createdAt: 1_794_000_000_000
+		});
+
+		expect((await listWaitingPledges(db)).pledges.map((p) => p.id)).toEqual([
+			'019fb600-0000-7000-8000-000000000202',
+			'019fb600-0000-7000-8000-000000000201'
+		]);
 	});
 });

@@ -15,13 +15,19 @@ const mail = vi.hoisted(() => ({
 	sent: [] as Message[],
 	answer: { ok: true } as
 		| { ok: true }
-		| { ok: false; reason: string; detail: string; indeterminate: boolean }
+		| { ok: false; reason: string; detail: string; indeterminate: boolean },
+	/** how many sends throw before the transport answers again. */
+	throws: 0
 }));
 
 // the mailer is the one thing stubbed, so what the organisation was told is read off what it sent.
 vi.mock('$lib/server/email/factory', () => ({
 	createEmailProvider: () => ({
 		async send(message: Message) {
+			if (mail.throws > 0) {
+				mail.throws -= 1;
+				throw new Error('socket hang up');
+			}
 			mail.sent.push(message);
 			return mail.answer;
 		}
@@ -40,6 +46,8 @@ const OWN = 'https://give.example.workers.dev';
 const CONTACT_ID = '01900000-0000-7000-8000-00000000f001';
 const STOCK_ID = '0b5f7a52-3d1e-4c8a-9f2b-6e4d1c0a7b93';
 const IRA_ID = '6f1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d';
+/** the alert's headline and subject, `HEADLINE` in ../lib/server/donations/pledge-told.ts. */
+const HEADLINE = 'The organisation wasn’t told about a pledge on its way';
 
 let nextAddress = 1;
 
@@ -71,6 +79,7 @@ beforeAll(async () => {
 beforeEach(async () => {
 	mail.sent.length = 0;
 	mail.answer = { ok: true };
+	mail.throws = 0;
 	await client.batch([
 		stmt('delete from pledge'),
 		stmt('delete from org_profile'),
@@ -100,17 +109,19 @@ afterEach(() => {
 function press({
 	formId = FORM_ID,
 	pledgeId = STOCK_ID,
-	method = 'POST'
+	method = 'POST',
+	headers = {}
 }: {
 	formId?: string;
 	pledgeId?: string;
 	method?: string;
+	headers?: Record<string, string>;
 } = {}) {
 	const deferred = createDeferredWork();
 	const response = routes(
 		new Request(`${OWN}/api/v1/forms/${formId}/donations/${pledgeId}/told`, {
 			method,
-			headers: { [CLIENT_IP_HEADER]: `203.0.113.${nextAddress++}`, origin: ALLOWED }
+			headers: { [CLIENT_IP_HEADER]: `203.0.113.${nextAddress++}`, origin: ALLOWED, ...headers }
 		}),
 		{ deferred }
 	);
@@ -195,13 +206,56 @@ describe('telling the organisation', () => {
 		expect((await toldAt(STOCK_ID))?.told_at).toBeNull();
 	});
 
-	it('still answers ok when the mail fails, and alerts the operator through the logs', async () => {
-		mail.answer = {
-			ok: false,
-			reason: 'timeout',
-			detail: 'the host went quiet',
-			indeterminate: true
-		};
+	it.each([
+		[true, 'yes'],
+		[false, 'no']
+	])(
+		'still answers ok when the mail fails, and alerts the operator (indeterminate %s)',
+		async (indeterminate, delivered) => {
+			mail.answer = { ok: false, reason: 'timeout', detail: 'the host went quiet', indeterminate };
+			vi.spyOn(console, 'error').mockImplementation(() => {});
+
+			const { response, settled } = press();
+			expect((await response).status).toBe(200);
+			await settled();
+
+			expect((await toldAt(STOCK_ID))?.told_at).toEqual(expect.any(Number));
+			expect(mail.sent.map((m) => [m.to, m.subject])).toEqual([
+				['staff@cedarfork.org', 'Maya Okafor says 50 shares of AAPL are on the way'],
+				['staff@cedarfork.org', HEADLINE]
+			]);
+			expect(mail.sent[1]?.text).toContain('CFCP-AAPL-7Q2D');
+			expect(mail.sent[1]?.text).toContain('the host went quiet');
+			expect(mail.sent[1]?.text).toContain(`May have been delivered anyway: ${delivered}`);
+		}
+	);
+
+	it('still answers ok when the transport throws, and alerts the operator with the reason', async () => {
+		mail.throws = 1;
+		vi.spyOn(console, 'error').mockImplementation(() => {});
+
+		const { response, settled } = press();
+		expect((await response).status).toBe(200);
+		await settled();
+
+		expect(mail.sent.map((m) => [m.to, m.subject])).toEqual([['staff@cedarfork.org', HEADLINE]]);
+		expect(mail.sent[0]?.text).toContain('socket hang up');
+	});
+
+	it('resolves when the alert’s own send throws too', async () => {
+		mail.throws = 2;
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+		const { response, settled } = press();
+		expect((await response).status).toBe(200);
+		await expect(settled()).resolves.toBeUndefined();
+
+		expect(mail.sent).toEqual([]);
+		expect(logged).toHaveBeenCalledWith(`${HEADLINE}:`, expect.stringContaining('CFCP-AAPL-7Q2D'));
+	});
+
+	it('mails nobody where no notification address is saved, and the alert reaches the log', async () => {
+		await run(stmt('update org_profile set notification_email = null'));
 		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
 
 		const { response, settled } = press();
@@ -209,10 +263,40 @@ describe('telling the organisation', () => {
 		await settled();
 
 		expect((await toldAt(STOCK_ID))?.told_at).toEqual(expect.any(Number));
-		expect(logged).toHaveBeenCalledWith(
-			'The organisation wasn’t told about a pledge on its way:',
-			expect.stringContaining('CFCP-AAPL-7Q2D')
-		);
+		expect(mail.sent).toEqual([]);
+		expect(logged).toHaveBeenCalledWith(`${HEADLINE}:`, expect.stringContaining('CFCP-AAPL-7Q2D'));
+	});
+});
+
+describe('the preflight', () => {
+	const preflight = (origin: string) =>
+		press({
+			method: 'OPTIONS',
+			headers: {
+				origin,
+				'access-control-request-method': 'POST',
+				'access-control-request-headers': 'content-type'
+			}
+		});
+
+	it('grants a page the form names a JSON POST, and stamps nothing', async () => {
+		const { response, settled } = preflight(ALLOWED);
+		const answer = await response;
+		await settled();
+
+		expect(answer.status).toBe(204);
+		expect(answer.headers.get('access-control-allow-origin')).toBe(ALLOWED);
+		expect(answer.headers.get('access-control-allow-methods')).toBe('POST, OPTIONS');
+		expect(answer.headers.get('access-control-allow-headers')).toBe('content-type');
+		expect((await toldAt(STOCK_ID))?.told_at).toBeNull();
+		expect(mail.sent).toEqual([]);
+	});
+
+	it('grants another site nothing', async () => {
+		const answer = await preflight('https://attacker.test').response;
+
+		expect(answer.status).toBe(204);
+		expect(answer.headers.has('access-control-allow-origin')).toBe(false);
 	});
 });
 
@@ -233,9 +317,18 @@ describe('refusals', () => {
 		expect((await toldAt(STOCK_ID))?.told_at).toBeNull();
 	});
 
-	it('answers a method it does not take 405, naming the one it does', async () => {
-		const answer = await press({ method: 'GET' }).response;
-		expect(answer.status).toBe(405);
-		expect(answer.headers.get('allow')).toBe('POST, OPTIONS');
-	});
+	it.each(['GET', 'PUT', 'DELETE'])(
+		'answers %s 405, naming the methods it takes, and stamps nothing',
+		async (method) => {
+			const { response, settled } = press({ method });
+			const answer = await response;
+			await settled();
+
+			expect(answer.status).toBe(405);
+			expect(answer.headers.get('allow')).toBe('POST, OPTIONS');
+			expect(answer.headers.get('cache-control')).toBe('no-store');
+			expect((await toldAt(STOCK_ID))?.told_at).toBeNull();
+			expect(mail.sent).toEqual([]);
+		}
+	);
 });

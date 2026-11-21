@@ -31,6 +31,13 @@ export type TickerRefreshDeps = {
  */
 const FRESH_FOR_MS = 23 * 60 * 60_000;
 
+/**
+ * how long one file, body included, is given before it is treated as an answer that never came.
+ * shutdown waits for the Stocks Save's refresh (../runtime/deferred.ts), so a stalled sec.gov must
+ * not hold it.
+ */
+export const TICKER_FETCH_TIMEOUT_MS = 30_000;
+
 /** one of the two files: where it is, its shape, and the fewest rows a whole copy of it holds. */
 type SecFile<Row> = {
 	readonly url: string;
@@ -147,7 +154,8 @@ async function fetchFile<Row>(
 	let body: unknown;
 	try {
 		const response = await deps.fetch(file.url, {
-			headers: { 'user-agent': userAgent, accept: 'application/json' }
+			headers: { 'user-agent': userAgent, accept: 'application/json' },
+			signal: AbortSignal.timeout(TICKER_FETCH_TIMEOUT_MS)
 		});
 		if (!response.ok) throw new TickerFileError(file.url, `sec.gov answered ${response.status}`);
 		body = await response.json();

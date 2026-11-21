@@ -1,6 +1,7 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createAuth } from '$lib/server/auth';
 import { resolveAuthSecret } from '$lib/server/auth/signing-key';
+import { beforeNextBatch } from '$lib/server/db/batch.testing';
 import { createDb, type Db } from '$lib/server/db/client';
 import { client, first, run, stmt } from '$lib/server/db/database.testing';
 import { campaignRaised } from '$lib/server/pages/goal';
@@ -280,6 +281,33 @@ describe('Mark received', () => {
 		expect(sent[0]?.text).toContain('In memory of Ruth Hale');
 	});
 
+	it('tells the person the donor asked us to tell, once, and keeps who that was on the gift', async () => {
+		await run(
+			stmt(
+				`update pledge set tribute_notify_name = 'Ellen Hale', tribute_notify_email = 'ellen.hale@example.net'
+				 where id = ?`,
+				STOCK_PLEDGE
+			)
+		);
+
+		await markReceived(STOCK_RECEIVED);
+		await markReceived({ ...STOCK_RECEIVED, value: '10000.00' });
+
+		expect(sent.map((m) => m.to)).toEqual(['maya.okafor@example.org', 'ellen.hale@example.net']);
+		expect(sent[1]?.text).toContain('Ruth Hale');
+		expect(
+			await first(
+				stmt(
+					'select tribute_notify_name, tribute_notify_email from donation where id = ?',
+					STOCK_PLEDGE
+				)
+			)
+		).toEqual({
+			tribute_notify_name: 'Ellen Hale',
+			tribute_notify_email: 'ellen.hale@example.net'
+		});
+	});
+
 	it('counts the gift on the supporter’s fundraiser the pledge was made on', async () => {
 		const page = '019fb600-0000-7000-8000-0000000000f2';
 		await run(
@@ -317,6 +345,23 @@ describe('Mark received', () => {
 		expect(await count('donation')).toBe(1);
 		expect(await count('payment')).toBe(1);
 		expect(await booked()).toBeOneOf([951240, 1_000_000]);
+		expect(sent).toHaveLength(1);
+	});
+
+	it('refuses the press whose batch meets a gift another press committed after its read', async () => {
+		// the later press reads the pledge unreceived and the earlier one commits before its batch
+		// runs, so only the `donation` primary key (../lib/server/donations/receive-pledge.ts) refuses it.
+		let earlier: Response | undefined;
+		beforeNextBatch(db, async () => {
+			earlier = await markReceived({ ...STOCK_RECEIVED, value: '10000.00' });
+		});
+
+		const later = await markReceived(STOCK_RECEIVED);
+
+		expect(earlier?.status).toBe(200);
+		expect(later.status).toBe(409);
+		expect(await count('donation')).toBe(1);
+		expect(await booked()).toBe(1_000_000);
 		expect(sent).toHaveLength(1);
 	});
 

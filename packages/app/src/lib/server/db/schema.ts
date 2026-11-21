@@ -3985,7 +3985,10 @@ export const pledge = sqliteTable(
 		contactId: text('contact_id')
 			.notNull()
 			.references(() => contact.id),
-		/** the currency the gift is recorded in once it arrives, and `amount_minor`'s. */
+		/**
+		 * the form's currency when the pledge was made, and `amount_minor`'s. the gift Mark received
+		 * records is in `FORM_CURRENCY` (../donations/receive-pledge.ts), which never reads this.
+		 */
 		currency: text('currency').notNull(),
 		/**
 		 * what the donor quotes to their broker or custodian, and what staff match an arrival by:
@@ -4102,9 +4105,10 @@ export type TickerKind = (typeof TICKER_KINDS)[number];
 
 /**
  * every ticker a donor can pick on the stock step, from the SEC's public lists: a company or ETF
- * from company_tickers_exchange.json, a mutual fund class from company_tickers_mf.json. reference
- * data the process refreshes for itself, never typed by anyone, and searched here so a donor never
- * reaches sec.gov.
+ * from company_tickers_exchange.json, a mutual fund class from company_tickers_mf.json. fetched
+ * by the process itself (../donations/ticker-refresh.ts) and never shipped in a migration or a
+ * seed (the header of migrations/0043_stock_tickers.sql), never typed by anyone, and searched here
+ * so a donor never reaches sec.gov.
  *
  * the list is only ever replaced whole, in one `batch()`, by `replaceTickers` in
  * ../donations/tickers.ts, which is every read and write. `ticker_name`, an FTS5 table the

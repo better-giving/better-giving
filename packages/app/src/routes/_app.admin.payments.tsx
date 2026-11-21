@@ -137,8 +137,8 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 }
 
 /**
- * the two presses. **the request body is read exactly once, here** — and not at all for a member,
- * who is answered before it.
+ * every press in `SCREEN_FORMS`. **the request body is read exactly once, here** — and not at all
+ * for a member, who is answered before it.
  */
 export async function action(args: Route.ActionArgs) {
 	if (args.context.get(staff).id !== STAFF_USER_ID) notFound(NOT_HERE);

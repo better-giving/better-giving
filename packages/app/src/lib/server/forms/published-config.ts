@@ -714,7 +714,7 @@ export const SERVED_LOCALE = 'en-US';
  * set correctly; a list that answered with no coin says so, and names the dashboard it is set in.
  */
 export function renderableConfig(result: PublishedConfigResult): PublishedConfigResult {
-	if (!result.ok || result.config.paymentMethods.length > 0) return result;
+	if (!result.ok || result.config.paymentMethods.some(isDrawnRail)) return result;
 
 	// the processors whose credentials are set, and never the served `providers`: NOWPayments has no
 	// browser half and is on no entry there, so a deployment holding it alone would be named as
@@ -760,12 +760,14 @@ export function renderableConfig(result: PublishedConfigResult): PublishedConfig
 }
 
 /**
- * one refusal, with the reason doubling as the wire's `error` code.
- *
- * the row comes first because every refusal has to carry it: the endpoint answers a 4xx with CORS
- * headers naming the sites this row's `allowed_origins` holds, and a body a browser cannot read is
- * a refusal that reaches nobody.
+ * a rail a donor can pay with on the form as it is drawn. stock is served while Payments has it on,
+ * but no screen in packages/form/src sends `PLEDGE_STOCK` (packages/form/src/element.ts), so a
+ * config offering stock alone is a form with nothing to press.
  */
+function isDrawnRail(rail: PaymentMethod): boolean {
+	return rail !== 'stock';
+}
+
 /**
  * the 404 body for a form id this deployment never had, which every form-scoped read under
  * `/api/v1` answers alike.
@@ -780,6 +782,13 @@ export function formNotFound(id: string): ApiError {
 	};
 }
 
+/**
+ * one refusal, with the reason doubling as the wire's `error` code.
+ *
+ * the row comes first because every refusal has to carry it: the endpoint answers a 4xx with CORS
+ * headers naming the sites this row's `allowed_origins` holds, and a body a browser cannot read is
+ * a refusal that reaches nobody.
+ */
 function refusal(
 	form: FormRecord | null,
 	reason: PublishedConfigRefusal,

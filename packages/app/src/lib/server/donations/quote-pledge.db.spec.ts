@@ -5,7 +5,7 @@ import type { EmailProvider } from '../email/provider';
 import { campaignRaised } from '../pages/goal';
 import { enablePledgeRail } from '../payments/pledge-rails';
 import { soleProcessor } from '../payments/processors.testing';
-import { refusing } from '../payments/provider';
+import { type PaymentProvider, refusing } from '../payments/provider';
 import { parseContact } from '../contacts/contact-input';
 import { type PledgeToSave, REFERENCE_DRAWS, savePledge } from './pledges';
 import { mintQuote, type QuoteDeps } from './quote';
@@ -100,8 +100,26 @@ afterEach(() => {
 	vi.restoreAllMocks();
 });
 
-function deps(result: TurnstileResult = { ok: true }): QuoteDeps & { checks: TurnstileCheck[] } {
+/** the refusing port, recording the name of every method a case calls on it. */
+function recordingRefusal(reached: string[]): PaymentProvider {
+	const port = refusing('stripe', 'unreachable', 'a pledge reached a processor');
+	return new Proxy(port, {
+		get(target, key, receiver) {
+			const value: unknown = Reflect.get(target, key, receiver);
+			if (typeof value !== 'function') return value;
+			return (...args: unknown[]) => {
+				reached.push(String(key));
+				return value.apply(target, args);
+			};
+		}
+	});
+}
+
+function deps(
+	result: TurnstileResult = { ok: true }
+): QuoteDeps & { checks: TurnstileCheck[]; reached: string[] } {
 	const checks: TurnstileCheck[] = [];
+	const reached: string[] = [];
 	const email: EmailProvider = {
 		async send() {
 			throw new Error('saving a pledge sends no mail');
@@ -110,7 +128,7 @@ function deps(result: TurnstileResult = { ok: true }): QuoteDeps & { checks: Tur
 	return {
 		db,
 		env: ENV,
-		processors: soleProcessor(refusing('stripe', 'unreachable', 'a pledge reached a processor')),
+		processors: soleProcessor(recordingRefusal(reached)),
 		verifyChallenge: async (check) => {
 			checks.push(check);
 			return result;
@@ -119,7 +137,8 @@ function deps(result: TurnstileResult = { ok: true }): QuoteDeps & { checks: Tur
 		defer: () => {
 			throw new Error('saving a pledge defers nothing');
 		},
-		checks
+		checks,
+		reached
 	};
 }
 
@@ -166,6 +185,22 @@ const save = (body: unknown, d: QuoteDeps = deps(), formId = FORM_ID) =>
 
 const pledges = () => client.execute('select * from pledge').then((r) => r.rows);
 const contacts = () => client.execute('select id from contact').then((r) => r.rows);
+
+describe('mintQuote() — a pledge and the processors', () => {
+	it.each([
+		['stock', stock],
+		['ira_qcd', ira]
+	] as const)(
+		'saves a %s pledge asking no processor anything, its cadences and rails included',
+		async (_, body) => {
+			const d = deps();
+			const result = await save(body(), d);
+
+			expect(result.ok).toBe(true);
+			expect(d.reached).toEqual([]);
+		}
+	);
+});
 
 describe('mintQuote() — a stock pledge', () => {
 	it('saves it with its donor and answers the pending screen’s whole shape', async () => {

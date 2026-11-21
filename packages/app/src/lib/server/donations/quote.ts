@@ -338,13 +338,17 @@ export async function mintQuote(deps: QuoteDeps, attempt: QuoteAttempt): Promise
 	// route composes. so a donor on a cached page holding a rail this deployment has since stopped
 	// offering is charged rather than turned away (CLAUDE.md), and so is every donor mid-checkout on
 	// an account whose last capability just went to `pending`.
+	//
+	// a pledge reads neither: `mintPledge` below takes nothing from the config's cadences or
+	// processor rails, so a slow processor is no pledging donor's wait.
 	const origin = new URL(attempt.request.url).origin;
+	const pledging = postsPledge(attempt.body);
 	const served = await readPublishedConfig(
 		deps.db,
 		attempt.formId,
 		deps.env,
-		() => cachedCadences(deps.processors, origin),
-		() => cachedRails(deps.processors, origin),
+		async () => (pledging ? [] : cachedCadences(deps.processors, origin)),
+		async () => (pledging ? [] : cachedRails(deps.processors, origin)),
 		// the coin list is read for a crypto quote alone, so a slow NOWPayments is no other donor's
 		// wait. the method is peeked before the body is parsed, because the parse is handed the config
 		// this read builds; `parseQuoteRequest` reads the same field, and the adapter checks a crypto
@@ -364,7 +368,7 @@ export async function mintQuote(deps: QuoteDeps, attempt: QuoteAttempt): Promise
 
 	// a stock or IRA (QCD) gift is a pledge saved rather than a payment minted, and its own branch:
 	// the same ladder above it and the same challenge inside it, and no processor anywhere.
-	if (postsPledge(attempt.body)) return mintPledge(deps, config, form, attempt, origin);
+	if (pledging) return mintPledge(deps, config, form, attempt, origin);
 
 	const parsed = parseQuoteRequest(attempt.body, config);
 	if (!parsed.ok) {

@@ -1,13 +1,14 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDb, type Db } from '../db/client';
-import { client, run, stmt } from '../db/database.testing';
+import { client, openUnmigrated, run, stmt } from '../db/database.testing';
 import type { EmailMessage, EmailProvider } from '../email/provider';
 import { saveProfile } from '../org/profile.testing';
 import {
 	EXCHANGE_FILE_URL,
 	FUND_FILE_URL,
 	refreshTickers,
-	refreshTickersIfNoneHeld
+	refreshTickersIfNoneHeld,
+	TICKER_FETCH_TIMEOUT_MS
 } from './ticker-refresh';
 import { exchangeFile, fundFile, ok, secStandIn, wholeFiles } from './ticker-refresh.testing';
 import { replaceTickers, searchTickers } from './tickers';
@@ -173,6 +174,90 @@ describe('refreshTickers', () => {
 		expect(sent).toHaveLength(1);
 		expect(sent[0]?.text).toContain(FUND_FILE_URL);
 	});
+
+	it('gives up on a file sec.gov never answers, keeping the old list and alerting', async () => {
+		const deadline = new AbortController();
+		const timeout = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(deadline.signal);
+		const requests: Request[] = [];
+		const stalled = ((input: RequestInfo | URL, init?: RequestInit) => {
+			requests.push(new Request(input, init));
+			return new Promise<Response>((_, reject) => {
+				init?.signal?.addEventListener('abort', () => reject(init.signal?.reason));
+			});
+		}) as typeof globalThis.fetch;
+		const { email, sent } = recordingEmail();
+
+		const refreshing = refreshTickers({ db, fetch: stalled, email, mailFrom: null }, NOW);
+		await vi.waitFor(() => expect(requests).toHaveLength(1));
+		deadline.abort(new DOMException('The operation was aborted due to timeout', 'TimeoutError'));
+		await refreshing;
+
+		expect(timeout).toHaveBeenCalledWith(TICKER_FETCH_TIMEOUT_MS);
+		expect((await searchTickers(db, 'OLD', 8)).map((row) => row.symbol)).toEqual(['OLD']);
+		expect(sent).toHaveLength(1);
+		expect(sent[0]?.text).toContain(EXCHANGE_FILE_URL);
+		expect(sent[0]?.text).toContain('timeout');
+	});
+
+	it('alerts with the cause when the request itself fails, fetching nothing after it', async () => {
+		const requests: string[] = [];
+		const unreachable = (async (input: RequestInfo | URL) => {
+			requests.push(String(input));
+			throw new TypeError('fetch failed');
+		}) as typeof globalThis.fetch;
+		const { email, sent } = recordingEmail();
+
+		await refreshTickers({ db, fetch: unreachable, email, mailFrom: null }, NOW);
+
+		expect(requests).toEqual([EXCHANGE_FILE_URL]);
+		expect((await searchTickers(db, 'OLD', 8)).map((row) => row.symbol)).toEqual(['OLD']);
+		expect(sent).toHaveLength(1);
+		expect(sent[0]?.text).toContain('fetch failed');
+	});
+
+	it('keeps the old list and alerts when a file is not JSON', async () => {
+		const html = (async () =>
+			new Response('<html>Undeclared Automated Tool</html>', {
+				status: 200
+			})) as typeof globalThis.fetch;
+		const { email, sent } = recordingEmail();
+
+		await refreshTickers({ db, fetch: html, email, mailFrom: null }, NOW);
+
+		expect((await searchTickers(db, 'OLD', 8)).map((row) => row.symbol)).toEqual(['OLD']);
+		expect(sent).toHaveLength(1);
+		expect(sent[0]?.text).toContain(EXCHANGE_FILE_URL);
+	});
+
+	it('still asks, naming no contact, where neither a notifications address nor MAIL_FROM is set', async () => {
+		await saveProfile(db, { notification_email: '' });
+		const sec = wholeFiles();
+
+		await refresh(sec, recordingEmail().email, null);
+
+		expect(sec.requests.map((r) => r.headers.get('user-agent'))).toEqual([
+			'better-giving',
+			'better-giving'
+		]);
+		expect(await searchTickers(db, 'OLD', 8)).toEqual([]);
+	});
+
+	it('resolves and logs where the alert itself throws', async () => {
+		const sec = secStandIn({ exchange: { status: 403, body: {} }, fund: ok(fundFile(15_000)) });
+		const throwing: EmailProvider = {
+			async send() {
+				throw new Error('smtp connection reset');
+			}
+		};
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+		await expect(refresh(sec, throwing)).resolves.toBeUndefined();
+
+		expect(logged.mock.calls.map(([line]) => line)).toEqual([
+			'The stock ticker list did not refresh:',
+			'the alert that the ticker list did not refresh was not sent'
+		]);
+	});
 });
 
 describe('refreshTickersIfNoneHeld', () => {
@@ -199,5 +284,26 @@ describe('refreshTickersIfNoneHeld', () => {
 
 		expect(sec.requests).toHaveLength(2);
 		expect(await searchTickers(db, 'C0', 1)).toHaveLength(1);
+	});
+
+	it('fetches nothing and resolves where the list cannot be read', async () => {
+		// a real database with no tables: the read of the list throws, and so does the alert's read of
+		// the notification address.
+		const unmigrated = createDb(await openUnmigrated());
+		const sec = wholeFiles();
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+		await expect(
+			refreshTickersIfNoneHeld(
+				{ db: unmigrated, fetch: sec.fetch, email: recordingEmail().email, mailFrom: null },
+				NOW
+			)
+		).resolves.toBeUndefined();
+
+		expect(sec.requests).toEqual([]);
+		expect(logged.mock.calls.map(([line]) => line)).toEqual([
+			'The stock ticker list did not refresh:',
+			'the alert that the ticker list did not refresh was not sent'
+		]);
 	});
 });
