@@ -335,15 +335,7 @@ async function readFormProgram(db: Db, form: FormRecord): Promise<Program | null
 export function publishedConfig(sources: PublishedConfigSources): PublishedConfigResult {
 	const { id, form, owner } = sources;
 
-	if (form === null) {
-		return refusal(
-			null,
-			'form_not_found',
-			`No form with id \`${redactPublicId(id)}\` exists on this deployment.`,
-			'Check the `form` attribute on the donation element against the snippet shown under ' +
-				'Forms in /admin. A form is never deleted here, so an id that once worked still resolves.'
-		);
-	}
+	if (form === null) return { ok: false, form, reason: 'form_not_found', error: formNotFound(id) };
 
 	// a fundraiser's row serves while the page is live and shown, whatever the row's own status: the
 	// page's state is the one source, and pending, ended and hidden read alike to a caller.
@@ -758,6 +750,20 @@ export function renderableConfig(result: PublishedConfigResult): PublishedConfig
  * headers naming the sites this row's `allowed_origins` holds, and a body a browser cannot read is
  * a refusal that reaches nobody.
  */
+/**
+ * the 404 body for a form id this deployment never had, which every form-scoped read under
+ * `/api/v1` answers alike.
+ */
+export function formNotFound(id: string): ApiError {
+	return {
+		error: 'form_not_found',
+		message: `No form with id \`${redactPublicId(id)}\` exists on this deployment.`,
+		fix:
+			'Check the `form` attribute on the donation element against the snippet shown under ' +
+			'Forms in /admin. A form is never deleted here, so an id that once worked still resolves.'
+	};
+}
+
 function refusal(
 	form: FormRecord | null,
 	reason: PublishedConfigRefusal,

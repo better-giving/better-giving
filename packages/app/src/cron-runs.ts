@@ -5,6 +5,7 @@ import { sweepConnectorLeftovers } from '$lib/server/connector/keys';
 import type { Db } from '$lib/server/db/client';
 import { readPendingCryptoGifts } from '$lib/server/donations/pending-crypto-read';
 import { sendOwedRefundNotices } from '$lib/server/donations/refund-notice';
+import { refreshTickers } from '$lib/server/donations/ticker-refresh';
 import { createEmailProvider } from '$lib/server/email/factory';
 import { giftLinkOrigin } from '$lib/server/matching/links';
 import { sendUnsentPacks } from '$lib/server/matching/pack';
@@ -23,7 +24,8 @@ import { sendDueZapierEvents } from '$lib/server/zapier/deliver';
  * every thirty minutes, the crypto gifts no IPN settled are read back. at a quarter past and a
  * quarter to, in a run of their own, the donor notices of refunds that did not send are sent
  * again; at a quarter past, the connector's and the supporters' spent links, codes and sessions
- * are swept with them. every ten minutes, the employer match reminders that fell due are sent
+ * are swept with them. at 04:20 each day, the stock step's ticker list is fetched again from the
+ * SEC ($lib/server/donations/ticker-refresh.ts). every ten minutes, the employer match reminders that fell due are sent
  * ($lib/server/matching/reminders.ts), and the match packs owed and never tried, or that failed
  * an hour or more before, are sent ($lib/server/matching/pack.ts). every minute, in one run, what
  * this deployment owes is sent: the
@@ -58,6 +60,12 @@ export const CRON_RUNS: Readonly<Record<string, (env: Env, db: Db, now: Date) =>
 			sweepSupporterLeftovers(db, now)
 		]),
 	'45 * * * *': (env, db, now) => owedRefundNotices(env, db, now),
+
+	'20 4 * * *': (env, db, now) =>
+		refreshTickers(
+			{ db, fetch, email: createEmailProvider(env), mailFrom: env.MAIL_FROM ?? null },
+			now
+		),
 
 	// a run of its own rather than a share of the minute run's: it posts nothing, and
 	// ./lib/server/outbox/budget.ts sizes that run's posts.
