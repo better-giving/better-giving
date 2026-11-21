@@ -2498,7 +2498,7 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 /*
  * the registry's notice card (../registry/styles/notice-card-css.css) states its title in
  * `--font-display`, a face this card never loads; the card's own face is what every other title on
- * it is set in, so the title follows it. a registry gap the form's lock lists beside the others.
+ * it is set in, so the title follows it. a registry gap, listed with the others at the head of ./tokens.css.
  */
 .ds-notice-card-title {
 	font-family: inherit;

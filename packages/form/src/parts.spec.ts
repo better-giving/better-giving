@@ -206,6 +206,34 @@ describe('the published manifest', () => {
 		expect(checkbox?.description).toContain('“Show it as Anonymous”');
 	});
 
+	it('names the pledge screens’ controls among the presses `action-quiet` reaches', () => {
+		// the told screen's Done and the pending screen's mail link are the registry's filled
+		// secondary button (src/views.ts, `secondary.filled` and `secondaryLink`), and each pledge
+		// row's copy mark is one too (`copyControl` in src/pledge-screen.ts).
+		const quiet = element?.cssParts?.find((cssPart) => cssPart.name === 'action-quiet');
+
+		expect(quiet?.description).toContain('`Done`');
+		expect(quiet?.description).toContain('`Email these instructions`');
+		expect(quiet?.description).toContain('the pledge screen');
+	});
+
+	it('names the IRA (QCD) row among the payment box’s own rows', () => {
+		const payment = element?.cssParts?.find((cssPart) => cssPart.name === 'payment');
+
+		expect(payment?.description).toContain('IRA (QCD)');
+	});
+
+	it('says the custodian box carries `field` and `label` where the element’s own rule cannot reach', () => {
+		// the box stands in a shadow root of its own inside the `payment` slot (src/ira-panel.ts), so a
+		// rule on the element's parts misses it; a description saying "every text input" would promise
+		// a host it does not.
+		const field = element?.cssParts?.find((cssPart) => cssPart.name === 'field');
+		const label = element?.cssParts?.find((cssPart) => cssPart.name === 'label');
+
+		expect(field?.description).toContain('`bg-donate-form::part(field)` does not reach it');
+		expect(label?.description).toContain('`bg-donate-form::part(label)` does not reach it');
+	});
+
 	it('publishes the two seeds and the retired shade, and no fourth', () => {
 		const published = (element?.cssProperties ?? []).map((property) => property.name);
 

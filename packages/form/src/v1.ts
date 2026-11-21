@@ -540,7 +540,7 @@ export type Quote = {
 	 * present exactly on a `stock` or `ira_qcd` quote: the pledge as saved, and everything its
 	 * pending screen shows.
 	 *
-	 * the answer is the save, so the quote is posted when the pending screen is first shown. nothing
+	 * the answer is the save, and the pending screen is drawn from it once it arrives. nothing
 	 * is charged: `feeMinor` is 0, `totalMinor` is the pledged amount on `ira_qcd` and 0 on `stock`,
 	 * which has no value until the shares arrive, and `paymentToken` is the pledge's id. a resend
 	 * with the same `pledgeId` answers the pledge already saved, whatever else it carries.
@@ -629,8 +629,9 @@ export type QuoteRequest = {
 	readonly coin?: string;
 	/**
 	 * the id of the pledge a `stock` or `ira_qcd` request saves, minted by the form as a UUID when
-	 * the pending screen is first shown and sent again on every retry of it — a resend answers the
-	 * pledge already saved rather than saving a second. required on both, absent on every other rail.
+	 * the save of that request starts, before any answer, and sent again on every resend of the same
+	 * request — a resend answers the pledge already saved rather than saving a second, and a changed
+	 * request is minted an id of its own. required on both, absent on every other rail.
 	 */
 	readonly pledgeId?: string;
 	/**

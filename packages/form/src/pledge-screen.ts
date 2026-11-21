@@ -29,8 +29,8 @@ const NOT_ADVICE =
 	'This is general information, not tax advice. Talk to your tax adviser about your own situation.';
 
 /**
- * each pledge rail's benefits panel, as the design package states it word for word. the claims await
- * legal review before the change carrying them merges, and no figure is stated in either.
+ * each pledge rail's benefits panel, as the design package states it word for word: a change to these
+ * claims is cleared by the PM before it merges, and no figure is stated in either.
  */
 export const BENEFITS: Readonly<Record<PledgeRail, Benefits>> = {
 	stock: {
