@@ -220,14 +220,16 @@ function boxes() {
 	const paymentMount = document.createElement('div');
 	const challengeMount = document.createElement('div');
 	const heldChallengeMount = document.createElement('div');
+	const toldChallengeMount = document.createElement('div');
 	host.appendChild(paymentMount);
 	host.appendChild(challengeMount);
 	host.appendChild(heldChallengeMount);
+	host.appendChild(toldChallengeMount);
 	document.body.appendChild(host);
 	onTestFinished(() => {
 		host.remove();
 	});
-	return { paymentMount, challengeMount, heldChallengeMount };
+	return { paymentMount, challengeMount, heldChallengeMount, toldChallengeMount };
 }
 
 /** a tick long enough for both providers' own promise chains to settle. */
@@ -259,13 +261,14 @@ it('starts the live flow on the step and draft the served snapshot was read with
 
 	for (const opening of openings) {
 		const served = initialSnapshot(config, opening);
-		const { paymentMount, challengeMount, heldChallengeMount } = boxes();
+		const { paymentMount, challengeMount, heldChallengeMount, toldChallengeMount } = boxes();
 		const checkout = startCheckout(
 			config,
 			{
 				paymentMount,
 				challengeMount,
 				heldChallengeMount,
+				toldChallengeMount,
 				resumeToken: null,
 				seams: { payment: { stripe: { load: payment.load, delay: timer.delay } } }
 			},
@@ -290,7 +293,7 @@ it('reads monthly on a one-time-only config as no opening at all', () => {
 });
 
 it('mounts the payment provider into the box it was handed and draws no challenge yet', async () => {
-	const { paymentMount, challengeMount, heldChallengeMount } = boxes();
+	const { paymentMount, challengeMount, heldChallengeMount, toldChallengeMount } = boxes();
 	const payment = paymentProvider();
 	const challenge = challengeProvider();
 	const timer = clock();
@@ -299,6 +302,7 @@ it('mounts the payment provider into the box it was handed and draws no challeng
 		paymentMount,
 		challengeMount,
 		heldChallengeMount,
+		toldChallengeMount,
 		resumeToken: null,
 		seams: {
 			payment: { stripe: { load: payment.load, delay: timer.delay } },
@@ -317,7 +321,7 @@ it('mounts the payment provider into the box it was handed and draws no challeng
 });
 
 it('draws the challenge on arrival at the details step and resets it on the way out of a busy flow', async () => {
-	const { paymentMount, challengeMount, heldChallengeMount } = boxes();
+	const { paymentMount, challengeMount, heldChallengeMount, toldChallengeMount } = boxes();
 	const payment = paymentProvider();
 	const challenge = challengeProvider();
 	const timer = clock();
@@ -334,6 +338,7 @@ it('draws the challenge on arrival at the details step and resets it on the way 
 		paymentMount,
 		challengeMount,
 		heldChallengeMount,
+		toldChallengeMount,
 		resumeToken: null,
 		seams: {
 			payment: { stripe: { load: payment.load, delay: timer.delay } },
@@ -364,7 +369,7 @@ it('draws the challenge on arrival at the details step and resets it on the way 
 });
 
 it('saves a pledge the told press could not find again under a new reference on a fresh token, and tells on the press after', async () => {
-	const { paymentMount, challengeMount, heldChallengeMount } = boxes();
+	const { paymentMount, challengeMount, heldChallengeMount, toldChallengeMount } = boxes();
 	const payment = paymentProvider();
 	const challenge = challengeProvider();
 	const timer = clock();
@@ -407,6 +412,7 @@ it('saves a pledge the told press could not find again under a new reference on 
 		paymentMount,
 		challengeMount,
 		heldChallengeMount,
+		toldChallengeMount,
 		resumeToken: null,
 		seams: {
 			payment: { stripe: { load: payment.load, delay: timer.delay } },
@@ -466,7 +472,7 @@ it('saves a pledge the told press could not find again under a new reference on 
 });
 
 it('sends a save refused pledge_id_taken once more under a fresh id, on a token the reset minted', async () => {
-	const { paymentMount, challengeMount, heldChallengeMount } = boxes();
+	const { paymentMount, challengeMount, heldChallengeMount, toldChallengeMount } = boxes();
 	const payment = paymentProvider();
 	const challenge = challengeProvider();
 	const timer = clock();
@@ -505,6 +511,7 @@ it('sends a save refused pledge_id_taken once more under a fresh id, on a token 
 		paymentMount,
 		challengeMount,
 		heldChallengeMount,
+		toldChallengeMount,
 		resumeToken: null,
 		seams: {
 			payment: { stripe: { load: payment.load, delay: timer.delay } },
@@ -544,7 +551,7 @@ it('sends a save refused pledge_id_taken once more under a fresh id, on a token 
 // a deployment holding no Turnstile pair serves the ALTCHA path instead, and this page reads its
 // config off its own address, so the path resolves against the page's.
 it('solves the ALTCHA challenge this deployment serves and posts it as the payload', async () => {
-	const { paymentMount, challengeMount, heldChallengeMount } = boxes();
+	const { paymentMount, challengeMount, heldChallengeMount, toldChallengeMount } = boxes();
 	const payment = paymentProvider();
 	const timer = clock();
 	const asked: string[] = [];
@@ -574,6 +581,7 @@ it('solves the ALTCHA challenge this deployment serves and posts it as the paylo
 		paymentMount,
 		challengeMount,
 		heldChallengeMount,
+		toldChallengeMount,
 		resumeToken: null,
 		seams: {
 			payment: { stripe: { load: payment.load, delay: timer.delay } },
@@ -603,7 +611,7 @@ it('solves the ALTCHA challenge this deployment serves and posts it as the paylo
 });
 
 it('stops without leaving a subscription, a widget or a deadline behind', async () => {
-	const { paymentMount, challengeMount, heldChallengeMount } = boxes();
+	const { paymentMount, challengeMount, heldChallengeMount, toldChallengeMount } = boxes();
 	const payment = paymentProvider();
 	const challenge = challengeProvider();
 	const timer = clock();
@@ -612,6 +620,7 @@ it('stops without leaving a subscription, a widget or a deadline behind', async 
 		paymentMount,
 		challengeMount,
 		heldChallengeMount,
+		toldChallengeMount,
 		resumeToken: null,
 		seams: {
 			payment: { stripe: { load: payment.load, delay: timer.delay } },
@@ -639,11 +648,12 @@ it('tells a listener how many options the payment box lists', async () => {
 	const payment = paymentProvider();
 	const timer = clock();
 	const start = (config: FormConfig) => {
-		const { paymentMount, challengeMount, heldChallengeMount } = boxes();
+		const { paymentMount, challengeMount, heldChallengeMount, toldChallengeMount } = boxes();
 		const checkout = startCheckout(config, {
 			paymentMount,
 			challengeMount,
 			heldChallengeMount,
+			toldChallengeMount,
 			resumeToken: null,
 			seams: { payment: { stripe: { load: payment.load, delay: timer.delay } } }
 		});
@@ -665,7 +675,7 @@ it('tells a listener how many options the payment box lists', async () => {
 // no Venmo session can approve a subscription, so a repeating cadence takes Venmo off this page's
 // box as it does off the embed's (`venmoIsOffered` in packages/form/src/checkout.machine.ts).
 it('lists Venmo on a one-time gift only, with PayPal standing on every cadence', async () => {
-	const { paymentMount, challengeMount, heldChallengeMount } = boxes();
+	const { paymentMount, challengeMount, heldChallengeMount, toldChallengeMount } = boxes();
 	const paypal = paypalProvider();
 	const challenge = challengeProvider();
 	const timer = clock();
@@ -680,6 +690,7 @@ it('lists Venmo on a one-time gift only, with PayPal standing on every cadence',
 			paymentMount,
 			challengeMount,
 			heldChallengeMount,
+			toldChallengeMount,
 			resumeToken: null,
 			seams: {
 				payment: { paypal: { load: paypal.load, delay: timer.delay } },
@@ -707,7 +718,7 @@ it('lists Venmo on a one-time gift only, with PayPal standing on every cadence',
 // the hole this page had until the surface it composes stopped being one processor's: a deployment
 // holding PayPal's keys and no card processor's drew a box nothing could be paid in.
 it('draws a payment surface for a config offering only PayPal’s rails, and confirms on one', async () => {
-	const { paymentMount, challengeMount, heldChallengeMount } = boxes();
+	const { paymentMount, challengeMount, heldChallengeMount, toldChallengeMount } = boxes();
 	const paypal = paypalProvider();
 	const challenge = challengeProvider();
 	const timer = clock();
@@ -716,6 +727,7 @@ it('draws a payment surface for a config offering only PayPal’s rails, and con
 		paymentMount,
 		challengeMount,
 		heldChallengeMount,
+		toldChallengeMount,
 		resumeToken: null,
 		seams: {
 			payment: { paypal: { load: paypal.load, delay: timer.delay } },
@@ -767,7 +779,7 @@ it('draws a payment surface for a config offering only PayPal’s rails, and con
 });
 
 it('tells the flow the rail a donor pressed, on whichever processor’s box they pressed it in', async () => {
-	const { paymentMount, challengeMount, heldChallengeMount } = boxes();
+	const { paymentMount, challengeMount, heldChallengeMount, toldChallengeMount } = boxes();
 	const payment = paymentProvider();
 	const paypal = paypalProvider();
 	const challenge = challengeProvider();
@@ -783,6 +795,7 @@ it('tells the flow the rail a donor pressed, on whichever processor’s box they
 			paymentMount,
 			challengeMount,
 			heldChallengeMount,
+			toldChallengeMount,
 			resumeToken: null,
 			seams: {
 				payment: {
@@ -814,7 +827,7 @@ it('tells the flow the rail a donor pressed, on whichever processor’s box they
 // endings are reports rather than a confirmation — so this page hands the surface a third kind of
 // report, and tells it on every reading whether the button stands.
 it('stands a fund’s button on the review step alone, and carries its window’s reports into the flow', async () => {
-	const { paymentMount, challengeMount, heldChallengeMount } = boxes();
+	const { paymentMount, challengeMount, heldChallengeMount, toldChallengeMount } = boxes();
 	const payment = paymentProvider();
 	const challenge = challengeProvider();
 	const timer = clock();
@@ -835,6 +848,7 @@ it('stands a fund’s button on the review step alone, and carries its window’
 		paymentMount,
 		challengeMount,
 		heldChallengeMount,
+		toldChallengeMount,
 		resumeToken: null,
 		seams: {
 			payment: {
@@ -890,7 +904,7 @@ it('stands a fund’s button on the review step alone, and carries its window’
 });
 
 it('puts a donor who closed the fund’s window back on the review step with nothing sent', async () => {
-	const { paymentMount, challengeMount, heldChallengeMount } = boxes();
+	const { paymentMount, challengeMount, heldChallengeMount, toldChallengeMount } = boxes();
 	const payment = paymentProvider();
 	const challenge = challengeProvider();
 	const timer = clock();
@@ -901,6 +915,7 @@ it('puts a donor who closed the fund’s window back on the review step with not
 		paymentMount,
 		challengeMount,
 		heldChallengeMount,
+		toldChallengeMount,
 		resumeToken: null,
 		seams: {
 			payment: {
@@ -968,7 +983,7 @@ afterEach(() => {
 });
 
 it('stands the coin list in the crypto option on a one-time gift, and takes it away on a repeating one', async () => {
-	const { paymentMount, challengeMount, heldChallengeMount } = boxes();
+	const { paymentMount, challengeMount, heldChallengeMount, toldChallengeMount } = boxes();
 	const payment = paymentProvider();
 	const timer = clock();
 
@@ -976,6 +991,7 @@ it('stands the coin list in the crypto option on a one-time gift, and takes it a
 		paymentMount,
 		challengeMount,
 		heldChallengeMount,
+		toldChallengeMount,
 		resumeToken: null,
 		seams: { payment: { stripe: { load: payment.load, delay: timer.delay } } }
 	});
@@ -993,7 +1009,7 @@ it('stands the coin list in the crypto option on a one-time gift, and takes it a
 
 it('reads a crypto gift at this deployment until it arrives', async () => {
 	vi.useFakeTimers({ shouldAdvanceTime: true });
-	const { paymentMount, challengeMount, heldChallengeMount } = boxes();
+	const { paymentMount, challengeMount, heldChallengeMount, toldChallengeMount } = boxes();
 	const payment = paymentProvider();
 	const timer = clock();
 	const reads: string[] = [];
@@ -1020,6 +1036,7 @@ it('reads a crypto gift at this deployment until it arrives', async () => {
 		paymentMount,
 		challengeMount,
 		heldChallengeMount,
+		toldChallengeMount,
 		resumeToken: null,
 		seams: {
 			payment: { stripe: { load: payment.load, delay: timer.delay } },

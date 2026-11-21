@@ -282,6 +282,7 @@ function CheckoutCard({
 	const paymentMount = useRef<HTMLDivElement | null>(null);
 	const challengeMount = useRef<HTMLDivElement | null>(null);
 	const heldChallengeMount = useRef<HTMLDivElement | null>(null);
+	const toldChallengeMount = useRef<HTMLDivElement | null>(null);
 	/**
 	 * the return this card claimed, by the form it was claimed for. the claim scrubs the token off
 	 * the url, and strict mode runs the effect below twice on one mount, so a second run reuses the
@@ -293,7 +294,15 @@ function CheckoutCard({
 		const payment = paymentMount.current;
 		const challenge = challengeMount.current;
 		const heldChallenge = heldChallengeMount.current;
-		if (payment === null || challenge === null || heldChallenge === null) return () => {};
+		const toldChallenge = toldChallengeMount.current;
+		if (
+			payment === null ||
+			challenge === null ||
+			heldChallenge === null ||
+			toldChallenge === null
+		) {
+			return () => {};
+		}
 		// the token rewrites the URL and is claimed once, so it is taken here rather than in a render:
 		// a page holding two cards for one form would otherwise both claim it.
 		if (claimed.current?.formId !== config.formId) {
@@ -305,6 +314,7 @@ function CheckoutCard({
 				paymentMount: payment,
 				challengeMount: challenge,
 				heldChallengeMount: heldChallenge,
+				toldChallengeMount: toldChallenge,
 				resumeToken: claimed.current.token,
 				...(seams === undefined ? {} : { seams })
 			},
@@ -1313,6 +1323,7 @@ function CheckoutCard({
 						onPrimary={onPrimary}
 						onSecondary={onSecondary}
 						onCopied={onPledgeCopied}
+						challengeMount={toldChallengeMount}
 					/>
 					{/* into the node the IRA (QCD) option stands in its row, which the payment box holds and
 					    react does not render (./payment.tsx). */}

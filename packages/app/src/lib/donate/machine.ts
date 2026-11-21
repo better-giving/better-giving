@@ -88,6 +88,12 @@ export type CheckoutMounts = {
 	 * only while a press is held on it and it is asking the donor to solve something.
 	 */
 	readonly heldChallengeMount: HTMLElement;
+	/**
+	 * the pledge screen's node for the same challenge, beside its press, which it is drawn afresh into
+	 * only while a lost pledge's save made again waits on it and it is asking the donor to solve
+	 * something (`awaitingToken` under `telling` in @better-giving/form/machine).
+	 */
+	readonly toldChallengeMount: HTMLElement;
 	/** the payment this page was sent back to, where it was sent anywhere. */
 	readonly resumeToken: string | null;
 	/**
@@ -164,7 +170,14 @@ export function startCheckout(
 	mounts: CheckoutMounts,
 	opening?: Opening
 ): Checkout {
-	const { paymentMount, challengeMount, heldChallengeMount, resumeToken, seams } = mounts;
+	const {
+		paymentMount,
+		challengeMount,
+		heldChallengeMount,
+		toldChallengeMount,
+		resumeToken,
+		seams
+	} = mounts;
 
 	// through holders rather than straight at the actor: both surfaces are handed their callbacks
 	// while the actor is still being constructed, and every real report arrives with a provider's
@@ -248,6 +261,13 @@ export function startCheckout(
 		// already in does nothing, so this is said on every reading of that state.
 		if (snapshot.value === 'holding' && snapshot.context.challengeInteractive) {
 			challenge?.redraw?.(heldChallengeMount);
+		}
+		// and the same for a lost pledge's save made again, which waits on the pledge screen.
+		if (
+			snapshot.matches({ pledged: { telling: 'awaitingToken' } }) &&
+			snapshot.context.challengeInteractive
+		) {
+			challenge?.redraw?.(toldChallengeMount);
 		}
 
 		if (previous === 'working' && state.step !== 'working') challenge?.reset();

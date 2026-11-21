@@ -4,6 +4,7 @@ import { RECONCILIATION_LABELS } from '@better-giving/form/fee';
 import { PAYMENT_METHOD_LABELS, type FormConfig } from '@better-giving/form/v1';
 import { part, partWhen, REGISTRY_CLASS } from '@better-giving/form/parts';
 import { useEffect, useRef, type ReactNode, type RefObject } from 'react';
+import { ChallengeBox } from './challenge';
 import * as copy from './copy';
 import type { FieldBox } from './normalize';
 import { instructionsMailto, pledgeDetails, pledgeSummary } from './pledge';
@@ -535,6 +536,11 @@ export type TakeoverScreenProps = {
 	readonly onSecondary: () => void;
 	/** a pledge's Copy reporting, in the words the card's region says. */
 	readonly onCopied: (words: string) => void;
+	/**
+	 * the node the challenge is drawn again in, directly after the primary, while a lost pledge's save
+	 * made again waits on a widget asking the donor (`toldChallengeMount` in ./machine.ts).
+	 */
+	readonly challengeMount: RefObject<HTMLDivElement | null>;
 };
 
 export function TakeoverScreen({
@@ -548,7 +554,8 @@ export function TakeoverScreen({
 	employer,
 	onPrimary,
 	onSecondary,
-	onCopied
+	onCopied,
+	challengeMount
 }: TakeoverScreenProps) {
 	const primary = useRef<HTMLButtonElement | null>(null);
 	// a child of the section itself, where the element stands it, so the takeover's own column rules
@@ -631,6 +638,7 @@ export function TakeoverScreen({
 				<span className="action-label">{screen.primary?.label ?? ''}</span>
 				<span className="ds-spinner" aria-hidden="true" />
 			</button>
+			<ChallengeBox mount={challengeMount} />
 			<p className="aside" hidden={screen.primaryNote === ''}>
 				{screen.primaryNote}
 			</p>

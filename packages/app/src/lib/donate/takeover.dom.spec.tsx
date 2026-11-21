@@ -87,6 +87,7 @@ function draw(
 				onPrimary={() => {}}
 				onSecondary={() => {}}
 				onCopied={onCopied}
+				challengeMount={createRef<HTMLDivElement>()}
 			/>
 		);
 	});
@@ -938,6 +939,7 @@ describe('a saved pledge’s screens', () => {
 					onPrimary={() => {}}
 					onSecondary={() => {}}
 					onCopied={() => {}}
+					challengeMount={createRef<HTMLDivElement>()}
 				/>
 			);
 		});
@@ -985,6 +987,29 @@ describe('a saved pledge’s screens', () => {
 			expect(written).toEqual(['CFCP-AAPL-7Q2D']);
 			expect(button.dataset.outcome).toBe('copied');
 			expect(said).toEqual(['Reference copied.']);
+		});
+
+		// a `<dl>`'s row `<div>` holds `<dt>` and `<dd>` and nothing else
+		// (https://html.spec.whatwg.org/multipage/grouping-content.html#the-dl-element), so a Copy stands
+		// in the `<dd>` of the value it copies, described by the value's own `<span>` there.
+		it('keeps each list to rows of a term and its description, with every Copy in its value', () => {
+			const root = pledged(IRA, 'pending', false, () => {});
+			const lists = [...root.querySelectorAll('.pledge dl')];
+			expect(lists.length).toBeGreaterThan(0);
+			for (const list of lists) {
+				for (const row of list.children) {
+					expect(row.tagName).toBe('DIV');
+					expect([...row.children].map((node) => node.tagName)).toEqual(['DT', 'DD']);
+				}
+			}
+			const copies = [...root.querySelectorAll('.pledge .copy')];
+			expect(copies.length).toBeGreaterThan(0);
+			for (const button of copies) {
+				expect(button.parentElement?.tagName).toBe('DD');
+				const value = root.querySelector(`#${button.getAttribute('aria-describedby')}`);
+				expect(value?.tagName).toBe('SPAN');
+				expect(value?.parentElement).toBe(button.parentElement);
+			}
 		});
 
 		it('selects the value for copying by hand where the clipboard refused it', async () => {

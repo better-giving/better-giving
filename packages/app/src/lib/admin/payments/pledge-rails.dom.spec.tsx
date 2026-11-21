@@ -301,6 +301,50 @@ describe('Save', () => {
 		expect(after.querySelector('[role="status"]')?.textContent).toBe('');
 	});
 
+	// Enter in IRA (QCD)'s one text box submits the form with no submit button mounted
+	// (https://html.spec.whatwg.org/multipage/form-control-infrastructure.html#implicit-submission):
+	// a `submit` with no submitter, dispatched by hand, since happy-dom's `requestSubmit()` names one
+	// the form does not own.
+	const enter = (form: HTMLFormElement | null) =>
+		act(async () => {
+			form?.dispatchEvent(new SubmitEvent('submit', { bubbles: true, cancelable: true }));
+		});
+
+	it('sends nothing on a submit while Saved stands over the boxes it saved, or while a Save is out', async () => {
+		let release: () => void = () => {};
+		const { root, posted } = await screen(OFF, (body, rails) => {
+			const [next, said] = landing(body, rails);
+			return [next, new Promise((done) => (release = () => done(said)))];
+		});
+		const ira = await turnOn(root, 'IRA (QCD)');
+		await type(box(ira, 'Payee name'), 'Cedar Fork Community Pantry Inc.');
+		await type(box(ira, 'Mailing address'), '412 Alder Lane, Suite 3\nCedar Fork, OR 97330');
+		await press(button(ira, 'Save'));
+		await vi.waitFor(() => expect(posted).toHaveLength(1));
+		const form = () => card(root, 'IRA (QCD)').querySelector('form');
+
+		await enter(form());
+		await act(async () => release());
+		await vi.waitFor(() =>
+			expect(card(root, 'IRA (QCD)').querySelector('[role="status"]')?.textContent).toBe('Saved')
+		);
+		await enter(form());
+		await act(async () => {
+			for (let at = 0; at < 10; at += 1) await Promise.resolve();
+		});
+
+		expect(posted).toHaveLength(1);
+		expect(card(root, 'IRA (QCD)').querySelector('[role="status"]')?.textContent).toBe('Saved');
+		expect(root.querySelector('[aria-busy="true"]')).toBeNull();
+
+		// an edit since is a submit that sends.
+		await type(box(card(root, 'IRA (QCD)'), 'Payee name'), 'Cedar Fork Pantry');
+		await enter(form());
+		await vi.waitFor(() => expect(posted).toHaveLength(2));
+		expect(posted[1]?.get('payee_name')).toBe('Cedar Fork Pantry');
+		await act(async () => release());
+	});
+
 	it('keeps what was typed while a Save that moves the record was out, the untouched boxes on the stored values', async () => {
 		let release: () => void = () => {};
 		// the store writes the brokerage its own way, so the untouched box has a value of its own to take.
@@ -406,6 +450,32 @@ describe('Disable', () => {
 		expect(posted[1]?.get(WHICH_FORM)).toBe(PLEDGE_RAIL_FORMS.iraQcdOff);
 		// the other rail was never touched.
 		expect(switchOf(root, 'Stocks')?.checked).toBe(false);
+	});
+
+	// the refusal stands at the foot of the card under the press it asks to make again.
+	it('opens the card again over a refused Disable with the caret back on Disable', async () => {
+		const { root, posted } = await screen(
+			{ ...OFF, stock: { enabled: true, details: STOCK_DETAILS } },
+			(body, rails) => [
+				rails,
+				{
+					form: {
+						id: String(body.get(WHICH_FORM)),
+						result: { status: 'error', error: { '': ['Not disabled. Try again.'] } }
+					}
+				}
+			]
+		);
+		const disable = button(card(root, 'Stocks'), 'Disable stocks');
+		disable.focus();
+		await pressPosting(disable, posted);
+		await vi.waitFor(() =>
+			expect(card(root, 'Stocks').querySelector('[role="alert"]')?.textContent).toBe(
+				'Not disabled. Try again.'
+			)
+		);
+
+		expect(document.activeElement).toBe(button(card(root, 'Stocks'), 'Disable stocks'));
 	});
 
 	it('posts through its own press, collapses the card, and keeps the details', async () => {

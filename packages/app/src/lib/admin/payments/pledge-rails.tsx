@@ -176,6 +176,7 @@ function RailCard({
 	const [edited, setEdited] = useState(false);
 	const headingRef = useRef<HTMLHeadingElement>(null);
 	const switchRef = useRef<HTMLInputElement>(null);
+	const disableRef = useRef<HTMLButtonElement>(null);
 
 	// a Disable in flight collapses the card at once; one refused before reaching the server opens
 	// it again over its message, since the rail is still live.
@@ -186,7 +187,11 @@ function RailCard({
 	const disableRefused =
 		off.state === 'idle' ? resultFor(offForm, off.data)?.error?.['']?.[0] : undefined;
 
-	useFocusWhenGone(!expanded, () => document.getElementById(firstBox));
+	// a card opened by its switch puts the caret in its first box; one opened again by a refused
+	// Disable puts it back on Disable, over the refusal that asks for that press again.
+	useFocusWhenGone(!expanded, () =>
+		turnedOn ? document.getElementById(firstBox) : disableRef.current
+	);
 	useFocusWhenGone(expanded, () => switchRef.current);
 	useFocusWhenGone(!saved, () => headingRef.current);
 
@@ -230,6 +235,12 @@ function RailCard({
 					form.onSubmit(event);
 					// conform's own validation passes are submits it cancels; only one it lets through posts.
 					if (event.defaultPrevented) return;
+					// Enter in a box submits with Save unmounted under Saved, or held while a Save is out:
+					// neither has anything new to send.
+					if (busy || saved) {
+						event.preventDefault();
+						return;
+					}
 					sent.current = boxesOf(event.currentTarget);
 					typed.current = sent.current;
 					setEdited(false);
@@ -260,9 +271,6 @@ function RailCard({
 							variant="primary"
 							aria-busy={busy || undefined}
 							aria-disabled={busy || undefined}
-							onClick={(event) => {
-								if (busy) event.preventDefault();
-							}}
 						>
 							Save
 						</Button>
@@ -270,6 +278,7 @@ function RailCard({
 					{/* mounted in every state, so the word arriving in it is a change a reader is told. */}
 					<p role="status">{saved ? <StatusWord register="momentary">Saved</StatusWord> : null}</p>
 					<button
+						ref={disableRef}
 						type="button"
 						className="ds-text-btn ds-text-btn-sm adm-actions__end"
 						onClick={() => {

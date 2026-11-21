@@ -150,7 +150,14 @@ function CopyButton({
 	);
 }
 
-/** a list of rows, as `<dt>` and `<dd>` pairs in one `<div>` each. */
+/**
+ * a list of rows, as `<dt>` and `<dd>` pairs in one `<div>` each.
+ *
+ * a row's `<div>` may hold its `<dt>` and `<dd>` and nothing else
+ * (https://html.spec.whatwg.org/multipage/grouping-content.html#the-dl-element), so a Copy stands in
+ * the `<dd>` after the value's own `<span>`, which is what the Copy is described by and selects, as
+ * `list` in packages/form/src/pledge-screen.ts builds the element's.
+ */
 function PledgeList({
 	rows,
 	className,
@@ -169,12 +176,19 @@ function PledgeList({
 				return (
 					<div className="pledge-row" key={row.label}>
 						<dt className="pledge-label">{row.label}</dt>
-						<dd className={row.mono === true ? 'pledge-value mono' : 'pledge-value'} id={valueId}>
-							{row.value}
+						<dd className={row.mono === true ? 'pledge-value mono' : 'pledge-value'}>
+							<span className="pledge-text" id={valueId}>
+								{row.value}
+							</span>
+							{row.copy === undefined ? null : (
+								<CopyButton
+									noun={row.copy}
+									value={row.value}
+									valueId={valueId}
+									onCopied={onCopied}
+								/>
+							)}
 						</dd>
-						{row.copy === undefined ? null : (
-							<CopyButton noun={row.copy} value={row.value} valueId={valueId} onCopied={onCopied} />
-						)}
 					</div>
 				);
 			})}

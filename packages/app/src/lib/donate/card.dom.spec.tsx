@@ -3558,9 +3558,12 @@ describe('an IRA (QCD) gift', () => {
 		});
 	}
 
-	/** the review step of a one-time gift with the IRA (QCD) option open. */
-	async function onIra(config: FormConfig = WITH_IRA) {
-		const { root } = await card(config);
+	/**
+	 * the review step of a one-time gift with the IRA (QCD) option open. `mints` is whether the
+	 * challenge widget mints a token on its own (`challengeSeams`).
+	 */
+	async function onIra(config: FormConfig = WITH_IRA, mints = true) {
+		const { root } = await card(config, {}, { mints });
 		await walkToGive(root);
 		const head = row(root, 'IRA (QCD)');
 		if (head === null) throw new Error('no IRA (QCD) option on the review step');
@@ -3825,6 +3828,37 @@ describe('an IRA (QCD) gift', () => {
 		expect(server.tolds).toHaveLength(2);
 		expect(server.tolds[1]).toContain(String(second?.pledgeId));
 		expect(takeoverHeading(root).textContent).toBe('Thank you');
+	});
+
+	// the widget sits in a step this screen hides, so one asking the donor to solve something for the
+	// save made again is drawn beside the Try again they pressed, where they can.
+	it('draws a widget asking for the donor beside Try again, and saves on the token it mints', async () => {
+		const server = deployment(['save'], ['missing', 'ok']);
+		const root = await onIra(WITH_IRA, false);
+		type(custodian(root), 'Fidelity Investments');
+		token('tok_first');
+		await pressHeld(submit(root));
+		await pressHeld(takeoverPrimary(root));
+		expect(widget.drawn).toHaveLength(1);
+
+		await pressHeld(takeoverPrimary(root));
+		act(() => {
+			widget.asks();
+		});
+		await drain();
+
+		expect(widget.drawn).toHaveLength(2);
+		const beside = widget.drawn[1];
+		expect(screen(root).contains(beside ?? null)).toBe(true);
+		expect(beside?.closest('[hidden]')).toBeNull();
+		expect(beside?.previousElementSibling).toBe(takeoverPrimary(root));
+
+		token('tok_solved');
+		await drain();
+		const [first, second] = server.saves;
+		expect(server.saves.map((save) => save.turnstileToken)).toEqual(['tok_first', 'tok_solved']);
+		expect(second?.pledgeId).not.toBe(first?.pledgeId);
+		expect(takeoverHeading(root).textContent).toBe('Your IRA (QCD) gift is pending');
 	});
 
 	// the press relabelled to Try again is the same control on the same screen, so every refusal is
