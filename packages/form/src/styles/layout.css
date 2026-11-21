@@ -1076,7 +1076,13 @@ form {
 	border-block-start: var(--_border) solid var(--_n6);
 }
 
+/*
+ * a summary label is the form's own short words and its value can be a custodian the donor typed:
+ * an `auto` track grows to its max-content before an `fr` track gets any space, so the label takes
+ * the `auto` track and the value the `fr` one, and the value wraps rather than squeezing the label.
+ */
 .pledge-summary .pledge-row {
+	grid-template-columns: auto minmax(0, 1fr);
 	align-items: baseline;
 }
 

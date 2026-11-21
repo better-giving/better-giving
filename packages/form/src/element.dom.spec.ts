@@ -8720,6 +8720,24 @@ describe('a stock or IRA (QCD) pledge', () => {
 		expect(heading(card)).toBe('Thank you');
 	});
 
+	// the press relabelled to Try again is the same control on the same screen, so every refusal is
+	// the region's to say and the caret stays on the press, as the failed takeover's Try again does.
+	it('leaves the caret on the press through every refused told press', async () => {
+		const card = await iraPending({
+			told: () => Promise.reject(new TypeError('Failed to fetch'))
+		});
+		const carets: string[] = [];
+
+		for (const _ of [1, 2]) {
+			primary(card).focus();
+			primary(card).click();
+			await settle();
+			carets.push(card.shadow.activeElement === primary(card) ? 'press' : 'moved');
+		}
+
+		expect(carets).toEqual(['press', 'press']);
+	});
+
 	it('saves again on a fresh token after the endpoint found no pledge, and resets the widget after', async () => {
 		let resets = 0;
 		const saves: (QuoteRequest | StockPledgeRequest)[] = [];

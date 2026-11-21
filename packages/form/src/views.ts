@@ -3127,8 +3127,12 @@ export function createCard(
 		const within = step === 'takeover' && shownBefore === 'takeover';
 		const caretInTakeover = within && holdsCaret(takeover);
 		const newHeading = within && screen.heading !== drawnHeading;
+		// a saved pledge's press relabelled to Try again under the same heading is the same control,
+		// and its refusal is the region's to say (`pledgedScreen` above), as the failed takeover's is.
+		const relabelledInPlace = api.state.step === 'pledged';
 		const replaced =
-			caretInTakeover && (newHeading || (screen.primary?.label ?? null) !== drawnPrimary);
+			caretInTakeover &&
+			(newHeading || (!relabelledInPlace && (screen.primary?.label ?? null) !== drawnPrimary));
 		// a new heading the caret does not arrive on is read by nobody, so the region says it: the
 		// caret already on the heading, where focusing it again says nothing, or off the takeover,
 		// where nothing moves it — unless it is in another card on the page, whose donor is busy
