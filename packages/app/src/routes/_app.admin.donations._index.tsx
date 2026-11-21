@@ -283,6 +283,9 @@ export default function Donations({ loaderData }: Route.ComponentProps) {
 	// a deployment with no gifts at all, which is not a filter that matched nothing: that one keeps
 	// the table, whose filter is the way back out of it.
 	const none = loaderData.donations.length === 0 && loaderData.match === null;
+	// "No gifts yet" under a card of pledges reads as a contradiction: a pledge is a gift to come,
+	// and it becomes a row here at Mark received.
+	const waiting = loaderData.waiting.total > 0;
 	return (
 		// one column, the wide measure, because a table plane is what it exists for. the table sits in
 		// the column directly, and nothing wraps it. a grid item's automatic minimum size is its
@@ -303,14 +306,22 @@ export default function Donations({ loaderData }: Route.ComponentProps) {
 				secondary={HEADING_LINKS}
 			/>
 			<MarkedReceived />
-			{loaderData.waiting.total > 0 ? <WaitingCard waiting={loaderData.waiting} /> : null}
+			{waiting ? <WaitingCard waiting={loaderData.waiting} /> : null}
 			{none ? (
 				// the heading's Add donation is the way in, so the state offers no second one.
-				<PageState
-					variant="empty"
-					title="No gifts yet"
-					body="Gifts show up here as soon as a donor gives, or when you add one by hand."
-				/>
+				waiting ? (
+					<PageState
+						variant="empty"
+						title="No gifts received yet"
+						body="Pledges move here once you mark them received."
+					/>
+				) : (
+					<PageState
+						variant="empty"
+						title="No gifts yet"
+						body="Gifts show up here as soon as a donor gives, or when you add one by hand."
+					/>
+				)
 			) : (
 				<GiftsTable {...loaderData} />
 			)}
