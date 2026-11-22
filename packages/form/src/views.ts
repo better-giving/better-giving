@@ -2630,7 +2630,7 @@ export function createCard(
 		oneTimeButton
 	]);
 	const coinPicker = createCoinPicker(doc);
-	const iraPanel = createIraPanel(doc);
+	const iraPanel = createIraPanel(doc, () => submitButton.click());
 
 	const submitLabel = make(doc, 'span', { class: 'action-label' });
 	const submitButton = make(

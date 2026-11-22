@@ -8595,6 +8595,31 @@ describe('a stock or IRA (QCD) pledge', () => {
 		expect(shows(card, '.step-give .aside')).toBe('');
 	});
 
+	// the box stands in a root of its own with no form around it, so Enter there reaches no button;
+	// the gift page's box is in the page's form, where Enter presses Continue.
+	it('presses Continue on Enter in the custodian box, and not while a word is being composed', async () => {
+		const saves: (QuoteRequest | StockPledgeRequest)[] = [];
+		const card = await onIra({ saves });
+		type(custodian(card), 'Fidelity Investments');
+		const enter = (init: KeyboardEventInit & { keyCode?: number }) => {
+			const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, ...init });
+			// set after construction: an engine may drop the legacy `keyCode` from an event's init.
+			if (init.keyCode !== undefined)
+				Object.defineProperty(event, 'keyCode', { value: init.keyCode });
+			custodian(card).dispatchEvent(event);
+		};
+
+		enter({ isComposing: true });
+		enter({ keyCode: 229 });
+		await settle();
+		expect(saves).toEqual([]);
+
+		enter({});
+		await settle();
+		expect(saves).toHaveLength(1);
+		expect(heading(card)).toBe('Your IRA (QCD) gift is pending');
+	});
+
 	it('saves nothing on a Continue with no custodian, says so under the box and puts the caret in it', async () => {
 		const saves: (QuoteRequest | StockPledgeRequest)[] = [];
 		const card = await onIra({ saves });
