@@ -131,6 +131,9 @@ const FUNDRAISER_PAGE = 'routes/f.$slug.tsx';
 /** a donor's own page for one gift, at `/gift/{token}`. */
 const GIFT_PAGE = 'routes/gift.$token.tsx';
 
+/** one program's public page, at `/programs/{id}`. */
+const PROGRAM_PAGE = 'routes/programs.$id.tsx';
+
 /**
  * the donor's pages, which with the preview below are the screens outside the layout that wear no
  * operator stylesheet.
@@ -141,7 +144,13 @@ const GIFT_PAGE = 'routes/gift.$token.tsx';
  * they are named here so the sweep below can hold every *other* screen outside the layout to
  * carrying the operator sheet without holding these to it.
  */
-const DONOR_PAGES: readonly string[] = [DONOR_PAGE, CAMPAIGN_PAGE, FUNDRAISER_PAGE, GIFT_PAGE];
+const DONOR_PAGES: readonly string[] = [
+	DONOR_PAGE,
+	CAMPAIGN_PAGE,
+	FUNDRAISER_PAGE,
+	GIFT_PAGE,
+	PROGRAM_PAGE
+];
 
 /**
  * the editor's preview of a page, the one route outside the protected layout that is behind the
@@ -266,6 +275,12 @@ const PUBLIC_ROUTE_FILES: readonly string[] = [
 	// alone. its loader writes nothing, and an address no campaign could hold is refused before the
 	// database is read, so a scanner walking top-level paths costs this deployment no query.
 	CAMPAIGN_PAGE,
+	// a program's page, opened from a link the organisation published, and public for the donation
+	// page's reasons: no session, no submission, the gift through the endpoint above against the
+	// donation page's own settings row, the served config alone. its one write is that page's, made
+	// on first need as the donation page's own loader makes it, and an archived program and an id no
+	// program has answer the same 404, so the page tells a scanner nothing about which ids exist.
+	PROGRAM_PAGE,
 	// Show more messages on the donation page, fetched by that page ($lib/donate/show-more.ts) for a
 	// donor who holds no session. a read, charged to the donation page's own meter by mounting the
 	// same middleware (it cannot nest under ./routes/donate.tsx, which only redirects), and what it
@@ -716,6 +731,7 @@ describe('the route surface', () => {
 			file: FUNDRAISER_PREVIEW_PAGE
 		},
 		{ address: '/f/run-for-the-shelter', file: FUNDRAISER_PAGE },
+		{ address: '/programs/019fb600-0000-7000-8000-000000000001', file: PROGRAM_PAGE },
 		{ address: '/fundraise', file: 'routes/fundraise._index.tsx' },
 		{ address: API_BASE_PATH, file: API_LAYOUT }
 	])('keeps $address on $file', async ({ address, file }) => {
@@ -779,7 +795,7 @@ describe('where middleware is mounted', () => {
 	// login, the meter over every route on the public api, and a key check over every route Zapier
 	// calls, another over every route of the read API and another over every route the connector
 	// calls. any other name here is a route that took a decision one of those makes for a whole
-	// surface, which is the shape they all exist to remove — but for the preview and the two donor
+	// surface, which is the shape they all exist to remove — but for the previews and the donor
 	// pages, which sit under no layout that could carry what they owe, and are held to it by the
 	// cases below.
 	it('is the surface layouts, and no other route', () => {
@@ -798,14 +814,15 @@ describe('where middleware is mounted', () => {
 				DONOR_PAGE,
 				DONOR_MESSAGES,
 				CAMPAIGN_PAGE,
-				FUNDRAISER_PAGE
+				FUNDRAISER_PAGE,
+				PROGRAM_PAGE
 			].sort()
 		);
 	});
 
 	// a donor page reads what `/api/v1` bounds and more, so it is metered as that surface is, on a
 	// bucket of its own ($lib/server/api/meter.ts, `meterDonorPage`). the meter alone, and on both.
-	it.each([DONOR_PAGE, DONOR_MESSAGES, CAMPAIGN_PAGE, FUNDRAISER_PAGE])(
+	it.each([DONOR_PAGE, DONOR_MESSAGES, CAMPAIGN_PAGE, FUNDRAISER_PAGE, PROGRAM_PAGE])(
 		'is the donor page meter alone on %s',
 		(file) => {
 			expect(readFromDisk(file) ?? '').toMatch(

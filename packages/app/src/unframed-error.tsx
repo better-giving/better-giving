@@ -7,14 +7,15 @@ import { ErrorState, errorTitle } from '$lib/error-state';
 import operatorSheet from './app.css?url';
 
 /**
- * the ids react router gives the donor pages: ./routes/_index.tsx, ./routes/$slug.tsx and a
- * supporter's fundraiser, ./routes/f.$slug.tsx. the routes' `donor` handle is not the test, since
- * the staff previews carry it too.
+ * the ids react router gives the donor pages: ./routes/_index.tsx, ./routes/$slug.tsx, a
+ * supporter's fundraiser, ./routes/f.$slug.tsx, and a program's page, ./routes/programs.$id.tsx.
+ * the routes' `donor` handle is not the test, since the staff previews carry it too.
  */
 const DONOR_PAGE_ROUTE_IDS: ReadonlySet<string> = new Set([
 	'routes/_index',
 	'routes/$slug',
-	'routes/f.$slug'
+	'routes/f.$slug',
+	'routes/programs.$id'
 ]);
 
 /**
