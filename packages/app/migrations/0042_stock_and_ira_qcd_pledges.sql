@@ -1,10 +1,11 @@
 -- stock and IRA (QCD) gifts. `pledge_rail` holds the organisation's transfer details for each rail,
--- one row per rail, and `pledge` holds a gift a donor has pledged on one until staff mark it
--- received. `payment_method_check` gains 'stock' and 'ira_qcd', the method the payment written at
--- Mark received carries. `src/lib/server/db/schema.ts` argues each table and check beside it.
+-- one row per rail, and `pledge` holds a gift a donor has pledged on one. Mark received records the
+-- gift and stamps the pledge's `donation_id`, and the pledge row stays. `payment_method_check` gains
+-- 'stock' and 'ira_qcd', the method of the payment Mark received writes. `src/lib/server/db/schema.ts`
+-- states the rule for each table and check beside it.
 --
--- a pledge writes no `donation`, `payment` or entry: a stock pledge has no dollar value, and
--- `donation_total_minor_positive_check` stands. so `donation` is not touched.
+-- a pledge writes no `donation`, `payment` or entry before Mark received: a stock pledge has no dollar
+-- value, and `donation_total_minor_positive_check` needs one. `donation` is not altered.
 --
 -- a check is not one of sqlite's native ALTERs, so `payment` is rebuilt, create-copy-drop-rename,
 -- with the hand-edits migrations/0003 applied to the same table:
@@ -15,9 +16,7 @@
 --
 -- `STRICT` is hand-written onto all three tables, `__new_payment` included.
 --
--- every CHECK on `__new_payment` is unqualified, the spelling migrations/0003 left on `payment`. the
--- rebuild needs neither spelling: on this client (sqlite 3.45.1) `ALTER TABLE ... RENAME TO` also
--- rewrites a CHECK that still says `"__new_payment".` (CONTRIBUTING.md -> Migrations).
+-- every CHECK on `__new_payment` is unqualified, as migrations/0003 left them on `payment`.
 --
 -- the copy names only columns the old table has: every column on it, and no new one.
 --
