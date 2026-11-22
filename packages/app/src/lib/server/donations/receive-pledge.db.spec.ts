@@ -205,30 +205,50 @@ describe('receivePledge', () => {
 			await run(stmt('update pledge set supporter_page_id = ? where id = ?', PAGE_ID, PLEDGE_ID));
 		};
 
-		const givenOn = async () =>
-			(
-				await first<{ supporter_page_id: string | null }>(
-					stmt('select supporter_page_id from donation where id = ?', PLEDGE_ID)
-				)
-			)?.supporter_page_id;
+		const recorded = async () =>
+			await first<{ supporter_page_id: string | null; received_at: number }>(
+				stmt('select supporter_page_id, received_at from donation where id = ?', PLEDGE_ID)
+			);
 
-		it('counts the gift to the page where the page counts gifts on the day it arrived', async () => {
-			await givenPage(null, null);
-
-			expect(await receivePledge(db, ARRIVAL)).toMatchObject({ ok: true });
-			expect(await givenOn()).toBe(PAGE_ID);
+		// the press is never on the day it names, so a page read at the press's own moment answers
+		// differently from one read on the day the gift arrived.
+		const pressedAt = (iso: string) => {
+			vi.useFakeTimers({ toFake: ['Date'] });
+			vi.setSystemTime(new Date(iso));
+		};
+		afterEach(() => {
+			vi.useRealTimers();
 		});
 
+		it('counts the gift to the page where the page counts gifts on the day it arrived', async () => {
+			// pressed a week on, the page ended in between.
+			pressedAt('2026-11-25T15:00:00Z');
+			await givenPage(Date.parse('2026-11-20T09:00:00Z'), null);
+
+			expect(await receivePledge(db, ARRIVAL)).toMatchObject({ ok: true });
+			expect(await recorded()).toEqual({
+				supporter_page_id: PAGE_ID,
+				received_at: ARRIVAL.dated.getTime()
+			});
+		});
+
+		// pressed the evening before the day in UTC, as staff east of UTC enter their own today
+		// (`latestAccountingDay` in $lib/ledger/input-schema.ts allows it): the page still counted
+		// gifts at the press and had stopped by the day the gift arrived.
 		it.each([
 			['ended', ARRIVAL.dated.getTime() - 1, null],
 			['hidden', null, ARRIVAL.dated.getTime()]
 		])(
 			'gives the gift no page where the page was %s by the day it arrived',
 			async (_, endedAt, hiddenAt) => {
+				pressedAt('2026-11-17T15:00:00Z');
 				await givenPage(endedAt, hiddenAt);
 
 				expect(await receivePledge(db, ARRIVAL)).toMatchObject({ ok: true });
-				expect(await givenOn()).toBeNull();
+				expect(await recorded()).toEqual({
+					supporter_page_id: null,
+					received_at: ARRIVAL.dated.getTime()
+				});
 				expect(await stamp()).toBe(PLEDGE_ID);
 			}
 		);
