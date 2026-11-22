@@ -1390,3 +1390,12 @@ describe('the entry card’s width', () => {
 		);
 	});
 });
+
+describe('a program’s page', () => {
+	it('wraps the description and the heading over the card as it wraps the program’s name, never past the column', () => {
+		const wrap = declared(page, '.page-program-name')['overflow-wrap'];
+		expect(wrap).toBe('anywhere');
+		for (const selector of ['.page-program-description', '.page-program .page-profile-box-heading'])
+			expect(declared(page, selector)['overflow-wrap'], selector).toBe(wrap);
+	});
+});

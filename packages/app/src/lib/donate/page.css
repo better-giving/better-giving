@@ -1365,6 +1365,7 @@ body {
 /* paragraphs a step apart, the body step on a phone and the large step from 60rem, each sized on
    the paragraph so the steps between them stay the column's own. */
 .page-program-description {
+	overflow-wrap: anywhere;
 	display: flex;
 	flex-direction: column;
 	gap: var(--_sp4);
@@ -1398,6 +1399,10 @@ body {
 	overflow-wrap: anywhere;
 	font-weight: var(--_w-bold);
 	line-height: var(--_lh-tight);
+}
+
+.page-program .page-profile-box-heading {
+	overflow-wrap: anywhere;
 }
 
 @container page (min-width: 60rem) {
