@@ -797,6 +797,27 @@ describe('publishedConfig — the config it serves', () => {
 		]);
 	});
 
+	// a donor picks a cadence before a rail, and the form drops every one-time rail on a repeating
+	// cadence (`pledgeIsOffered` and its neighbours in packages/form/src/checkout.machine.ts).
+	it.each([
+		{ label: 'IRA (QCD) alone', rails: [], pledgeRails: ['ira_qcd'] as const },
+		{
+			label: 'only one-time rails',
+			rails: ['venmo', 'daf', 'crypto'] as const,
+			pledgeRails: ['stock', 'ira_qcd'] as const
+		}
+	])('serves one-time alone on a deployment that can repeat a gift, offering $label', (sources) => {
+		const config = served({ cadences: SERVED_CADENCES, ...sources });
+		expect(config.frequencies).toEqual(['one_time']);
+		expect(config.paymentMethods).toEqual([...sources.rails, ...sources.pledgeRails]);
+	});
+
+	it('serves every cadence beside one rail that repeats a gift', () => {
+		expect(
+			served({ cadences: SERVED_CADENCES, rails: ['paypal'], pledgeRails: ['ira_qcd'] }).frequencies
+		).toEqual([...SERVED_CADENCES]);
+	});
+
 	/**
 	 * the rails are this deployment's and never this form's, and no column on `form` can say
 	 * otherwise — the table carries no `payment_methods`, and `FormRecord` in ./form-input.ts has

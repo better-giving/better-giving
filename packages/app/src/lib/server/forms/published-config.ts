@@ -27,6 +27,7 @@ import { readActivePrograms, readProgram } from '../programs/queries';
 import { redactPublicId } from '../../redact';
 import type { FormRecord } from './form-input';
 import { fundraiserTakingGifts } from '../supporters/gifts';
+import { ONE_TIME_ONLY } from './offered-cadences';
 import { readForm, readOwningPage, type OwningPage } from './queries';
 
 // one `form` row plus this deployment's own details, as the config `GET /api/v1/forms/:id/config`
@@ -608,7 +609,11 @@ export function publishedConfig(sources: PublishedConfigSources): PublishedConfi
 		// refused. the served config is cached and reaches pages this deployment cannot recall
 		// (CLAUDE.md), so refusing either would be a donor on a page we published being turned away
 		// at the last step.
-		frequencies: sources.cadences,
+		//
+		// one-time alone where no rail served repeats a gift, as where the account could not be read:
+		// a repeating cadence takes every one-time rail off the donor's page, which would leave
+		// nothing to pay with.
+		frequencies: paymentMethods.some(repeatsAGift) ? sources.cadences : ONE_TIME_ONLY,
 		// the deployment's own answer and never this row's, the same as `frequencies` above and
 		// under the same rule: which of the rails this repository has a form for the processor
 		// account is approved for, read by `offeredRails` in ./offered-rails.ts.
@@ -774,6 +779,30 @@ export function renderableConfig(result: PublishedConfigResult): PublishedConfig
  */
 function isDrawnRail(rail: PaymentMethod): boolean {
 	return rail !== 'stock';
+}
+
+/**
+ * whether a donor may give on `rail` at a cadence that repeats, as the donation form draws it: it
+ * lists venmo, crypto, DAF and the IRA (QCD) row only on a one-time gift (`venmoIsOffered`,
+ * `cryptoIsOffered`, `fundIsOffered` and `pledgeIsOffered` in packages/form/src/checkout.machine.ts),
+ * and draws no stock row at all. total over `PaymentMethod`, so a rail added there is a compile error
+ * here.
+ */
+const REPEATS_A_GIFT: Readonly<Record<PaymentMethod, boolean>> = {
+	card: true,
+	ach: true,
+	apple_pay: true,
+	google_pay: true,
+	paypal: true,
+	venmo: false,
+	daf: false,
+	crypto: false,
+	stock: false,
+	ira_qcd: false
+};
+
+function repeatsAGift(rail: PaymentMethod): boolean {
+	return REPEATS_A_GIFT[rail];
 }
 
 /**
