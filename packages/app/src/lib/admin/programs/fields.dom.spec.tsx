@@ -90,15 +90,15 @@ it('takes the description in a box a sentence fits in', () => {
 	expect(box(group(), NAME).tagName).toBe('INPUT');
 });
 
-it('says no donor reads the description', () => {
+it('says donors read the description on the program’s page', () => {
 	const root = group();
 
-	// the one fact neither label nor box can carry: it is about a donation form on somebody else's
-	// site and the Donation page's chooser, so there is nothing on this screen that could show it.
+	// the one fact neither label nor box can carry: it is about the program's public page, so there
+	// is nothing in this group that could show it.
 	const described = box(root, DESCRIPTION).getAttribute('aria-describedby');
 	expect(described).toBe(`${DESCRIPTION}-hint`);
 	expect(root.querySelector(`[id="${DESCRIPTION}-hint"]`)?.textContent).toBe(
-		'For your team. Donors never see it.'
+		'Shown on the program’s page, under its name. Donors see it, so write it for them.'
 	);
 });
 

@@ -14,7 +14,7 @@ import { type Box, boxProps } from '../use-admin-form';
 //
 // the name is the donor-facing word. it is on a donation form's list wherever a form offers one
 // (`$lib/forms/program-modes.ts`), so the box that carries it is not a staff label with a public
-// twin somewhere — there is one string and the hint under the description is what says so.
+// twin somewhere — there is one string, and it heads the program's public page too.
 //
 // every element here is the library's, and each names its own describing blocks from the id it is
 // handed, so this file composes no `aria-describedby` of its own. what is left is the arrangement,
@@ -56,15 +56,13 @@ export function ProgramFields({ boxes, photo, footer }: ProgramFieldsProps) {
 				{/* a multi-line box, because what goes in it is a sentence and a single line hides
 				    every word but the last few typed.
 
-				    the hint is the one thing neither the label nor the box can carry: that no donor ever
-				    reads it. it is a fact about somewhere else — a donation form on somebody else's
-				    site, the Donation page's chooser — so there is nothing on this screen that could
-				    demonstrate it. */}
+				    the hint is the one thing neither the label nor the box can carry: that donors read
+				    it, under the name on the program's public page (`$lib/donate/program-page.tsx`). */}
 				<Field
 					as="textarea"
 					label="Description"
 					optional
-					hint="For your team. Donors never see it."
+					hint="Shown on the program’s page, under its name. Donors see it, so write it for them."
 					{...boxProps(boxes.description)}
 					error={
 						boxes.description.errors?.[0] === undefined ? undefined : (

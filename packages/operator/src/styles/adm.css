@@ -3275,6 +3275,22 @@
 		box-shadow: 0 0 0 var(--admin-focus-width) var(--admin-focus-ring);
 	}
 
+	/* ---------- page preview -----------------------------------------------------------
+
+	   a saved donor page shown inside an editor's card, as an `iframe` at the card's own width so
+	   the page lays itself out as it would on a phone. it scrolls inside its own box, and the page
+	   it holds takes its own tab stops out (`usePreviewStill` in
+	   packages/app/src/lib/donate/page-view.tsx). the edge and corner are a plane's. */
+	.adm-preview {
+		display: block;
+		inline-size: 100%;
+		/* raw-length-ok: the window's height is a shape — a phone page's head, photo and name in
+		   view at once — and no step of the spacing scale is a viewport. */
+		block-size: 520px;
+		border: var(--admin-rule);
+		border-radius: var(--admin-radius-plane);
+	}
+
 	/* ---------- record card ------------------------------------------------------------ */
 
 	.adm-record {
