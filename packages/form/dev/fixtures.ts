@@ -693,7 +693,7 @@ export function devRuntime(
 			}
 			return fixture.load();
 		},
-		checkout: (config, mount, onRail, onUnavailable, _boot, fund, coins, ira) => {
+		checkout: (config, mount, onRail, onUnavailable, _boot, fund, ira) => {
 			if (config.formId === CRYPTO.formId || config.formId === PLEDGES.formId) {
 				const surface = createPaymentSurface(
 					config,
@@ -701,7 +701,7 @@ export function devRuntime(
 					onRail,
 					onUnavailable,
 					fund,
-					coins,
+					undefined,
 					{ stripe: { load: async () => null } },
 					ira
 				);
@@ -718,7 +718,6 @@ export function devRuntime(
 					},
 					cadence: surface.cadence,
 					offerFund: surface.offerFund,
-					offerCrypto: surface.offerCrypto,
 					offerVenmo: surface.offerVenmo,
 					offerIra: surface.offerIra,
 					steer: (send) => {
@@ -736,7 +735,6 @@ export function devRuntime(
 				input: { config, ports: ports(config, ending, employer, told) },
 				cadence: () => {},
 				offerFund: () => {},
-				offerCrypto: () => {},
 				offerVenmo: () => {},
 				// no provider draws here, so the box is headed as though every offered rail were a row.
 				rows: (listener) => listener(config.paymentMethods.length),

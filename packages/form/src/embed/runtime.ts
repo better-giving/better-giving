@@ -32,6 +32,7 @@ import {
 	createPledgeTold,
 	createQuote,
 	createStatusRead,
+	createTickerRead,
 	EmbedFailure,
 	readJson
 } from './api';
@@ -194,7 +195,7 @@ export function createFormRuntime(origin: string | null, doc: Document): FormRun
 
 	return {
 		loadConfig: createLoadConfig(origin),
-		checkout: (config, mount, onRail, onUnavailable, boot, fund, coins, ira) => {
+		checkout: (config, mount, onRail, onUnavailable, boot, fund, ira) => {
 			// the return this gift is resuming, where this form is the one that sent the donor away.
 			// read here rather than where `post` is built, because the answer is per form and per
 			// boot, and neither is known until an element asks.
@@ -204,13 +205,15 @@ export function createFormRuntime(origin: string | null, doc: Document): FormRun
 			// one of this deployment's rails or into `null`, and the sentence a donor reads when
 			// nothing came up is written there too, next to what it knows about why.
 			// ../element.ts is what turns each report into an event the flow accepts.
+			// no coin list: the card takes a coin on its first step, so its payment box lists no crypto
+			// option.
 			const surface = createPaymentSurface(
 				config,
 				mount,
 				onRail,
 				onUnavailable,
 				fund,
-				coins,
+				undefined,
 				undefined,
 				ira
 			);
@@ -240,9 +243,7 @@ export function createFormRuntime(origin: string | null, doc: Document): FormRun
 				cadence: surface.cadence,
 				// the fund's reading, passed straight through for the reason the cadence is.
 				offerFund: surface.offerFund,
-				// the crypto, Venmo and IRA (QCD) options' readings, passed straight through for the fund's
-				// reason.
-				offerCrypto: surface.offerCrypto,
+				// the Venmo and IRA (QCD) options' readings, passed straight through for the fund's reason.
 				offerVenmo: surface.offerVenmo,
 				offerIra: surface.offerIra,
 				// the count the card heads the payment box from, passed straight through.
@@ -250,6 +251,7 @@ export function createFormRuntime(origin: string | null, doc: Document): FormRun
 				// what the processors still up can take, passed straight through as the count is.
 				repeatingUnavailable: surface.repeatingUnavailable,
 				claimSuccess: () => claimSuccess(resumeToken),
+				searchTickers: createTickerRead(origin, config.formId),
 				// the card letting go of the surface built for this configuration, and it is this
 				// surface's own: a second gift is a second call here, so a door shared between them
 				// would stop the live one on the orphan's behalf.

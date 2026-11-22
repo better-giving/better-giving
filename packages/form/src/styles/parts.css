@@ -1890,6 +1890,110 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 }
 
 /*
+ * toward the payment step the label leads at the start of the action, where its method marks will
+ * stand at the end (`methodMarks` in ../views.ts); a gift in kind's plain Continue keeps the
+ * registry's centre.
+ */
+[part~='action'][data-next='payment'] {
+	justify-content: space-between;
+	text-align: start;
+}
+
+/* the line over Continue naming the step it goes to. */
+.eyebrow {
+	margin: 0;
+	color: var(--_n11);
+	font-size: var(--_t-xs);
+	font-weight: var(--_w-bold);
+	/* raw-length-ok: the design's 16px line under its 12px words. */
+	line-height: 16px;
+	letter-spacing: var(--_tracking);
+}
+
+/*
+ * the unit pill (`unitPillButton` in ../views.ts): a control on a control's grounds — 3 at rest, 4
+ * under the pointer, 5 pressed — with its edge on 7 and 8, and the marks in the registry's avatar
+ * stack, whose ring is the pill's own ground in each state (avatar-css.usage.md). the press nudge is
+ * ./motion.css's.
+ *
+ * the words are set off the card's base, which is what every step and inset here is read against,
+ * so the code alone takes the smaller size.
+ */
+.unit-pill {
+	--ds-avatar-ring-on: var(--_n3);
+	display: inline-flex;
+	align-items: center;
+	flex: none;
+	gap: var(--_gap-inside);
+	/* raw-length-ok: the design's 28px pill, centred in the 36px How much line. */
+	block-size: 28px;
+	padding-block: 0;
+	padding-inline: var(--_sp3) var(--_sp2);
+	border: var(--_border) solid var(--_n7);
+	/* raw-length-ok: fully round, as the registry's own avatar writes its circle. */
+	border-radius: calc(infinity * 1px);
+	background: var(--_n3);
+	color: var(--_n12);
+	cursor: pointer;
+}
+
+.unit-pill:hover {
+	--ds-avatar-ring-on: var(--_n4);
+	background: var(--_n4);
+	border-color: var(--_n8);
+}
+
+.unit-pill:active {
+	--ds-avatar-ring-on: var(--_n5);
+	background: var(--_n5);
+	border-color: var(--_n8);
+}
+
+.unit-pill:focus-visible {
+	outline: var(--_border-strong) solid var(--_focus-ring);
+	outline-offset: var(--_border-strong);
+	box-shadow: none;
+}
+
+.unit-code {
+	font-size: var(--_t-xs);
+	font-weight: var(--_w-bold);
+}
+
+/* the currency's code where it is the one unit offered: words, not a control. */
+.unit-text {
+	color: var(--_n11);
+	font-size: var(--_t-sm);
+	font-weight: var(--_w-bold);
+}
+
+/*
+ * the lines under the cadence track and under a coin amount's box: the estimate at full ink, and the
+ * notes beside it at the quiet one.
+ */
+.unit-figure,
+.unit-note {
+	margin: 0;
+	font-size: var(--_t-sm);
+}
+
+.unit-figure {
+	color: var(--_n12);
+}
+
+.unit-note {
+	color: var(--_n11);
+}
+
+/*
+ * a repeating cadence a gift in kind does not take: still a control, so it keeps its place and its
+ * press, and says it is not taken now by the pointer it shows; the note under the track says why.
+ */
+.segment > label:has(> input[aria-disabled='true']) {
+	cursor: not-allowed;
+}
+
+/*
  * a grid of one row rather than a stack, because `0fr` to `1fr` is the only way to open a
  * disclosure to a height nobody measured. this is the one place the card's height is allowed to
  * change: it is user-initiated and it grows downward, so it moves nothing already being read.

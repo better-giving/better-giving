@@ -6,10 +6,10 @@ import type { FormConfig } from './v1';
 // the embed loads no web font: the card is set in the face the host page gives the element.
 //
 // a nonprofit's page is the document, and it sets its own face on the element's parent. the real
-// element is mounted, whose coin list is the one the card builds and stands in its own shadow. the
-// card's words, heading, a text box and a button compute the page's face, the coin's ticker the
-// platform's monospace, and the page fetches no font file and holds no face in the document's own
-// sheets — the one the element adopts there included.
+// element is mounted, whose unit panel the card builds and stands in its own shadow. the card's
+// words, heading, a text box and a button, and the panel's search box, compute the page's face, and
+// the page fetches no font file and holds no face in the document's own sheets — the one the element
+// adopts there included.
 //
 // `document.fonts` holds the document's faces only: an `@font-face` in a shadow root's sheet is not
 // in it, so this file cannot see a face the card's own sheets declare. the guard on those is "carries
@@ -53,7 +53,10 @@ const PORTS: CheckoutPorts = {
 	confirm: async () => ({ kind: 'succeeded' }),
 	resume: async () => ({ kind: 'succeeded' }),
 	status: async () => ({ state: 'waiting' }),
-	now: () => 1_700_000_000_000
+	now: () => 1_700_000_000_000,
+	// a surface that prices a coin is one whose first step offers one (`unitsOffered` in
+	// ./checkout.machine.ts), which is what draws the pill and its panel.
+	estimate: async () => null
 };
 
 const planted: HTMLElement[] = [];
@@ -65,13 +68,13 @@ function fontFiles(): string[] {
 		.filter((name) => /\.woff2?(?:$|\?)/i.test(name));
 }
 
-/** the coin list the element built, which is a shadow root of its own inside the card. */
-function coinList(host: HTMLElement): ShadowRoot {
-	for (const node of [host, ...host.querySelectorAll('*')]) {
+/** the unit panel the card built, which is a shadow root of its own inside the card. */
+function unitPanel(host: HTMLElement): ShadowRoot {
+	for (const node of host.shadowRoot?.querySelectorAll('*') ?? []) {
 		const root = node.shadowRoot;
-		if (root?.querySelector('.coin-ticker') != null) return root;
+		if (root?.querySelector('[role="dialog"]') != null) return root;
 	}
-	throw new Error('the element rendered no coin list');
+	throw new Error('the element rendered no unit panel');
 }
 
 afterEach(() => {
@@ -87,13 +90,11 @@ describe('the embed’s face', () => {
 		defineDonateForm(
 			{
 				loadConfig: async () => CONFIG,
-				checkout: (config, mount, _onRail, _onUnavailable, _boot, _fund, coins) => {
-					mount.appendChild(coins);
+				checkout: (config) => {
 					return {
 						input: { config, ports: PORTS },
 						cadence: () => {},
 						offerFund: () => {},
-						offerCrypto: () => {},
 						offerVenmo: () => {},
 						rows: () => {},
 						repeatingUnavailable: () => {},
@@ -112,17 +113,17 @@ describe('the embed’s face', () => {
 		document.body.appendChild(page);
 		planted.push(page);
 
-		const list = await vi.waitFor(() => coinList(host), { timeout: 5000 });
+		const panel = await vi.waitFor(() => unitPanel(host), { timeout: 5000 });
 
 		const word = host.shadowRoot?.querySelector('label, p');
 		const heading = host.shadowRoot?.querySelector("[part~='heading']");
-		const ticker = list.querySelector('.coin-ticker');
+		const search = panel.querySelector('[role="combobox"]');
 		// a control inherits only through layout.css's `font: inherit`, never by default
 		const field = host.shadowRoot?.querySelector('input:not([type=checkbox], [type=radio])');
 		const button = host.shadowRoot?.querySelector('button');
 		if (word == null || heading == null) throw new Error('the card drew no text');
 		if (field == null || button == null) throw new Error('the card drew no control');
-		if (ticker == null) throw new Error('the coin list drew no ticker');
+		if (search == null) throw new Error('the unit panel drew no search box');
 
 		const pageFace = getComputedStyle(page).fontFamily;
 		expect(pageFace).toContain('Georgia');
@@ -130,7 +131,7 @@ describe('the embed’s face', () => {
 		expect(getComputedStyle(heading).fontFamily).toBe(pageFace);
 		expect(getComputedStyle(field).fontFamily).toBe(pageFace);
 		expect(getComputedStyle(button).fontFamily).toBe(pageFace);
-		expect(getComputedStyle(ticker).fontFamily.startsWith('ui-monospace')).toBe(true);
+		expect(getComputedStyle(search).fontFamily).toBe(pageFace);
 
 		await document.fonts.ready;
 		expect([...document.fonts]).toEqual([]);

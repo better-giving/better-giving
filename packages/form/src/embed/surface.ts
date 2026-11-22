@@ -175,9 +175,11 @@ export function createPaymentSurface(
 	fund: FundReports,
 	/**
 	 * the coin list the card draws for a `crypto` gift, which the crypto option stands in. handed in
-	 * rather than built here: the card owns what it says and where a refused press puts the caret.
+	 * rather than built here: the card owns what it says and where a refused press puts the caret. a
+	 * surface handed none draws no crypto option: the embedded element takes a coin on its first
+	 * step (../views.ts).
 	 */
-	coins: HTMLElement,
+	coins: HTMLElement | undefined,
 	seams?: PaymentSeams,
 	/**
 	 * the custodian box and benefits panel the card draws for an IRA (QCD) gift, which that option
@@ -426,7 +428,7 @@ export function createPaymentSurface(
 
 	// last of all, because the card lists it last: no processor's window or frame stands behind it.
 	let offerCrypto: (offered: boolean) => void = () => {};
-	if (config.paymentMethods.some(isNowpaymentsRail)) {
+	if (coins !== undefined && config.paymentMethods.some(isNowpaymentsRail)) {
 		const node = open();
 		const crypto = createNowpaymentsSurface(node, coins, (rail) => reported(part, rail));
 		const part: Part = {

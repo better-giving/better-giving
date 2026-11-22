@@ -97,7 +97,6 @@ async function mount(config: FormConfig = CONFIG, options: Mounting = {}): Promi
 					},
 					cadence: () => {},
 					offerFund: () => {},
-					offerCrypto: () => {},
 					offerVenmo: () => {},
 					rows: () => {},
 					repeatingUnavailable: () => {},
@@ -247,7 +246,6 @@ describe('the box a host page holds before the element upgrades', () => {
 					input: { config, ports: PORTS },
 					cadence: () => {},
 					offerFund: () => {},
-					offerCrypto: () => {},
 					offerVenmo: () => {},
 					rows: () => {},
 					repeatingUnavailable: () => {},
@@ -1488,5 +1486,79 @@ describe('the brand scale the element generates', () => {
 		expect(luma(bytes(host, '--accent-contrast'))).toBeLessThan(0.3);
 		expect(luma(bytes(host, '--accent-12'))).toBeLessThan(0.3);
 		expect(luma(bytes(host, '--accent-1'))).toBeGreaterThan(0.9);
+	});
+});
+
+describe('the first step’s unit pill and Continue', () => {
+	/** a deployment taking its currency and stock, on a surface that saves a pledge. */
+	const WITH_STOCK: FormConfig = { ...CONFIG, paymentMethods: ['card', 'ach', 'stock'] };
+	const PLEDGES: Partial<CheckoutPorts> = {
+		pledges: {
+			id: () => 'pledge-1',
+			save: async () => ({ paymentToken: 'pledge-1', feeMinor: 0, totalMinor: 0 }),
+			told: async () => {}
+		}
+	};
+	const pillOf = (root: ShadowRoot) => {
+		const node = root.querySelector<HTMLElement>('.amount-head > .unit-pill');
+		if (node === null) throw new Error('no unit pill');
+		return node;
+	};
+	const panelOf = (root: ShadowRoot) => {
+		for (const node of root.querySelectorAll('*')) {
+			if (node.shadowRoot?.querySelector('[role="dialog"]') != null) return node.shadowRoot;
+		}
+		throw new Error('no unit panel');
+	};
+	/** two frames, which is when the panel's machine moves the caret after a pick. */
+	const frames = () =>
+		new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
+	// the panel's machine puts the caret back in its own box a frame after a pick; the panel is no
+	// longer shown by then, so the caret stays where the card put it.
+	it('leaves the caret on the pill after a pick', async () => {
+		const root = shadow(await mount(WITH_STOCK, { ports: PLEDGES }));
+		await userEvent.click(pillOf(root));
+		await frames();
+		const usd = panelOf(root).querySelector<HTMLElement>('[role="option"][data-value="currency"]');
+		if (usd === null) throw new Error('no currency row');
+
+		await userEvent.click(usd);
+		await frames();
+
+		expect(root.activeElement).toBe(pillOf(root));
+		expect(pillOf(root).getAttribute('aria-expanded')).toBe('false');
+	});
+
+	it('draws the pill 28px tall, centred in the 36px line, its discs 14px a quarter over each other', async () => {
+		const root = shadow(await mount(WITH_STOCK, { ports: PLEDGES }));
+		const pill = pillOf(root).getBoundingClientRect();
+		const line = (root.querySelector('.amount-head') as HTMLElement).getBoundingClientRect();
+		const discs = [...root.querySelectorAll<HTMLElement>('.unit-pill .ds-avatar')].map((disc) =>
+			disc.getBoundingClientRect()
+		);
+
+		expect(pill.height).toBe(28);
+		expect(line.height).toBe(36);
+		expect(pill.top - line.top).toBe(line.bottom - pill.bottom);
+		expect(Math.round(line.right)).toBe(Math.round(pill.right));
+		expect(discs).toHaveLength(2);
+		for (const disc of discs) expect([disc.width, disc.height]).toEqual([14, 14]);
+		const [flag, apple] = discs as [DOMRect, DOMRect];
+		expect(flag.right - apple.left).toBe(3.5);
+	});
+
+	it('stands the eyebrow 6px over a full-width 52px Continue whose label leads', async () => {
+		const root = shadow(await mount(WITH_STOCK, { ports: PLEDGES }));
+		const eyebrow = (root.querySelector('.next > .eyebrow') as HTMLElement).getBoundingClientRect();
+		const button = root.querySelector('.next > [part~="action"]') as HTMLElement;
+		const box = button.getBoundingClientRect();
+		const label = (button.querySelector('.action-label') as HTMLElement).getBoundingClientRect();
+		const step = (root.querySelector('.step') as HTMLElement).getBoundingClientRect();
+
+		expect(box.top - eyebrow.bottom).toBe(6);
+		expect(box.height).toBe(52);
+		expect(Math.round(box.width)).toBe(Math.round(step.width));
+		expect(label.left - box.left).toBeLessThan(box.right - label.right);
 	});
 });

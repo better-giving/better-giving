@@ -116,7 +116,6 @@ async function mount(turnstile: TurnstileLike) {
 					input: { config, ports },
 					cadence: () => {},
 					offerFund: () => {},
-					offerCrypto: () => {},
 					offerVenmo: () => {},
 					rows: () => {},
 					repeatingUnavailable: () => {},

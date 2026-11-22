@@ -1085,7 +1085,8 @@ export function fundIsOffered(snapshot: {
 /**
  * whether the payment box lists the crypto option, which it never does: a coin is picked on the first
  * step (`unitsOffered`), and a coin gift goes from the details step straight to its address. kept for
- * both surfaces that run this flow, which tell their payment surface on every reading.
+ * the deployment's own donation page, which tells its payment surface on every reading; the element's
+ * payment box is built with no crypto option at all (`createFormRuntime` in ./embed/runtime.ts).
  */
 export function cryptoIsOffered(_snapshot: { readonly context: CheckoutContext }): boolean {
 	return false;

@@ -212,6 +212,22 @@
 }
 
 /*
+ * the unit pill's grounds step under the pointer and the press, and the press sets it down a pixel,
+ * the registry button's nudge. `translate` paints without reflowing the How much line.
+ */
+.unit-pill {
+	transition:
+		background-color var(--_move-state),
+		border-color var(--_move-state),
+		translate var(--_move-press);
+}
+
+.unit-pill:active {
+	/* raw-length-ok: the registry button's 1px press nudge. */
+	translate: 0 1px;
+}
+
+/*
  * the label rising off the middle of the box it names onto that box's top edge, and settling back
  * (`.floating` in ./parts.css). a state arriving and staying, so it reads `--_move-state` like
  * every other one.

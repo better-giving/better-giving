@@ -17,7 +17,6 @@
 // in this file is the same answer derived twice, on a page nobody here can reach.
 
 import type { CheckoutApi, EmployerAsk, PropTypes, State } from './connect';
-import { createCoinPicker, type CoinOption } from './coin-picker';
 import { createSelect } from './select';
 import { createEmployerAsk, type EmployerAskScreen } from './employer-ask';
 import {
@@ -30,7 +29,15 @@ import {
 import { createIraPanel } from './ira-panel';
 import { instructionsMailto, pledgeDetails, pledgeSummary } from './pledge';
 import { BENEFITS, createPledgeBlock, type PledgeNotice, type PledgeScreen } from './pledge-screen';
-import { coinRefusalSentence } from './unit';
+import {
+	CHANGE_WHAT_YOU_GIVE,
+	CONTINUE,
+	coinRefusalSentence,
+	type ContinueCase,
+	type UnitMark,
+	type UnitPill
+} from './unit';
+import { createUnitPanel, type UnitChoice, type UnitPanelHandlers } from './unit-panel';
 import type { AmountDecision, PayerField } from './value';
 import { RECONCILIATION_LABELS, type DeductedFee } from './fee';
 import { currencySymbol, formatFigure, formatMinor, formatOffer, parseMinor } from './money';
@@ -48,6 +55,11 @@ type Option = {
 	readonly value: string | number;
 	readonly label?: string;
 	readonly checked: boolean;
+	/**
+	 * a cadence the flow does not take now, drawn `aria-disabled`. its press is still sent and
+	 * refused, and the patch that answers it puts the radio back on the cadence the flow holds.
+	 */
+	readonly unavailable?: boolean;
 	readonly onChange: () => void;
 };
 
@@ -90,6 +102,10 @@ type SelectProps = {
 	readonly options: readonly { readonly value: string; readonly label: string }[];
 	readonly onChange: (value: string) => void;
 };
+
+/** the unit list as ./connect.ts projects it (`unitSelect`): a select, and what the panel reads beside. */
+type UnitSelectProps = Omit<SelectProps, 'options'> &
+	Pick<UnitChoice, 'search' | 'stocks' | 'options'>;
 
 type ButtonProps = {
 	readonly 'aria-busy': boolean;
@@ -948,7 +964,7 @@ function takeoverFor(state: State, config: FormConfig, money: (minor: number) =>
 				...BLANK,
 				heading: 'Send your gift',
 				deposit: depositScreen(state, config, money),
-				secondary: { label: 'Use a different coin' },
+				secondary: { label: CHANGE_WHAT_YOU_GIVE },
 				secondaryNote: `Also sent to ${state.email}.`
 			};
 
@@ -1238,17 +1254,9 @@ export type CardView = {
 	 */
 	readonly toldChallenge: HTMLElement;
 	/**
-	 * the coin list a `crypto` gift is chosen in, handed out for the reason `payment` above is.
-	 *
-	 * the card draws it and keeps it patched, and the crypto option stands it in its row in the payment
-	 * box (./embed/nowpayments.ts) — a light-DOM node like the rows around it, so it carries a shadow
-	 * root of its own (./coin-picker.ts).
-	 */
-	readonly coins: HTMLElement;
-	/**
-	 * the IRA (QCD) option's box and benefits panel (./ira-panel.ts), handed out for the reason `coins`
-	 * above is: the card draws it and keeps it patched, and the option stands it in its row
-	 * (./embed/pledge.ts).
+	 * the IRA (QCD) option's box and benefits panel (./ira-panel.ts), handed out for the reason
+	 * `payment` above is: the card draws it and keeps it patched, and the option stands it in its row
+	 * in the payment box (./embed/pledge.ts) — a light-DOM node like the rows around it.
 	 */
 	readonly ira: HTMLElement;
 	/**
@@ -1276,7 +1284,7 @@ export type CardView = {
 	 * `resize` listener the frequency chip is put back on closes over the track, which would keep a
 	 * card that has left the page alive and being measured on every rotation; the address screen's
 	 * countdown (`stop` in ./deposit.ts) closes over the block it is redrawing; and the two closed
-	 * choices' machines (./select.ts) and the coin list's (./coin-picker.ts) hold the outside-press
+	 * choices' machines (./select.ts) and the unit panel's (./unit-panel.ts) hold the outside-press
 	 * and positioning listeners an open list sets on the document; what zag writes to the host's window
 	 * and body that no stop reaches is in ./zag.ts's header. `#stop` in ./element.ts is the
 	 * seam that calls this, alongside the flow, the payment surface and the challenge widget.
@@ -1317,7 +1325,9 @@ export function createCard(
 	 * that was refused rather than by the words being the same, because most patches write the words
 	 * they wrote last and only a press is news.
 	 */
-	say: (words: string, again?: boolean) => void
+	say: (words: string, again?: boolean) => void,
+	/** the unit panel's ticker search (`UnitPanelHandlers` in ./unit-panel.ts). */
+	searchTickers: UnitPanelHandlers['searchTickers']
 ): CardView {
 	const { locale, currency } = config;
 	const money = (minor: number) => formatMinor(minor, locale, currency);
@@ -1610,12 +1620,16 @@ export function createCard(
 
 	const frequencyOptions: { label: HTMLElement; input: HTMLInputElement }[] = [];
 	const frequencyTrack = make(doc, 'div', { class: 'segment' });
-	// a native `<fieldset>` of radios and no sentence under it. the cadence opens already chosen
+	// the one sentence under the track: a gift in kind is one-time only, and each repeating cadence
+	// is drawn `aria-disabled` and described by this (`cadenceNote` in ./unit.ts).
+	const cadenceNote = make(doc, 'p', { class: 'unit-note', id: 'cadence-note', hidden: true });
+	// a native `<fieldset>` of radios and no refusal under it. the cadence opens already chosen
 	// (`settledDraft` in ./checkout.machine.ts) and no control here can un-choose it, so there is no
 	// press this group can be refused for and nothing for a message to say.
 	const frequencyGroup = make(doc, 'fieldset', { class: 'group' }, [
 		make(doc, 'legend', { part: part('label') }, ['How often']),
-		frequencyTrack
+		frequencyTrack,
+		cadenceNote
 	]);
 
 	// ── amounts ────────────────────────────────────────────────────────────────────────────────
@@ -1709,6 +1723,54 @@ export function createCard(
 		make(doc, 'span', { class: 'adorn-trail', 'aria-hidden': 'true' }, [code])
 	]);
 
+	// the entry for a gift in kind (`unitEntry` in ./unit.ts): one box for a coin amount or a share
+	// count, the unit at its end and the tiles off the step while it stands, drawn as the free entry
+	// on a bare tray is. named Amount as that entry is; the unit is read off the pill, so its mark at
+	// the end is hidden as the currency's code is.
+	const quantityInput = make(doc, 'input', {
+		id: 'quantity-entry',
+		type: 'text',
+		inputmode: 'decimal',
+		autocomplete: 'off'
+	});
+	const quantityTrail = make(doc, 'span', { class: 'adorn-trail', 'aria-hidden': 'true' });
+	const quantityTray = make(doc, 'div', { class: 'tiles bare', hidden: true }, [
+		make(doc, 'div', { part: part('amount-input'), class: 'tile entry' }, [
+			quantityInput,
+			quantityTrail
+		])
+	]);
+	const quantityLabel = make(
+		doc,
+		'label',
+		{ part: part('label'), class: 'vh', for: 'quantity-entry' },
+		['Amount']
+	);
+	// a coin's estimate once one is priced and the note on how it is valued, under the box; nothing
+	// under a share count.
+	const unitEstimate = make(doc, 'p', { class: 'unit-figure' });
+	const unitValued = make(doc, 'p', { class: 'unit-note' });
+	const estimateLines = make(doc, 'div', { class: 'unit-estimate', hidden: true }, [
+		unitEstimate,
+		unitValued
+	]);
+	quantityInput.addEventListener('input', () => now().quantityField.onChange(quantityInput.value));
+
+	function updateUnitEntry(api: DomApi): void {
+		const { entry } = api.unit;
+		setHidden(amountTiles, entry !== null);
+		setHidden(quantityTray, entry === null);
+		setText(quantityTrail, entry?.unitLabel ?? '');
+		setValue(quantityInput, api.quantityField.value);
+		const estimate = entry?.estimate ?? null;
+		const note = entry?.note ?? null;
+		setText(unitEstimate, estimate ?? '');
+		setHidden(unitEstimate, estimate === null);
+		setText(unitValued, note ?? '');
+		setHidden(unitValued, note === null);
+		setHidden(estimateLines, estimate === null && note === null);
+	}
+
 	// the bounds are the configuration's, so the sentence is built once here rather than written
 	// twice: `update` reads this same string onto the live region, under the entry's label. they are
 	// offered the way a tile is, not stated the way a row is (./money.ts): `$5.00` here claims a
@@ -1717,14 +1779,121 @@ export function createCard(
 	const amountMessage = make(doc, 'p', { class: 'message', id: 'amount-problem', hidden: true }, [
 		amountProblem
 	]);
+	// the How much line: the words at its start and what the donor gives at its end — the unit pill, or
+	// the currency's code as plain text where it is the one unit offered (`build` below). a
+	// line of its own rather than the fieldset's legend, which would take the pill's words into the
+	// group's name; the group is named by the words alone.
+	const howMuchLine = make(doc, 'div', { class: 'amount-head' }, [
+		make(doc, 'span', { part: part('label'), id: 'amount-label' }, ['How much'])
+	]);
+	// the unit pill: the code, then the marks of what it stands for in the registry's 14px avatar
+	// stack (avatar-css.usage.md, `ds-avatar-xs` in a `ds-avatar-group`), which is decorative inside
+	// a control named by its own `aria-label` (`unitPill` in ./unit.ts). the panel it opens is
+	// ./unit-panel.ts's, mounted beside it.
+	const unitCode = make(doc, 'span', { class: 'unit-code' });
+	const unitMarks = make(doc, 'span', { class: 'ds-avatar-group', 'aria-hidden': 'true' });
+	const unitPillButton = make(
+		doc,
+		'button',
+		{
+			type: 'button',
+			class: 'unit-pill',
+			'aria-haspopup': 'dialog',
+			'aria-expanded': 'false'
+		},
+		[unitCode, unitMarks]
+	);
+	/** the marks the pill last drew, by image, so a patch that changes none rebuilds none. */
+	let drawnMarks = '';
+
+	/**
+	 * a 14px disc holding one mark. a coin's logo is the processor's, fetched into a page this project
+	 * does not own, so it is drawn as the panel draws it (`markNode` in ./unit-panel.ts): lazy and with
+	 * no referrer. xs draws no letter (avatar-css.usage.md), so an image that fails takes its disc
+	 * with it.
+	 */
+	function unitDisc(mark: UnitMark): HTMLElement {
+		const image = make(doc, 'img', { class: 'ds-avatar-img', alt: '', decoding: 'async' });
+		if (mark.mark === 'logo') {
+			image.loading = 'lazy';
+			image.referrerPolicy = 'no-referrer';
+		}
+		image.src = mark.src;
+		const disc = make(doc, 'span', { class: 'ds-avatar ds-avatar-xs' }, [image]);
+		image.addEventListener('error', () => disc.remove());
+		return disc;
+	}
+
+	const unitPanel = createUnitPanel(doc, {
+		searchTickers,
+		onClose: ({ restoreFocus }) => {
+			unitPillButton.setAttribute('aria-expanded', 'false');
+			if (restoreFocus) unitPillButton.focus();
+		}
+	});
+	/** the panel taken down by the card itself, which `onClose` above is not told of. */
+	function shutUnitPanel(): void {
+		if (unitPillButton.getAttribute('aria-expanded') !== 'true') return;
+		unitPanel.close();
+		unitPillButton.setAttribute('aria-expanded', 'false');
+	}
+	unitPillButton.addEventListener('click', () => {
+		if (unitPillButton.getAttribute('aria-expanded') === 'true') {
+			shutUnitPanel();
+			return;
+		}
+		unitPillButton.setAttribute('aria-expanded', 'true');
+		unitPanel.open({ pill: unitPillButton, field: amountGroup });
+	});
+
+	/** the list the panel last drew, so a patch that changes none of it repaints nothing there. */
+	let drawnChoice = '';
+
+	/**
+	 * the panel handed the list as the projection states it. each snapshot projects a new one, and
+	 * the panel rebuilds its collection for every new choice it is handed, so it is handed one only
+	 * where something it draws has moved.
+	 */
+	function updateUnitPanel(select: UnitSelectProps): void {
+		const drawn = [
+			select.value,
+			select.search,
+			select.stocks,
+			...select.options.map((option) => `${option.value}${option.refused === true ? '!' : ''}`)
+		].join('\n');
+		if (drawn === drawnChoice) return;
+		drawnChoice = drawn;
+		unitPanel.update({
+			value: select.value,
+			search: select.search,
+			options: select.options,
+			stocks: select.stocks,
+			onChange: (value) => now().unitSelect.onChange(value)
+		});
+	}
+
+	function updateUnitPill(pill: UnitPill): void {
+		setText(unitCode, pill.code);
+		toggleAttribute(unitPillButton, 'aria-label', pill.name);
+		const marks = pill.marks.map((mark) => mark.src).join('\n');
+		if (marks !== drawnMarks) {
+			unitMarks.replaceChildren(...pill.marks.map(unitDisc));
+			drawnMarks = marks;
+		}
+		setHidden(unitMarks, pill.marks.length === 0);
+	}
+
 	// no `radiogroup` on this one, and the difference is the free entry: this group holds a text
 	// box beside its radios, which is not what that role describes. the invalid state is carried by
 	// the box itself, where the role does support it, and the sentence reaches the group through
 	// `aria-describedby` — which is global and works on the role a fieldset already has.
-	const amountGroup = make(doc, 'fieldset', { class: 'group' }, [
-		make(doc, 'legend', { part: part('label') }, ['How much']),
+	const amountGroup = make(doc, 'fieldset', { class: 'group', 'aria-labelledby': 'amount-label' }, [
+		howMuchLine,
 		amountTiles,
 		entryLabel,
+		quantityTray,
+		quantityLabel,
+		estimateLines,
 		amountMessage
 	]);
 
@@ -2150,12 +2319,39 @@ export function createCard(
 
 	// ── the amount step ────────────────────────────────────────────────────────────────────────
 
+	// where the payment methods' circles stand inside the button, after its label. empty and hidden:
+	// nothing mounts in it, and the button keeps the registry's own inset.
+	const methodMarks = make(doc, 'span', {
+		class: 'method-marks',
+		'aria-hidden': 'true',
+		hidden: true
+	});
 	const continueButton = make(
 		doc,
 		'button',
 		{ part: part('action'), class: REGISTRY_CLASS.action, type: 'button' },
-		[make(doc, 'span', { class: 'action-label' }, ['Continue']), spinner(doc)]
+		[make(doc, 'span', { class: 'action-label' }, [CONTINUE]), methodMarks, spinner(doc)]
 	);
+	// the Continue's case (`continueCase` in ./unit.ts): toward the payment step it is headed by the
+	// eyebrow, named for where it goes and described by the methods there; a gift in kind skips that
+	// step and it is a plain Continue.
+	const nextEyebrow = make(doc, 'p', { class: 'eyebrow', hidden: true });
+	const nextMethods = make(doc, 'span', { class: 'vh', id: 'continue-methods' });
+	const nextAction = make(doc, 'div', { class: 'next' }, [
+		nextEyebrow,
+		continueButton,
+		nextMethods
+	]);
+
+	function updateContinue(next: ContinueCase): void {
+		const toPayment = next.case !== 'in-kind';
+		setText(nextEyebrow, toPayment ? next.eyebrow : '');
+		setHidden(nextEyebrow, !toPayment);
+		setText(nextMethods, toPayment ? next.description : '');
+		toggleAttribute(continueButton, 'aria-label', toPayment ? next.name : null);
+		toggleAttribute(continueButton, 'aria-describedby', toPayment ? 'continue-methods' : null);
+		toggleAttribute(continueButton, 'data-next', toPayment ? 'payment' : null);
+	}
 	continueButton.addEventListener('click', () => {
 		const pressedOn = now().state.step;
 		now().continueButton.onClick();
@@ -2196,11 +2392,13 @@ export function createCard(
 		if (first === 'note') return noteField;
 		const box = tributeBoxes.find((entry) => entry.key === first);
 		if (box !== undefined) return box.field;
-		return entryInput;
+		return now().unit.entry === null ? entryInput : quantityInput;
 	}
 
-	/** a coin's refusal of the amount, as the predicate under `How much` (./unit.ts). */
-	function coinRefusalWords(refusal: NonNullable<(State & { step: 'amount' })['refusal']>): string {
+	/** a coin gift's refusal, as the predicate under `How much` (./unit.ts). */
+	function coinRefusalWords(
+		refusal: NonNullable<(State & { step: 'amount' })['coinRefusal']>
+	): string {
 		return coinRefusalSentence(refusal, config);
 	}
 
@@ -2209,6 +2407,7 @@ export function createCard(
 	 * the amount, and otherwise the tile that does.
 	 */
 	function figureControl(): HTMLElement {
+		if (now().unit.entry !== null) return quantityInput;
 		if (otherTile === null || otherChosen) return entryInput;
 		return amountOptions.find((option) => option.input.checked)?.input ?? entryInput;
 	}
@@ -2221,7 +2420,7 @@ export function createCard(
 		...(choosesProgram ? [programField] : []),
 		note,
 		tribute,
-		continueButton
+		nextAction
 	]);
 
 	// ── the receipt ────────────────────────────────────────────────────────────────────────────
@@ -2618,7 +2817,6 @@ export function createCard(
 		oneTimeOffer,
 		oneTimeButton
 	]);
-	const coinPicker = createCoinPicker(doc);
 	const iraPanel = createIraPanel(doc);
 
 	const submitLabel = make(doc, 'span', { class: 'action-label' });
@@ -2656,10 +2854,8 @@ export function createCard(
 		update(now());
 		// straight to the payment box, with no set to walk: the typed fields were settled on the
 		// step before this one and cannot be unsettled from here, so the rail is the whole of what
-		// this press can be refused for — or, on crypto, the coin, whose list is ours to send it to,
-		// and on IRA (QCD) the custodian, whose box is.
-		if (after.step === 'give' && after.method === 'crypto') coinPicker.focus();
-		else if (after.step === 'give' && after.method === 'ira_qcd') iraPanel.focus();
+		// this press can be refused for — or, on IRA (QCD), the custodian, whose box is ours.
+		if (after.step === 'give' && after.method === 'ira_qcd') iraPanel.focus();
 		else payment.focus();
 	});
 
@@ -3004,6 +3200,15 @@ export function createCard(
 		// the amount is one decision in one place rather than a row of shortcuts with an escape
 		// hatch under it.
 		put(doc, amountTiles, [entryTile]);
+
+		// what is offered is the configuration's and the surface's, neither of which changes on a
+		// card, so the line holds a pill or the plain code for the card's life.
+		if (api.unit.pill.state === 'text') {
+			put(doc, howMuchLine, [make(doc, 'span', { class: 'unit-text' }, [api.unit.pill.code])]);
+		} else {
+			// the panel's host inside the card, which its tokens reach it from (./unit-panel.ts).
+			put(doc, howMuchLine, [unitPillButton, unitPanel.host]);
+		}
 	}
 
 	// ── the patch ──────────────────────────────────────────────────────────────────────────────
@@ -3231,14 +3436,19 @@ export function createCard(
 		const missingNote = missing.includes('note');
 		// a coin's refusal of the amount stands in the same place and weight as the bounds, and gives way
 		// to them where both stand: the bounds are the form's own and a figure outside them no coin takes.
+		// a coin the account no longer takes is said in the same place, and marks no amount.
 		const refusal = api.state.step === 'amount' ? api.state.refusal : undefined;
+		const coinRefusal = api.state.step === 'amount' ? api.state.coinRefusal : undefined;
 		const amountWords = missingAmount
 			? amountProblem
-			: refusal === undefined
+			: coinRefusal === undefined
 				? ''
-				: coinRefusalWords(refusal);
-		// either is a refused amount, and marks the tray, the tiles and the entry the same way.
+				: coinRefusalWords(coinRefusal);
+		// either is a refused amount, and marks the tray, the tiles and the entry the same way — or,
+		// on a gift in kind, the one box its quantity is typed in, which stands in their place.
 		const amountRefused = missingAmount || refusal !== undefined;
+		const inKind = api.unit.entry !== null;
+		const tilesRefused = amountRefused && !inKind;
 		setText(amountMessage, amountWords);
 		setHidden(amountMessage, amountWords === '');
 		setHidden(noteMessage, !missingNote);
@@ -3247,16 +3457,31 @@ export function createCard(
 		// the free entry is also described while a missing or out-of-range amount is marked, because
 		// it carries `aria-invalid` then, and a state with no description says wrong without saying how.
 		for (const control of amountOptions.map((option) => option.input)) {
-			toggleAttribute(control, 'aria-describedby', refusal === undefined ? null : 'amount-problem');
+			toggleAttribute(
+				control,
+				'aria-describedby',
+				refusal === undefined || inKind ? null : 'amount-problem'
+			);
 		}
-		toggleAttribute(entryInput, 'aria-describedby', amountRefused ? 'amount-problem' : null);
+		toggleAttribute(entryInput, 'aria-describedby', tilesRefused ? 'amount-problem' : null);
+		toggleAttribute(
+			quantityInput,
+			'aria-describedby',
+			inKind && amountWords !== '' ? 'amount-problem' : null
+		);
+		toggleAttribute(quantityInput, 'aria-invalid', inKind && amountRefused ? 'true' : null);
+		toggleAttribute(
+			quantityTray.firstElementChild as HTMLElement,
+			'part',
+			partWhen('amount-input', { invalid: inKind && amountRefused })
+		);
 		// beside the part token rather than instead of it: the token is what a host's stylesheet
 		// paints, and this is what a screen reader is told, so a donor who cannot see the edge is
 		// not left with the sentence alone. it is written only where the role supports it — the free
 		// entry's text box — because an `aria-invalid` on a role that does not take it is an
 		// attribute nobody is read, and the amount group's own role is the one a fieldset already
 		// has.
-		toggleAttribute(entryInput, 'aria-invalid', amountRefused ? 'true' : null);
+		toggleAttribute(entryInput, 'aria-invalid', tilesRefused ? 'true' : null);
 		// the note takes all three, the way a give-step field does: it is a single control with a
 		// role that supports the state and a sentence of its own to be described by.
 		toggleAttribute(noteField, 'part', partWhen('field', { invalid: missingNote }));
@@ -3266,6 +3491,18 @@ export function createCard(
 		// never invalid: a cadence is chosen from the first paint and cannot be taken back, so this
 		// group has no refused state to draw.
 		updateOptions(frequencyOptions, api.frequencyGroup, 'frequency-option', false);
+		const onceOnly = api.unit.cadenceNote;
+		setText(cadenceNote, onceOnly ?? '');
+		setHidden(cadenceNote, onceOnly === null);
+		frequencyOptions.forEach(({ input }, index) => {
+			const unavailable = api.frequencyGroup.options[index]?.unavailable === true;
+			toggleAttribute(input, 'aria-disabled', unavailable ? 'true' : null);
+			toggleAttribute(input, 'aria-describedby', unavailable ? 'cadence-note' : null);
+		});
+		updateUnitPill(api.unit.pill);
+		updateUnitPanel(api.unitSelect as UnitSelectProps);
+		updateUnitEntry(api);
+		updateContinue(api.unit.next);
 		// a figure the flow holds that no preset equals is the other way already taken — a resume,
 		// or a donor coming back to this step — so the box holding it is not closed over it.
 		const typed = parseMinor(entryInput.value, locale, currency) !== null;
@@ -3276,7 +3513,7 @@ export function createCard(
 			amountOptions,
 			api.amountGroup,
 			'amount-option',
-			amountRefused,
+			tilesRefused,
 			(option) => option.checked && !otherHolds
 		);
 		if (otherTile !== null) {
@@ -3284,7 +3521,7 @@ export function createCard(
 			toggleAttribute(
 				otherTile.label,
 				'part',
-				partWhen('amount-option', { selected: otherHolds, invalid: amountRefused })
+				partWhen('amount-option', { selected: otherHolds, invalid: tilesRefused })
 			);
 		}
 		// after the options are marked, because the chip is placed off the box the chosen one was
@@ -3300,7 +3537,7 @@ export function createCard(
 			'part',
 			partWhen('amount-input', {
 				selected: typed && (otherTile === null || otherHolds),
-				invalid: amountRefused
+				invalid: tilesRefused
 			})
 		);
 
@@ -3345,7 +3582,6 @@ export function createCard(
 		// control is holding at the time it is read.
 		const missingFields = updateDetails(api);
 		const refusedPayment = updatePayment(api);
-		const coinRefused = updateCoins(api);
 		const offerArrived = updateOneTimeOffer(api);
 		// what a numbered step was refused for, said out loud, and one sentence however many steps
 		// there are: the three are mutually exclusive, because a press is refused on the step it was
@@ -3433,8 +3669,8 @@ export function createCard(
 		const heading = headings[step].textContent ?? '';
 		const restated = { total: totalWords, fields: missingFields, ask: askRefusal };
 		// a press asking for a repeat re-says only what it chose. a sentence kept from before it is
-		// spent here: said again beside the refusal the press put somewhere else — the coin list's —
-		// it is old news read out as the press's answer.
+		// spent here: said again beside the refusal the press put somewhere else — the custodian
+		// box's — it is old news read out as the press's answer.
 		if (standing === '' && news !== null) held = { ...news, on: heading };
 		else if (spoken !== '' || repeated) held = null;
 		else if (retitled) held = { words: `${screen.heading}.`, on: heading };
@@ -3453,20 +3689,22 @@ export function createCard(
 
 		// last, and after the step it lands in has been un-hidden: a heading inside a `hidden`
 		// subtree is not focusable, and a caret that failed to land is the defect this exists for.
-		// three arrivals put the caret somewhere other than the heading, each on the control that fixes
-		// what the donor arrived about: a refusal of the amount on the box holding the figure, and a
-		// refusal of the coin — or a way back from the address screen — on the coin list.
+		// four arrivals put the caret somewhere other than the heading, each on the control that fixes
+		// what the donor arrived about: a refusal of the amount on the box holding the figure, a coin
+		// the account no longer takes — or a way back from the address screen — on the unit pill, and
+		// a custodian the endpoint refused on its box.
 		const refusedAmount = api.state.step === 'amount' && api.state.refusal !== undefined;
-		const backToCoins =
-			api.state.step === 'give' &&
-			api.state.method === 'crypto' &&
-			((advanced && shownBefore === 'takeover') || (coinRefused && stepBefore === 'working'));
+		const refusedCoin =
+			api.state.step === 'amount' && api.state.coinRefusal?.code === 'coin_not_accepted';
+		// the pill takes the caret once per return, and `returned` stands until the donor picks or
+		// leaves the step, so a later patch does not take it back from wherever they moved it.
+		const backToPill = advanced && (api.unit.returned || refusedCoin);
 		// the custodian a save named, refused by the endpoint: the donor is back on this step from the
-		// wait, and the box that fixes it is where the caret goes, as the coin list is for a coin.
+		// wait, and the box that fixes it is where the caret goes.
 		const backToCustodian =
 			api.state.step === 'give' && api.state.custodianRefused && stepBefore === 'working';
 		stepBefore = api.state.step;
-		if (backToCoins) coinPicker.focus();
+		if (backToPill) unitPillButton.focus();
 		else if (backToCustodian) iraPanel.focus();
 		else if (advanced && refusedAmount) figureControl().focus();
 		else if (advanced || replaced) headings[step].focus();
@@ -3632,14 +3870,12 @@ export function createCard(
 	function updatePayment(api: DomApi): boolean {
 		const { state } = api;
 		if (state.step !== 'give') pressed = false;
-		// a crypto press is refused for its coin, and the coin list says so under itself instead
-		// (`updateCoins` below), as an IRA (QCD) press is for its custodian (`custodianProblem`): the
-		// rail is chosen, so this box has nothing to say about it.
+		// an IRA (QCD) press is refused for its custodian, and that box says so under itself instead
+		// (`custodianProblem` below): the rail is chosen, so this box has nothing to say about it.
 		const refused =
 			pressed &&
 			state.step === 'give' &&
 			!state.payerComplete &&
-			state.method !== 'crypto' &&
 			state.method !== 'ira_qcd' &&
 			!state.oneTimeInstead;
 		carryDecline(state);
@@ -3683,37 +3919,6 @@ export function createCard(
 		const arrived = offered && !offerDrawn;
 		offerDrawn = offered;
 		return arrived ? words : '';
-	}
-
-	/**
-	 * the coin list, patched from the projection, and the one sentence it may say under itself.
-	 *
-	 * a coin the account refused is said whenever it is the one picked — nothing on this step was
-	 * pressed to earn it, the quote that refused it was — and one no coin answers is said once every
-	 * coin in the list is refused, because the way on is another row rather than another coin. a coin
-	 * never picked is said only once a press asked for one, on the terms `updatePayment` above keeps.
-	 *
-	 * returns whether the picked coin stands refused, which is where the caret goes when a refusal
-	 * lands the donor back on this step.
-	 */
-	function updateCoins(api: DomApi): boolean {
-		const { state } = api;
-		const choice = api.coinSelect;
-		const options = choice.options as readonly CoinOption[];
-		const picked = options.find((option) => option.value === choice.value);
-		const refused = picked?.refused === true;
-		const words = refused
-			? options.every((option) => option.refused)
-				? 'Choose another payment method'
-				: 'Choose another coin'
-			: pressed && state.step === 'give' && state.method === 'crypto' && !state.payerComplete
-				? 'Choose a coin'
-				: '';
-		coinPicker.update(
-			{ value: choice.value, options, onChange: (value) => now().coinSelect.onChange(value) },
-			words
-		);
-		return refused;
 	}
 
 	/**
@@ -3987,16 +4192,8 @@ export function createCard(
 		// declined reading keeps a sentence there, because where the fee comes from holds with no
 		// figure to name.
 		const declined = api.feeToggle.declinedFee ?? null;
-		// a crypto gift is valued on arrival, so neither figure a card can state is what the org
-		// receives: covering names the addition as approximate, and declining names no net figure.
-		const onCrypto = state.step === 'give' && state.method === 'crypto';
-		const consequence = onCrypto
-			? api.feeToggle.pressed === true
-				? feeShown
-					? `You add about ${money(feeMinor)} toward the processing fee.`
-					: ''
-				: `${config.orgLegalName} pays the processing fee out of your gift.`
-			: api.feeToggle.pressed === true
+		const consequence =
+			api.feeToggle.pressed === true
 				? feeShown
 					? `You add ${money(feeMinor)} so ${config.orgLegalName} receives the full ${money(fv.amountMinor)}.`
 					: ''
@@ -4045,7 +4242,6 @@ export function createCard(
 		challenge,
 		heldChallenge,
 		toldChallenge,
-		coins: coinPicker.host,
 		ira: iraPanel.host,
 		focus() {
 			headings[shown].focus();
@@ -4070,13 +4266,15 @@ export function createCard(
 		reattached() {
 			programSelect.reattached();
 			tributeKindSelect.reattached();
-			coinPicker.reattached();
+			// a move took an open panel out of the top layer, and the donor did not ask for it on the
+			// page the card now stands in.
+			shutUnitPanel();
 		},
 		stop() {
 			depositBlock.stop();
 			programSelect.stop();
 			tributeKindSelect.stop();
-			coinPicker.stop();
+			unitPanel.stop();
 			view?.removeEventListener('resize', rewrapped);
 			if (repositioning !== 0) view?.cancelAnimationFrame(repositioning);
 			repositioning = 0;

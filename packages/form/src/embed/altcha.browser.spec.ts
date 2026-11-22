@@ -131,7 +131,6 @@ async function mount(fetch: typeof globalThis.fetch) {
 					input: { config, ports },
 					cadence: () => {},
 					offerFund: () => {},
-					offerCrypto: () => {},
 					offerVenmo: () => {},
 					rows: () => {},
 					repeatingUnavailable: () => {},
