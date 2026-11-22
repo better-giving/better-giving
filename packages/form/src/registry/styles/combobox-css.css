@@ -1,0 +1,159 @@
+/* the registry's combobox as plain css, no tailwind: a search box over a list
+   of named groups of two-line rows, always open. reads only the variables the
+   `variables` item declares, plus .ds-option, .ds-option-label and
+   .ds-option-meta from select-css for the rows (their picked, highlighted,
+   disabled and forced-colors looks) and .ds-sr-only from field-css.
+   combobox-css.test.tsx renders the React `Combobox` beside it and asserts the
+   same computed look in light and dark, for the default and example themes.
+
+   the spacing step, the field height and the type ladder live only in
+   tailwind's theme; they are declared here under ds- names with the same
+   values, and the test holds them equal. */
+
+/* the root: the box and the list. with .ds-combobox-popover it draws the
+   floating fill, a hairline edge, the shadow and the card corner, inset 4px;
+   without, no surface of its own, for a host that has one. where it sits, and
+   its stacking, are the caller's */
+.ds-combobox {
+  --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
+}
+.ds-combobox-popover {
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-card);
+  background-color: var(--popover);
+  padding: calc(var(--ds-spacing) * 1);
+  box-shadow: var(--shadow-floating);
+}
+
+/* the search box: the field's edge and fill, held at the field height, a 12px
+   inset, and the 2px ring it always draws while open */
+.ds-combobox-box {
+  --ds-field-size: calc(var(--ds-spacing) * 12 + 2px);
+  box-sizing: border-box;
+  display: flex;
+  align-items: safe center;
+  gap: calc(var(--ds-spacing) * 2);
+  block-size: var(--ds-field-size);
+  padding-inline: calc(var(--ds-spacing) * 3);
+  border: 1px solid var(--input);
+  border-radius: var(--radius);
+  background-color: var(--surface);
+  outline: 2px solid var(--ring);
+}
+/* lucide's search at 20px */
+.ds-combobox-box > svg {
+  inline-size: calc(var(--ds-spacing) * 5);
+  block-size: calc(var(--ds-spacing) * 5);
+  flex-shrink: 0;
+  color: var(--gray-11);
+}
+.ds-combobox-input {
+  --ds-text-base: calc(1 * var(--ds-rem, 1rem));
+  --ds-text-base-lh: calc(1.5 / 1);
+  min-inline-size: 0;
+  flex: 1;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  outline: none;
+  background-color: transparent;
+  color: var(--gray-12);
+  font-family: inherit;
+  font-size: var(--ds-text-base);
+  line-height: var(--ds-text-base-lh);
+  font-weight: 400;
+}
+.ds-combobox-input::placeholder {
+  color: var(--gray-11);
+}
+
+/* the list: 4px under the box, capped at min(30rem, 70vh), scrolling inside
+   and never chaining to the page */
+.ds-combobox-list {
+  margin-block-start: calc(var(--ds-spacing) * 1);
+  max-block-size: min(calc(30 * var(--ds-rem, 1rem)), 70vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  outline: none;
+}
+
+/* a group named by its heading; its message, when it has one, follows the
+   rows */
+.ds-combobox-heading {
+  --ds-text-xs: calc(0.75 * var(--ds-rem, 1rem));
+  --ds-text-xs-lh: calc(1 / 0.75);
+  --ds-font-weight-semibold: 600;
+  padding: calc(var(--ds-spacing) * 2) calc(var(--ds-spacing) * 3)
+    calc(var(--ds-spacing) * 1);
+  color: var(--gray-11);
+  font-size: var(--ds-text-xs);
+  line-height: var(--ds-text-xs-lh);
+  font-weight: var(--ds-font-weight-semibold);
+}
+.ds-combobox-message {
+  --ds-text-sm: calc(0.875 * var(--ds-rem, 1rem));
+  --ds-text-sm-lh: calc(1.25 / 0.875);
+  margin: 0;
+  padding: calc(var(--ds-spacing) * 1) calc(var(--ds-spacing) * 3)
+    calc(var(--ds-spacing) * 3);
+  color: var(--gray-11);
+  font-size: var(--ds-text-sm);
+  line-height: var(--ds-text-sm-lh);
+}
+
+/* a row is .ds-option, 48px at least: the 32px mark, the text and the tick */
+.ds-combobox-option {
+  min-block-size: calc(var(--ds-spacing) * 12);
+  justify-content: normal;
+}
+.ds-combobox-mark {
+  display: grid;
+  place-items: safe center;
+  inline-size: calc(var(--ds-spacing) * 8);
+  block-size: calc(var(--ds-spacing) * 8);
+  flex-shrink: 0;
+}
+/* a disabled row's mark loses its color with a filter, never opacity */
+.ds-option[aria-disabled="true"] .ds-combobox-mark {
+  filter: grayscale(100%);
+}
+.ds-combobox-text {
+  min-inline-size: 0;
+  flex: 1;
+}
+/* line one: the label, and the badge at the end of the same line however
+   far the meta wraps */
+.ds-combobox-line {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: calc(var(--ds-spacing) * 2);
+}
+.ds-combobox-badge {
+  --ds-text-xs: calc(0.75 * var(--ds-rem, 1rem));
+  --ds-text-xs-lh: calc(1 / 0.75);
+  --ds-font-weight-semibold: 600;
+  display: inline-flex;
+  align-items: safe center;
+  flex-shrink: 0;
+  padding: calc(var(--ds-spacing) * 0.5) calc(var(--ds-spacing) * 2.5);
+  border-radius: calc(infinity * 1px);
+  background-color: var(--gray-3);
+  color: var(--gray-12);
+  font-size: var(--ds-text-xs);
+  line-height: var(--ds-text-xs-lh);
+  font-weight: var(--ds-font-weight-semibold);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+/* the tick's 16px is always reserved; only the picked row draws the check */
+.ds-combobox-tick {
+  inline-size: calc(var(--ds-spacing) * 4);
+  block-size: calc(var(--ds-spacing) * 4);
+  flex-shrink: 0;
+}
+.ds-combobox-tick > svg {
+  inline-size: calc(var(--ds-spacing) * 4);
+  block-size: calc(var(--ds-spacing) * 4);
+  color: var(--gray-12);
+}
