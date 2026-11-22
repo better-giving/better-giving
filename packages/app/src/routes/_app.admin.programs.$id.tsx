@@ -212,7 +212,9 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 			// one it shares, and the page's preview the card frames.
 			publicPage: {
 				url: programPageUrl(new URL(request.url).origin, record.id),
-				previewSrc: href('/programs/:id/preview', { id: record.id })
+				// the row's version rides the address, so a save changes the frame's `src` and the frame
+				// draws what was saved rather than the page it loaded before.
+				previewSrc: `${href('/programs/:id/preview', { id: record.id })}?v=${record.updatedAt.getTime()}`
 			},
 			// the boxes, or nothing for a cause nobody may edit: an archived one draws a record, so a
 			// seed for it would be values for a form nothing renders.
