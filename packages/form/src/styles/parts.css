@@ -2544,6 +2544,14 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 	border-radius: var(--_r);
 }
 
+/*
+ * and the lists sit on the neutral's second ground, as the panel under them does, which sets them
+ * off the card's own face. the thank-you hides the details, so its summary list keeps the first.
+ */
+.takeover:has(.pledge-details:not([hidden])) .pledge-list {
+	background: var(--_n2);
+}
+
 .benefits-title {
 	margin: 0 0 var(--_sp1);
 	color: var(--_n12);

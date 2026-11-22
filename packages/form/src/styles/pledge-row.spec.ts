@@ -122,6 +122,16 @@ describe('a pledge’s pending screen', () => {
 		}).toEqual({ lists: 'var(--_r)', benefits: 'var(--_r)' });
 	});
 
+	// the design draws the pending screen's two lists on the neutral's second ground, as its benefits
+	// panel is, with the card's own face the first; the thank-you's summary list keeps the base rule's.
+	it('draws its lists on the neutral’s second ground and leaves the base list on the first', () => {
+		expect({
+			pending: stated(`${PENDING} .pledge-list`, 'background'),
+			base: stated('.pledge-list', 'background'),
+			benefits: stated('.benefits', 'background')
+		}).toEqual({ pending: 'var(--_n2)', base: 'var(--_n1)', benefits: 'var(--_n2)' });
+	});
+
 	// the panel's words at the registry's leadings, spaced in its spacing steps off `--ds-rem` rather
 	// than in `em` off the words' own smaller sizes: one step under the title, two over the fine print.
 	it('spaces its benefits panel in the registry’s steps and leadings', () => {
