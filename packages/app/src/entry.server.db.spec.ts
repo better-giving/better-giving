@@ -683,6 +683,17 @@ describe('a program’s page and the program editor’s preview of it', () => {
 		expect(response.headers.get('x-frame-options')).toBe('SAMEORIGIN');
 	});
 
+	it.each([
+		['the page’s own address', `/programs/${PROGRAM_ID}`, 200],
+		['the page’s closed screen', '/programs/019fb600-0000-7000-8000-0000000000f2', 404],
+		['the preview’s address', `/programs/${PROGRAM_ID}/preview`, 200],
+		['the preview’s closed screen', '/programs/019fb600-0000-7000-8000-0000000000f2/preview', 404]
+	])('is kept by no cache at %s', async (_, path, status) => {
+		const response = await send(path, undefined, STRIPE_KEYS);
+		expect(response.status).toBe(status);
+		expect(response.headers.get('cache-control')).toBe('no-store');
+	});
+
 	it('tells crawlers to leave the preview out', async () => {
 		const html = await (
 			await send(`/programs/${PROGRAM_ID}/preview`, undefined, STRIPE_KEYS)

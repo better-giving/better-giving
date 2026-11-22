@@ -1609,7 +1609,10 @@ describe('mintQuote() — the cause the gift is credited to', () => {
 			return refusalOf(await mintOn(formId, over));
 		}
 
-		/** a second live form, not the Donation page's, that names the same site. */
+		/**
+		 * a second live form, not the Donation page's, that names the same site: a live campaign's
+		 * own, so a page owns it as a page owns FORM_ID.
+		 */
 		async function seedOtherForm() {
 			await run(
 				stmt(
@@ -1619,6 +1622,13 @@ describe('mintQuote() — the cause the gift is credited to', () => {
 					OTHER_FORM_ID,
 					revenueAccountId,
 					JSON.stringify([ALLOWED])
+				)
+			);
+			await run(
+				stmt(
+					`insert into page (id, type, name, slug, state, form_id, draft, published, created_at, updated_at)
+				 values ('pge_springappeal', 'campaign', 'Spring appeal', 'spring-appeal', 'live', ?, '{}', '{}', 0, 0)`,
+					OTHER_FORM_ID
 				)
 			);
 		}

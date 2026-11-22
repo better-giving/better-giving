@@ -379,6 +379,14 @@ describe('POST /api/v1/forms/:id/donations — the status each refusal carries',
 					JSON.stringify([ALLOWED])
 				)
 			);
+			// the other form is a live campaign's own, so a page owns it as a page owns FORM_ID.
+			await run(
+				stmt(
+					`insert into page (id, type, name, slug, state, form_id, draft, published, created_at, updated_at)
+				 values ('pge_springappeal', 'campaign', 'Spring appeal', 'spring-appeal', 'live', ?, '{}', '{}', 0, 0)`,
+					OTHER_FORM_ID
+				)
+			);
 		});
 
 		/** the refusal as a caller sees it, headers included. */

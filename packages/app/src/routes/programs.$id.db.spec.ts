@@ -269,6 +269,34 @@ describe('where the Donation page’s served config refuses', () => {
 			expect(markup(answered.data)).toContain(NO_FORM);
 		}
 	});
+
+	/**
+	 * `readPublishedConfig` serves a row with no rail rather than refusing it, so the notice here is
+	 * `renderableConfig`'s ($lib/server/forms/published-config.ts). driven by warming the served rail
+	 * list as ./api.v1.forms.$id.config.db.spec.ts does.
+	 */
+	it('draws the plain notice over a program’s page when the account is approved for no rail', async () => {
+		const id = await activeProgram();
+		const rails = new Request(`${OWN}/__offered-rails`);
+		await edgeCache().put(
+			rails,
+			new Response('[]', {
+				headers: { 'content-type': 'application/json', 'cache-control': 'max-age=300' }
+			})
+		);
+
+		try {
+			const answered = await visit(id);
+
+			expect(answered.status).toBe(404);
+			expect(answered.headers.get('cache-control')).toBe('no-store');
+			expect(answered.data).toEqual({ kind: 'refused' });
+			expect(markup(answered.data)).toContain(NO_FORM);
+		} finally {
+			// the entry outlives this case, and every case after it would be served no rail.
+			await edgeCache().delete(rails);
+		}
+	});
 });
 
 describe('the limit on GET /programs/{id}', () => {
