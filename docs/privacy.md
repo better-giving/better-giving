@@ -14,6 +14,8 @@ Every table below is in the deployment's own database (`packages/app/src/lib/ser
 
 **Gifts** (`donation`). The amount, currency, fee and date of each gift, and the donor it belongs to. Also what the donor typed: a note, and if they chose one, a dedication ("in honor of" or "in memory of") with the person's name. A dedication can name someone to tell, with that person's name and email address. The page the gift was made on is kept as the browser's `Origin` value. A note the donor made public is stored with the name printed over it.
 
+**Stock and IRA pledges** (`pledge`). A gift of shares or from an IRA that a donor has said they will send: the ticker and number of shares, or the amount and the custodian they named, and a reference to quote. Also the same note, dedication and person to tell as a gift holds, which staff marking the pledge received copy onto the gift. The pledge row stays after that, linked to its gift.
+
 **Employer matching** (`gift_match`). The employer name a donor gives for a matching-gift claim, and a private link token for the donor's page about that gift.
 
 **Supporter fundraisers** (`supporter`, `supporter_page`, `supporter_link`, `supporter_session`). A member of the public who starts a fundraiser gives a name and an email address. Their page holds a title, a story, a goal and an optional photo, and these are public once the page is live. Sign-in links and sessions are stored as hashes, and expired ones are swept out.
@@ -47,17 +49,27 @@ Notes show on a public page only if the donor ticked the box for that. Staff can
 
 There is no screen for either. You do them in the database file.
 
-**Access.** Look the donor up by email address in `contact`, then read their rows in `donation`, `gift_match`, `supporter` and `supporter_page`. Give the donor a copy.
+**Access.** Look the donor up by email address in `contact`, then read their rows in `donation`, `pledge`, `gift_match`, `supporter` and `supporter_page`. Give the donor a copy.
 
 **Erasure.** The app never hard-deletes a donor who has gifts. Gift rows point at the donor, and the database refuses a delete that leaves them pointing at nothing. The schema has an `archived_at` column on `contact` for this, but no screen or job in the app sets it today. You set it yourself. To erase a donor by hand:
 
 1. Take a backup first.
 2. On the donor's `contact` row, clear the first name, last name, legal name, email address and phone number. Reset `attributes` to `{}`, set the display name to a placeholder such as `Erased donor`, and set `archived_at`.
 3. On each of their `donation` rows, clear the note, the dedication kind and name, and the notified name and email address. Set `note_public` and `note_anonymous` to 0, and clear `note_hidden_at` and `note_shown_name`. The database refuses a shown name on a note that is not public.
-4. Clear the employer on their `gift_match` rows.
-5. If they ran a fundraiser, hide the page in `/admin`, delete their `supporter_link` and `supporter_session` rows, and replace the `supporter` name and email address with placeholders. Both are required, and the address must be lowercase and unique. A page that has gifts is never deleted, so the page stays.
-6. Stop any repeating gift at the processor, and ask the processor and your mail provider to erase what they hold.
-7. Remember the older backups. They still hold the erased data until they are replaced.
+4. Clear the same on each of their `pledge` rows, received or not, so a pledge marked received later copies none of it onto a gift. Run this one statement, with the donor's `contact` id in place of `CONTACT_ID`. It sets every column at once because the database checks the note and dedication columns in pairs, and refuses an update that clears one of a pair and leaves the other. The ticker, shares, custodian and reference stay: they say what the gift was.
+
+   ```sql
+   UPDATE pledge
+   SET note = NULL, note_public = 0, note_anonymous = 0, note_shown_name = NULL,
+       tribute_kind = NULL, tribute_honoree = NULL,
+       tribute_notify_name = NULL, tribute_notify_email = NULL
+   WHERE contact_id = 'CONTACT_ID';
+   ```
+
+5. Clear the employer on their `gift_match` rows.
+6. If they ran a fundraiser, hide the page in `/admin`, delete their `supporter_link` and `supporter_session` rows, and replace the `supporter` name and email address with placeholders. Both are required, and the address must be lowercase and unique. A page that has gifts is never deleted, so the page stays.
+7. Stop any repeating gift at the processor, and ask the processor and your mail provider to erase what they hold.
+8. Remember the older backups. They still hold the erased data until they are replaced.
 
 **What must stay.** The amount, currency and date of each gift, and its receipt record. Tax and accounting records need them, and the ledger is never edited. Keep these rows and let them point at the archived donor.
 
