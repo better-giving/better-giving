@@ -84,6 +84,42 @@ describe('an active program', () => {
 			frame?.getAttribute('tabindex')
 		]).toEqual([PREVIEW, 'Preview of the Winter coats page', '-1']);
 	});
+
+	// a frame whose `src` changes navigates, and that navigation is a Back-button entry on the
+	// editor's tab; a new frame is not.
+	describe('drawn again after a save', () => {
+		function redrawn(previewSrc: string): [Element | null, Element | null] {
+			const root = document.createElement('div');
+			document.body.appendChild(root);
+			const mounted = createRoot(root);
+			const draw = (src: string) =>
+				act(() =>
+					mounted.render(
+						<PublicPageCard name="Winter coats" url={URL} previewSrc={src} archived={false} />
+					)
+				);
+			onTestFinished(() => {
+				act(() => mounted.unmount());
+				root.remove();
+			});
+			draw(PREVIEW);
+			const before = root.querySelector('iframe');
+			draw(previewSrc);
+			return [before, root.querySelector('iframe')];
+		}
+
+		it('draws a new frame when the preview’s address changed', () => {
+			const [before, after] = redrawn('/programs/0f8dK2mQ?preview=2');
+			expect(after?.getAttribute('src')).toBe('/programs/0f8dK2mQ?preview=2');
+			expect(after).not.toBe(before);
+		});
+
+		it('keeps the same frame when the address did not change', () => {
+			const [before, after] = redrawn(PREVIEW);
+			expect(after).not.toBeNull();
+			expect(after).toBe(before);
+		});
+	});
 });
 
 describe('copying the link', () => {

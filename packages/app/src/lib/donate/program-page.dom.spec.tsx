@@ -376,19 +376,35 @@ describe('the donation card when the gift endpoint answers the quote as an unkno
 		fix: 'Check the `form` attribute on the donation element against the snippet shown under Forms in /admin.'
 	};
 	const STOPPED = 'This program stopped taking gifts. You can still give on the donate page.';
+	const CONFIG_READ = `/api/v1/forms/${encodeURIComponent(CONFIG.formId)}/config`;
 
-	/** the quote answered as the endpoint answers a program archived since the page was drawn. */
-	function answeredUnknown(): void {
-		vi.stubGlobal(
-			'fetch',
-			vi.fn(
-				async () =>
-					new Response(JSON.stringify(UNKNOWN), {
-						status: 404,
+	/**
+	 * the quote refused as the endpoint refuses both a program archived since the page was drawn and a
+	 * form that is gone, with the form's config read answering `config`: OK where only the program
+	 * closed, the same refusal where the form is gone, or never reached.
+	 */
+	function answeredUnknown(config: 'reads' | 'gone' | 'unreachable' = 'reads') {
+		const unknown = () =>
+			new Response(JSON.stringify(UNKNOWN), {
+				status: 404,
+				headers: { 'content-type': 'application/json' }
+			});
+		const fetch = vi.fn(async (url: string) => {
+			if (url !== CONFIG_READ) return unknown();
+			if (config === 'unreachable') throw new TypeError('Failed to fetch');
+			return config === 'gone'
+				? unknown()
+				: new Response(JSON.stringify({ formId: CONFIG.formId }), {
+						status: 200,
 						headers: { 'content-type': 'application/json' }
-					})
-			)
-		);
+					});
+		});
+		vi.stubGlobal('fetch', fetch);
+		return fetch;
+	}
+
+	function configReads(fetch: ReturnType<typeof answeredUnknown>): number {
+		return fetch.mock.calls.filter(([url]) => url === CONFIG_READ).length;
 	}
 
 	async function refused(root: HTMLElement): Promise<void> {
@@ -398,12 +414,13 @@ describe('the donation card when the gift endpoint answers the quote as an unkno
 		});
 	}
 
-	it('says the program stopped taking gifts and links the donate page, on a program page', async () => {
-		answeredUnknown();
+	it('says the program stopped taking gifts and links the donate page, on a program page whose form still reads', async () => {
+		const fetch = answeredUnknown('reads');
 		const root = await mount(
 			<DonateCard config={CONFIG} seams={payment.seams} pageProgramId="prog-coats" />
 		);
 		await refused(root);
+		expect(configReads(fetch)).toBe(1);
 		const takeover = one(root, 'section.takeover');
 		expect(takeover.hidden).toBe(false);
 		expect(takeover.textContent).toContain(STOPPED);
@@ -426,10 +443,36 @@ describe('the donation card when the gift endpoint answers the quote as an unkno
 		expect(visible).toEqual([]);
 	});
 
-	it('keeps the API’s own sentence on a card with no program page', async () => {
-		answeredUnknown();
+	it('keeps the API’s own sentence on a program page whose form’s config is gone too', async () => {
+		const fetch = answeredUnknown('gone');
+		const root = await mount(
+			<DonateCard config={CONFIG} seams={payment.seams} pageProgramId="prog-coats" />
+		);
+		await refused(root);
+		expect(configReads(fetch)).toBe(1);
+		const takeover = one(root, 'section.takeover');
+		expect(takeover.hidden).toBe(false);
+		expect(takeover.textContent).not.toContain(STOPPED);
+		expect(takeover.textContent).toContain(UNKNOWN.message);
+	});
+
+	it('keeps the API’s own sentence on a program page whose config re-read never arrives', async () => {
+		const fetch = answeredUnknown('unreachable');
+		const root = await mount(
+			<DonateCard config={CONFIG} seams={payment.seams} pageProgramId="prog-coats" />
+		);
+		await refused(root);
+		expect(configReads(fetch)).toBe(1);
+		const takeover = one(root, 'section.takeover');
+		expect(takeover.textContent).not.toContain(STOPPED);
+		expect(takeover.textContent).toContain(UNKNOWN.message);
+	});
+
+	it('keeps the API’s own sentence, and reads no config, on a card with no program page', async () => {
+		const fetch = answeredUnknown('reads');
 		const root = await mount(<DonateCard config={CONFIG} seams={payment.seams} />);
 		await refused(root);
+		expect(configReads(fetch)).toBe(0);
 		const takeover = one(root, 'section.takeover');
 		expect(takeover.hidden).toBe(false);
 		expect(takeover.textContent).not.toContain(STOPPED);

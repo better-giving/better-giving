@@ -63,8 +63,10 @@ export function PublicPageCard({ name, url, previewSrc, archived }: PublicPageCa
 				<h3>Preview</h3>
 				<p className="adm-hint">How the page looks on a phone. It shows what is saved.</p>
 				{/* the frame itself is no tab stop; the page inside takes its own stops out, through its
-				    `preview` prop. */}
+				    `preview` prop. keyed by its address so a save draws a new frame: a frame whose `src`
+				    changes navigates, and adds an entry to the editor tab's Back button. */}
 				<iframe
+					key={previewSrc}
 					className="adm-preview"
 					src={previewSrc}
 					title={`Preview of the ${name} page`}

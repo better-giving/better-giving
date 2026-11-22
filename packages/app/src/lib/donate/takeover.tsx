@@ -421,7 +421,8 @@ export function takeoverFor(
 
 /**
  * the failure screen on a program page whose program closed after the page was drawn: the quote was
- * refused as an unknown form (`pageProgramId` in packages/app/src/lib/server/donations/quote.ts).
+ * refused as an unknown form (`pageProgramId` in packages/app/src/lib/server/donations/quote.ts)
+ * while the form's own config still reads (`stopped` in ./machine.ts).
  *
  * no Try again. the program stays closed, so a retry only lands back here; the way on is the donate
  * page, as on `ProgramClosedPage` in ./program-page.tsx.

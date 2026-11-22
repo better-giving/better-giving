@@ -115,10 +115,12 @@ export type Checkout = {
 	 */
 	rows(listener: (count: number) => void): void;
 	/**
-	 * tells `listener` when a program page's quote is refused as an unknown form, which is how the
-	 * endpoint answers a program no longer active (`pageProgramId` in
-	 * packages/app/src/lib/server/donations/quote.ts). told before the flow hears the refusal; never
-	 * told on a card with no `pageProgramId`. one listener; a second call replaces the first.
+	 * tells `listener` when a program page's quote is refused as an unknown form and the form itself
+	 * still reads, which is how a program no longer active is told apart from a form that is gone: the
+	 * endpoint answers both with the same refusal (`pageProgramId` in
+	 * packages/app/src/lib/server/donations/quote.ts). told after the flow has heard the refusal,
+	 * once the form's config read answers OK; never told on a card with no `pageProgramId`, nor after
+	 * `stop`. one listener; a second call replaces the first.
 	 */
 	stopped(listener: () => void): void;
 	/**
@@ -148,6 +150,23 @@ function heardStopping(quote: CheckoutPorts['quote'], heard: () => void): Checko
 			throw error;
 		}
 	};
+}
+
+/**
+ * whether the form's config read answers OK: the read the embed boots on (`configUrl` in
+ * packages/form/src/embed/runtime.ts, which the package does not export), same-origin as in
+ * ./ports.ts. a refusal, an unreachable endpoint and an abort are all `false`.
+ */
+async function formStillReads(formId: string, signal: AbortSignal): Promise<boolean> {
+	try {
+		const response = await fetch(`/api/v1/forms/${encodeURIComponent(formId)}/config`, {
+			signal,
+			headers: { accept: 'application/json' }
+		});
+		return response.ok;
+	} catch {
+		return false;
+	}
 }
 
 /**
@@ -212,13 +231,19 @@ export function startCheckout(
 	);
 
 	const ports = deploymentPorts(surface);
+	const rereads = new AbortController();
+	const reread = (): void => {
+		void formStillReads(config.formId, rereads.signal).then((reads) => {
+			if (reads && !rereads.signal.aborted) stopped();
+		});
+	};
 	const actor = createActor(checkoutMachine, {
 		input: {
 			config,
 			ports:
 				pageProgramId === undefined
 					? ports
-					: { ...ports, quote: heardStopping(ports.quote, () => stopped()) },
+					: { ...ports, quote: heardStopping(ports.quote, reread) },
 			...(resumeToken === null ? {} : { resume: { paymentToken: resumeToken } }),
 			...(opening === undefined ? {} : { opening }),
 			...(pageProgramId === undefined ? {} : { pageProgramId })
@@ -285,6 +310,7 @@ export function startCheckout(
 			stopped = listener;
 		},
 		stop() {
+			rereads.abort();
 			subscription.unsubscribe();
 			actor.stop();
 			const widget = challenge;

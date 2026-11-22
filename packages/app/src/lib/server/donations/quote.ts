@@ -16,6 +16,7 @@ import { cachedCoins } from '../forms/coin-cache';
 import { formNotFound, readPublishedConfig } from '../forms/published-config';
 import { cachedRails } from '../forms/rail-cache';
 import { readProgram } from '../programs/queries';
+import { isDonationPageForm } from '../pages/donation-page';
 import { giftLinkOrigin, giftPageUrl } from '../matching/links';
 import { processorSetupFix, type Processors } from '../payments/factory';
 import {
@@ -337,15 +338,18 @@ export async function mintQuote(deps: QuoteDeps, attempt: QuoteAttempt): Promise
 	}
 	const submission = parsed.value;
 
-	// a program page's cause must be an active program row. anything else is answered word for word
-	// as an unknown form, so the field cannot be used to probe which program ids exist or were
-	// archived; it is checked before the challenge, as the form id is.
+	// a program page's cause must be an active program row, sent on the Donation page's form, which
+	// is the one form a program page serves. anything else is answered as an unknown form, word for
+	// word and with no form row, so the route's CORS headers match too: the field cannot be used to
+	// probe which program ids exist or were archived, or that this form does. the program page reads
+	// the answer same-origin, which `corsHeaders` in ../api/cors.ts echoes without the row. it is
+	// checked before the challenge, as the form id is.
 	if (
 		submission.pageProgramId !== undefined &&
-		!(await isActiveProgram(deps.db, submission.pageProgramId))
+		!(await creditsPageProgram(deps.db, form.id, submission.pageProgramId))
 	) {
 		const unknown = formNotFound(attempt.formId);
-		return refuse(form, 'form_not_found', unknown.message, unknown.fix);
+		return refuse(null, 'form_not_found', unknown.message, unknown.fix);
 	}
 
 	const challenge = await deps.verifyChallenge({
@@ -1080,7 +1084,8 @@ function grantRefusal(
  * null either way.
  *
  * a program page's `pageProgramId` outranks all three modes. it is read only after `mintQuote` has
- * found it an active program row, so what is written here is never a body's unchecked id.
+ * found it an active program row sent on the Donation page's form, so what is written here is
+ * never a body's unchecked id.
  */
 function creditedProgram(form: FormRecord, submission: ParsedQuoteRequest): string | null {
 	if (submission.pageProgramId !== undefined) return submission.pageProgramId;
@@ -1089,9 +1094,12 @@ function creditedProgram(form: FormRecord, submission: ParsedQuoteRequest): stri
 	return null;
 }
 
-async function isActiveProgram(db: Db, id: string): Promise<boolean> {
-	const found = await readProgram(db, id);
-	return found !== null && found.archivedAt === null;
+async function creditsPageProgram(db: Db, formId: string, programId: string): Promise<boolean> {
+	const [onDonationPage, found] = await Promise.all([
+		isDonationPageForm(db, formId),
+		readProgram(db, programId)
+	]);
+	return onDonationPage && found !== null && found.archivedAt === null;
 }
 
 /**

@@ -618,8 +618,9 @@ export type QuoteRequest = {
 	 * the program a program page was drawn for, absent on every other page.
 	 *
 	 * the page's choice rather than the donor's, so it credits the gift whatever the form's program
-	 * setting says, and it outranks `programId` where both arrive. an inactive or unknown id is
-	 * answered as `form_not_found`.
+	 * setting says, and it outranks `programId` where both arrive. it is honoured only on the
+	 * Donation page's form, the form a program page serves; on any other form, and for an inactive
+	 * or unknown id, it is answered as `form_not_found`.
 	 */
 	readonly pageProgramId?: string;
 	/**
