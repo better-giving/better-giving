@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+	APPLE_SRC,
 	coinRefusalSentence,
+	FLAG_SRC,
 	continueCase,
 	currencyOf,
 	noStockMatch,
@@ -39,6 +41,9 @@ const CONFIG = {
 
 const BOTH = { coin: true, stock: true };
 
+const US_FLAG = { mark: 'flag', country: 'us', src: FLAG_SRC.us };
+const APPLE = { mark: 'apple', src: APPLE_SRC };
+
 describe('the unit pill', () => {
 	it('is plain text where the deployment offers its currency alone', () => {
 		expect(unitPill(CONFIG, { coin: false, stock: false }, undefined)).toEqual({
@@ -61,21 +66,19 @@ describe('the unit pill', () => {
 
 	it('stacks the flag, then a BTC coin and the Apple mark for the kinds offered', () => {
 		expect(unitPill(CONFIG, BOTH, undefined).marks).toEqual([
-			{ mark: 'flag', country: 'us' },
+			US_FLAG,
 			{ mark: 'logo', src: BTC.logo },
-			{ mark: 'apple' }
+			APPLE
 		]);
 		expect(unitPill(CONFIG, { coin: false, stock: true }, undefined).marks).toEqual([
-			{ mark: 'flag', country: 'us' },
-			{ mark: 'apple' }
+			US_FLAG,
+			APPLE
 		]);
 	});
 
 	it('stacks no flag for a currency the table has none for', () => {
 		const yen = { ...CONFIG, currency: 'jpy' } as FormConfig;
-		expect(unitPill(yen, { coin: false, stock: true }, undefined).marks).toEqual([
-			{ mark: 'apple' }
-		]);
+		expect(unitPill(yen, { coin: false, stock: true }, undefined).marks).toEqual([APPLE]);
 	});
 
 	it('names and marks the picked unit alone, the currency included', () => {
@@ -83,7 +86,7 @@ describe('the unit pill', () => {
 			state: 'picked',
 			code: 'USD',
 			name: 'Currency: USD',
-			marks: [{ mark: 'flag', country: 'us' }]
+			marks: [US_FLAG]
 		});
 		expect(unitPill(CONFIG, BOTH, { kind: 'coin', coin: 'btc' })).toEqual({
 			state: 'picked',
@@ -95,8 +98,27 @@ describe('the unit pill', () => {
 			state: 'picked',
 			code: 'AAPL',
 			name: 'Stock: AAPL',
-			marks: [{ mark: 'apple' }]
+			marks: [APPLE]
 		});
+	});
+
+	// a form embedded in a foreign page draws its flags and the Apple mark from no origin of its own,
+	// and an image's svg keeps its mask ids to itself, so two flags on one page never share one.
+	it('carries every mark as an image source, the flags and the Apple mark inline', () => {
+		const sources = unitPill(CONFIG, BOTH, undefined).marks.map((mark) => mark.src);
+		const [flag, coin, apple] = sources;
+
+		expect(coin).toBe(BTC.logo);
+		for (const inline of [flag, apple]) {
+			expect(inline).toMatch(/^data:image\/svg\+xml,/);
+			expect(decodeURIComponent(inline?.slice('data:image/svg+xml,'.length) ?? '')).toMatch(
+				/^<svg [^>]*xmlns="http:\/\/www\.w3\.org\/2000\/svg"/
+			);
+		}
+		expect(flag).not.toBe(apple);
+		expect(new Set((['us', 'eu', 'gb'] as const).map((country) => FLAG_SRC[country])).size).toBe(3);
+		expect(flag).toBe(FLAG_SRC.us);
+		expect(apple).toBe(APPLE_SRC);
 	});
 
 	// held for a decision: a 14px disc with no flag or logo draws no letter, so the pill carries no mark.

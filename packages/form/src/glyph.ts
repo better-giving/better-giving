@@ -7,7 +7,7 @@ const SVG = 'http://www.w3.org/2000/svg';
 /**
  * lucide's icons (https://lucide.dev, ISC), by their key here and lucide's name beside it where the two
  * differ:`chevron` (`chevron-down`), `search`, `tick` (`check`), `copy`, `alert` (`circle-alert`),
- * `info`, `help` (`circle-help`), `done` (`circle-check`), `arrow-right`, `mail`, `link` and `play`, each
+ * `info`, `help` (`circle-help`), `done` (`circle-check`), `trending-up`, `arrow-right`, `mail`, `link` and `play`, each
  * drawn in `currentColor` at its source's own stroke. a circle or a rect is written as the path it describes.
  *
  * exported as data as well as through `glyph` below: the deployment's donor page draws its blocks
@@ -35,6 +35,8 @@ export const GLYPHS = {
 	],
 	// the thank-you's employer ask, sent.
 	done: ['M2 12a10 10 0 1 0 20 0a10 10 0 1 0 -20 0', 'm9 12 2 2 4-4'],
+	// a stock's row in the unit list (../unit-panel.ts), which has no logo of its own.
+	'trending-up': ['M16 7h6v6', 'm22 7-8.5 8.5-5-5L2 17'],
 	// the last four are the donor page's (the share buttons, the ended campaign's link and the video's
 	// press); the card draws none of them.
 	'arrow-right': ['M5 12h14', 'm12 5 7 7-7 7'],

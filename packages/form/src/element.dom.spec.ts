@@ -41,6 +41,7 @@ import checkboxStyles from './registry/styles/checkbox-css.css?inline';
 import fieldStyles from './registry/styles/field-css.css?inline';
 import rowStyles from './styles/rows.css?inline';
 import coinStyles from './styles/coins.css?inline';
+import unitStyles from './styles/units.css?inline';
 
 // the dom pool. what a lightweight DOM can prove about a custom element is structure, attributes,
 // events, slots and the upgrade lifecycle, and that is the whole of what is asserted here. layout,
@@ -5446,7 +5447,7 @@ describe('the stylesheets', () => {
 		expect(own.match(/oklch\(from var\(--shadow-ink\) l c h \/ 0\.\d+\)/g)).toHaveLength(2);
 	});
 
-	// every sheet in the styles directory, read off the directory rather than listed: a sixth one
+	// every sheet in the styles directory, read off the directory rather than listed: a new one
 	// written there is swept by existing, where a list held here would leave it swept by nobody
 	// while every case in this block stayed green.
 	const styleSheets = import.meta.glob<string>('./styles/*.css', {
@@ -5460,7 +5461,7 @@ describe('the stylesheets', () => {
 
 	it('takes every length from a token, and says so at the ones it takes from nowhere', async () => {
 		// the directory is named here as well as swept, because the other cases in this block reach
-		// their sheets by a named import: a sixth file is swept for lengths the moment it lands and
+		// their sheets by a named import: a new file is swept for lengths the moment it lands and
 		// has to be carried into the colour cases by hand, and this is what says so.
 		expect(drawnFrom.map(([name]) => name)).toEqual([
 			'coins.css',
@@ -5468,7 +5469,8 @@ describe('the stylesheets', () => {
 			'motion.css',
 			'parts.css',
 			'rows.css',
-			'tokens.css'
+			'tokens.css',
+			'units.css'
 		]);
 
 		// the token file is left out of the sweep for the reason it is left out of the colour sweep
@@ -5764,6 +5766,15 @@ describe('the stylesheets', () => {
 		expect(list).not.toMatch(/#[0-9a-f]{3,8}\b/i);
 		expect(list).not.toMatch(/\b(rgb|rgba|hsl|oklch)\(/);
 		expect(list).not.toMatch(/\btransition\b|\banimation\b|!important/);
+	});
+
+	// the unit panel carries a sheet of its own (./unit-panel.ts), held to it too.
+	it('derives every colour in the unit panel from a token too', async () => {
+		const panel = declarations(unitStyles);
+		expect(panel.length).toBeGreaterThan(300);
+		expect(panel).not.toMatch(/#[0-9a-f]{3,8}\b/i);
+		expect(panel).not.toMatch(/\b(rgb|rgba|hsl|oklch)\(/);
+		expect(panel).not.toMatch(/\btransition\b|\banimation\b|!important|font-family/);
 	});
 
 	// the payment rows drawn outside the provider's frame carry a sheet of their own
