@@ -9288,5 +9288,30 @@ describe('a stock or IRA (QCD) pledge', () => {
 			expect(heading(card)).toBe('Thank you');
 			expect(matched(card)).toEqual([]);
 		});
+
+		// the gift page and the supporter area draw the registry's notice card off the same sheets
+		// (packages/app/src/lib/donate/plain-page.tsx), and theirs keep the registry's title face.
+		it('sets a notice title in the card’s face on the pledge block alone', async () => {
+			const faces = selectors
+				.filter(({ selector }) => selector.endsWith('.ds-notice-card-title'))
+				.filter(({ body }) => /(^|;)\s*font-family\s*:/.test(body))
+				.map(({ selector }) => selector);
+			const other = document.createElement('section');
+			other.className = 'ds-notice-card ds-notice-card-info';
+			other.innerHTML =
+				'<div class="ds-notice-card-content"><div class="ds-notice-card-text">' +
+				'<p class="ds-notice-card-title">Your gift page is ready</p></div></div>';
+			document.body.append(other);
+			const title = other.querySelector('.ds-notice-card-title') as HTMLElement;
+			const card = await iraPending();
+			const titles = card.all('.pledge .ds-notice-card-title');
+
+			expect(faces.length).toBeGreaterThan(0);
+			expect(faces.filter((selector) => title.matches(selector))).toEqual([]);
+			expect(titles).toHaveLength(2);
+			for (const pledged of titles) {
+				expect(faces.filter((selector) => !pledged.matches(selector))).toEqual([]);
+			}
+		});
 	});
 });

@@ -129,9 +129,9 @@
  * (`[part~='action'] > .ds-spinner` in ./parts.css) — an eighth.
  *
  * the registry sets its notice card's title in `--font-display`
- * (../registry/styles/notice-card-css.css), a face this card never loads, so the title takes the
- * card's own face, the one every other title on the card is set in (`.ds-notice-card-title` in
- * ./parts.css) — a ninth.
+ * (../registry/styles/notice-card-css.css), a face this card never loads, so a pledge block's notice
+ * title takes the card's own face, the one every other title on the card is set in
+ * (`.pledge .ds-notice-card-title` in ./parts.css) — a ninth.
  *
  * the registry states its spacing step and its small and extra-small leadings on its classes alone
  * (`--ds-spacing`, `--ds-text-sm-lh` and `--ds-text-xs-lh` in ../registry/styles/button-css.css), as

@@ -2607,9 +2607,12 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 /*
  * the registry's notice card (../registry/styles/notice-card-css.css) states its title in
  * `--font-display`, a face this card never loads; the card's own face is what every other title on
- * it is set in, so the title follows it. a registry gap, listed with the others at the head of ./tokens.css.
+ * it is set in, so a pledge block's notice title follows it. a registry gap, listed with the others
+ * at the head of ./tokens.css. keyed on the block (../pledge-screen.ts, and
+ * packages/app/src/lib/donate/pledge-block.tsx) because the gift page and the supporter area read
+ * this sheet too, and their notices keep the registry's face.
  */
-.ds-notice-card-title {
+.pledge .ds-notice-card-title {
 	font-family: inherit;
 }
 
