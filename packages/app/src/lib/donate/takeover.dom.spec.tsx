@@ -2,6 +2,8 @@ import type { EmployerAsk, State } from '@better-giving/form/connect';
 import { formatMinor } from '@better-giving/form/money';
 import type { FeeRules, FormConfig, Pledge, Quote } from '@better-giving/form/v1';
 import type { FormValue } from '@better-giving/form/value';
+import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { act, createRef, type ReactNode, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { describe, expect, it, onTestFinished } from 'vitest';
@@ -863,6 +865,38 @@ describe('a saved pledge’s screens', () => {
 			'ds-btn ds-btn-secondary ds-btn-lg'
 		);
 		expect(root.querySelector('[disabled]')).toBeNull();
+	});
+
+	// the form's sheets size a pending screen by a takeover holding an unhidden details list, and
+	// this page draws its pledge screens in the element's tree so those rules reach them.
+	describe('the form’s pending-screen rules', () => {
+		const require = createRequire(import.meta.url);
+		const PENDING = '.takeover:has(.pledge-details:not([hidden]))';
+		const scoped = ['parts.css', 'layout.css'].flatMap((sheet) =>
+			[
+				...readFileSync(require.resolve(`@better-giving/form/styles/${sheet}`), 'utf8')
+					.replace(/\/\*[\s\S]*?\*\//g, '')
+					.matchAll(/([^{}]+)\{/g)
+			]
+				.flatMap(([, list]) => (list ?? '').split(','))
+				.map((selector) => selector.trim())
+				.filter((selector) => selector.startsWith(PENDING))
+		);
+
+		it.each([
+			['stock', STOCK],
+			['IRA (QCD)', IRA]
+		])('reach every part they name on a pending %s screen', (_rail, pledge) => {
+			const root = pledged(pledge, 'pending');
+			expect(scoped.length).toBeGreaterThan(0);
+			expect(scoped.filter((selector) => root.querySelector(selector) === null)).toEqual([]);
+			expect(link(root)?.className).toBe('ds-btn ds-btn-secondary ds-btn-lg');
+		});
+
+		it('reach nothing on the thank-you', () => {
+			const root = pledged(STOCK, 'told');
+			expect(scoped.filter((selector) => root.querySelector(selector) !== null)).toEqual([]);
+		});
 	});
 
 	it('lists a pending IRA (QCD) gift’s payee details, the address on one line', () => {
