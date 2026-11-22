@@ -3,9 +3,9 @@
  * one role token those names carry. every colour and every step of a scale here comes from
  * ./tokens.css, so a host's seed reaches every surface without a second copy of the ramp existing.
  *
- * eight lengths are literals and each is a floor, a shape or a drawn size rather than a step of a scale, which is
- * what a token apiece would misrepresent — a scale nobody counts along. they are stated here so an
- * eighth is a decision rather than a habit, and each is argued at its own rule:
+ * eight lengths are literals and each is a floor, a shape or a drawn size rather than a step of a
+ * scale, which is what a token apiece would misrepresent — a scale nobody counts along. they are
+ * stated here so a ninth is a decision rather than a habit, and each is argued at its own rule:
  *
  *   - `max(16px, 1em)`, twice: on the text boxes this sheet draws and on the registry's,
  *     `.ds-field-input`. iOS Safari zooms the page when a focused control computes below 16px, and

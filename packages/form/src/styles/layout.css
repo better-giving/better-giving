@@ -1078,8 +1078,9 @@ form {
 
 /*
  * on the pending screen, the takeover whose details list is drawn (the thank-you hides it), the
- * lists are long and read down, so a row stands tighter than the thank-you's: the registry's spacing step (`--ds-spacing`, a quarter of `--ds-rem`) two and a half
- * times over, which it declares on its classes alone and ./tokens.css lists as a registry gap.
+ * lists are long and read down, so a row stands tighter than the thank-you's: the registry's
+ * spacing step (`--ds-spacing`, a quarter of `--ds-rem`) two and a half times over, which it
+ * declares on its classes alone and ./tokens.css lists as a registry gap.
  */
 .takeover:has(.pledge-details:not([hidden])) .pledge-row {
 	padding-block: calc(var(--ds-rem) * 0.25 * 2.5);
