@@ -30,49 +30,70 @@ type ProgramFieldsProps = {
 	readonly photo?: ReactNode;
 	/** the group's own submit, at the foot of the group it saves. */
 	readonly footer?: ReactNode;
+	/**
+	 * drawn inside a division the caller already draws — the editor's Details card — so the group
+	 * draws none of its own, and its boxes and submit stand in one stack.
+	 */
+	readonly bare?: boolean;
 };
 
-export function ProgramFields({ boxes, photo, footer }: ProgramFieldsProps) {
+export function ProgramFields({ boxes, photo, footer, bare = false }: ProgramFieldsProps) {
+	const actions = footer ? <div className="adm-actions">{footer}</div> : null;
+	if (bare) {
+		return (
+			<div className="adm-stack">
+				<Boxes boxes={boxes} photo={photo} />
+				{actions}
+			</div>
+		);
+	}
 	return (
 		<Section>
 			<div className="adm-stack">
-				{/* the message is handed over as a node rather than as the string, so a sentence that
-				    marks a value with backticks is drawn as code rather than shown with the marks in
-				    it (`@better-giving/operator/code-spans`). `Field` hands whatever it is given to
-				    `@better-giving/operator/components/forms/FieldMessage`, which wraps it whole. */}
-				<Field
-					label="Name"
-					required
-					{...boxProps(boxes.name)}
-					error={
-						boxes.name.errors?.[0] === undefined ? undefined : (
-							<MarkedText text={boxes.name.errors[0]} />
-						)
-					}
-				/>
-
-				{photo}
-
-				{/* a multi-line box, because what goes in it is a sentence and a single line hides
-				    every word but the last few typed.
-
-				    the hint is the one thing neither the label nor the box can carry: that donors read
-				    it, under the name on the program's public page (`$lib/donate/program-page.tsx`). */}
-				<Field
-					as="textarea"
-					label="Description"
-					optional
-					hint="Shown on the program’s page, under its name. Donors see it, so write it for them."
-					{...boxProps(boxes.description)}
-					error={
-						boxes.description.errors?.[0] === undefined ? undefined : (
-							<MarkedText text={boxes.description.errors[0]} />
-						)
-					}
-				/>
+				<Boxes boxes={boxes} photo={photo} />
 			</div>
-
-			{footer ? <div className="adm-actions">{footer}</div> : null}
+			{actions}
 		</Section>
+	);
+}
+
+function Boxes({ boxes, photo }: Pick<ProgramFieldsProps, 'boxes' | 'photo'>) {
+	return (
+		<>
+			{/* the message is handed over as a node rather than as the string, so a sentence that
+			    marks a value with backticks is drawn as code rather than shown with the marks in
+			    it (`@better-giving/operator/code-spans`). `Field` hands whatever it is given to
+			    `@better-giving/operator/components/forms/FieldMessage`, which wraps it whole. */}
+			<Field
+				label="Name"
+				required
+				{...boxProps(boxes.name)}
+				error={
+					boxes.name.errors?.[0] === undefined ? undefined : (
+						<MarkedText text={boxes.name.errors[0]} />
+					)
+				}
+			/>
+
+			{photo}
+
+			{/* a multi-line box, because what goes in it is a sentence and a single line hides
+			    every word but the last few typed.
+
+			    the hint is the one thing neither the label nor the box can carry: that donors read
+			    it, under the name on the program's public page (`$lib/donate/program-page.tsx`). */}
+			<Field
+				as="textarea"
+				label="Description"
+				optional
+				hint="Shown on the program’s page, under its name. Donors see it, so write it for them."
+				{...boxProps(boxes.description)}
+				error={
+					boxes.description.errors?.[0] === undefined ? undefined : (
+						<MarkedText text={boxes.description.errors[0]} />
+					)
+				}
+			/>
+		</>
 	);
 }

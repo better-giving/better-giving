@@ -8,7 +8,7 @@ import { PROGRAM_STATUS_TONES } from '$lib/admin/status-tones';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
 import { useSaveState } from '@better-giving/operator/save-state.react';
 import { getFormProps } from '@conform-to/react';
-import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useId, useRef, useState } from 'react';
 import {
 	data,
 	Form,
@@ -349,6 +349,8 @@ function screen(id: string): string {
 // editable screen.
 export default function Program({ loaderData, actionData }: Route.ComponentProps) {
 	const { archived, archivedJustNow, description, editor, id, name, status } = loaderData;
+	const detailsHeading = useId();
+	const publicHeading = useId();
 
 	// whether the archive's own outcome is on the screen. the banner reporting it is the only thing
 	// the archive leaves behind — there is no control left for it to report on — so it is where focus
@@ -438,8 +440,8 @@ export default function Program({ loaderData, actionData }: Route.ComponentProps
 				{editor === null ? (
 					<StoredRecord description={description} />
 				) : (
-					<Section card>
-						<h2>Details</h2>
+					<Section card labelledBy={detailsHeading}>
+						<h2 id={detailsHeading}>Details</h2>
 						<Editor
 							boxes={editor}
 							imageId={loaderData.imageId}
@@ -449,8 +451,8 @@ export default function Program({ loaderData, actionData }: Route.ComponentProps
 						/>
 					</Section>
 				)}
-				<Section card>
-					<h2>Public page</h2>
+				<Section card labelledBy={publicHeading}>
+					<h2 id={publicHeading}>Public page</h2>
 					<PublicPageCard
 						name={name}
 						url={loaderData.publicPage.url}
@@ -542,6 +544,7 @@ function Editor({
 			<input {...whichForm(PROGRAM_EDIT.id)} />
 			<input {...recordVersion(version)} />
 			<ProgramFields
+				bare
 				boxes={{ name: fields.name, description: fields.description }}
 				photo={
 					<ProgramPhotoControl
@@ -626,9 +629,10 @@ function useProgramPhoto(seeded: string | null, actionData: AdminActionData, sai
  * one thing an archived cause still says about itself.
  */
 function StoredRecord({ description }: { readonly description: string | null }) {
+	const heading = useId();
 	return (
-		<Section card>
-			<h2>How this program was described</h2>
+		<Section card labelledBy={heading}>
+			<h2 id={heading}>How this program was described</h2>
 			<p className="adm-prose">
 				Nothing on an archived program can be changed. The gifts recorded against it still name it.
 			</p>

@@ -16,6 +16,7 @@ import {
 	type ProgramPageProgram,
 	type ProgramPageProps
 } from './program-page';
+import { StaffMarkerContext } from './staff-marker-context';
 
 // a program's public page and the screen an archived or unknown program gets, through
 // `ProgramPage` and `ProgramClosedPage` in ./program-page.tsx: what each draws, the landmarks a
@@ -317,6 +318,38 @@ describe('an active program’s page', () => {
 	});
 });
 
+describe('the console link in the footer, for an operator who carries the marker', () => {
+	async function asStaff(preview: boolean) {
+		const root = await mount(
+			<StaffMarkerContext value={true}>
+				<ProgramPage
+					program={COATS}
+					org={ORG}
+					logo={null}
+					look={{ brandColour: null }}
+					sharing={{
+						message: 'Winter coats',
+						url: 'https://cedarfork.example/programs/prog-coats'
+					}}
+					config={CONFIG}
+					seams={payment.seams}
+					preview={preview}
+				/>
+			</StaffMarkerContext>
+		);
+		return one(root, 'footer');
+	}
+
+	it('is drawn on the page itself', async () => {
+		expect((await asStaff(false)).querySelector('a[href="/admin"]')).not.toBeNull();
+	});
+
+	// the preview is what a donor sees, and a donor carries no marker.
+	it('is not drawn in the editor’s preview', async () => {
+		expect((await asStaff(true)).querySelector('a[href="/admin"]')).toBeNull();
+	});
+});
+
 describe('the donation card handed `pageProgramId`', () => {
 	it('starts the flow on it, so every quote carries it', async () => {
 		const bodies = sent();
@@ -337,8 +370,25 @@ describe('the donation card handed `pageProgramId`', () => {
 });
 
 describe('a program not taking gifts', () => {
-	async function closed() {
-		return mount(<ProgramClosedPage org={ORG} logo={null} look={{ brandColour: null }} />);
+	async function closed(preview?: boolean) {
+		return mount(
+			<StaffMarkerContext value={true}>
+				<ProgramClosedPage
+					org={ORG}
+					logo={null}
+					look={{ brandColour: null }}
+					{...(preview === undefined ? {} : { preview })}
+				/>
+			</StaffMarkerContext>
+		);
+	}
+
+	function way(root: HTMLElement): HTMLElement {
+		const link = [...root.querySelectorAll<HTMLElement>('main a')].find(
+			(found) => found.textContent === 'Go to the donate page'
+		);
+		if (link === undefined) throw new Error('no way on to the donate page');
+		return link;
 	}
 
 	it('says it isn’t taking gifts and offers the donate page, with no card', async () => {
@@ -348,11 +398,20 @@ describe('a program not taking gifts', () => {
 		expect(one(root, 'main').textContent).toContain(
 			'Gifts to it are closed, or the link isn’t right. You can still give to Cedar Fork Community Pantry Inc.'
 		);
-		const way = [...root.querySelectorAll('main a')].find(
-			(link) => link.textContent === 'Go to the donate page'
-		);
-		expect(way?.getAttribute('href')).toBe('/');
+		expect(way(root).getAttribute('href')).toBe('/');
 		expect(root.querySelector('[part~="card"]')).toBeNull();
+	});
+
+	it('keeps the way on, and the console link, in the tab order on the page itself', async () => {
+		const root = await closed();
+		expect(way(root).tabIndex).toBe(0);
+		expect(one(root, 'footer').querySelector('a[href="/admin"]')).not.toBeNull();
+	});
+
+	it('takes the way on out of the tab order, and draws no console link, in the preview', async () => {
+		const root = await closed(true);
+		expect(way(root).tabIndex).toBe(-1);
+		expect(root.querySelector('footer a[href="/admin"]')).toBeNull();
 	});
 
 	it('keeps the site nav and the footer', async () => {

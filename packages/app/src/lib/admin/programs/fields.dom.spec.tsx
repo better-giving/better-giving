@@ -34,7 +34,8 @@ const DESCRIPTION = 'program-edit-description';
 /** the group as the screen that makes a program and the screen that edits one both mount it. */
 function group(
 	errors: { name?: string[]; description?: string[] } = {},
-	photo?: ReactNode
+	photo?: ReactNode,
+	bare?: boolean
 ): HTMLElement {
 	return mount(
 		createElement(
@@ -55,7 +56,8 @@ function group(
 						...(errors.description === undefined ? {} : { errors: errors.description })
 					}
 				},
-				photo
+				photo,
+				...(bare === undefined ? {} : { bare })
 			})
 		)
 	);
@@ -129,6 +131,22 @@ it('draws a marked value in a refusal as code rather than showing the marks', ()
 	const said = root.querySelector(`[id="${boxErrorId(NAME)}"]`);
 	expect(said?.textContent).not.toContain('`');
 	expect(said?.querySelector('code')?.textContent).toBe('Clean water');
+});
+
+it('is a division of its own on the screen that makes a program', () => {
+	expect(group().querySelectorAll('section')).toHaveLength(1);
+});
+
+it('draws no division of its own inside one the caller already draws', () => {
+	// the editor's Details card is the section, labelled by its heading; a second one inside it is
+	// a landmark-less section within a section.
+	const root = group({}, undefined, true);
+
+	expect(root.querySelector('section')).toBeNull();
+	expect(submitted(root)).toEqual([
+		['name', 'Clean water'],
+		['description', 'Wells and filters in the eastern districts.']
+	]);
 });
 
 it('stands the photo beside the name and posts it with the program', () => {

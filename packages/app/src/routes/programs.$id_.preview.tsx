@@ -64,7 +64,12 @@ export default function ProgramPreviewRoute({ loaderData }: Route.ComponentProps
 		}
 		case 'closed':
 			return (
-				<ProgramClosedPage org={loaderData.org} logo={loaderData.logo} look={loaderData.look} />
+				<ProgramClosedPage
+					org={loaderData.org}
+					logo={loaderData.logo}
+					look={loaderData.look}
+					preview
+				/>
 			);
 		case 'refused':
 			return (

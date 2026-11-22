@@ -229,6 +229,35 @@ function sectionNamed(root: HTMLElement, heading: string): HTMLElement | null {
 	return h2?.closest('section') ?? null;
 }
 
+/** the text of the element a section's `aria-labelledby` names, or null where it names none. */
+function labelOf(section: HTMLElement | null): string | null {
+	const id = section?.getAttribute('aria-labelledby');
+	return id ? (document.getElementById(id)?.textContent ?? null) : null;
+}
+
+describe('the two cards', () => {
+	it('are sections each named by its own heading', () => {
+		const { root } = screen();
+
+		expect(labelOf(sectionNamed(root, 'Details'))).toBe('Details');
+		expect(labelOf(sectionNamed(root, 'Public page'))).toBe('Public page');
+	});
+
+	it('names the archived record by its heading in Details’ place', () => {
+		const { root } = screen({ archived: true });
+
+		const record = sectionNamed(root, 'How this program was described');
+		expect(labelOf(record)).toBe('How this program was described');
+		expect(labelOf(sectionNamed(root, 'Public page'))).toBe('Public page');
+	});
+
+	it('draws no section inside Details', () => {
+		const { root } = screen();
+
+		expect(sectionNamed(root, 'Details')?.querySelector('section')).toBeNull();
+	});
+});
+
 describe('the Public page card', () => {
 	it('shows an active program’s public address and a preview of what is saved, beside Details', () => {
 		const { root } = screen();

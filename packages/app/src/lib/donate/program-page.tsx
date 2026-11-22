@@ -1,7 +1,7 @@
 import registryAvatar from '@better-giving/operator/registry/styles/avatar-css.css?url';
 import registryPageState from '@better-giving/operator/registry/styles/page-state-css.css?url';
 import type { FormConfig } from '@better-giving/form/v1';
-import { useId } from 'react';
+import { type ReactNode, useId } from 'react';
 import { imageSrc } from '../page/image-src';
 import { DonateCard } from './card';
 import * as copy from './copy';
@@ -13,6 +13,7 @@ import { Paragraphs } from './sections/about-us';
 import { Share } from './sections/share';
 import type { PageOrg, PageSharing } from './sections/types';
 import { SiteFooter } from './site-footer';
+import { StaffMarkerContext } from './staff-marker-context';
 import { MAIN_ID, SiteNav } from './site-nav';
 
 // one program's public page, and the screen an archived or unknown program gets in its place.
@@ -66,7 +67,7 @@ export type ProgramPageProps = {
 	readonly resuming?: boolean;
 	/** the card's provider seams, which only a spec passes. */
 	readonly seams?: CheckoutMounts['seams'];
-	/** drawn as the editor's preview: the card inert and no other stop in the tab order. */
+	/** drawn as the editor's preview: the card inert, no other stop in the tab order, a donor's footer. */
 	readonly preview?: boolean;
 	/** the caller's placement of the page root. */
 	readonly className?: string;
@@ -84,60 +85,81 @@ export function ProgramPage({
 	preview = false,
 	className
 }: ProgramPageProps) {
-	usePreviewStill(preview);
 	const boxHeading = useId();
 	const shareHeading = useId();
 	return (
-		<PageRoot
-			brandColour={look.brandColour}
-			layout="plain"
-			{...(className === undefined ? {} : { className })}
-			header={<SiteNav name={org.name} logo={logo} current={false} />}
-			footer={<SiteFooter info={org.info} />}
-		>
-			<main className="page-body page-program" id={MAIN_ID} tabIndex={-1}>
-				<div className="page-in page-program-layout">
-					<div>
-						{program.photoImageId === null ? null : (
-							<div className="page-program-photo" data-area="photo">
-								<img
-									className="page-photo"
-									src={imageSrc(program.photoImageId)}
-									alt={program.name}
+		<Preview preview={preview}>
+			<PageRoot
+				brandColour={look.brandColour}
+				layout="plain"
+				{...(className === undefined ? {} : { className })}
+				header={<SiteNav name={org.name} logo={logo} current={false} />}
+				footer={<SiteFooter info={org.info} />}
+			>
+				<main className="page-body page-program" id={MAIN_ID} tabIndex={-1}>
+					<div className="page-in page-program-layout">
+						<div>
+							{program.photoImageId === null ? null : (
+								<div className="page-program-photo" data-area="photo">
+									<img
+										className="page-photo"
+										src={imageSrc(program.photoImageId)}
+										alt={program.name}
+									/>
+								</div>
+							)}
+							<p className="page-label ds-eyebrow">{copy.PROGRAM_EYEBROW}</p>
+							<h1 className="page-program-name">{program.name}</h1>
+							{program.description === null ? null : (
+								<div className="page-program-description" data-area="description">
+									<Paragraphs text={program.description} />
+								</div>
+							)}
+							<ProgramOrg org={org} logo={logo} />
+						</div>
+						<section className="page-box" aria-labelledby={boxHeading} data-area="box">
+							<h2 className="page-profile-box-heading" id={boxHeading}>
+								{copy.giveToProgram(program.name)}
+							</h2>
+							<div inert={preview}>
+								<DonateCard
+									config={config}
+									pageProgramId={program.id}
+									{...(seams === undefined ? {} : { seams })}
+									{...(resuming === undefined ? {} : { resuming })}
 								/>
 							</div>
-						)}
-						<p className="page-label ds-eyebrow">{copy.PROGRAM_EYEBROW}</p>
-						<h1 className="page-program-name">{program.name}</h1>
-						{program.description === null ? null : (
-							<div className="page-program-description" data-area="description">
-								<Paragraphs text={program.description} />
-							</div>
-						)}
-						<ProgramOrg org={org} logo={logo} />
+						</section>
 					</div>
-					<section className="page-box" aria-labelledby={boxHeading} data-area="box">
-						<h2 className="page-profile-box-heading" id={boxHeading}>
-							{copy.giveToProgram(program.name)}
-						</h2>
-						<div inert={preview}>
-							<DonateCard
-								config={config}
-								pageProgramId={program.id}
-								{...(seams === undefined ? {} : { seams })}
-								{...(resuming === undefined ? {} : { resuming })}
-							/>
-						</div>
-					</section>
-				</div>
-			</main>
-			<section className="page-end" aria-labelledby={shareHeading} data-area="share">
-				<div className="page-in">
-					<Share headingId={shareHeading} sharing={sharing} heading={copy.PROGRAM_SHARE_HEADING} />
-				</div>
-			</section>
-		</PageRoot>
+				</main>
+				<section className="page-end" aria-labelledby={shareHeading} data-area="share">
+					<div className="page-in">
+						<Share
+							headingId={shareHeading}
+							sharing={sharing}
+							heading={copy.PROGRAM_SHARE_HEADING}
+						/>
+					</div>
+				</section>
+			</PageRoot>
+		</Preview>
 	);
+}
+
+/**
+ * either page drawn as the editor's preview (`/programs/{id}/preview`): no stop in the tab order
+ * (`usePreviewStill`), and the footer drawn as a donor gets it, who carries no returning-staff
+ * marker — the staff previewing it do (../../root.tsx), and the console link is not on the page.
+ */
+function Preview({
+	preview,
+	children
+}: {
+	readonly preview: boolean;
+	readonly children: ReactNode;
+}) {
+	usePreviewStill(preview);
+	return preview ? <StaffMarkerContext value={false}>{children}</StaffMarkerContext> : children;
 }
 
 /**
@@ -185,30 +207,34 @@ export type ProgramClosedPageProps = {
 	/** the organisation's logo, in the site nav; null where it has none. */
 	readonly logo: PageLogo | null;
 	readonly look: PageLook;
+	/** drawn as the editor's preview: no stop in the tab order, a donor's footer. */
+	readonly preview?: boolean;
 };
 
 /** an archived program's address and an address no program holds alike: no program is named. */
-export function ProgramClosedPage({ org, logo, look }: ProgramClosedPageProps) {
+export function ProgramClosedPage({ org, logo, look, preview = false }: ProgramClosedPageProps) {
 	return (
-		<PageRoot
-			brandColour={look.brandColour}
-			layout="plain"
-			header={<SiteNav name={org.name} logo={logo} current={false} />}
-			footer={<SiteFooter info={org.info} />}
-		>
-			<main className="page-closed" id={MAIN_ID} tabIndex={-1}>
-				<div className="ds-page-state">
-					<h1 className="ds-page-state-title" tabIndex={-1}>
-						{copy.PROGRAM_CLOSED_TITLE}
-					</h1>
-					<p className="ds-page-state-body">{copy.programClosedBody(org.name)}</p>
-					<div className="ds-page-state-actions">
-						<a className="ds-btn ds-btn-primary" href="/">
-							{copy.PROGRAM_CLOSED_ACTION}
-						</a>
+		<Preview preview={preview}>
+			<PageRoot
+				brandColour={look.brandColour}
+				layout="plain"
+				header={<SiteNav name={org.name} logo={logo} current={false} />}
+				footer={<SiteFooter info={org.info} />}
+			>
+				<main className="page-closed" id={MAIN_ID} tabIndex={-1}>
+					<div className="ds-page-state">
+						<h1 className="ds-page-state-title" tabIndex={-1}>
+							{copy.PROGRAM_CLOSED_TITLE}
+						</h1>
+						<p className="ds-page-state-body">{copy.programClosedBody(org.name)}</p>
+						<div className="ds-page-state-actions">
+							<a className="ds-btn ds-btn-primary" href="/">
+								{copy.PROGRAM_CLOSED_ACTION}
+							</a>
+						</div>
 					</div>
-				</div>
-			</main>
-		</PageRoot>
+				</main>
+			</PageRoot>
+		</Preview>
 	);
 }
