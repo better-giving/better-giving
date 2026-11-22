@@ -924,6 +924,31 @@ describe('the press that spends the money', () => {
 		expect(calls.quote[0]).toMatchObject({ pageProgramId: 'prg_water' });
 	});
 
+	it('sends the page program again on the press after a refused quote', async () => {
+		// a second attempt credited to no program would leave the gift off the page it was given on.
+		let refused = false;
+		const { actor, calls } = readyToSubmit({
+			pageProgramId: 'prg_water',
+			quote: async () => {
+				if (refused) return QUOTE;
+				refused = true;
+				throw new Error('');
+			}
+		});
+		actor.send({ type: 'SUBMIT' });
+		await settle();
+		expect(actor.getSnapshot().value).toBe('failed');
+
+		actor.send({ type: 'RETRY' });
+		// the first send spent the challenge token, so the press needs the next one the widget mints.
+		actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'tk_next' });
+		actor.send({ type: 'SUBMIT' });
+		await settle();
+
+		expect(calls.quote).toHaveLength(2);
+		expect(calls.quote[1]).toMatchObject({ pageProgramId: 'prg_water' });
+	});
+
 	it('sends no page program from a page drawn for none', async () => {
 		const { actor, calls } = readyToSubmit();
 		actor.send({ type: 'SUBMIT' });
