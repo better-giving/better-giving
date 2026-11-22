@@ -208,7 +208,8 @@ async function readJsonBody(request: Request): Promise<unknown> {
  *   and there is no credential to present. the donation form's answer is a fresh token, which is
  *   what the `challenge_failed` code exists to tell it.
  * - 404 / 410 / 409, the form: an id this deployment never had, one permanently retired, or one
- *   whose own stored state stops it. as the config route argues at length.
+ *   whose own stored state stops it. as the config route argues at length. a `pageProgramId` that
+ *   names no active program is answered as the first, word for word (`mintQuote`).
  * - 409 / 422, a donor-advised fund's answer: an approval in the fund's window that expired before
  *   the grant was created, or an amount the fund will not grant. 409 rather than Chariot's own 410,
  *   which on this surface already means a retired form; both are the donor's to act on in the

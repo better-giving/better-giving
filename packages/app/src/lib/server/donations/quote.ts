@@ -13,8 +13,9 @@ import type { EmailProvider } from '../email/provider';
 import type { FormRecord } from '../forms/form-input';
 import { cachedCadences } from '../forms/cadence-cache';
 import { cachedCoins } from '../forms/coin-cache';
-import { readPublishedConfig } from '../forms/published-config';
+import { formNotFound, readPublishedConfig } from '../forms/published-config';
 import { cachedRails } from '../forms/rail-cache';
+import { readProgram } from '../programs/queries';
 import { giftLinkOrigin, giftPageUrl } from '../matching/links';
 import { processorSetupFix, type Processors } from '../payments/factory';
 import {
@@ -335,6 +336,17 @@ export async function mintQuote(deps: QuoteDeps, attempt: QuoteAttempt): Promise
 		return refuse(form, 'invalid_request', parsed.message, parsed.fix);
 	}
 	const submission = parsed.value;
+
+	// a program page's cause must be an active program row. anything else is answered word for word
+	// as an unknown form, so the field cannot be used to probe which program ids exist or were
+	// archived; it is checked before the challenge, as the form id is.
+	if (
+		submission.pageProgramId !== undefined &&
+		!(await isActiveProgram(deps.db, submission.pageProgramId))
+	) {
+		const unknown = formNotFound(attempt.formId);
+		return refuse(form, 'form_not_found', unknown.message, unknown.fix);
+	}
 
 	const challenge = await deps.verifyChallenge({
 		secretKey: readTurnstileSecret(deps.env),
@@ -1066,11 +1078,20 @@ function grantRefusal(
  * is built from this row a few lines above. the row is the narrower reading — a `choice` whose
  * options are all retired is served as no program at all, and a donor who sent nothing is written
  * null either way.
+ *
+ * a program page's `pageProgramId` outranks all three modes. it is read only after `mintQuote` has
+ * found it an active program row, so what is written here is never a body's unchecked id.
  */
 function creditedProgram(form: FormRecord, submission: ParsedQuoteRequest): string | null {
+	if (submission.pageProgramId !== undefined) return submission.pageProgramId;
 	if (form.programMode === 'pinned') return form.programId;
 	if (form.programMode === 'choice') return submission.programId ?? null;
 	return null;
+}
+
+async function isActiveProgram(db: Db, id: string): Promise<boolean> {
+	const found = await readProgram(db, id);
+	return found !== null && found.archivedAt === null;
 }
 
 /**

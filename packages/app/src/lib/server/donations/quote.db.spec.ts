@@ -17,7 +17,7 @@ import { edgeCache } from '../edge-cache.testing';
 import { processorsOf, soleProcessor } from '../payments/processors.testing';
 import type { EmailMessage, EmailProvider } from '../email/provider';
 import { CHARIOT_FEE_RULES, NOWPAYMENTS_FEE_RULE } from '../payments/fees';
-import { mintQuote, refusalCode, type QuoteDeps } from './quote';
+import { mintQuote, refusalCode, type QuoteDeps, type QuoteResult } from './quote';
 import { client, first, run, stmt } from '$lib/server/db/database.testing';
 
 // the whole quote path, against a real database and against every arm of the two ports it reaches
@@ -1562,6 +1562,89 @@ describe('mintQuote() — the cause the gift is credited to', () => {
 		await mint(deps({ provider: port.port }));
 
 		expect(JSON.stringify(port.requests[0]?.metadata)).not.toContain(CLEAN);
+	});
+
+	/**
+	 * `pageProgramId`, sent by a program page, credits that program whatever the form's own setting.
+	 *
+	 * the id is still an input to look up: a cause that is not an active row on this deployment is
+	 * answered exactly as a form id nothing matches, so the field cannot be used to learn which
+	 * program ids exist.
+	 */
+	describe('from a program page', () => {
+		const refusalOf = (result: QuoteResult) =>
+			result.ok ? result : { reason: result.reason, message: result.message, fix: result.fix };
+
+		/** what the same submission is answered with once the form's own id matches nothing. */
+		async function unknownFormRefusal() {
+			await run(stmt('delete from form'));
+			return refusalOf(await mint());
+		}
+
+		it('credits the page’s program on a form that asks about no cause', async () => {
+			expect((await mint(deps(), { pageProgramId: MEALS })).ok).toBe(true);
+			expect((await onlyGift()).programId).toBe(MEALS);
+		});
+
+		it('credits the page’s program over a form’s own pin', async () => {
+			await asks('pinned', CLEAN);
+
+			expect((await mint(deps(), { pageProgramId: MEALS })).ok).toBe(true);
+			expect((await onlyGift()).programId).toBe(MEALS);
+		});
+
+		it('credits the page’s program on a form that offers a choice the donor left alone', async () => {
+			await asks('choice');
+
+			expect((await mint(deps(), { pageProgramId: MEALS })).ok).toBe(true);
+			expect((await onlyGift()).programId).toBe(MEALS);
+		});
+
+		it('credits the page’s program over a donor’s pick sent beside it', async () => {
+			await asks('choice');
+
+			expect((await mint(deps(), { programId: CLEAN, pageProgramId: MEALS })).ok).toBe(true);
+			expect((await onlyGift()).programId).toBe(MEALS);
+		});
+
+		it('credits the page’s program over a pick a pinned form would refuse on its own', async () => {
+			await asks('pinned', CLEAN);
+
+			expect((await mint(deps(), { programId: CLEAN, pageProgramId: MEALS })).ok).toBe(true);
+			expect((await onlyGift()).programId).toBe(MEALS);
+		});
+
+		it('credits the page’s program on the gift a repeating commitment was authorized for', async () => {
+			await asks('pinned', CLEAN);
+
+			expect((await mint(deps(), { frequency: 'monthly', pageProgramId: MEALS })).ok).toBe(true);
+			expect((await onlyGift()).programId).toBe(MEALS);
+		});
+
+		it('refuses an archived program as it refuses a form id nothing matches, writing nothing', async () => {
+			await run(
+				stmt(`update program set status = 'archived', archived_at = 1 where id = ?`, MEALS)
+			);
+			const port = provider();
+
+			const result = await mint(deps({ provider: port.port }), { pageProgramId: MEALS });
+
+			expect(port.requests).toHaveLength(0);
+			expect(await db.select().from(donation)).toHaveLength(0);
+			expect(refusalOf(result)).toEqual(await unknownFormRefusal());
+		});
+
+		it('refuses an id no program has as it refuses a form id nothing matches, writing nothing', async () => {
+			const port = provider();
+
+			const result = await mint(deps({ provider: port.port }), {
+				pageProgramId: '019fb600-0000-7000-8000-0000000000ff'
+			});
+
+			expect(port.requests).toHaveLength(0);
+			expect(await db.select().from(donation)).toHaveLength(0);
+			expect(refusalOf(result)).toEqual(await unknownFormRefusal());
+		});
 	});
 });
 

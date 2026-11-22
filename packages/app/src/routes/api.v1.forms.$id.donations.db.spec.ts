@@ -340,6 +340,36 @@ describe('POST /api/v1/forms/:id/donations — the status each refusal carries',
 		expect(await response.json()).toMatchObject({ error: 'form_not_found' });
 	});
 
+	/**
+	 * a program page's `pageProgramId` that names no active program reads as this form being unknown:
+	 * the same status and the same body, so the field is no way to learn which program ids exist.
+	 * the CORS echo is the form's, so the page that sent it can read the refusal.
+	 */
+	it.each([
+		['an archived program', '019fb601-0000-7000-8000-000000000001'],
+		['an id no program has', '019fb601-0000-7000-8000-0000000000ff']
+	])('answers %s in `pageProgramId` exactly as an unknown form', async (_, pageProgramId) => {
+		await run(stmt('delete from program'));
+		await run(
+			stmt(
+				`insert into program (id, name, status, archived_at, created_at, updated_at)
+				 values ('019fb601-0000-7000-8000-000000000001', 'Clean water', 'archived', 1, 0, 0)`
+			)
+		);
+
+		const refused = await post({ pageProgramId });
+		const refusedBody = await refused.json();
+		const gifts = await first<{ n: number }>(stmt('select count(*) as n from donation'));
+		await run(stmt('delete from form'));
+		const unknown = await post({ pageProgramId });
+
+		expect(gifts?.n).toBe(0);
+		expect(refused.status).toBe(404);
+		expect(refused.status).toBe(unknown.status);
+		expect(refusedBody).toEqual(await unknown.json());
+		expect(refused.headers.get('access-control-allow-origin')).toBe(ALLOWED);
+	});
+
 	it('answers 409 for a form that is still a draft, naming Forms', async () => {
 		await run(stmt(`update form set status = 'draft' where id = ?`, FORM_ID));
 

@@ -325,6 +325,22 @@ async function readFormProgram(db: Db, form: FormRecord): Promise<Program | null
 }
 
 /**
+ * the sentence and fix for a form id nothing matches.
+ *
+ * exported because the gift submission answers an unusable `pageProgramId` with exactly these
+ * words (`mintQuote` in ../donations/quote.ts), so that field tells a caller nothing about which
+ * program ids exist.
+ */
+export function formNotFound(id: string): { readonly message: string; readonly fix: string } {
+	return {
+		message: `No form with id \`${redactPublicId(id)}\` exists on this deployment.`,
+		fix:
+			'Check the `form` attribute on the donation element against the snippet shown under ' +
+			'Forms in /admin. A form is never deleted here, so an id that once worked still resolves.'
+	};
+}
+
+/**
  * the config for one form, or the first thing standing in its way.
  *
  * the refusals are ordered from the request outwards: the id, then the form's own status, then
@@ -336,13 +352,8 @@ export function publishedConfig(sources: PublishedConfigSources): PublishedConfi
 	const { id, form, owner } = sources;
 
 	if (form === null) {
-		return refusal(
-			null,
-			'form_not_found',
-			`No form with id \`${redactPublicId(id)}\` exists on this deployment.`,
-			'Check the `form` attribute on the donation element against the snippet shown under ' +
-				'Forms in /admin. A form is never deleted here, so an id that once worked still resolves.'
-		);
+		const unknown = formNotFound(id);
+		return refusal(null, 'form_not_found', unknown.message, unknown.fix);
 	}
 
 	// a fundraiser's row serves while the page is live and shown, whatever the row's own status: the
