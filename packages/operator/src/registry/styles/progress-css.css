@@ -10,7 +10,9 @@
    also works inside a shadow root.
 
    the fill's width is the caller's, inline, capped at 100%. data-state on the
-   track is "met" at or over the goal and "empty" at 0. */
+   track is "met" at or over the goal, "empty" at 0 and "indeterminate" while
+   the extent of the work is not known: then the caller sets no width, the
+   fill is 40% of the track and sweeps across it, and no percentage is drawn. */
 .ds-progress {
   --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
   --ds-text-sm: calc(0.875 * var(--ds-rem, 1rem));
@@ -20,6 +22,7 @@
     color-mix(in oklch, var(--shadow-ink) 5%, transparent);
   --ds-shadow-track-fill: 0 1px 2px 0
     color-mix(in oklch, var(--shadow-ink) 5%, transparent);
+  --ds-ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
   display: flex;
   align-items: safe center;
   gap: calc(var(--ds-spacing) * 3);
@@ -47,6 +50,61 @@
 .ds-progress-track[data-state="empty"] > .ds-progress-fill {
   box-shadow: none;
 }
+/* indeterminate: the fill is 40% of the track and, for a reader who has not
+   asked for less motion, runs from before the track to past it (250% of its
+   own width is the track's), round again every 1.4s. the track cuts it at its
+   ends. under reduced motion it holds still as stripes across the whole track:
+   a faded fill would sink into the track on the dark ground, where a stripe's
+   edges are the same --primary against --panel as the sweep is. the status
+   text beside the bar carries the state in words */
+.ds-progress-track[data-state="indeterminate"] {
+  overflow: clip;
+}
+.ds-progress-track[data-state="indeterminate"] > .ds-progress-fill {
+  inline-size: 40%;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .ds-progress-track[data-state="indeterminate"] > .ds-progress-fill {
+    animation: ds-progress-indeterminate 1.4s var(--ds-ease-in-out) infinite;
+  }
+  /* right to left: the fill starts at the right, so it enters from before the
+     inline start and leaves past its end, moving left */
+  .ds-progress-track[data-state="indeterminate"]:dir(rtl) > .ds-progress-fill {
+    animation-name: ds-progress-indeterminate-rtl;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ds-progress-track[data-state="indeterminate"] > .ds-progress-fill {
+    inline-size: 100%;
+    animation: none;
+    translate: none;
+    background-color: transparent;
+    background-image: repeating-linear-gradient(
+      135deg,
+      var(--primary) 0 calc(var(--ds-spacing) * 1.5),
+      transparent calc(var(--ds-spacing) * 1.5) calc(var(--ds-spacing) * 3)
+    );
+    box-shadow: none;
+  }
+}
+/* the frames of tailwind's progress-indeterminate in ./theme.css, under a ds-
+   name: keyframes are document-global */
+@keyframes ds-progress-indeterminate {
+  from {
+    translate: -100%;
+  }
+  to {
+    translate: 250%;
+  }
+}
+@keyframes ds-progress-indeterminate-rtl {
+  from {
+    translate: 100%;
+  }
+  to {
+    translate: -250%;
+  }
+}
 /* forced colors repaint every background to Canvas and drop the shadows,
    which would leave track and fill one colour: the fill opts out and takes the
    system ink, and the track draws its extent as an outline */
@@ -58,6 +116,18 @@
   .ds-progress-track[data-state="met"] > .ds-progress-fill {
     forced-color-adjust: none;
     background-color: CanvasText;
+  }
+}
+/* the held-still stripes in the system ink: the fill's solid CanvasText above
+   would paint the whole track one colour */
+@media (prefers-reduced-motion: reduce) and (forced-colors: active) {
+  .ds-progress-track[data-state="indeterminate"] > .ds-progress-fill {
+    background-color: transparent;
+    background-image: repeating-linear-gradient(
+      135deg,
+      CanvasText 0 calc(var(--ds-spacing) * 1.5),
+      transparent calc(var(--ds-spacing) * 1.5) calc(var(--ds-spacing) * 3)
+    );
   }
 }
 /* aria-hidden: the track's aria-valuetext already says the percentage */

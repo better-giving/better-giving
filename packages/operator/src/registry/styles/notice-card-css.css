@@ -90,6 +90,23 @@
   gap: calc(var(--ds-spacing) * 4);
 }
 
+/* inline: from 640px the text and its one action share a row, the action at
+   the trailing edge, level with the text and 24px from it. under 640px the
+   stack below applies unchanged */
+@media (width >= 40rem) {
+  .ds-notice-card-inline .ds-notice-card-content {
+    flex-direction: row;
+    align-items: safe center;
+    gap: calc(var(--ds-spacing) * 6);
+  }
+  .ds-notice-card-inline .ds-notice-card-text {
+    flex: 1;
+  }
+  .ds-notice-card-inline .ds-notice-card-actions {
+    flex: none;
+  }
+}
+
 /* under 640px: 16px in, and the actions stacked at full width */
 @media (width < 40rem) {
   .ds-notice-card {

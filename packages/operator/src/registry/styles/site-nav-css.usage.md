@@ -10,7 +10,7 @@ Import `styles/variables.css`, `styles/button-css.css`, `styles/bare-icon-button
 <a class="ds-site-nav-skip" href="#main">Skip to content</a>
 <header class="ds-site-nav">
   <div class="ds-site-nav-bar">
-    <a class="ds-site-nav-brand" href="/">Acme</a>
+    <a class="ds-site-nav-brand" href="/"><span class="ds-site-nav-name">Acme</span></a>
     <nav class="ds-site-nav-links" aria-label="Main">
       <ul>
         <li><a class="ds-site-nav-link" href="/colors">Colors</a></li>
@@ -38,7 +38,8 @@ Import `styles/variables.css`, `styles/button-css.css`, `styles/bare-icon-button
 - `ds-site-nav-skip` is the skip link: hidden until focused, then a chip 12px in from the top start corner (top left in a left-to-right page) with the `--popover` fill, `--shadow-floating`, the control corner, 8px by 16px and 14px semibold text.
 - `ds-site-nav` is the header: sticky at the top, z 30, the `--background` fill, a `--hairline` bottom edge. It resets its lists' bullets and spacing. A page holding it gets `--ds-bar-h` on `:root` as the header's height (4rem and the 1px edge), so a `page-state-css` under it centers in what is left of the viewport; with an announcement band, run the script in the announcement section so the band's height counts too.
 - `ds-site-nav-bar` is the page shape inside it: 64px high, a 20px gutter, 40px from 48rem, capped at 80rem from 80rem wide and 96rem from 96rem.
-- `ds-site-nav-brand` is the home link: the full bar height, the display face at 20px bold with tight tracking, its 8px inset taken back by a margin.
+- `ds-site-nav-brand` is the home link: the full bar height, the display face at 20px bold with tight tracking, its 8px inset taken back by a margin. Wrap the name in `ds-site-nav-name`: one line, cut with an ellipsis, because the bar's height is fixed and page centring reads it. The mark shrinks before the links do and stops growing at 28rem from 40rem, but only when it holds a `ds-site-nav-name` box: a mark whose name is bare text, as in 1.2.2, is unchanged. A logo goes before the name as `<img class="ds-site-nav-logo" src="…" alt="">`: 32px high, at most 10rem wide, contained, on the control corner, 8px from the name; the empty `alt` is because the name beside it names the link.
+- `ds-site-nav-solo` goes beside `ds-site-nav` on a header with one link and no actions or account: under 40rem the link stays in the bar at 12px a side and the toggle and the panel are hidden. Anything else folds as before. Not on a `ds-site-nav-fold-nav` header.
 - `ds-site-nav-links` is the `<nav>` of the bar, hidden under 40rem; `ds-site-nav-link` each link: the full height, 16px side padding, 4px apart, 14px semibold gray-11, gray-12 on hover where the pointer can hover. `aria-current="page"` draws a 2px `--primary` underline and `--accent-11` ink.
 - `ds-site-nav-toggle` hides the menu button from 40rem; the button itself is button-css's 50px ghost icon button. The glyph is lucide's `Menu` (above) closed and its `X` open: `<path d="M18 6 6 18"/><path d="m6 6 12 12"/>`.
 - `ds-site-nav-menu` is the panel, hung under the bar across its width: `--popover`, `--shadow-floating`, a `--hairline` bottom edge (the bar's hairline is its top edge), 8px top and bottom, scaling in over `--duration-fast`. The `hidden` attribute closes it. `ds-site-nav-menu-link` is a row, 50px high with 20px side padding; the current one has a 2px `--primary` start edge and the `--secondary` fill.
@@ -61,7 +62,7 @@ Import `styles/variables.css`, `styles/button-css.css`, `styles/bare-icon-button
 </aside>
 <header class="ds-site-nav ds-site-nav-fold-nav">
   <div class="ds-site-nav-bar">
-    <a class="ds-site-nav-brand" href="/">Acme</a>
+    <a class="ds-site-nav-brand" href="/"><span class="ds-site-nav-name">Acme</span></a>
     <nav class="ds-site-nav-links" aria-label="Main"><ul>…six links…</ul></nav>
     <div class="ds-site-nav-end">
       <div class="ds-site-nav-actions">

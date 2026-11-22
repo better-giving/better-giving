@@ -30,6 +30,7 @@ Import `styles/variables.css`, `styles/button-css.css` and `styles/notice-card-c
 - `ds-notice-card-content` holds `ds-notice-card-text` (the title and body, 4px apart) and `ds-notice-card-actions` 16px under it.
 - `ds-notice-card-title` is 16px semibold; `ds-notice-card-body` 14px.
 - `ds-notice-card-actions` sets the buttons right-aligned side by side from 640px and stacks them at full width under it. Leave it out when there are none. On the destructive tone the confirm is `ds-btn-destructive`.
+- `ds-notice-card-inline` goes beside the tone class and puts one action at the trailing edge from 640px, level with the text and 24px from it; under 640px it stacks as above. Use inline for one sentence and one action that resolves it. Use the row for longer text, two actions or a confirm.
 
 ## Accessibility
 

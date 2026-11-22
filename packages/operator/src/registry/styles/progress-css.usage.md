@@ -26,6 +26,7 @@ Import `styles/variables.css` and `styles/progress-css.css`. Work out the whole 
 
 - `data-state="met"` on the track at 100% or more turns the fill `--success`.
 - `data-state="empty"` on the track at 0% drops the fill's shadow.
+- `data-state="indeterminate"` on the track, when the extent of the work is not known: leave out `aria-valuenow` and `aria-valuetext`, the fill's `style`, and the `ds-progress-label`, and say what is happening in text beside the bar (`Uploading <name>`). The fill is 40% of the track and sweeps across it every 1.4s, cut at the track's ends. Under reduced motion it holds still as diagonal stripes across the whole track (6px of `--primary`, 6px clear, at 135 degrees); under forced colors the stripes are `CanvasText`.
 - Over the goal, keep the fill at `width: 100%` and `aria-valuenow="100"`, and let the label and `aria-valuetext` say the real figure (`123%`, `"123% of goal"`).
 - The fill's width moves over `--duration-slow`; the `variables` reduced-motion guard collapses it.
 - Under forced colors (Windows High Contrast) the fill is drawn in the system ink, `CanvasText`, and the track's extent as a 1px `CanvasText` outline.
