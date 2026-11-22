@@ -1,6 +1,7 @@
 import { sendDueEntries } from '$lib/server/accounting/deliver';
 import { createAccountingProvider } from '$lib/server/accounting/factory';
 import { pinnedOrigin, readAuthEnv, readPin } from '$lib/server/auth/env';
+import { readConfigEnv } from '$lib/server/config/env';
 import { sweepConnectorLeftovers } from '$lib/server/connector/keys';
 import type { Db } from '$lib/server/db/client';
 import { readPendingCryptoGifts } from '$lib/server/donations/pending-crypto-read';
@@ -62,7 +63,15 @@ export const CRON_RUNS: Readonly<Record<string, (env: Env, db: Db, now: Date) =>
 	'45 * * * *': (env, db, now) => owedRefundNotices(env, db, now),
 
 	'20 4 * * *': (env, db, now) =>
-		refreshTickers({ db, fetch, email: createEmailProvider(env) }, now),
+		refreshTickers(
+			{
+				db,
+				fetch,
+				email: createEmailProvider(env),
+				mailFrom: readConfigEnv(env).MAIL_FROM ?? null
+			},
+			now
+		),
 
 	// a run of its own rather than a share of the minute run's: it posts nothing, and
 	// ./lib/server/outbox/budget.ts sizes that run's posts.

@@ -1139,6 +1139,19 @@ describe('the stock and IRA (QCD) rails', () => {
 			expect(await tickerListed(db, 'C0')).toBe(true);
 		});
 
+		it('names MAIL_FROM to sec.gov where Settings has saved no notification address', async () => {
+			await run(stmt('delete from org_profile'));
+			const sec = wholeFiles();
+			vi.stubGlobal('fetch', sec.fetch);
+
+			await saveStock();
+
+			expect(sec.requests.map((r) => r.headers.get('user-agent'))).toEqual([
+				`better-giving ${deployed().MAIL_FROM}`,
+				`better-giving ${deployed().MAIL_FROM}`
+			]);
+		});
+
 		it('still saves when sec.gov refuses, and alerts the operator', async () => {
 			vi.stubGlobal(
 				'fetch',
