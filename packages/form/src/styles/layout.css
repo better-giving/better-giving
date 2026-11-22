@@ -1155,6 +1155,21 @@ form {
 	align-self: stretch;
 }
 
+/*
+ * the pending screen stands its lists a grouping step from the lead over them and the press under
+ * them, and its two buttons a step closer than that, as one pair: the step's gap negated and the
+ * nearer step put back, as `.disclosure + .disclosure` does, so the heading keeps the step's own gap
+ * to the lead. the foot's length is spent past the empty challenge box (`.challenge` above), which
+ * cancels its own gap.
+ */
+.takeover:has(.pledge-details:not([hidden])) .pledge {
+	margin-block: calc(var(--_sp4) - var(--_step-gap));
+}
+
+.takeover:has(.pledge-details:not([hidden])) .foot {
+	margin-block-start: calc(var(--_sp3) - var(--_step-gap));
+}
+
 /* raw-length-ok: a breakpoint, and `em` is the whole of why — the header argues it. */
 @container donate (min-width: 24em) {
 	.names {

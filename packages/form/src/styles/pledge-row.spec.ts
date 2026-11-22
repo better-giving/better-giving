@@ -10,7 +10,7 @@ import { REGISTRY_CLASS } from '../parts';
 // wraps in what is left, `overflow-wrap: anywhere` breaking a name with no space in it. the same
 // classes draw the gift page's summary (packages/app/src/lib/donate/pledge-block.tsx).
 
-type Rule = { readonly selector: string; readonly stated: ReadonlyMap<string, string> };
+type Rule = { readonly selectors: readonly string[]; readonly stated: ReadonlyMap<string, string> };
 
 // in the order ../element.ts adopts them, so a later rule for a selector is the one the cascade keeps.
 const rules: Rule[] = ['./parts.css', './layout.css'].flatMap((path) =>
@@ -19,7 +19,8 @@ const rules: Rule[] = ['./parts.css', './layout.css'].flatMap((path) =>
 			.replace(/\/\*[\s\S]*?\*\//g, '')
 			.matchAll(/([^{};]+)\{([^{}]*)\}/g)
 	].map(([, selector = '', body = '']) => ({
-		selector: selector.trim().replace(/\s+/g, ' '),
+		// one per comma of the list, less a comma inside a pseudo-class's parentheses.
+		selectors: selector.split(/,(?![^(]*\))/).map((one) => one.trim().replace(/\s+/g, ' ')),
 		stated: new Map(
 			body
 				.split(';')
@@ -33,7 +34,7 @@ const rules: Rule[] = ['./parts.css', './layout.css'].flatMap((path) =>
 /** the last value a selector states for a property, which is the one the cascade keeps. */
 const stated = (selector: string, property: string): string | undefined =>
 	rules
-		.filter((rule) => rule.selector === selector && rule.stated.has(property))
+		.filter((rule) => rule.selectors.includes(selector) && rule.stated.has(property))
 		.at(-1)
 		?.stated.get(property);
 
@@ -113,10 +114,48 @@ describe('a pledge’s pending screen', () => {
 	it('sets a detail checked character by character a size under its words', () => {
 		expect(stated('.pledge-details .pledge-value.mono', 'font-size')).toBe('0.9375em');
 	});
+
+	it('rounds its lists and its benefits panel at the card’s own corner', () => {
+		expect({
+			lists: stated(`${PENDING} .pledge-list`, 'border-radius'),
+			benefits: stated(`${PENDING} .benefits`, 'border-radius')
+		}).toEqual({ lists: 'var(--_r)', benefits: 'var(--_r)' });
+	});
+
+	// the panel's words at the registry's leadings, spaced in its spacing steps off `--ds-rem` rather
+	// than in `em` off the words' own smaller sizes: one step under the title, two over the fine print.
+	it('spaces its benefits panel in the registry’s steps and leadings', () => {
+		const at = (part: string, property: string) => stated(`${PENDING} .${part}`, property);
+		expect({
+			titleLine: at('benefits-title', 'line-height'),
+			titleUnder: at('benefits-title', 'margin-block-end'),
+			bodyLine: at('benefits-body', 'line-height'),
+			fineLine: at('benefits-fine', 'line-height'),
+			fineOver: at('benefits-fine', 'margin-block-start')
+		}).toEqual({
+			titleLine: 'calc(1.25 / 0.875)',
+			titleUnder: 'calc(var(--ds-rem) * 0.25)',
+			bodyLine: 'calc(1.25 / 0.875)',
+			fineLine: 'calc(1 / 0.75)',
+			fineOver: 'calc(var(--ds-rem) * 0.25 * 2)'
+		});
+	});
+
+	// the takeover stands its blocks the step's gap apart (`--_step-gap` in ./layout.css); the design
+	// stands the lists 16px from the lead and the press, and the second button 12px under the first.
+	it('pays the step’s gap back to the blocks the design spaces tighter', () => {
+		expect({
+			block: stated(`${PENDING} .pledge`, 'margin-block'),
+			foot: stated(`${PENDING} .foot`, 'margin-block-start')
+		}).toEqual({
+			block: 'calc(var(--_sp4) - var(--_step-gap))',
+			foot: 'calc(var(--_sp3) - var(--_step-gap))'
+		});
+	});
 });
 
-// a Copy is the registry's medium icon button (`COPY_CLASS` in ../pledge-screen.ts), which states its 36px square
-// and its 16px icon (`.ds-btn-md`, `.ds-btn-icon` in ../registry/styles/button-css.css); ./parts.css
+// a Copy is the registry's medium icon button (`COPY_CLASS` in ../pledge-screen.ts), which states
+// its 36px square and its 16px icon (`.ds-btn-md`, `.ds-btn-icon` in ../registry/styles/button-css.css); ./parts.css
 // is adopted after that sheet, so a size stated there would be the one drawn.
 describe('a pledge’s Copy', () => {
 	it('leaves its square to the registry and its mark at the registry’s icon size', () => {

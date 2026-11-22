@@ -2537,6 +2537,15 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 	border-radius: var(--_r-in);
 }
 
+/*
+ * on the pending screen the lists and the panel are the blocks the screen is made of rather than
+ * boxes inside one, so they take the card's own corner.
+ */
+.takeover:has(.pledge-details:not([hidden])) .pledge-list,
+.takeover:has(.pledge-details:not([hidden])) .benefits {
+	border-radius: var(--_r);
+}
+
 .benefits-title {
 	margin: 0 0 var(--_sp1);
 	color: var(--_n12);
@@ -2558,6 +2567,27 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 	/* raw-length-ok: the small print's floor, which `.optional` above argues. */
 	font-size: max(12px, var(--_t-xs));
 	line-height: var(--_lh-body);
+}
+
+/*
+ * on the pending screen the panel's words take the registry's leadings for their sizes, and its gaps
+ * the registry's spacing step off `--ds-rem` rather than an `em` off the words' own smaller sizes —
+ * one step under the title, two over the fine print. both are the registry gap ./tokens.css lists
+ * tenth. the title keeps the card's emphasis weight in the card's own face: the 700 the design draws
+ * is in a display face this card never loads.
+ */
+.takeover:has(.pledge-details:not([hidden])) .benefits-title {
+	margin-block-end: calc(var(--ds-rem) * 0.25);
+	line-height: calc(1.25 / 0.875);
+}
+
+.takeover:has(.pledge-details:not([hidden])) .benefits-body {
+	line-height: calc(1.25 / 0.875);
+}
+
+.takeover:has(.pledge-details:not([hidden])) .benefits-fine {
+	margin-block-start: calc(var(--ds-rem) * 0.25 * 2);
+	line-height: calc(1 / 0.75);
 }
 
 /*
