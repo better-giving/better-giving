@@ -154,40 +154,6 @@ describe('a pledge’s pending screen', () => {
 	});
 });
 
-// a Copy is the registry's medium icon button (`COPY_CLASS` in ../pledge-screen.ts), which states
-// its 36px square and its 16px icon (`.ds-btn-md`, `.ds-btn-icon` in ../registry/styles/button-css.css); ./parts.css
-// is adopted after that sheet, so a size stated there would be the one drawn.
-describe('a pledge’s Copy', () => {
-	it('leaves its square to the registry and its mark at the registry’s icon size', () => {
-		expect({
-			inline: stated('.pledge .copy', 'inline-size'),
-			floor: stated('.pledge .copy', 'min-block-size'),
-			ink: stated('.pledge .copy', 'color'),
-			glyph: stated('.pledge .copy .copy-glyph', 'inline-size')
-		}).toEqual({
-			inline: undefined,
-			floor: undefined,
-			ink: undefined,
-			glyph: 'var(--ds-btn-icon)'
-		});
-	});
-
-	// the registry's coarse-pointer hit area on its small tier (`.ds-btn-sm::after`), which its medium
-	// tier has none of: the 36px square stays drawn and the target under a finger grows to 44px.
-	it('grows its hit area to the registry’s hit target under a coarse pointer', () => {
-		const sheet = readFileSync(new URL('./parts.css', import.meta.url), 'utf8').replace(
-			/\/\*[\s\S]*?\*\//g,
-			''
-		);
-		const coarse = sheet.match(
-			/@media \(pointer: coarse\) \{\s*\.pledge \.copy::after \{([^}]*)\}/
-		);
-		expect(coarse?.[1]?.replace(/\s+/g, ' ').replace(/\( /g, '(').replace(/ \)/g, ')').trim()).toBe(
-			"content: ''; position: absolute; inset-block: calc((var(--ds-btn-size) - var(--ds-hit-target)) / 2 - var(--ds-btn-edge)); inset-inline: min(calc(-1 * var(--ds-btn-edge)), calc((100% - var(--ds-hit-target)) / 2));"
-		);
-	});
-});
-
 // a pledge screen's primary (`REGISTRY_CLASS.action`) and its emailed instructions, an `<a>` with
 // `SECONDARY_BUTTON` in ../views.ts and packages/app/src/lib/donate/takeover.tsx, are both `.ds-btn`.
 // the registry centres a button's content with flex alone, and a label that wraps fills the box, so

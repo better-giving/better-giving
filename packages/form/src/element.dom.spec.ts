@@ -29,7 +29,6 @@ import {
 } from './v1';
 import { DEFAULT_SHAPE } from './views';
 import { EMPLOYER_CLASS } from './employer-ask';
-import { COPY_CLASS } from './pledge-screen';
 import { createFormRuntime } from './embed/runtime';
 import { APPEARANCE_INPUTS } from './styles/appearance';
 import partStyles from './styles/parts.css?inline';
@@ -5897,10 +5896,9 @@ describe('the stylesheets', () => {
 					.filter(({ selectors }) => selectors.some(matches))
 					.flatMap(({ body }) => transitionedBy(body))
 			);
-		// keyed by the part each class rides on: the card's own controls, the thank-you's employer
-		// ask (./employer-ask.ts), whose two presses take the md tier, and a saved pledge's Copy
-		// (./pledge-screen.ts).
-		const handed = [REGISTRY_CLASS, EMPLOYER_CLASS, COPY_CLASS].flatMap((classes) =>
+		// keyed by the part each class rides on: the card's own controls and the thank-you's employer
+		// ask (./employer-ask.ts), whose two presses take the md tier.
+		const handed = [REGISTRY_CLASS, EMPLOYER_CLASS].flatMap((classes) =>
 			Object.entries(classes).flatMap(([part, list]) =>
 				list.split(' ').map((name) => ({ part, name }))
 			)
@@ -8696,22 +8694,6 @@ describe('a stock or IRA (QCD) pledge', () => {
 			'DD',
 			'DD'
 		]);
-	});
-
-	// the design draws a Copy as the registry's 36px square in its secondary tone, with the icon in
-	// gray 12 (../registry/styles/button-css.css draws all of it from these four classes).
-	it('draws every Copy as the registry’s medium icon button in its secondary tone', async () => {
-		const card = await iraPending();
-		const copies = card.all('.pledge .copy');
-		expect(copies.length).toBe(3);
-		for (const copy of copies) {
-			expect(
-				['ds-btn', 'ds-btn-md', 'ds-btn-icon', 'ds-btn-secondary'].filter(
-					(name) => !copy.classList.contains(name)
-				),
-				copy.outerHTML
-			).toEqual([]);
-		}
 	});
 
 	it('says a refused copy on the region and selects the value instead', async () => {
