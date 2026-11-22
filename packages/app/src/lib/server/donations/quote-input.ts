@@ -79,6 +79,15 @@ export type ParsedQuoteRequest = {
 	 * survived this parser is always a form that offered a choice and a donor who made one.
 	 */
 	readonly programId: string | undefined;
+	/**
+	 * the program a program page was drawn for, or absent on every other page.
+	 *
+	 * checked against nothing here and against the form not at all: it credits the gift whatever the
+	 * form's own program setting, and when present it is the gift's cause and `programId` is not read.
+	 * whether it names an active program on this deployment, and whether the form is the Donation
+	 * page's, are database questions, answered by `mintQuote` in ./quote.ts before anything is minted.
+	 */
+	readonly pageProgramId: string | undefined;
 	/** whatever was presented as a challenge token, checked by nothing here. */
 	readonly turnstileToken: string | undefined;
 	/** whatever was presented as a solved ALTCHA challenge, checked by nothing here either. */
@@ -615,6 +624,16 @@ function parseProgramId(
 	return { ok: true, value };
 }
 
+const PAGE_PROGRAM_ID = z
+	.string({
+		error: (issue) => `\`pageProgramId\` is ${describe(issue.input)}, which is not a string.`
+	})
+	.optional();
+
+const PAGE_PROGRAM_ID_FIX =
+	'Send the id of the program the page was drawn for, or leave the field out on any page that is ' +
+	'not a program’s own.';
+
 /**
  * the challenge token, carried and never touched.
  *
@@ -742,9 +761,17 @@ export function parseQuoteRequest(body: unknown, config: FormConfig): QuoteInput
 	const tribute = parseTribute(posted);
 	if (!tribute.ok) return tribute;
 
+	const pageProgram = PAGE_PROGRAM_ID.safeParse(posted.pageProgramId);
+	if (!pageProgram.success) return refusal(first(pageProgram.error), PAGE_PROGRAM_ID_FIX);
+
 	const submittedProgram = PROGRAM_ID.safeParse(posted.programId);
 	if (!submittedProgram.success) return refusal(first(submittedProgram.error), PROGRAM_ID_FIX);
-	const program = parseProgramId(submittedProgram.data, config);
+	// a page program outranks the donor's pick, so a pick sent beside it is not checked against a
+	// form setting it would never be credited under.
+	const program =
+		pageProgram.data === undefined
+			? parseProgramId(submittedProgram.data, config)
+			: ({ ok: true, value: undefined } as const);
 	if (!program.ok) return program;
 
 	const turnstileToken = TURNSTILE_TOKEN.safeParse(posted.turnstileToken);
@@ -810,6 +837,7 @@ export function parseQuoteRequest(body: unknown, config: FormConfig): QuoteInput
 			noteOnPage,
 			tribute: tribute.value,
 			programId: program.value,
+			pageProgramId: pageProgram.data,
 			turnstileToken: turnstileToken.data,
 			altchaPayload: altchaPayload.data,
 			authorization: authorization.value,

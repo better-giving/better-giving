@@ -1,3 +1,4 @@
+import { act } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { render } from '../render.testing';
 import { CodeSlab } from './CodeSlab.jsx';
@@ -163,6 +164,25 @@ describe('a code slab mounted into a document', () => {
 		});
 
 		expect(names(root)).toEqual(['Copy address']);
+	});
+
+	it('hands the one-line control the words a landed copy is named by', async () => {
+		const writeText = vi.fn(() => Promise.resolve());
+		Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+		const root = render(CodeSlab, {
+			oneline: true,
+			content: ADDRESS,
+			copyable: true,
+			copyLabel: 'Copy link',
+			copiedLabel: 'Link copied'
+		});
+
+		await act(async () => {
+			root.querySelector('button')?.click();
+			for (let tick = 0; tick < 10; tick++) await Promise.resolve();
+		});
+
+		expect(names(root)).toEqual(['Link copied']);
 	});
 
 	it('offers no control on a slab that is only being read', () => {

@@ -99,6 +99,18 @@ it('leads the list with the way to add to it, on an empty list and a populated o
 	}
 });
 
+it('says under its heading that each active program has a public page, on either reading', () => {
+	for (const programs of [[], [WELLS, LEGACY]]) {
+		const heading = screen(programs).querySelector('h1');
+		// the heading's own block, which is the h1 itself where the screen draws no header around it.
+		const block = heading?.closest('header') ?? heading;
+
+		expect(block?.nextElementSibling?.textContent).toBe(
+			'Each active program has a public page that shows its name, photo and description.'
+		);
+	}
+});
+
 /**
  * the cards a reader can reach, which is every record on the list and not the sample inside the
  * create card: that one wears a record's classes on purpose, and is hidden.

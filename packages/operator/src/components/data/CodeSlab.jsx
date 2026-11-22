@@ -23,6 +23,7 @@ import { CopyControl } from '../controls/CopyControl.jsx';
  *   writes one above.
  * @property {never} [copyLabel] the caption, with `record`, is what names this form's control.
  * @property {never} [labelledBy] the caption is what names this form's box.
+ * @property {never} [copiedLabel] goes with `copyLabel`, which this form does not take.
  *
  * @typedef {object} SlabOneLine the one-line form, asked for by name.
  * @property {true} oneline the value drawn as one band: the code runs the width of the box and
@@ -39,6 +40,9 @@ import { CopyControl } from '../controls/CopyControl.jsx';
  * @property {string | undefined} [copyLabel] the copy control's accessible name, for a page drawing
  *   more than one one-line slab — two controls both called Copy say nothing about which value each
  *   takes. unset, the control is the bare Copy.
+ * @property {string | undefined} [copiedLabel] what a landed copy is named and announced as, beside
+ *   a `copyLabel` that names the value — `Link copied` after `Copy link`. it is `CopyControl`'s
+ *   `copied`, and that prop says what else it draws.
  *
  * @typedef {SlabContent & (SlabCaptioned | SlabOneLine)} CodeSlabProps
  *
@@ -85,6 +89,7 @@ export function CodeSlab({
 	record,
 	oneline = false,
 	copyLabel,
+	copiedLabel,
 	labelledBy
 }) {
 	// stated from `useId` rather than written down, because a page draws one slab per record and two
@@ -96,7 +101,11 @@ export function CodeSlab({
 	// it is drawn on, and in the one-line form that is what puts it over the code in paint order.
 	const controlLabel = record && label ? `Copy the ${label} for ${record}` : copyLabel;
 	const control = copyable ? (
-		<CopyControl text={content} {...(controlLabel ? { label: controlLabel } : {})} />
+		<CopyControl
+			text={content}
+			{...(controlLabel ? { label: controlLabel } : {})}
+			{...(copiedLabel ? { copied: copiedLabel } : {})}
+		/>
 	) : null;
 
 	return (

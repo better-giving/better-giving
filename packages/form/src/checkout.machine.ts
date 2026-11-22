@@ -138,6 +138,11 @@ export type CheckoutInput = {
 	readonly resume?: { readonly paymentToken: string };
 	/** where the card starts when the page hosting it asks: `openingDraft` below reads it. */
 	readonly opening?: { readonly monthly?: boolean; readonly dedication?: boolean };
+	/**
+	 * the program the hosting program page was drawn for, sent on every quote as `pageProgramId`
+	 * (./v1.ts). the page's, not the donor's: it is no draft value and no event changes it.
+	 */
+	readonly pageProgramId?: string;
 };
 
 /**
@@ -261,6 +266,7 @@ export type CheckoutContext = {
 	readonly config: FormConfig;
 	readonly ports: CheckoutPorts;
 	readonly resumeToken: string | null;
+	readonly pageProgramId: string | null;
 	readonly draft: AmountDraft;
 	readonly fv: FormValue | null;
 	readonly payerDraft: PayerDraft;
@@ -668,6 +674,7 @@ function quoteRequest(context: CheckoutContext, payer: Payer): QuoteRequest {
 		// where it is needed most — and it is also every gift on a pinned form, because that pin is
 		// written from the form record and nothing on such a card writes an id onto the draft.
 		...(fv.programId === null ? {} : { programId: fv.programId }),
+		...(context.pageProgramId === null ? {} : { pageProgramId: context.pageProgramId }),
 		...flatTribute(fv.tribute),
 		...(context.authorization === null
 			? {}
@@ -1456,6 +1463,7 @@ export const checkoutMachine = setup({
 		config: input.config,
 		ports: input.ports,
 		resumeToken: input.resume?.paymentToken ?? null,
+		pageProgramId: input.pageProgramId ?? null,
 		draft: openingDraft(input),
 		fv: null,
 		payerDraft: {},

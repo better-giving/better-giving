@@ -51,6 +51,7 @@ type Loaded = {
 	description: string | null;
 	status: string;
 	archived: boolean;
+	publicPage: { url: string; previewSrc: string };
 	editor: { name: string; description: string } | null;
 	imageId: string | null;
 	saved: 'details' | null;
@@ -183,6 +184,22 @@ describe('/admin/programs/[id] load', () => {
 		expect(loaded.archived).toBe(true);
 		expect(loaded.editor).toBeNull();
 		expect(loaded.status).toBe('archived');
+	});
+
+	it('names the public page on the origin it was asked on, and the preview the card frames', async () => {
+		const before = (await load()).publicPage;
+		expect(before.url).toBe(`${ORIGIN}/programs/${PROGRAM_ID}`);
+		expect(before.previewSrc).toMatch(new RegExp(`^/programs/${PROGRAM_ID}/preview\\?v=.+$`));
+		// a save writes the row's version, and the frame's address moves with it, so the frame draws
+		// what was saved.
+		await run(stmt(`update program set updated_at = updated_at + 1 where id = ?`, PROGRAM_ID));
+		const saved = (await load()).publicPage;
+		expect(saved.previewSrc).not.toBe(before.previewSrc);
+		// an archived program's page is still there to open: it tells donors it is closed.
+		await archiveInPlace();
+		const after = (await load()).publicPage;
+		expect(after.url).toBe(before.url);
+		expect(after.previewSrc).toMatch(new RegExp(`^/programs/${PROGRAM_ID}/preview\\?v=.+$`));
 	});
 
 	it('answers a 404 naming the id for a cause that is not there', async () => {

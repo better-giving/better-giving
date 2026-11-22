@@ -321,6 +321,47 @@ describe('a copy control mounted into a document', () => {
 		expect(region(root).textContent).toBe('Copy blocked');
 	});
 
+	it('names and announces a landed copy in the words it was handed, in the done state', async () => {
+		const root = render(CopyControl, {
+			text: 'https://cedarfork.example/programs/0f8dK2mQ',
+			label: 'Copy link',
+			copied: 'Link copied'
+		});
+
+		await press(root);
+		await elapse(0);
+		expect([
+			button(root).getAttribute('aria-label'),
+			region(root).textContent,
+			button(root).getAttribute('data-done')
+		]).toEqual(['Link copied', 'Link copied', 'true']);
+
+		await elapse(2000);
+		expect([
+			button(root).getAttribute('aria-label'),
+			button(root).hasAttribute('data-done')
+		]).toEqual(['Copy link', false]);
+	});
+
+	it('never draws a refusal as done', async () => {
+		// the registry's done state is for work that succeeded; a refusal is not one.
+		writeText.mockRejectedValue(new Error('permission refused'));
+		const root = render(CopyControl, { text: 'https://x.example', copied: 'Link copied' });
+
+		await press(root);
+
+		expect(button(root).hasAttribute('data-done')).toBe(false);
+		expect(button(root).getAttribute('aria-label')).toBe('Copy blocked');
+	});
+
+	it('draws no done state where it was not handed the words for one', async () => {
+		const root = render(CopyControl, { text: 'pnpm run deploy' });
+
+		await press(root);
+
+		expect(button(root).hasAttribute('data-done')).toBe(false);
+	});
+
 	it('offers itself again once the outcome has settled', async () => {
 		const root = render(CopyControl, { text: 'pnpm run deploy', label: 'Copy the deploy command' });
 

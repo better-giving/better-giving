@@ -27,8 +27,14 @@ import { PAYPAL_DEFAULT_API_URL, paypalApiOrigin, paypalSdkUrl } from '$lib/serv
 // `handle`, so a screen added later is strict until someone widens it on purpose. a supporter
 // screen's handle widens the dashboard's policy by what that screen draws and no further.
 //
-// no document may be framed. the preview of a page's draft (./routes/preview.$pageId.tsx) opens in
-// a tab of its own, under the donor page's policy, since what it draws is the donor page.
+// no document may be framed but one: the program editor's preview of a program's saved page
+// (./routes/programs.$id_.preview.tsx), which that editor draws in an `iframe` and which says so
+// with `framedBy: 'self'` on its `handle`. it may be framed by this deployment's own pages alone
+// (`frame-ancestors 'self'`, `X-Frame-Options: SAMEORIGIN`); the program's public page and every
+// other document stay unframeable. the dashboard's own policy needs nothing added to draw it:
+// `frame-src` falls back to `default-src 'self'`. the preview of a page's draft
+// (./routes/preview.$pageId.tsx) opens in a tab of its own, under the donor page's policy, since
+// what it draws is the donor page.
 //
 // every document allows inline style, the dashboard's as well as the donor page's. operator
 // components set layout through style attributes the server renders — the column widths in
@@ -44,6 +50,11 @@ import { PAYPAL_DEFAULT_API_URL, paypalApiOrigin, paypalSdkUrl } from '$lib/serv
 /** what a route's `handle` carries to have its documents drawn under the donor page's policy. */
 export interface DonorPolicyHandle {
 	readonly documentPolicy: 'donor';
+	/**
+	 * `'self'` lets this deployment's own pages frame the route's documents, and no other origin.
+	 * read off the deepest route matched alone, so no layout hands it to the routes beneath it.
+	 */
+	readonly framedBy?: 'self';
 }
 
 /**
@@ -213,6 +224,13 @@ function handlePolicy(handle: unknown): DocumentPolicy | null {
 	return HANDLE_POLICIES.find((policy) => policy === asked) ?? null;
 }
 
+/** whether a route's `handle` lets this deployment's own pages frame its documents. */
+function isFramedBySelf(handle: unknown): boolean {
+	if (typeof handle !== 'object' || handle === null) return false;
+	const framing = handle as { readonly documentPolicy?: unknown; readonly framedBy?: unknown };
+	return framing.documentPolicy === 'donor' && framing.framedBy === 'self';
+}
+
 /** a document's policy directives, `env` read for paypal's address and the spam check in use. */
 function policyFor(
 	policy: DocumentPolicy,
@@ -242,15 +260,19 @@ export function setDocumentHeaders(
 	nonce: string,
 	env: Pick<ConfigEnv, 'PAYPAL_API_URL' | 'TURNSTILE_SITE_KEY' | 'TURNSTILE_SECRET_KEY'>
 ): void {
+	const { matches } = context.staticHandlerContext;
 	const policy =
-		context.staticHandlerContext.matches
-			.map((match) => handlePolicy(match.route.handle))
-			.findLast((asked) => asked !== null) ?? 'operator';
+		matches.map((match) => handlePolicy(match.route.handle)).findLast((asked) => asked !== null) ??
+		'operator';
+	const framedBySelf = isFramedBySelf(matches.at(-1)?.route.handle);
 	headers.set(
 		'Content-Security-Policy',
-		[...policyFor(policy, nonce, env), "frame-ancestors 'none'"].join('; ')
+		[
+			...policyFor(policy, nonce, env),
+			`frame-ancestors ${framedBySelf ? "'self'" : "'none'"}`
+		].join('; ')
 	);
-	headers.set('X-Frame-Options', 'DENY');
+	headers.set('X-Frame-Options', framedBySelf ? 'SAMEORIGIN' : 'DENY');
 	// a route whose address is a capability answers `no-referrer` itself (./routes/gift.$token.tsx),
 	// stricter than either policy, and keeps it.
 	if (headers.get('Referrer-Policy') === 'no-referrer') return;

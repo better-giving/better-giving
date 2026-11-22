@@ -574,7 +574,7 @@ const PREVIEW_LIVE = `[data-area='${MESSAGES_AREA}']`;
  * the stops are taken out by `tabindex` rather than by `inert` on everything but the messages, which
  * would also take the preview out of the accessibility tree, and the preview is there to be read.
  */
-function usePreviewStill(preview: boolean) {
+export function usePreviewStill(preview: boolean) {
 	useEffect(() => {
 		if (!preview) return;
 		const unstop = () => {

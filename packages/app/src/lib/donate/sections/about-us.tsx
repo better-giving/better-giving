@@ -33,7 +33,8 @@ export function AboutUs({
 	);
 }
 
-function Paragraphs({ text }: { readonly text: string }) {
+/** plain text as paragraphs, split as this file's header states; nothing in it is read as markup. */
+export function Paragraphs({ text }: { readonly text: string }) {
 	const paragraphs = text
 		.replace(/\r\n?/g, '\n')
 		.split(/\n[^\S\n]*\n\s*/)

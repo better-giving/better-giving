@@ -32,7 +32,13 @@ import { useBrandScope } from './page-root';
 import { AmountStep, type AmountRefs } from './steps/amount';
 import { DetailsStep, fieldProblem, type DetailsRefs } from './steps/details';
 import { GiveStep, readReceipt, Receipt, type ReceiptReading } from './steps/give';
-import { BLANK, EmployerAskBlock, takeoverFor, TakeoverScreen } from './takeover';
+import {
+	BLANK,
+	EmployerAskBlock,
+	programStoppedTakeover,
+	takeoverFor,
+	TakeoverScreen
+} from './takeover';
 
 // the donation card, drawn in the document tree.
 //
@@ -171,6 +177,13 @@ export type DonateCardProps = {
 	 */
 	readonly pageProgram?: string | null;
 	/**
+	 * the program a program page was drawn for, handed to the flow at its start and sent on every
+	 * quote as `pageProgramId` (`CheckoutInput` in @better-giving/form/machine); absent on every
+	 * other page. it is the page's and not a pick: the card draws nothing for it, and the server
+	 * credits it whatever the form's program setting says.
+	 */
+	readonly pageProgramId?: string;
+	/**
 	 * the program the flow holds (null for where it's needed most), and whether it takes a pick at
 	 * all — `locked` from the press on Donate until a donor is back on a step they edit. told on
 	 * arrival and on every change of either, so a page's chooser can draw the gift's own answer.
@@ -208,6 +221,7 @@ export function DonateCard({
 	seams,
 	resuming = false,
 	pageProgram,
+	pageProgramId,
 	onProgramChange,
 	opening,
 	amountLabels
@@ -230,6 +244,7 @@ export function DonateCard({
 			restart={(focused) => setBoot((last) => ({ at: last.at + 1, focused }))}
 			{...(seams === undefined ? {} : { seams })}
 			{...(pageProgram === undefined ? {} : { pageProgram })}
+			{...(pageProgramId === undefined ? {} : { pageProgramId })}
 			{...(amountLabels === undefined ? {} : { amountLabels })}
 			{...(onProgramChange === undefined ? {} : { onProgramChange })}
 			monthly={opening?.monthly === true}
@@ -245,6 +260,7 @@ function CheckoutCard({
 	seams,
 	resuming,
 	pageProgram,
+	pageProgramId,
 	onProgramChange,
 	monthly,
 	dedication,
@@ -259,6 +275,7 @@ function CheckoutCard({
 	seams?: CheckoutMounts['seams'];
 	resuming: boolean;
 	pageProgram?: string | null;
+	pageProgramId?: string;
 	onProgramChange?: DonateCardProps['onProgramChange'];
 	// the opening as its two flags, so a page handing a fresh object each render starts nothing anew.
 	monthly: boolean;
@@ -276,6 +293,8 @@ function CheckoutCard({
 	const [live, setLive] = useState<Checkout | null>(null);
 	const [deposit, setDeposit] = useState<DepositView | null>(null);
 	const [paymentRows, setPaymentRows] = useState(0);
+	/** whether this program page's quote was refused because the program stopped taking gifts. */
+	const [programStopped, setProgramStopped] = useState(false);
 
 	const paymentMount = useRef<HTMLDivElement | null>(null);
 	const challengeMount = useRef<HTMLDivElement | null>(null);
@@ -306,9 +325,11 @@ function CheckoutCard({
 				resumeToken: claimed.current.token,
 				...(seams === undefined ? {} : { seams })
 			},
-			{ monthly, dedication }
+			{ monthly, dedication },
+			pageProgramId
 		);
 		started.rows(setPaymentRows);
+		started.stopped(() => setProgramStopped(true));
 		setLive(started);
 		// a Copy's outcome is said on the card's one region, again on every press: the words do not
 		// change between two presses of one control. it is tied to the heading the press was made
@@ -329,7 +350,7 @@ function CheckoutCard({
 			block.stop();
 			block.root.remove();
 		};
-	}, [config, seams, monthly, dedication]);
+	}, [config, seams, monthly, dedication, pageProgramId]);
 
 	const subscribe = useCallback(
 		(onChange: () => void) => {
@@ -611,7 +632,12 @@ function CheckoutCard({
 	});
 	const shown = visibleStep(api.state, screen.current.shown);
 	const moved = screen.current.moved || shown !== screen.current.shown;
-	const takeover = shown === 'takeover' ? takeoverFor(api.state, config, money) : BLANK;
+	const takeover =
+		shown !== 'takeover'
+			? BLANK
+			: programStopped && api.state.step === 'failed'
+				? programStoppedTakeover()
+				: takeoverFor(api.state, config, money);
 
 	const headings = {
 		amount: useRef<HTMLHeadingElement | null>(null),

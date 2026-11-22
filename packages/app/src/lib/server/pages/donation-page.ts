@@ -79,6 +79,18 @@ async function followActivePrograms(db: Db, row: Page): Promise<void> {
 		);
 }
 
+/**
+ * whether `formId` is the Donation page's settings row, the form every program page serves
+ * (`loadProgramPage` in ./program-page.ts). a read only: false where no Donation page has been made.
+ */
+export async function isDonationPageForm(db: Db, formId: string): Promise<boolean> {
+	const [row] = await db
+		.select({ id: page.id })
+		.from(page)
+		.where(and(eq(page.type, 'donation_page'), eq(page.formId, formId)));
+	return row !== undefined;
+}
+
 async function readDonationPage(db: Db): Promise<Page | null> {
 	const [row] = await db.select().from(page).where(eq(page.type, 'donation_page'));
 	return row ?? null;

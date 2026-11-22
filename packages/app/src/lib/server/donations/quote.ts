@@ -13,8 +13,10 @@ import type { EmailProvider } from '../email/provider';
 import type { FormRecord } from '../forms/form-input';
 import { cachedCadences } from '../forms/cadence-cache';
 import { cachedCoins } from '../forms/coin-cache';
-import { readPublishedConfig } from '../forms/published-config';
+import { formNotFound, readPublishedConfig } from '../forms/published-config';
 import { cachedRails } from '../forms/rail-cache';
+import { readProgram } from '../programs/queries';
+import { isDonationPageForm } from '../pages/donation-page';
 import { giftLinkOrigin, giftPageUrl } from '../matching/links';
 import { processorSetupFix, type Processors } from '../payments/factory';
 import {
@@ -205,7 +207,8 @@ export function refusalCode(reason: QuoteRefusal): ApiErrorCode | null {
  * the form row is carried on both branches for the reason ../forms/published-config.ts carries it:
  * the CORS headers on every answer, refusals included, are decided from that row's
  * `allowed_origins`, and a refusal a browser cannot read is a refusal that reaches nobody. `null`
- * only where there is no row — an id nothing matches.
+ * where there is no row — an id nothing matches — and on `mintQuote`'s unusable `pageProgramId`
+ * refusal, which answers as an unknown form id does.
  */
 export type QuoteResult =
 	| { readonly ok: true; readonly quote: Quote; readonly form: FormRecord }
@@ -335,6 +338,21 @@ export async function mintQuote(deps: QuoteDeps, attempt: QuoteAttempt): Promise
 		return refuse(form, 'invalid_request', parsed.message, parsed.fix);
 	}
 	const submission = parsed.value;
+
+	// a program page's cause must be an active program row, sent on the Donation page's form, which
+	// is the one form a program page serves. anything else is answered as an unknown form, word for
+	// word and with no form row, so the route's CORS headers match too: an archived id, an unknown id
+	// and another form's id read alike. an active id on the Donation page's form passes on to the
+	// challenge, so a caller can still learn which ids are active. the program page reads the answer
+	// same-origin, which `corsHeaders` in ../api/cors.ts echoes without the row. it is checked before
+	// the challenge, as the form id is.
+	if (
+		submission.pageProgramId !== undefined &&
+		!(await creditsPageProgram(deps.db, form.id, submission.pageProgramId))
+	) {
+		const unknown = formNotFound(attempt.formId);
+		return refuse(null, 'form_not_found', unknown.message, unknown.fix);
+	}
 
 	const challenge = await deps.verifyChallenge({
 		secretKey: readTurnstileSecret(deps.env),
@@ -1053,11 +1071,11 @@ function grantRefusal(
  *
  * the two halves are asymmetric on purpose, and it is the asymmetry `Program` in
  * packages/form/src/v1.ts states from the wire's side. a `pinned` form serves the cause's name and
- * no id, so the pin is written from the row and a body carrying one is refused by
- * `parseQuoteRequest` in ./quote-input.ts before this runs — reading the body here would let a
- * client overwrite a decision it was only told about. a `choice` form serves the ids because the
- * donor picks, so the pick is what is written, already checked against the list this request was
- * served.
+ * no id, so the pin is written from the row and a body carrying one without a `pageProgramId` is
+ * refused by `parseQuoteRequest` in ./quote-input.ts before this runs — reading the body here would
+ * let a client overwrite a decision it was only told about. a `choice` form serves the ids because
+ * the donor picks, so the pick is what is written, already checked against the list this request
+ * was served.
  *
  * null on every other shape, which is a gift credited to no cause — the same thing an absent pick
  * means, and what every staff-entered gift says (`donation.program_id` in ../db/schema.ts).
@@ -1066,11 +1084,24 @@ function grantRefusal(
  * is built from this row a few lines above. the row is the narrower reading — a `choice` whose
  * options are all retired is served as no program at all, and a donor who sent nothing is written
  * null either way.
+ *
+ * a program page's `pageProgramId` outranks all three modes. it is read only after `mintQuote` has
+ * found it an active program row sent on the Donation page's form, so what is written here is
+ * never a body's unchecked id.
  */
 function creditedProgram(form: FormRecord, submission: ParsedQuoteRequest): string | null {
+	if (submission.pageProgramId !== undefined) return submission.pageProgramId;
 	if (form.programMode === 'pinned') return form.programId;
 	if (form.programMode === 'choice') return submission.programId ?? null;
 	return null;
+}
+
+async function creditsPageProgram(db: Db, formId: string, programId: string): Promise<boolean> {
+	const [onDonationPage, found] = await Promise.all([
+		isDonationPageForm(db, formId),
+		readProgram(db, programId)
+	]);
+	return onDonationPage && found !== null && found.archivedAt === null;
 }
 
 /**

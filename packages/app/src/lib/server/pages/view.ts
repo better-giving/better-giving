@@ -5,7 +5,8 @@ import type { PageWithCardProps } from '../../donate/page-with-card';
 import type { DonorMessages } from '../../donate/messages';
 import type { SiteFooterInfo } from '../../donate/site-footer';
 import { type DonateProfile, donateProfile } from '../../donate/profile';
-import { type PageLook, titleHeading } from '../../donate/page-view';
+import { type PageLogo, type PageLook, titleHeading } from '../../donate/page-view';
+import type { ProgramPageOrg } from '../../donate/program-page';
 import type { Page } from '../../page/catalog';
 import type { PageType } from '../../page/keys';
 import { writtenText } from '../../page/profile-shape';
@@ -306,6 +307,45 @@ export async function loadFundraiserFrame(
 		look: { brandColour: profile?.brandColour ?? null },
 		money: { locale: config.locale, currency: config.currency },
 		contact: donorContact(profile)
+	};
+}
+
+/** what a program's page draws beyond the program: the card's config and who runs the program. */
+export type ProgramFrame = {
+	/** the Donation page's served config with no `program`, so the card draws no Program row. */
+	readonly config: FormConfig;
+	readonly org: ProgramPageOrg;
+	readonly logo: PageLogo | null;
+	readonly look: PageLook;
+};
+
+/**
+ * the frame of a program's page, whose card takes the gift against the Donation page's settings row
+ * `formId`: the served config by `loadPageView`'s ladder, less the row's own program, since the page
+ * credits its program through `pageProgramId` (`mintQuote` in ../donations/quote.ts) and the row is
+ * left as it is. null where the served config refuses the row, which draws the refused page's notice.
+ */
+export async function loadProgramFrame(
+	db: Db,
+	env: unknown,
+	formId: string,
+	request: Request,
+	{ now }: { readonly now: number }
+): Promise<ProgramFrame | null> {
+	const origin = new URL(request.url).origin;
+	const [served, profile, logo] = await Promise.all([
+		readServedConfig(db, env, formId, origin, { now }),
+		readOrgProfile(db),
+		readOrgProfileLogo(db)
+	]);
+	const result = renderableConfig(served);
+	if (!result.ok) return null;
+	const { program: _ownProgram, ...config } = result.config;
+	return {
+		config,
+		org: { name: config.orgLegalName, info: orgInfo(config, profile) },
+		logo,
+		look: { brandColour: profile?.brandColour ?? null }
 	};
 }
 

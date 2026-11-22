@@ -12,7 +12,7 @@ import { RouteProgress } from './RouteProgress.jsx';
 
 /**
  * a row's glyph: a name from ../status/glyphs.js, or a company's own image for a destination named
- * after its product, which nav-list-css has no slot for and is drawn as an `<img>`.
+ * after its product, drawn as an `<img>` in the image slot nav-list-css gives a colour mark.
  *
  * @typedef {MarkName | { src: string }} NavMark
  *
