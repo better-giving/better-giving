@@ -1,7 +1,8 @@
-import { and, desc, eq, inArray, isNull, lte, notExists, type SQL, sql } from 'drizzle-orm';
+import { and, desc, eq, exists, inArray, isNull, lte, notExists, type SQL, sql } from 'drizzle-orm';
 import { type DonorMessages, MESSAGES_PER_PAGE, type NoteStanding } from '../../donate/messages';
 import type { Db } from '../db/client';
 import { dispute, donation, payment } from '../db/schema';
+import { DATED_BY_DAY_METHODS } from '../donations/rails';
 import { giftNetRaised } from '../ledger/queries';
 
 // the donors' messages: a gift's note shown on the donate page, read for that page and for
@@ -106,6 +107,37 @@ function cursorPast(
 const signature = (stored: string | null) => stored ?? 'Anonymous';
 
 /**
+ * whether the gift arrived on a rail dated by a day (`isDatedByDay` in ../donations/rails.ts), as
+ * the Gifts list reads it off the attempt `projectRail` in ../donations/queries.ts decides on. a
+ * listed gift is settled, so that attempt is a succeeded inbound one, and a gift in hand and a
+ * received pledge each have exactly one (`inHandWrites` in ../donations/record-in-hand.ts). an
+ * `exists` rather than that attempt's own `method`, so no read here sorts.
+ */
+const datedByDay = (db: Db) =>
+	sql<number>`${exists(
+		db
+			.select({ one: sql`1` })
+			.from(payment)
+			.where(
+				and(
+					eq(payment.donationId, donation.id),
+					eq(payment.direction, 'inbound'),
+					eq(payment.status, 'succeeded'),
+					inArray(payment.method, [...DATED_BY_DAY_METHODS])
+				)
+			)
+	)}`;
+
+/**
+ * the ISO day a gift dated by a day was received on, as the Gifts list crosses it
+ * (routes/_app.admin.donations._index.tsx): it is stored at the typed day's UTC midnight, so the day
+ * is UTC's. absent on a gift received at an instant.
+ */
+function receivedOnOf(row: { readonly datedByDay: number; readonly receivedAt: Date }) {
+	return row.datedByDay ? { receivedOn: row.receivedAt.toISOString().slice(0, 10) } : {};
+}
+
+/**
  * the six messages after `after`, or the newest six, as the donate page shows them — or, given
  * `fundraiser`, as that supporter fundraiser's page shows its own gifts' messages.
  */
@@ -124,7 +156,8 @@ export async function readShownMessages(
 			.select({
 				name: donation.noteShownName,
 				note: donation.note,
-				receivedAt: donation.receivedAt
+				receivedAt: donation.receivedAt,
+				datedByDay: datedByDay(db)
 			})
 			.from(donation)
 			.where(and(onPage, resume.where))
@@ -138,7 +171,8 @@ export async function readShownMessages(
 		messages: page.map((row) => ({
 			name: signature(row.name),
 			note: row.note ?? '',
-			receivedAt: row.receivedAt.toISOString()
+			receivedAt: row.receivedAt.toISOString(),
+			...receivedOnOf(row)
 		})),
 		total: counted?.total ?? 0,
 		next: cursorPast(page, after, rows.length > MESSAGES_PER_PAGE)
@@ -152,6 +186,8 @@ export type ModeratedMessage = {
 	readonly name: string;
 	readonly note: string;
 	readonly receivedAt: Date;
+	/** the ISO day, on a gift dated by a day (`receivedOnOf`); absent on one received at an instant. */
+	readonly receivedOn?: string;
 	readonly hidden: boolean;
 };
 
@@ -268,6 +304,7 @@ function moderatedRows(db: Db, where: SQL | undefined) {
 			name: donation.noteShownName,
 			note: donation.note,
 			receivedAt: donation.receivedAt,
+			datedByDay: datedByDay(db),
 			hiddenAt: donation.noteHiddenAt
 		})
 		.from(donation)
@@ -281,6 +318,7 @@ function moderated(row: Awaited<ReturnType<typeof moderatedRows>>[number]): Mode
 		name: signature(row.name),
 		note: row.note ?? '',
 		receivedAt: row.receivedAt,
+		...receivedOnOf(row),
 		hidden: row.hiddenAt !== null
 	};
 }
