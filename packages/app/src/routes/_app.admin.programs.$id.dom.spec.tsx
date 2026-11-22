@@ -77,18 +77,25 @@ const STORED = '0192a4c1-0000-7000-8000-000000000002';
 
 type Loaded = Parameters<typeof Program>[0]['loaderData'];
 
-/** an active program with nothing just landed. */
-function record(confirmArchive: boolean, imageId: string | null): Loaded {
+/** the program's public address and the preview's, as the loader hands them on. */
+const PUBLIC_URL = `https://give.example/programs/${PROGRAM_ID}`;
+const PREVIEW_SRC = `/programs/${PROGRAM_ID}/preview`;
+
+/** a program with nothing just landed: active, or archived where `archived` is set. */
+function record(confirmArchive: boolean, imageId: string | null, archived = false): Loaded {
 	return {
 		id: PROGRAM_ID,
 		name: 'Winter Shelter',
 		description: 'Beds and a hot meal through the cold months.',
-		status: 'active',
-		archived: false,
-		editor: {
-			name: 'Winter Shelter',
-			description: 'Beds and a hot meal through the cold months.'
-		},
+		status: archived ? 'archived' : 'active',
+		archived,
+		publicPage: { url: PUBLIC_URL, previewSrc: PREVIEW_SRC },
+		editor: archived
+			? null
+			: {
+					name: 'Winter Shelter',
+					description: 'Beds and a hot meal through the cold months.'
+				},
 		saved: null,
 		archivedJustNow: false,
 		imageId,
@@ -109,7 +116,8 @@ function record(confirmArchive: boolean, imageId: string | null): Loaded {
 function screen({
 	confirmArchive = false,
 	imageId = null as string | null,
-	uploadHeld = false
+	uploadHeld = false,
+	archived = false
 } = {}): {
 	root: HTMLElement;
 	posted: string[];
@@ -124,7 +132,7 @@ function screen({
 			loader: () => new Promise<never>(() => {}),
 			Component: () =>
 				createElement(Program as never, {
-					loaderData: record(confirmArchive, imageId),
+					loaderData: record(confirmArchive, imageId, archived),
 					actionData: useActionData(),
 					params: { id: PROGRAM_ID },
 					matches: []
@@ -214,6 +222,42 @@ async function press(button: HTMLButtonElement): Promise<void> {
 		await new Promise((resolve) => setTimeout(resolve, 0));
 	});
 }
+
+/** the section a level-two heading reading `heading` heads, or null where none is drawn. */
+function sectionNamed(root: HTMLElement, heading: string): HTMLElement | null {
+	const h2 = [...root.querySelectorAll('h2')].find((h) => h.textContent === heading);
+	return h2?.closest('section') ?? null;
+}
+
+describe('the Public page card', () => {
+	it('shows an active program’s public address and a preview of what is saved, beside Details', () => {
+		const { root } = screen();
+
+		const details = sectionNamed(root, 'Details');
+		expect(details).not.toBeNull();
+		expect(details?.querySelector('input[name="name"]')).not.toBeNull();
+		const card = sectionNamed(root, 'Public page');
+		expect(card).not.toBeNull();
+		expect(card?.textContent).toContain(PUBLIC_URL);
+		expect(card?.querySelector('a[target="_blank"]')?.getAttribute('href')).toBe(PUBLIC_URL);
+		const frame = card?.querySelector('iframe');
+		expect(frame?.getAttribute('src')).toBe(PREVIEW_SRC);
+		expect(frame?.getAttribute('title')).toBe('Preview of the Winter Shelter page');
+	});
+
+	it('keeps only the sentence and Open page for an archived program, with the record for Details', () => {
+		const { root } = screen({ archived: true });
+
+		expect(sectionNamed(root, 'Details')).toBeNull();
+		expect(sectionNamed(root, 'How this program was described')).not.toBeNull();
+		const card = sectionNamed(root, 'Public page');
+		expect(card).not.toBeNull();
+		expect(card?.textContent).toContain('This program is archived');
+		expect(card?.querySelector('a[target="_blank"]')?.getAttribute('href')).toBe(PUBLIC_URL);
+		expect(card?.querySelector('iframe')).toBeNull();
+		expect(root.querySelector('iframe')).toBeNull();
+	});
+});
 
 it('holds the save through the redirect’s loading, and a second press posts nothing', async () => {
 	const { root, posted } = screen();

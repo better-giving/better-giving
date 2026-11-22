@@ -1,15 +1,10 @@
-import { RESUME_FORM_PARAM } from '@better-giving/form/embed/resume';
-import { data, type ShouldRevalidateFunctionArgs } from 'react-router';
-import { giveToProgram } from '$lib/donate/copy';
+import type { ShouldRevalidateFunctionArgs } from 'react-router';
 import { DonateNotice } from '$lib/donate/notice';
 import { FORM_LOOK, PlainPage } from '$lib/donate/plain-page';
 import { ProgramClosedPage, ProgramPage, programPageLinks } from '$lib/donate/program-page';
 import { imageSrc } from '$lib/page/image-src';
 import { meterDonorPage } from '$lib/server/api/meter';
-import { donorPageRateLimitRefusal } from '$lib/server/api/rate-limit';
-import { ensureDonationPage } from '$lib/server/pages/donation-page';
-import { loadProgramFrame, refusedPage } from '$lib/server/pages/view';
-import { readProgram } from '$lib/server/programs/queries';
+import { loadProgramPage } from '$lib/server/pages/program-page';
 import { database, overDonorPageLimit, platform } from '../context';
 import type { DonorPolicyHandle } from '../document-policy';
 import type { Route } from './+types/programs.$id';
@@ -36,45 +31,14 @@ import type { Route } from './+types/programs.$id';
 
 export const middleware: Route.MiddlewareFunction[] = [meterDonorPage];
 
-export async function loader({ context, params, request }: Route.LoaderArgs) {
-	if (context.get(overDonorPageLimit)) return donorPageRateLimitRefusal();
-	const db = context.get(database);
-	const { env } = context.get(platform);
-	const donationPage = await ensureDonationPage(db);
-	const frame = await loadProgramFrame(db, env, donationPage.formId, request, { now: Date.now() });
-	if (frame === null) return refusedPage();
-	const { org, logo, look, config } = frame;
-	const found = await readProgram(db, params.id);
-	if (found === null || found.archivedAt !== null) {
-		return data({ kind: 'closed', org, logo, look } as const, {
-			status: 404,
-			headers: { 'cache-control': 'no-store' }
-		});
-	}
-	const url = new URL(request.url);
-	const program = {
-		id: found.id,
-		name: found.name,
-		description: found.description,
-		photoImageId: found.imageId
-	};
-	return data(
-		{
-			kind: 'program',
-			program,
-			org,
-			logo,
-			look,
-			sharing: {
-				message: giveToProgram(program.name),
-				url: `${url.origin}/programs/${program.id}`
-			},
-			config,
-			// a donor's return from authorizing their gift, read as ./_index.tsx reads it.
-			resuming: url.searchParams.get(RESUME_FORM_PARAM) === config.formId
-		} as const,
-		{ headers: { 'cache-control': 'no-store' } }
-	);
+export function loader({ context, params, request }: Route.LoaderArgs) {
+	return loadProgramPage({
+		db: context.get(database),
+		env: context.get(platform).env,
+		overLimit: context.get(overDonorPageLimit),
+		programId: params.id,
+		request
+	});
 }
 
 /**

@@ -51,6 +51,7 @@ type Loaded = {
 	description: string | null;
 	status: string;
 	archived: boolean;
+	publicPage: { url: string; previewSrc: string };
 	editor: { name: string; description: string } | null;
 	imageId: string | null;
 	saved: 'details' | null;
@@ -183,6 +184,17 @@ describe('/admin/programs/[id] load', () => {
 		expect(loaded.archived).toBe(true);
 		expect(loaded.editor).toBeNull();
 		expect(loaded.status).toBe('archived');
+	});
+
+	it('names the public page on the origin it was asked on, and the preview the card frames', async () => {
+		const expected = {
+			url: `${ORIGIN}/programs/${PROGRAM_ID}`,
+			previewSrc: `/programs/${PROGRAM_ID}/preview`
+		};
+		expect((await load()).publicPage).toEqual(expected);
+		// an archived program's page is still there to open: it tells donors it is closed.
+		await archiveInPlace();
+		expect((await load()).publicPage).toEqual(expected);
 	});
 
 	it('answers a 404 naming the id for a cause that is not there', async () => {

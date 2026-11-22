@@ -7,6 +7,7 @@ import { PROGRAM_STATUS_TONES } from '$lib/admin/status-tones';
 import { useEffect, useRef } from 'react';
 import { data, href, Link } from 'react-router';
 import { ScreenHeading } from '$lib/admin/crumbs';
+import { ProgramPagesLine } from '$lib/admin/programs/pages-line';
 import { screenTitle } from '$lib/admin/screen-title';
 import { PROGRAM_STATUS_LABELS } from '$lib/programs/statuses';
 import { loadFailed } from '$lib/server/db/load-failure';
@@ -123,6 +124,7 @@ export default function Programs({ loaderData }: Route.ComponentProps) {
 		// own, so one that is not rendered leaves no space behind it.
 		<Column>
 			<ScreenHeading title={SCREEN_TITLE} />
+			<ProgramPagesLine />
 			{/* the outcome of the create next door, which redirected here with the new cause's id. it
 			    is the only outcome this page reports and the only one it can: this page writes
 			    nothing, so every other thing that happens to a cause is reported on the screen that
