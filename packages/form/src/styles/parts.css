@@ -2494,33 +2494,35 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 }
 
 /*
- * the control that copies a row's value: the copy mark alone in a square box at the row floor, the
- * faces stacked in one cell as the address screen's are (`.copy-face` above). a control's ground at
- * rest, under the pointer and pressed — 3, 4 and 5 — with its edge on 7 and 8 under the pointer, the
- * registry's soft rank. `::part(action-quiet)` reaches it, which is why its shape is written here
- * by class rather than on the part.
+ * the control that copies a row's value: the copy mark alone in the registry's medium icon button in
+ * its secondary tone (`COPY_CLASS` in ../pledge-screen.ts), which draws the square, its ground and
+ * edge in every state and the mark's gray 12 ink. what is left here is the faces stacked in one cell
+ * as the address screen's are (`.copy-face` above), each at the registry's icon size for the tier.
  */
 .pledge .copy {
 	display: inline-grid;
 	place-items: center;
-	inline-size: var(--_row-min);
-	min-block-size: var(--_row-min);
-	padding: 0;
-	background: var(--_n3);
-	border: var(--_border) solid var(--_n7);
-	border-radius: var(--_r-in);
-	color: var(--_n11);
-	cursor: pointer;
 }
 
-.pledge .copy:hover {
-	background: var(--_n4);
-	border-color: var(--_n8);
-	color: var(--_n12);
+.pledge .copy .copy-glyph {
+	inline-size: var(--ds-btn-icon);
+	block-size: var(--ds-btn-icon);
 }
 
-.pledge .copy:active {
-	background: var(--_n5);
+/*
+ * the square is 36px drawn and a coarse pointer needs 44, so there the hit area grows around it
+ * without changing what is drawn, as the registry grows its small tier's (`.ds-btn-sm::after` in
+ * ../registry/styles/button-css.css, whose geometry this is): `--ds-hit-target` tall, at least that
+ * wide, centred on the square, and the edge taken back out because an absolute box's insets are
+ * measured from the padding edge. the registry has no such rule for its medium tier, a registry gap.
+ */
+@media (pointer: coarse) {
+	.pledge .copy::after {
+		content: '';
+		position: absolute;
+		inset-block: calc((var(--ds-btn-size) - var(--ds-hit-target)) / 2 - var(--ds-btn-edge));
+		inset-inline: min(calc(-1 * var(--ds-btn-edge)), calc((100% - var(--ds-hit-target)) / 2));
+	}
 }
 
 /*

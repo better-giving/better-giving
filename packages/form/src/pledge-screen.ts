@@ -57,6 +57,14 @@ export type PledgeView = {
 	update(screen: PledgeScreen | null): void;
 };
 
+/**
+ * a Copy is the registry's medium icon button in its secondary tone, keyed by the part it rides on
+ * as `EMPLOYER_CLASS` in ./employer-ask.ts is: the 36px square, its ground, edge and gray 12 ink.
+ */
+export const COPY_CLASS = {
+	'action-quiet': 'ds-btn ds-btn-md ds-btn-icon ds-btn-secondary'
+} as const;
+
 /** what a Copy control last reported, as `data-outcome` on it, which picks the face it shows. */
 type CopyOutcome = 'ready' | 'copied' | 'failed';
 
@@ -140,7 +148,7 @@ export function createPledgeBlock(
 	const copyControl = (row: PledgeRow & { readonly copy: string }, value: HTMLElement) => {
 		const face = (outcome: CopyOutcome, mark: GlyphName) =>
 			make('span', `copy-face ${outcome}`, [glyph(doc, mark, 'copy-glyph')]);
-		const button = make('button', 'copy', [
+		const button = make('button', `copy ${COPY_CLASS['action-quiet']}`, [
 			face('ready', 'copy'),
 			face('copied', 'tick'),
 			face('failed', 'alert')
