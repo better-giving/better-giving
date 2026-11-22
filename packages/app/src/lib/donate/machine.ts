@@ -118,10 +118,12 @@ export type Checkout = {
 	 * tells `listener` when a program page's quote is refused as an unknown form and the form itself
 	 * still reads, which is how a program no longer active is told apart from a form that is gone: the
 	 * endpoint answers both with the same refusal (`pageProgramId` in
-	 * packages/app/src/lib/server/donations/quote.ts). told before the flow hears the refusal: the
-	 * refusal waits on the form's config read, `REREAD_TIMEOUT_MS` at most, and is told here only
-	 * where that read answers OK, so the failure screen's first draw already knows the program
-	 * stopped. never told on a card with no `pageProgramId`, nor after `stop`. one listener; a second
+	 * packages/app/src/lib/server/donations/quote.ts). the refusal waits on the form's config read,
+	 * `REREAD_TIMEOUT_MS` at most, and is told here only where that read answers OK, so the failure
+	 * screen's first draw already knows the program stopped — while the gift request and that wait
+	 * together finish inside the flow's own `PORT_TIMEOUT_MS` (packages/form/src/checkout.machine.ts).
+	 * a refusal landing later loses to that timeout: the generic failure draws first and this is told
+	 * after it. never told on a card with no `pageProgramId`, nor after `stop`. one listener; a second
 	 * call replaces the first.
 	 */
 	stopped(listener: () => void): void;
@@ -145,7 +147,8 @@ const REREAD_TIMEOUT_MS = 5_000;
 
 /**
  * `quote`, awaiting `heard` on a refusal as an unknown form and then rethrowing it unchanged, so
- * whatever `heard` learns is in place before the flow draws the failure.
+ * whatever `heard` learns is in place before the flow draws the failure, unless the flow's own port
+ * timeout ends the attempt first.
  *
  * the inner port is called before anything is awaited: `quoteThrough` in
  * @better-giving/form/embed/surface opens a provider's window inside the donor's press.
@@ -244,8 +247,10 @@ export function startCheckout(
 
 	const ports = deploymentPorts(surface);
 	const rereads = new AbortController();
-	// a controller per read, aborted by `stop` or by its own timeout: a timeout aborting `rereads`
-	// itself would refuse every later attempt's read before it is sent.
+	// a controller per read, aborted by its own timeout or by a `stop` that lands while it runs: a
+	// timeout aborting `rereads` itself would refuse every later attempt's read before it is sent. a
+	// refusal arriving after `stop` still sends its read, bounded by the timeout alone, and tells
+	// nobody.
 	const reread = async (): Promise<void> => {
 		const read = new AbortController();
 		const abort = (): void => read.abort();

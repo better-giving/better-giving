@@ -207,7 +207,8 @@ export function refusalCode(reason: QuoteRefusal): ApiErrorCode | null {
  * the form row is carried on both branches for the reason ../forms/published-config.ts carries it:
  * the CORS headers on every answer, refusals included, are decided from that row's
  * `allowed_origins`, and a refusal a browser cannot read is a refusal that reaches nobody. `null`
- * only where there is no row — an id nothing matches.
+ * where there is no row — an id nothing matches — and on `mintQuote`'s unusable `pageProgramId`
+ * refusal, which answers as an unknown form id does.
  */
 export type QuoteResult =
 	| { readonly ok: true; readonly quote: Quote; readonly form: FormRecord }
@@ -340,10 +341,11 @@ export async function mintQuote(deps: QuoteDeps, attempt: QuoteAttempt): Promise
 
 	// a program page's cause must be an active program row, sent on the Donation page's form, which
 	// is the one form a program page serves. anything else is answered as an unknown form, word for
-	// word and with no form row, so the route's CORS headers match too: the field cannot be used to
-	// probe which program ids exist or were archived, or that this form does. the program page reads
-	// the answer same-origin, which `corsHeaders` in ../api/cors.ts echoes without the row. it is
-	// checked before the challenge, as the form id is.
+	// word and with no form row, so the route's CORS headers match too: an archived id, an unknown id
+	// and another form's id read alike. an active id on the Donation page's form passes on to the
+	// challenge, so a caller can still learn which ids are active. the program page reads the answer
+	// same-origin, which `corsHeaders` in ../api/cors.ts echoes without the row. it is checked before
+	// the challenge, as the form id is.
 	if (
 		submission.pageProgramId !== undefined &&
 		!(await creditsPageProgram(deps.db, form.id, submission.pageProgramId))
@@ -1069,11 +1071,11 @@ function grantRefusal(
  *
  * the two halves are asymmetric on purpose, and it is the asymmetry `Program` in
  * packages/form/src/v1.ts states from the wire's side. a `pinned` form serves the cause's name and
- * no id, so the pin is written from the row and a body carrying one is refused by
- * `parseQuoteRequest` in ./quote-input.ts before this runs — reading the body here would let a
- * client overwrite a decision it was only told about. a `choice` form serves the ids because the
- * donor picks, so the pick is what is written, already checked against the list this request was
- * served.
+ * no id, so the pin is written from the row and a body carrying one without a `pageProgramId` is
+ * refused by `parseQuoteRequest` in ./quote-input.ts before this runs — reading the body here would
+ * let a client overwrite a decision it was only told about. a `choice` form serves the ids because
+ * the donor picks, so the pick is what is written, already checked against the list this request
+ * was served.
  *
  * null on every other shape, which is a gift credited to no cause — the same thing an absent pick
  * means, and what every staff-entered gift says (`donation.program_id` in ../db/schema.ts).

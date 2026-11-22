@@ -174,7 +174,7 @@ export default function Programs({ loaderData }: Route.ComponentProps) {
 						{/* the description and nothing else, because there is nothing else stored: a
 						    cause with none draws no line rather than a labelled blank, which is what a
 						    record with one optional value can afford. it is a caption because it is
-						    staff wording rather than a figure. */}
+						    prose rather than a figure. */}
 						{program.description ? <p className="adm-caption">{program.description}</p> : null}
 					</section>
 				))}

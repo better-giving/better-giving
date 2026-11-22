@@ -328,8 +328,9 @@ async function readFormProgram(db: Db, form: FormRecord): Promise<Program | null
  * the sentence and fix for a form id nothing matches.
  *
  * exported because the gift submission answers an unusable `pageProgramId` with exactly these
- * words (`mintQuote` in ../donations/quote.ts), so that field tells a caller nothing about which
- * program ids exist.
+ * words (`mintQuote` in ../donations/quote.ts), so an archived id, an unknown id and another
+ * form's id read alike. an active id on the Donation page's form passes on to the spam check, so a
+ * caller can still learn which ids are active.
  */
 export function formNotFound(id: string): { readonly message: string; readonly fix: string } {
 	return {

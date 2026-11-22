@@ -84,8 +84,8 @@ export type ParsedQuoteRequest = {
 	 *
 	 * checked against nothing here and against the form not at all: it credits the gift whatever the
 	 * form's own program setting, and when present it is the gift's cause and `programId` is not read.
-	 * whether it names an active program on this deployment is a database question, answered by
-	 * `mintQuote` in ./quote.ts before anything is minted.
+	 * whether it names an active program on this deployment, and whether the form is the Donation
+	 * page's, are database questions, answered by `mintQuote` in ./quote.ts before anything is minted.
 	 */
 	readonly pageProgramId: string | undefined;
 	/** whatever was presented as a challenge token, checked by nothing here. */

@@ -36,10 +36,9 @@ import type { Route } from './+types/api.v1.forms.$id.donations';
 //                   charges the surface's, and ../routes.spec.ts fails it if it does.
 //   CORS          — below, from the row `mintQuote` carries out and from this deployment's own
 //                   origin. a browser cannot read a 4xx body without the header either, so a
-//                   refusal handed back without the row is a refusal the page that asked never
-//                   sees — which is the point of the one that is: an unusable `pageProgramId` is
-//                   answered with no row, exactly as an unknown form, and the program page that
-//                   sends one reads it same-origin.
+//                   refusal handed back without the row is one a cross-origin page never sees.
+//                   an unusable `pageProgramId` is answered with no row, exactly as an
+//                   unknown form, and the program page that sends one reads it same-origin.
 //   spam check    — inside `mintQuote`, before anything is minted at the processor: Turnstile where
 //                   both its keys are set, ALTCHA otherwise ($lib/server/api/challenge.ts).
 //   amount bounds — inside `mintQuote`, re-read from the form record. the amount in the body is an
