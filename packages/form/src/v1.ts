@@ -608,7 +608,8 @@ export type QuoteRequest = {
 	 * reword. it is checked against the form's own list on the way in, exactly as the amount is
 	 * checked against the form's bounds — a client is not what decides which causes a form offers.
 	 *
-	 * absent is the gift going where it is needed most, and it is the only reading of an absence here:
+	 * absent is the gift going where it is needed most, unless `pageProgramId` below arrives and
+	 * credits the page's program, and it is the only reading of an absence here:
 	 * a form pinned to one cause sends nothing on this field either, because the server writes that
 	 * pin from the form record (`Program` above). so a request carrying this field is always a donor
 	 * who was offered a choice and made one.
@@ -620,7 +621,8 @@ export type QuoteRequest = {
 	 * the page's choice rather than the donor's, so it credits the gift whatever the form's program
 	 * setting says, and it outranks `programId` where both arrive. it is honoured only on the
 	 * Donation page's form, the form a program page serves; on any other form, and for an inactive
-	 * or unknown id, it is answered as `form_not_found`.
+	 * or unknown id, it is answered as `form_not_found`. those refusals read alike, but an active id
+	 * on the Donation page's form is accepted, so a caller can learn that an id is active.
 	 */
 	readonly pageProgramId?: string;
 	/**
