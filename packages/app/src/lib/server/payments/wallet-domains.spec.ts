@@ -68,7 +68,8 @@ function port(
 			return list;
 		},
 		registerWalletDomain: register ?? unused('registerWalletDomain'),
-		listPayableCoins: unused('listPayableCoins')
+		listPayableCoins: unused('listPayableCoins'),
+		estimateCoinValue: unused('estimateCoinValue')
 	};
 }
 

@@ -41,6 +41,7 @@ import { redact, redactPublicId } from '../../redact.ts';
 import { DONATION_METADATA_KEY, INTERVAL_METADATA_KEY, refusing } from './provider.ts';
 import type {
 	AccountChargeability,
+	CoinValue,
 	DeliveredAttempt,
 	Intent,
 	IntentRequest,
@@ -2295,6 +2296,12 @@ export function createPaypalProvider(credentials: PaypalCredentials): PaymentPro
 		async listPayableCoins(): Promise<PaymentResult<readonly PayableCoin[]>> {
 			return unsupported(
 				'PayPal takes no payment in a coin, so there is no coin list to read. Nothing was asked of PayPal.'
+			);
+		},
+
+		async estimateCoinValue(): Promise<PaymentResult<CoinValue>> {
+			return unsupported(
+				'PayPal takes no payment in a coin, so there is no coin to price. Nothing was asked of PayPal.'
 			);
 		}
 	};

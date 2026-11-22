@@ -78,7 +78,8 @@ function port(
 		},
 		listWalletDomains: unused('listWalletDomains'),
 		registerWalletDomain: unused('registerWalletDomain'),
-		listPayableCoins: unused('listPayableCoins')
+		listPayableCoins: unused('listPayableCoins'),
+		estimateCoinValue: unused('estimateCoinValue')
 	};
 	return { provider, calls };
 }

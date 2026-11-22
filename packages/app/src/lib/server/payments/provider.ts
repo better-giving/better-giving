@@ -691,6 +691,30 @@ export type PayableCoin = {
 	readonly stablecoin?: boolean;
 };
 
+/** an amount of a coin to price, as `estimateCoinValue` takes it. */
+export type CoinValueRequest = {
+	/** NOWPayments' code, lowercased — a `PayableCoin.coin`. */
+	readonly coin: string;
+	/**
+	 * a positive decimal as a donor typed it (`0.005`, `00.50`). not yet a `CoinAmount`: the adapter
+	 * reads it into one, and refuses anything that is not a positive decimal as `invalid_request`.
+	 */
+	readonly coinAmount: string;
+	/** ISO-4217, uppercase: the currency the value is wanted in. */
+	readonly currency: string;
+};
+
+/**
+ * what an amount of a coin is worth, at the processor's current rate.
+ *
+ * an estimate and never a settlement: a gift quoted at it is an amount like any other, and a gift
+ * paid to an address settles at what arrived (`Arrival`), valued again when it does.
+ */
+export type CoinValue = {
+	/** minor units of `CoinValueRequest.currency`, rounded to the nearest. zero for under half of one. */
+	readonly amountMinor: number;
+};
+
 /**
  * what a transaction turned out to be, read from the processor rather than reconstructed from an
  * event.
@@ -2116,6 +2140,15 @@ export interface PaymentProvider {
 	 * picked, which refuses a coin whose floor cannot be read as `coin_not_accepted`.
 	 */
 	listPayableCoins(): Promise<PaymentResult<readonly PayableCoin[]>>;
+
+	/**
+	 * what an amount of a coin is worth, read from the processor at its current rate. changes nothing.
+	 *
+	 * no address is minted and nothing is kept. the coin is not checked against `listPayableCoins` —
+	 * the caller holds that list already — so a coin the processor cannot price comes back as its
+	 * refusal.
+	 */
+	estimateCoinValue(request: CoinValueRequest): Promise<PaymentResult<CoinValue>>;
 }
 
 /**
@@ -2161,7 +2194,8 @@ export function sealed(provider: PaymentProvider): PaymentProvider {
 		replaceWebhookEndpoint: (id, url) => guard(() => provider.replaceWebhookEndpoint(id, url)),
 		listWalletDomains: () => guard(() => provider.listWalletDomains()),
 		registerWalletDomain: (host) => guard(() => provider.registerWalletDomain(host)),
-		listPayableCoins: () => guard(() => provider.listPayableCoins())
+		listPayableCoins: () => guard(() => provider.listPayableCoins()),
+		estimateCoinValue: (request) => guard(() => provider.estimateCoinValue(request))
 	};
 }
 
@@ -2279,6 +2313,9 @@ export function refusing(
 			return refusal;
 		},
 		async listPayableCoins(): Promise<PaymentResult<readonly PayableCoin[]>> {
+			return refusal;
+		},
+		async estimateCoinValue(): Promise<PaymentResult<CoinValue>> {
 			return refusal;
 		}
 	};

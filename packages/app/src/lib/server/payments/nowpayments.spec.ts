@@ -2175,6 +2175,98 @@ describe('what the account is approved for', () => {
 	});
 });
 
+describe('estimateCoinValue — what an amount of a coin is worth', () => {
+	function estimating(estimated: Answer): Recorded[] {
+		return serving((method, url) =>
+			method === 'GET' && url.pathname === '/v1/estimate' ? estimated : undefined
+		);
+	}
+
+	it('prices the coin amount at NOWPayments’ rate, to the nearest cent', async () => {
+		const calls = estimating({
+			status: 200,
+			json: {
+				currency_from: 'btc',
+				amount_from: 0.005,
+				currency_to: 'usd',
+				estimated_amount: '482.0961'
+			}
+		});
+
+		const result = await createNowpaymentsProvider(CREDENTIALS).estimateCoinValue({
+			coin: 'btc',
+			coinAmount: '0.005',
+			currency: 'USD'
+		});
+
+		expect(result).toEqual({ ok: true, value: { amountMinor: 48210 } });
+		expect(calls).toHaveLength(1);
+		expect(Object.fromEntries(calls[0]?.url.searchParams ?? [])).toEqual({
+			amount: '0.005',
+			currency_from: 'btc',
+			currency_to: 'usd'
+		});
+		expect(calls[0]?.key).toBe(CREDENTIALS.apiKey);
+	});
+
+	it('asks for the amount as its canonical decimal', async () => {
+		const calls = estimating({ status: 200, json: { estimated_amount: '48.21' } });
+
+		await createNowpaymentsProvider(CREDENTIALS).estimateCoinValue({
+			coin: 'btc',
+			coinAmount: '00.50',
+			currency: 'USD'
+		});
+
+		expect(calls[0]?.url.searchParams.get('amount')).toBe('0.5');
+	});
+
+	it.each([['0'], ['0.000'], ['-1'], ['1e3'], ['abc'], ['']])(
+		'refuses %j as no amount, asking NOWPayments nothing',
+		async (coinAmount) => {
+			const calls = serving(() => undefined);
+
+			const result = await createNowpaymentsProvider(CREDENTIALS).estimateCoinValue({
+				coin: 'btc',
+				coinAmount,
+				currency: 'USD'
+			});
+
+			expect(result.ok === false && result.reason).toBe('invalid_request');
+			expect(calls).toHaveLength(0);
+		}
+	);
+
+	it('refuses a value in a currency other than dollars, asking NOWPayments nothing', async () => {
+		const calls = serving(() => undefined);
+
+		const result = await createNowpaymentsProvider(CREDENTIALS).estimateCoinValue({
+			coin: 'btc',
+			coinAmount: '0.005',
+			currency: 'EUR'
+		});
+
+		expect(result.ok === false && result.reason).toBe('invalid_request');
+		expect(calls).toHaveLength(0);
+	});
+
+	it.each([
+		['a fault', { status: 500, json: { message: 'Internal server error' } }],
+		['a coin it cannot price', { status: 400, json: { code: 'BAD_REQUEST', message: 'no pair' } }],
+		['no figure', { status: 200, json: { estimated_amount: null } }]
+	])('refuses where NOWPayments answers %s', async (_, answer) => {
+		estimating(answer);
+
+		const result = await createNowpaymentsProvider(CREDENTIALS).estimateCoinValue({
+			coin: 'btc',
+			coinAmount: '0.005',
+			currency: 'USD'
+		});
+
+		expect(result.ok).toBe(false);
+	});
+});
+
 describe('the arms a crypto payment has nothing behind', () => {
 	const provider = () => createNowpaymentsProvider(CREDENTIALS);
 
