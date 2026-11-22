@@ -650,7 +650,9 @@ export function giveToProgram(name: string): string {
 export const PROGRAM_SHARE_HEADING = 'Share this program';
 export const PROGRAM_CLOSED_TITLE = 'This program isn’t taking gifts';
 export function programClosedBody(orgName: string): string {
-	return `Gifts to it are closed, or the link isn’t right. You can still give to ${orgName}.`;
+	// a legal name often ends in a full stop ("Inc."), which already closes the sentence.
+	const stop = orgName.endsWith('.') ? '' : '.';
+	return `Gifts to it are closed, or the link isn’t right. You can still give to ${orgName}${stop}`;
 }
 export const PROGRAM_CLOSED_ACTION = 'Go to the donate page';
 

@@ -398,6 +398,7 @@ describe('a program not taking gifts', () => {
 		expect(one(root, 'main').textContent).toContain(
 			'Gifts to it are closed, or the link isn’t right. You can still give to Cedar Fork Community Pantry Inc.'
 		);
+		expect(one(root, 'main').textContent).not.toContain('..');
 		expect(way(root).getAttribute('href')).toBe('/');
 		expect(root.querySelector('[part~="card"]')).toBeNull();
 	});
