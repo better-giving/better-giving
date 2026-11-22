@@ -3543,6 +3543,13 @@
 		min-inline-size: 0;
 	}
 
+	/* a value an operator typed freely, where one unbroken word or a pasted address can be longer
+	   than the column: it breaks anywhere, which is also what lets the cell's text shrink below
+	   that word's width rather than pushing the card wider. */
+	.adm-setting__value--wrap {
+		overflow-wrap: anywhere;
+	}
+
 	/* the word in a value cell: what the row holds, said in words rather than drawn as a figure or
 	   a literal. a stored secret's marker, an act nobody performed, the reading a row was given.
 
@@ -5426,6 +5433,13 @@
 			/* raw-length-ok: a track bound rather than a measure — the label column stops
 			   growing before it takes the width its own value needs to be read in. */
 			grid-template-columns: minmax(12rem, 20rem) minmax(0, 1fr);
+		}
+
+		/* a row in a card too narrow for that label track keeps the floor's one column at every
+		   width: `.adm-cardpair`'s 3fr card from 64rem leaves its value a few dozen pixels beside
+		   a 20rem label. */
+		.adm-setting--stacked {
+			grid-template-columns: minmax(0, 1fr);
 		}
 	}
 

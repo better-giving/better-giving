@@ -47,7 +47,7 @@ const NOT_SENT =
 //
 // mounted rather than rendered to a string, because the phase is the router's and exists only
 // between a press and a landing. it is not the browser spec CLAUDE.md bans over a dashboard
-// screen: nothing here reads a computed style or a class.
+// screen: nothing here reads a computed style.
 
 // react refuses to flush work inside `act` without this, and says so rather than hanging.
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -249,6 +249,16 @@ describe('the two cards', () => {
 		const record = sectionNamed(root, 'How this program was described');
 		expect(labelOf(record)).toBe('How this program was described');
 		expect(labelOf(sectionNamed(root, 'Public page'))).toBe('Public page');
+	});
+
+	// the record stands in the 3fr card of `.adm-cardpair`, too narrow beside a setting row's 20rem
+	// label track: packages/operator/src/styles/adm.css draws both classes read here.
+	it('stacks the archived description under its label and wraps a long word in it', () => {
+		const { root } = screen({ archived: true });
+
+		const value = sectionNamed(root, 'How this program was described')?.querySelector('dd');
+		expect(value?.closest('.adm-setting')?.classList.contains('adm-setting--stacked')).toBe(true);
+		expect(value?.classList.contains('adm-setting__value--wrap')).toBe(true);
 	});
 
 	it('draws no section inside Details', () => {

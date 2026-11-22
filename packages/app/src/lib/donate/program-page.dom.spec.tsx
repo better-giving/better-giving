@@ -382,16 +382,28 @@ describe('the donation card when the gift endpoint answers the quote as an unkno
 	/**
 	 * the quote refused as the endpoint refuses both a program archived since the page was drawn and a
 	 * form that is gone, with the form's config read answering `config`: OK where only the program
-	 * closed, the same refusal where the form is gone, or never reached.
+	 * closed, the same refusal where the form is gone, not reached, or never answered until its signal
+	 * aborts, as `fetch` rejects. a read that answers does so once `until` settles.
 	 */
-	function answeredUnknown(config: 'reads' | 'gone' | 'unreachable' = 'reads') {
+	function answeredUnknown(
+		config: 'reads' | 'gone' | 'unreachable' | 'never' = 'reads',
+		until: Promise<void> = Promise.resolve()
+	) {
 		const unknown = () =>
 			new Response(JSON.stringify(UNKNOWN), {
 				status: 404,
 				headers: { 'content-type': 'application/json' }
 			});
-		const fetch = vi.fn(async (url: string) => {
+		const fetch = vi.fn(async (url: string, init?: RequestInit) => {
 			if (url !== CONFIG_READ) return unknown();
+			if (config === 'never') {
+				return new Promise<Response>((_answer, refuse) => {
+					init?.signal?.addEventListener('abort', () =>
+						refuse(new DOMException('The operation was aborted.', 'AbortError'))
+					);
+				});
+			}
+			await until;
 			if (config === 'unreachable') throw new TypeError('Failed to fetch');
 			return config === 'gone'
 				? unknown()
@@ -408,20 +420,44 @@ describe('the donation card when the gift endpoint answers the quote as an unkno
 		return fetch.mock.calls.filter(([url]) => url === CONFIG_READ).length;
 	}
 
-	async function refused(root: HTMLElement): Promise<void> {
-		await donate(root);
+	async function settled(): Promise<void> {
 		await act(async () => {
 			for (let at = 0; at < 4; at += 1) await new Promise((done) => setTimeout(done, 0));
 		});
 	}
 
+	async function refused(root: HTMLElement): Promise<void> {
+		await donate(root);
+		await settled();
+	}
+
+	/** what the card shows and what its live region holds, which is what a donor sees and hears. */
+	function heardAndSeen(root: HTMLElement): string {
+		const region = one(root, '[role="status"]');
+		return `${one(root, 'section.takeover').textContent} ${region.textContent}`;
+	}
+
 	it('says the program stopped taking gifts and links the donate page, on a program page whose form still reads', async () => {
-		const fetch = answeredUnknown('reads');
+		let answer: () => void = () => {};
+		const fetch = answeredUnknown(
+			'reads',
+			new Promise((done) => {
+				answer = done;
+			})
+		);
 		const root = await mount(
 			<DonateCard config={CONFIG} seams={payment.seams} pageProgramId="prog-coats" />
 		);
 		await refused(root);
+		// the quote is refused and the config read is out: neither the screen nor the region has the
+		// API's sentence while the card waits on it.
 		expect(configReads(fetch)).toBe(1);
+		expect(heardAndSeen(root)).not.toContain(UNKNOWN.message);
+		expect(heardAndSeen(root)).not.toContain(UNKNOWN.fix);
+		await act(async () => answer());
+		await settled();
+		expect(heardAndSeen(root)).not.toContain(UNKNOWN.message);
+		expect(heardAndSeen(root)).toContain(STOPPED);
 		const takeover = one(root, 'section.takeover');
 		expect(takeover.hidden).toBe(false);
 		expect(takeover.textContent).toContain(STOPPED);
@@ -465,6 +501,33 @@ describe('the donation card when the gift endpoint answers the quote as an unkno
 		await refused(root);
 		expect(configReads(fetch)).toBe(1);
 		const takeover = one(root, 'section.takeover');
+		expect(takeover.textContent).not.toContain(STOPPED);
+		expect(takeover.textContent).toContain(UNKNOWN.message);
+	});
+
+	it('shows the API’s own sentence five seconds after the refusal on a program page whose config read never answers, and not before', async () => {
+		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+		onTestFinished(() => {
+			vi.useRealTimers();
+		});
+		const fetch = answeredUnknown('never');
+		const root = await mount(
+			<DonateCard config={CONFIG} seams={payment.seams} pageProgramId="prog-coats" />
+		);
+		await donate(root);
+		await act(async () => {
+			await vi.advanceTimersByTimeAsync(0);
+		});
+		expect(configReads(fetch)).toBe(1);
+		await act(async () => {
+			await vi.advanceTimersByTimeAsync(4_999);
+		});
+		expect(heardAndSeen(root)).not.toContain(UNKNOWN.message);
+		await act(async () => {
+			await vi.advanceTimersByTimeAsync(1);
+		});
+		const takeover = one(root, 'section.takeover');
+		expect(takeover.hidden).toBe(false);
 		expect(takeover.textContent).not.toContain(STOPPED);
 		expect(takeover.textContent).toContain(UNKNOWN.message);
 	});

@@ -639,11 +639,11 @@ function StoredRecord({ description }: { readonly description: string | null }) 
 				Nothing on an archived program can be changed. The gifts recorded against it still name it.
 			</p>
 			<dl>
-				<div className="adm-setting">
+				<div className="adm-setting adm-setting--stacked">
 					<dt className="adm-setting__label">Description</dt>
 					{/* the word rather than a blank, because a blank value beside a label reads as a
 					    screen that failed to load one. */}
-					<dd className="adm-setting__value">{description ?? 'None'}</dd>
+					<dd className="adm-setting__value adm-setting__value--wrap">{description ?? 'None'}</dd>
 				</div>
 			</dl>
 		</Section>

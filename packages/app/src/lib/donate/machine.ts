@@ -118,9 +118,11 @@ export type Checkout = {
 	 * tells `listener` when a program page's quote is refused as an unknown form and the form itself
 	 * still reads, which is how a program no longer active is told apart from a form that is gone: the
 	 * endpoint answers both with the same refusal (`pageProgramId` in
-	 * packages/app/src/lib/server/donations/quote.ts). told after the flow has heard the refusal,
-	 * once the form's config read answers OK; never told on a card with no `pageProgramId`, nor after
-	 * `stop`. one listener; a second call replaces the first.
+	 * packages/app/src/lib/server/donations/quote.ts). told before the flow hears the refusal: the
+	 * refusal waits on the form's config read, `REREAD_TIMEOUT_MS` at most, and is told here only
+	 * where that read answers OK, so the failure screen's first draw already knows the program
+	 * stopped. never told on a card with no `pageProgramId`, nor after `stop`. one listener; a second
+	 * call replaces the first.
 	 */
 	stopped(listener: () => void): void;
 	/**
@@ -136,17 +138,27 @@ export type Checkout = {
 };
 
 /**
- * `quote`, telling `heard` of a refusal as an unknown form before rethrowing it unchanged.
+ * how long a program page's refused quote waits on the form's config read before the flow hears
+ * the refusal with the API's own sentence.
+ */
+const REREAD_TIMEOUT_MS = 5_000;
+
+/**
+ * `quote`, awaiting `heard` on a refusal as an unknown form and then rethrowing it unchanged, so
+ * whatever `heard` learns is in place before the flow draws the failure.
  *
  * the inner port is called before anything is awaited: `quoteThrough` in
  * @better-giving/form/embed/surface opens a provider's window inside the donor's press.
  */
-function heardStopping(quote: CheckoutPorts['quote'], heard: () => void): CheckoutPorts['quote'] {
+function heardStopping(
+	quote: CheckoutPorts['quote'],
+	heard: () => Promise<void>
+): CheckoutPorts['quote'] {
 	return async (request) => {
 		try {
 			return await quote(request);
 		} catch (error) {
-			if (error instanceof EmbedFailure && error.code === 'form_not_found') heard();
+			if (error instanceof EmbedFailure && error.code === 'form_not_found') await heard();
 			throw error;
 		}
 	};
@@ -232,10 +244,19 @@ export function startCheckout(
 
 	const ports = deploymentPorts(surface);
 	const rereads = new AbortController();
-	const reread = (): void => {
-		void formStillReads(config.formId, rereads.signal).then((reads) => {
-			if (reads && !rereads.signal.aborted) stopped();
-		});
+	// a controller per read, aborted by `stop` or by its own timeout: a timeout aborting `rereads`
+	// itself would refuse every later attempt's read before it is sent.
+	const reread = async (): Promise<void> => {
+		const read = new AbortController();
+		const abort = (): void => read.abort();
+		const timer = setTimeout(abort, REREAD_TIMEOUT_MS);
+		rereads.signal.addEventListener('abort', abort, { once: true });
+		try {
+			if ((await formStillReads(config.formId, read.signal)) && !rereads.signal.aborted) stopped();
+		} finally {
+			clearTimeout(timer);
+			rereads.signal.removeEventListener('abort', abort);
+		}
 	};
 	const actor = createActor(checkoutMachine, {
 		input: {
