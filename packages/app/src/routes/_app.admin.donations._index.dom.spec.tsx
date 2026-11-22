@@ -91,7 +91,7 @@ function screen(
 
 type Waiting = Parameters<typeof Donations>[0]['loaderData']['waiting'];
 
-const NOTHING_WAITING: Waiting = { total: 0, pledges: [] };
+const NOTHING_WAITING: Waiting = { total: 0, receipts: true, pledges: [] };
 
 function stubbed(
 	donations: Gift[],
@@ -224,6 +224,7 @@ it('says there are no gifts yet in the empty state, with no second Add donation'
 it('says no gifts are received yet while a pledge waits to arrive above it', () => {
 	const root = screen([], null, {
 		total: 1,
+		receipts: true,
 		pledges: [
 			{
 				id: '019fb300-0000-7000-8000-0000000000a1',

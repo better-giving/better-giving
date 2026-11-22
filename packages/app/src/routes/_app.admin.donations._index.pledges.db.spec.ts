@@ -173,10 +173,10 @@ async function signIn(): Promise<string> {
 
 type Drawn = Awaited<ReturnType<typeof donations.loader>>;
 
-async function drawn(): Promise<Drawn> {
+async function drawn(env: Env = bindings): Promise<Drawn> {
 	const response = await request(
 		new Request(`${ORIGIN}${SCREEN}`, { headers: { cookie: session } }),
-		{ env: bindings }
+		{ env }
 	);
 	expect(response.status).toBe(200);
 	return (await response.json()) as Drawn;
@@ -230,6 +230,7 @@ describe('a pledge waiting to arrive', () => {
 
 		expect(screen.waiting).toEqual({
 			total: 2,
+			receipts: false,
 			pledges: [
 				{
 					id: STOCK_PLEDGE,
@@ -252,6 +253,20 @@ describe('a pledge waiting to arrive', () => {
 			]
 		});
 	});
+
+	// the Mark received dialog states the donor's receipt only where one can be sent.
+	it.each([
+		['delivers mail', { SMTP_HOST: 'mail.cedarfork.org' }, true],
+		['holds the placeholder host `.env.example` ships', { SMTP_HOST: 'smtp.example.org' }, false],
+		['holds no mail settings', { SMTP_HOST: undefined, MAIL_FROM: undefined }, false]
+	] as const)(
+		'says whether receipts are sent, on a deployment that %s',
+		async (_, vars, receipts) => {
+			const screen = await drawn({ ...bindings, ...vars } as Env);
+
+			expect(screen.waiting.receipts).toBe(receipts);
+		}
+	);
 
 	it('moves no total and writes no gift, payment or entry', async () => {
 		const screen = await drawn();
@@ -411,6 +426,24 @@ describe('Mark received', () => {
 		).toEqual({ receipt_sent_at: null });
 		expect(logged).toHaveBeenCalledWith('A donor’s receipt wasn’t sent:', expect.any(String));
 		logged.mockRestore();
+	});
+
+	it('records the gift and answers the press where the deployment cannot send mail', async () => {
+		mail.answer = {
+			ok: false,
+			reason: 'not_configured',
+			detail: 'SMTP_HOST is not set',
+			indeterminate: false
+		};
+		vi.spyOn(console, 'error').mockImplementation(() => {});
+
+		const response = await markReceived(STOCK_RECEIVED);
+
+		expect(response.status).toBe(200);
+		expect(await booked()).toBe(951240);
+		expect(await first(stmt('select donation_id from pledge where id = ?', STOCK_PLEDGE))).toEqual({
+			donation_id: STOCK_PLEDGE
+		});
 	});
 
 	it('records nothing on a second press, and says so', async () => {

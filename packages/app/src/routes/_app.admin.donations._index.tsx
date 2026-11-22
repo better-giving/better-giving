@@ -25,6 +25,7 @@ import { DONATION_LIST_LIMIT, listDonations } from '$lib/server/donations/querie
 import { isDatedByDay, RAIL_LABELS } from '$lib/server/donations/rails';
 import { receivePledge, sendReceivedPledgeMail } from '$lib/server/donations/receive-pledge';
 import { readTrackingIds } from '$lib/server/donations/tracking-ids';
+import { mailDelivers } from '$lib/server/email/delivers';
 import { createEmailProvider } from '$lib/server/email/factory';
 import { giftLinkOrigin } from '$lib/server/matching/links';
 import { readNoteStandings } from '$lib/server/pages/messages';
@@ -185,6 +186,10 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 		// pledge's share count is millionths and an IRA (QCD) pledge's figure minor units.
 		waiting: {
 			total: waiting.total,
+			// whether Mark received is followed by the donor's receipt: true only where this deployment
+			// delivers mail (`mailDelivers` in $lib/server/email/delivers.ts), as the donation form's
+			// `receipts` is. false, a press still records the gift and the receipt is not sent.
+			receipts: mailDelivers(context.get(platform).env),
 			pledges: waiting.pledges.map((p) => ({
 				id: p.id,
 				method: p.pledged.method,

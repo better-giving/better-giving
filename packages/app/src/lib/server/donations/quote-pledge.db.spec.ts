@@ -26,11 +26,20 @@ const FUNDRAISER_PAGE_ID = '019fb600-0000-7000-8000-0000000000f2';
 const ALLOWED = 'https://acme.org';
 const PLEDGE_ID = '0b5f7a52-3d1e-4c8a-9f2b-6e4d1c0a7b93';
 
-const ENV = {
+/** a deployment that cannot send mail: no `SMTP_*` and no `MAIL_FROM`. */
+const NO_MAIL = {
 	STRIPE_SECRET_KEY: 'sk_test_abc',
 	STRIPE_PUBLISHABLE_KEY: 'pk_test_abc',
 	STRIPE_WEBHOOK_SECRET: 'whsec_abc',
 	TURNSTILE_SECRET_KEY: '0xSECRET'
+};
+
+const ENV = {
+	...NO_MAIL,
+	SMTP_HOST: 'mail.cedarfork.org',
+	SMTP_USERNAME: 'apikey',
+	SMTP_PASSWORD: 'pw',
+	MAIL_FROM: 'giving@cedarfork.org'
 };
 
 const STOCK_DETAILS = {
@@ -344,6 +353,21 @@ describe('mintQuote() — an IRA (QCD) pledge', () => {
 		expect(result).toMatchObject({ ok: false, reason: 'invalid_request' });
 		expect(await pledges()).toHaveLength(0);
 	});
+});
+
+describe('mintQuote() — a pledge where no receipt can be sent', () => {
+	it.each([
+		['stock', stock],
+		['ira_qcd', ira]
+	] as const)(
+		'answers a %s pledge with no receipt address where the deployment cannot send mail',
+		async (_, body) => {
+			const result = await save(body(), { ...deps(), env: NO_MAIL });
+
+			expect(result.ok && result.quote.pledge?.receiptTo).toBe('');
+			expect(await contacts()).toHaveLength(1);
+		}
+	);
 });
 
 describe('mintQuote() — what every pledge is refused over', () => {

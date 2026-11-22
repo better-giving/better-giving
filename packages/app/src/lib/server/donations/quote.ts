@@ -754,7 +754,9 @@ function pledgeOnWire(
 	config: FormConfig,
 	typedEmail: string | null
 ): Pledge {
-	const receiptTo = saved.receiptTo ?? typedEmail ?? '';
+	// no address where this deployment cannot send mail (`FormConfig.receipts`), so neither the
+	// pending screen nor the told notice promises a receipt nobody will send.
+	const receiptTo = config.receipts ? (saved.receiptTo ?? typedEmail ?? '') : '';
 	if (onRail.method === 'stock') {
 		const { pledged, details } = onRail;
 		return {
