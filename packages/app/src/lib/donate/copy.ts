@@ -636,6 +636,24 @@ export function donateTo(orgName: string | null): string {
 	return orgName === null ? 'Donate' : `Donate to ${orgName}`;
 }
 
+// ── the program page ─────────────────────────────────────────────────────────────────────────
+//
+// one program's public page ($lib/donate/program-page.tsx), and the screen an archived or unknown
+// program gets in its place, which names no program.
+
+export const PROGRAM_EYEBROW = 'Program';
+export const PROGRAM_OF = 'A program of';
+export const PROGRAM_EIN = 'EIN';
+export function giveToProgram(name: string): string {
+	return `Give to ${name}`;
+}
+export const PROGRAM_SHARE_HEADING = 'Share this program';
+export const PROGRAM_CLOSED_TITLE = 'This program isn’t taking gifts';
+export function programClosedBody(orgName: string): string {
+	return `Gifts to it are closed, or the link isn’t right. You can still give to ${orgName}.`;
+}
+export const PROGRAM_CLOSED_ACTION = 'Go to the donate page';
+
 // ── the gift page ────────────────────────────────────────────────────────────────────────────
 //
 // /gift/{token}: one donor's page for one gift ($lib/donate/gift-page.tsx). `org` is the

@@ -155,7 +155,9 @@ export type Checkout = {
 export function startCheckout(
 	config: FormConfig,
 	mounts: CheckoutMounts,
-	opening?: Opening
+	opening?: Opening,
+	/** the program a program page was drawn for: the machine's own `pageProgramId` input. */
+	pageProgramId?: string
 ): Checkout {
 	const { paymentMount, challengeMount, heldChallengeMount, resumeToken, seams } = mounts;
 
@@ -188,7 +190,8 @@ export function startCheckout(
 			config,
 			ports: deploymentPorts(surface),
 			...(resumeToken === null ? {} : { resume: { paymentToken: resumeToken } }),
-			...(opening === undefined ? {} : { opening })
+			...(opening === undefined ? {} : { opening }),
+			...(pageProgramId === undefined ? {} : { pageProgramId })
 		}
 	});
 

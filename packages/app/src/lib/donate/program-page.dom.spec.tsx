@@ -1,0 +1,363 @@
+import type { ChallengeSeams } from '@better-giving/form/embed/challenge';
+import type {
+	PaymentChangeLike,
+	PaymentElementLike,
+	StripeLike
+} from '@better-giving/form/embed/stripe';
+import type { TurnstileLike } from '@better-giving/form/embed/turnstile';
+import type { FeeRules, FormConfig } from '@better-giving/form/v1';
+import { act, type ReactNode } from 'react';
+import { createRoot } from 'react-dom/client';
+import { describe, expect, it, onTestFinished, vi } from 'vitest';
+import { DonateCard } from './card';
+import {
+	ProgramClosedPage,
+	ProgramPage,
+	type ProgramPageProgram,
+	type ProgramPageProps
+} from './program-page';
+
+// a program's public page and the screen an archived or unknown program gets, through
+// `ProgramPage` and `ProgramClosedPage` in ./program-page.tsx: what each draws, the landmarks a
+// reader moves by, and the program the card sends with the gift, which is the page's whole point.
+
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+// happy-dom has no popover methods, and the card's closed choices (./choice.tsx) are shown as one.
+if (!('showPopover' in HTMLElement.prototype)) {
+	Object.assign(HTMLElement.prototype, { showPopover() {}, hidePopover() {} });
+}
+
+const FEE_RULES: FeeRules = {
+	card: { percent: 0.029, fixedMinor: 30 },
+	apple_pay: { percent: 0.029, fixedMinor: 30 },
+	google_pay: { percent: 0.029, fixedMinor: 30 },
+	ach: { percent: 0.008, fixedMinor: 0, capMinor: 500 },
+	paypal: { percent: 0.0349, fixedMinor: 49 },
+	venmo: { percent: 0.0349, fixedMinor: 49 },
+	daf: { percent: 0.029, fixedMinor: 0, roundUpMinor: 100 },
+	crypto: { percent: 0.01, fixedMinor: 0 }
+};
+
+/** the config the route builds for a program page: no `program`, so the card offers none. */
+const CONFIG: FormConfig = {
+	formId: 'ff000000-0000-4000-8000-000000000002',
+	providers: [{ name: 'stripe', publishableKey: 'pk_test_spec' }],
+	currency: 'usd',
+	suggestedAmountsMinor: [2500, 5000, 10000],
+	minAmountMinor: 500,
+	maxAmountMinor: 500000,
+	frequencies: ['one_time', 'monthly'],
+	paymentMethods: ['card'],
+	feeCoverage: 'optional',
+	feeRules: FEE_RULES,
+	locale: 'en-US',
+	orgLegalName: 'Cedar Fork Community Pantry Inc.',
+	ein: '47-3829105',
+	deductibilityStatement: 'Cedar Fork Community Pantry Inc. is a 501(c)(3).',
+	turnstileSiteKey: '1x00000000000000000000AA'
+};
+
+const COATS: ProgramPageProgram = {
+	id: 'prog-coats',
+	name: 'Winter coats',
+	description:
+		'Every October we collect, clean and hand out warm coats to neighbors who can’t afford one.\n\n$50 outfits one child from hood to hem.',
+	photoImageId: 'img-coats'
+};
+
+const ORG: ProgramPageProps['org'] = {
+	name: 'Cedar Fork Community Pantry Inc.',
+	info: {
+		legalName: 'Cedar Fork Community Pantry Inc.',
+		ein: '47-3829105',
+		addressLines: ['412 Alder Lane, Suite 3', 'Cedar Fork, OR 97330'],
+		email: null,
+		socialLinks: []
+	}
+};
+
+/** the challenge widget, minting a token as soon as it is drawn and again on every reset. */
+const CHALLENGE: ChallengeSeams = {
+	turnstile: {
+		load: async () => {
+			let answer: (token: string) => void = () => {};
+			let minted = 0;
+			const mint = (): void => {
+				minted += 1;
+				answer(`tok_minted_${minted}`);
+			};
+			const api: TurnstileLike = {
+				render: (_node, options) => {
+					answer = options.callback ?? (() => {});
+					mint();
+					return 'widget-1';
+				},
+				reset: mint,
+				remove: () => {}
+			};
+			return api;
+		},
+		delay: () => () => {}
+	}
+};
+
+/** the card processor, as a plain object, with the one report the flow needs off it: the rail. */
+function paymentProvider() {
+	const change: ((payload: PaymentChangeLike) => void)[] = [];
+	const element = {
+		mount: () => {},
+		focus: () => {},
+		collapse: () => {},
+		on: (event: string, handler: (payload: PaymentChangeLike) => void) => {
+			if (event === 'change') change.push(handler);
+		},
+		off: () => {},
+		destroy: () => {}
+	} as unknown as PaymentElementLike;
+	const stripe = {
+		elements: () => ({ create: () => element, update: async () => {}, submit: async () => ({}) }),
+		confirmPayment: () => new Promise(() => {}),
+		retrievePaymentIntent: async () => ({})
+	} as unknown as StripeLike;
+	return {
+		seams: {
+			payment: { stripe: { load: async () => stripe, delay: () => () => {} } },
+			challenge: CHALLENGE
+		},
+		pick: (type: string) => {
+			act(() => {
+				for (const handler of [...change]) {
+					handler({ collapsed: false, empty: false, value: { type } });
+				}
+			});
+		}
+	};
+}
+
+async function mount(node: ReactNode): Promise<HTMLElement> {
+	const host = document.createElement('div');
+	document.body.appendChild(host);
+	const mounted = createRoot(host);
+	act(() => {
+		mounted.render(node);
+	});
+	onTestFinished(() => {
+		act(() => {
+			mounted.unmount();
+		});
+		host.remove();
+	});
+	await act(async () => {
+		for (let at = 0; at < 4; at += 1) await Promise.resolve();
+	});
+	return host;
+}
+
+const payment = paymentProvider();
+
+function programPage(overrides: Partial<ProgramPageProps> = {}) {
+	return mount(
+		<ProgramPage
+			program={COATS}
+			org={ORG}
+			logo={null}
+			look={{ brandColour: null }}
+			sharing={{ message: 'Winter coats', url: 'https://cedarfork.example/programs/prog-coats' }}
+			config={CONFIG}
+			seams={payment.seams}
+			{...overrides}
+		/>
+	);
+}
+
+function one(root: HTMLElement, selector: string): HTMLElement {
+	const node = root.querySelector(selector);
+	if (!(node instanceof HTMLElement)) throw new Error(`nothing matched ${selector}`);
+	return node;
+}
+
+function press(node: HTMLElement): void {
+	act(() => {
+		node.click();
+	});
+}
+
+function type(root: HTMLElement, selector: string, value: string): void {
+	const box = one(root, selector);
+	if (!(box instanceof HTMLInputElement)) throw new Error(`${selector} is not an input`);
+	act(() => {
+		Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(box, value);
+		box.dispatchEvent(new Event('input', { bubbles: true }));
+	});
+}
+
+/** the quote requests the card posts, read back as the bodies it sent; none is answered. */
+function sent(): Record<string, unknown>[] {
+	const bodies: Record<string, unknown>[] = [];
+	vi.stubGlobal(
+		'fetch',
+		vi.fn((_url: string, init?: RequestInit) => {
+			bodies.push(JSON.parse(String(init?.body)));
+			return new Promise<Response>(() => {});
+		})
+	);
+	return bodies;
+}
+
+const CONTINUE = 'section.step:not([hidden]) > button[part~="action"]';
+
+async function donate(root: HTMLElement): Promise<void> {
+	press(one(root, '.tiles > label:nth-of-type(2)'));
+	press(one(root, CONTINUE));
+	// the challenge is drawn on arrival at the details step, through a promise chain of its own.
+	await act(async () => {
+		for (let at = 0; at < 4; at += 1) await Promise.resolve();
+	});
+	type(root, '#email', 'donor@example.org');
+	type(root, '#first-name', 'Ada');
+	type(root, '#last-name', 'Lovelace');
+	press(one(root, CONTINUE));
+	payment.pick('card');
+	press(one(root, 'button[part~="submit"]'));
+}
+
+/** the text of the element `labelled`'s `aria-labelledby` names. */
+function labelOf(root: HTMLElement, labelled: Element): string | null {
+	const id = labelled.getAttribute('aria-labelledby');
+	return id === null ? null : (root.ownerDocument.getElementById(id)?.textContent ?? null);
+}
+
+describe('an active program’s page', () => {
+	it('draws the photo, the name, the description, who runs it and the card', async () => {
+		const root = await programPage();
+		const main = one(root, 'main');
+		const photo = one(main, '[data-area="photo"] img');
+		expect(photo.getAttribute('src')).toBe('/image/img-coats');
+		expect(photo.getAttribute('alt')).toBe('Winter coats');
+		expect(one(main, '.ds-eyebrow').textContent).toBe('Program');
+		expect(one(main, 'h1').textContent).toBe('Winter coats');
+		expect(
+			[...main.querySelectorAll('[data-area="description"] p')].map((p) => p.textContent)
+		).toEqual([
+			'Every October we collect, clean and hand out warm coats to neighbors who can’t afford one.',
+			'$50 outfits one child from hood to hem.'
+		]);
+		const identity = one(main, '[data-area="identity"]');
+		expect(identity.textContent).toContain('A program of');
+		expect(identity.textContent).toContain('Cedar Fork Community Pantry Inc.');
+		expect(identity.textContent).toContain('EIN 47-3829105');
+		expect(main.querySelector('[part~="card"]')).not.toBeNull();
+	});
+
+	it('draws no image element for a program with no photo', async () => {
+		const root = await programPage({ program: { ...COATS, photoImageId: null } });
+		expect(root.querySelector('[data-area="photo"]')).toBeNull();
+		expect(one(root, 'main').querySelector('img')).toBeNull();
+	});
+
+	it('draws no description block for a program with none', async () => {
+		const root = await programPage({ program: { ...COATS, description: null } });
+		expect(root.querySelector('[data-area="description"]')).toBeNull();
+	});
+
+	it('draws a description as plain text, never as markup', async () => {
+		const root = await programPage({ program: { ...COATS, description: '<b>Coats</b> for all' } });
+		const description = one(root, '[data-area="description"]');
+		expect(description.querySelector('b')).toBeNull();
+		expect(description.textContent).toBe('<b>Coats</b> for all');
+	});
+
+	it('draws the organisation’s initials in the tile where it has no logo, and its logo where it has one', async () => {
+		const initialsOnly = await programPage();
+		expect(one(initialsOnly, '[data-area="identity"] .ds-avatar').textContent).toBe('CF');
+
+		const withLogo = await programPage({
+			logo: { imageId: 'img-logo', width: 200, height: 200 }
+		});
+		const tile = one(withLogo, '[data-area="identity"] .ds-avatar');
+		expect(tile.querySelector('img')?.getAttribute('src')).toBe('/image/img-logo');
+	});
+
+	it('draws no EIN where the organisation states none', async () => {
+		const root = await programPage({ org: { ...ORG, info: { ...ORG.info, ein: null } } });
+		expect(one(root, '[data-area="identity"]').textContent).not.toContain('EIN');
+	});
+
+	it('has one h1, the card in a section its h2 labels, and Share in a section its heading labels', async () => {
+		const root = await programPage();
+		expect(root.querySelectorAll('h1')).toHaveLength(1);
+		const box = one(root, '[data-area="box"]');
+		expect(box.tagName).toBe('SECTION');
+		expect(labelOf(root, box)).toBe('Give to Winter coats');
+		expect(one(box, 'h2').textContent).toBe('Give to Winter coats');
+		expect(box.querySelector('[part~="card"]')).not.toBeNull();
+		const share = one(root, '[data-area="share"]');
+		expect(share.tagName).toBe('SECTION');
+		expect(labelOf(root, share)).toBe('Share this program');
+	});
+
+	it('draws no Program select or chooser on the card', async () => {
+		const root = await programPage();
+		expect(root.querySelector('#program')).toBeNull();
+		expect(root.querySelector('[data-area="chooser"]')).toBeNull();
+	});
+
+	it('sends the program’s id with the gift as `pageProgramId`', async () => {
+		const bodies = sent();
+		const root = await programPage();
+		await donate(root);
+		expect(bodies).toHaveLength(1);
+		expect(bodies[0]).toMatchObject({ pageProgramId: 'prog-coats' });
+	});
+
+	it('draws the card inert in the preview', async () => {
+		const root = await programPage({ preview: true });
+		expect(one(root, '[part~="card"]').closest('[inert]')).not.toBeNull();
+	});
+});
+
+describe('the donation card handed `pageProgramId`', () => {
+	it('starts the flow on it, so every quote carries it', async () => {
+		const bodies = sent();
+		const root = await mount(
+			<DonateCard config={CONFIG} seams={payment.seams} pageProgramId="prog-pantry" />
+		);
+		await donate(root);
+		expect(bodies[0]).toMatchObject({ pageProgramId: 'prog-pantry' });
+	});
+
+	it('sends no such key when handed none', async () => {
+		const bodies = sent();
+		const root = await mount(<DonateCard config={CONFIG} seams={payment.seams} />);
+		await donate(root);
+		expect(bodies).toHaveLength(1);
+		expect(bodies[0]).not.toHaveProperty('pageProgramId');
+	});
+});
+
+describe('a program not taking gifts', () => {
+	async function closed() {
+		return mount(<ProgramClosedPage org={ORG} logo={null} look={{ brandColour: null }} />);
+	}
+
+	it('says it isn’t taking gifts and offers the donate page, with no card', async () => {
+		const root = await closed();
+		expect(root.querySelectorAll('h1')).toHaveLength(1);
+		expect(one(root, 'h1').textContent).toBe('This program isn’t taking gifts');
+		expect(one(root, 'main').textContent).toContain(
+			'Gifts to it are closed, or the link isn’t right. You can still give to Cedar Fork Community Pantry Inc.'
+		);
+		const way = [...root.querySelectorAll('main a')].find(
+			(link) => link.textContent === 'Go to the donate page'
+		);
+		expect(way?.getAttribute('href')).toBe('/');
+		expect(root.querySelector('[part~="card"]')).toBeNull();
+	});
+
+	it('keeps the site nav and the footer', async () => {
+		const root = await closed();
+		expect(root.querySelector('.ds-site-nav')).not.toBeNull();
+		expect(root.querySelector('footer')).not.toBeNull();
+	});
+});
