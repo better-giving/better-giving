@@ -181,7 +181,6 @@ function ProgramOrg({
 		<div className="page-program-org" data-area="identity">
 			{logo !== null ? (
 				<span className="ds-avatar ds-avatar-lg ds-avatar-square ds-avatar-logo" aria-hidden="true">
-					<span>{letters}</span>
 					<img className="ds-avatar-img" src={imageSrc(logo.imageId)} alt="" />
 				</span>
 			) : letters === '' ? null : (

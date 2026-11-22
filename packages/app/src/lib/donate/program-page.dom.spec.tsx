@@ -278,6 +278,7 @@ describe('an active program’s page', () => {
 		});
 		const tile = one(withLogo, '[data-area="identity"] .ds-avatar');
 		expect(tile.querySelector('img')?.getAttribute('src')).toBe('/image/img-logo');
+		expect(tile.textContent).toBe('');
 	});
 
 	it('draws no EIN where the organisation states none', async () => {
