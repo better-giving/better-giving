@@ -1,4 +1,4 @@
-import { and, count, desc, eq, isNull } from 'drizzle-orm';
+import { and, desc, eq, isNull } from 'drizzle-orm';
 import type { ParsedContact } from '../contacts/contact-input';
 import { readContactSummaries } from '../contacts/queries';
 import type { Db } from '../db/client';
@@ -18,12 +18,6 @@ import { noteOnPageColumns, tributeColumns } from './record';
 // ./queries.ts and ../ledger never meet one. what the Gifts screen shows of a pledge before then is
 // `listWaitingPledges`, and it reads only `pledge`; the donor's name and address come from
 // `readContactSummaries` in ../contacts/queries.ts, for the reason that file gives.
-
-/**
- * how many waiting pledges one read returns, newest first. each donor id is a bound parameter of the
- * follow-up read, and a pledge nobody sends stays waiting, since nothing closes one.
- */
-export const WAITING_PLEDGE_LIMIT = 100;
 
 /** what the donor pledged: shares of a ticker, or an amount from their IRA's custodian. */
 export type Pledged =
@@ -50,9 +44,12 @@ export type WaitingPledge = {
 };
 
 export type WaitingPledges = {
-	/** every pledge waiting, which the page may hold fewer of than this. */
+	/** how many pledges are waiting: `pledges.length`. */
 	readonly total: number;
-	/** newest first, at most `WAITING_PLEDGE_LIMIT`. */
+	/**
+	 * every pledge waiting, newest first. none is left out: a pledge nobody sends stays waiting, since
+	 * nothing but Mark received closes one, and one missing here could never be received.
+	 */
 	readonly pledges: readonly WaitingPledge[];
 };
 
@@ -79,36 +76,28 @@ function pledgedOf(row: PledgeRow): Pledged {
 
 /** the "Waiting to arrive" card: every pledge with no gift yet, newest first. */
 export async function listWaitingPledges(db: Db): Promise<WaitingPledges> {
-	const waiting = isNull(pledge.donationId);
-	const [rows, [counted]] = await Promise.all([
-		db
-			.select({
-				id: pledge.id,
-				contactId: pledge.contactId,
-				method: pledge.method,
-				reference: pledge.reference,
-				ticker: pledge.ticker,
-				sharesMillionths: pledge.sharesMillionths,
-				custodian: pledge.custodian,
-				amountMinor: pledge.amountMinor,
-				currency: pledge.currency,
-				toldAt: pledge.toldAt,
-				createdAt: pledge.createdAt
-			})
-			.from(pledge)
-			.where(waiting)
-			.orderBy(desc(pledge.createdAt), desc(pledge.id))
-			.limit(WAITING_PLEDGE_LIMIT),
-		db.select({ n: count() }).from(pledge).where(waiting)
-	]);
+	const rows = await db
+		.select({
+			id: pledge.id,
+			contactId: pledge.contactId,
+			method: pledge.method,
+			reference: pledge.reference,
+			ticker: pledge.ticker,
+			sharesMillionths: pledge.sharesMillionths,
+			custodian: pledge.custodian,
+			amountMinor: pledge.amountMinor,
+			currency: pledge.currency,
+			toldAt: pledge.toldAt,
+			createdAt: pledge.createdAt
+		})
+		.from(pledge)
+		.where(isNull(pledge.donationId))
+		.orderBy(desc(pledge.createdAt), desc(pledge.id));
 
-	const donors = await readContactSummaries(
-		db,
-		rows.map((r) => r.contactId)
-	);
+	const donors = await readContactSummaries(db, [...new Set(rows.map((r) => r.contactId))]);
 
 	return {
-		total: counted?.n ?? 0,
+		total: rows.length,
 		pledges: rows.map((row) => {
 			const donor = donors.get(row.contactId);
 			return {
