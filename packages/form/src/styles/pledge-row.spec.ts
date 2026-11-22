@@ -61,6 +61,60 @@ describe('a pledge’s detail labels', () => {
 	});
 });
 
+// the pending screens are the takeovers whose details list is drawn (`pledgedScreen` in ../views.ts):
+// the thank-you lists what was pledged alone and hides it, and no other takeover has one. the rules
+// below are keyed on that so the thank-you, the crypto deposit and every other takeover keep theirs.
+const PENDING = `.takeover:has(.pledge-details:not([hidden]))`;
+
+describe('a pledge’s pending screen', () => {
+	it('sets its heading a step under the other takeovers’', () => {
+		expect(stated(`${PENDING} [part~='heading']`, 'font-size')).toBe('var(--_t-lg)');
+	});
+
+	// the registry's small-text leading (`--ds-text-sm-lh` in ../registry/styles/button-css.css).
+	it('sets its lead quiet, at the small step on the registry’s small leading', () => {
+		expect({
+			size: stated(`${PENDING} .prose`, 'font-size'),
+			ink: stated(`${PENDING} .prose`, 'color'),
+			line: stated(`${PENDING} .prose`, 'line-height')
+		}).toEqual({ size: 'var(--_t-sm)', ink: 'var(--_n11)', line: 'calc(1.25 / 0.875)' });
+	});
+
+	// 10px at the default root: the registry's spacing step (`--ds-spacing`, a quarter of `--ds-rem`)
+	// two and a half times over.
+	it('pads every row at two and a half of the registry’s spacing steps', () => {
+		expect(stated(`${PENDING} .pledge-row`, 'padding-block')).toBe(
+			'calc(var(--ds-rem) * 0.25 * 2.5)'
+		);
+	});
+
+	it('stands a detail’s label half a registry spacing step over its value', () => {
+		expect(stated('.pledge-details .pledge-row', 'row-gap')).toBe(
+			'calc(var(--ds-rem) * 0.25 * 0.5)'
+		);
+	});
+
+	// the registry's small and extra-small leadings (`--ds-text-sm-lh`, `--ds-text-xs-lh` in
+	// ../registry/styles/button-css.css), and the drawn value's 1.4, which no scale here has.
+	it('sets each row’s words at the leading drawn for them', () => {
+		expect({
+			summaryLabel: stated(`${PENDING} .pledge-summary .pledge-label`, 'line-height'),
+			summaryValue: stated(`${PENDING} .pledge-summary .pledge-value`, 'line-height'),
+			detailLabel: stated('.pledge-details .pledge-label', 'line-height'),
+			detailValue: stated('.pledge-value', 'line-height')
+		}).toEqual({
+			summaryLabel: 'var(--_lh-body)',
+			summaryValue: '1.4',
+			detailLabel: 'calc(1 / 0.75)',
+			detailValue: 'var(--_lh-body)'
+		});
+	});
+
+	it('sets a detail checked character by character a size under its words', () => {
+		expect(stated('.pledge-details .pledge-value.mono', 'font-size')).toBe('0.9375em');
+	});
+});
+
 // a pledge screen's primary (`REGISTRY_CLASS.action`) and its emailed instructions, an `<a>` with
 // `SECONDARY_BUTTON` in ../views.ts and packages/app/src/lib/donate/takeover.tsx, are both `.ds-btn`.
 // the registry centres a button's content with flex alone, and a label that wraps fills the box, so

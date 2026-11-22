@@ -88,7 +88,7 @@
  * own, so a host that set `html { font-size: 62.5% }` must not be able to render the card at 10px,
  * while a reader's own browser zoom still moves type and spacing together. the registry's component
  * sheets read their `rem` figures through its `--ds-rem`, which the `:host` block below sets to the
- * clamped root, so every registry control on the card draws off it. nine things the registry
+ * clamped root, so every registry control on the card draws off it. ten things the registry
  * states that the form cannot take as stated, each a registry gap, the first three listed and the
  * rest numbered in the paragraphs after:
  *
@@ -132,6 +132,12 @@
  * (../registry/styles/notice-card-css.css), a face this card never loads, so the title takes the
  * card's own face, the one every other title on the card is set in (`.ds-notice-card-title` in
  * ./parts.css) — a ninth.
+ *
+ * the registry states its spacing step and its small and extra-small leadings on its classes alone
+ * (`--ds-spacing`, `--ds-text-sm-lh` and `--ds-text-xs-lh` in ../registry/styles/button-css.css), as
+ * no variable a rule outside them can read, so a saved pledge's pending screen restates them off
+ * `--ds-rem` and as the registry's own ratios (`.pledge-row`'s padding in ./layout.css, the lead
+ * and the details' labels in ./parts.css) — a tenth.
  *
  * no shade is ever made with alpha. a translucent fill takes on whatever the host's page put behind
  * it, and this component is painted onto a page it cannot see; the registry's alpha steps

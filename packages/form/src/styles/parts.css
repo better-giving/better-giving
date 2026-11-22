@@ -3,7 +3,7 @@
  * one role token those names carry. every colour and every step of a scale here comes from
  * ./tokens.css, so a host's seed reaches every surface without a second copy of the ramp existing.
  *
- * seven lengths are literals and each is a floor or a shape rather than a step of a scale, which is
+ * eight lengths are literals and each is a floor, a shape or a drawn size rather than a step of a scale, which is
  * what a token apiece would misrepresent — a scale nobody counts along. they are stated here so an
  * eighth is a decision rather than a habit, and each is argued at its own rule:
  *
@@ -25,6 +25,8 @@
  *     box needs to survive the clip, which is the ring's own geometry rather than a spacing step.
  *   - `margin-inline-start: 1ch` on the mark inside the deposit's copy run. one character of the
  *     words the mark follows, which no step of a scale expresses.
+ *   - `font-size: 0.9375em` on a pledge's monospace details. the size the design draws a code at
+ *     beside proportional words, which the type scale has no step at.
  *   - `inline-size: 33%` on the skeleton's label line. a fraction of whatever width the card has,
  *     which is the one thing a length in this file cannot be.
  *
@@ -145,6 +147,15 @@
 /* a takeover is the only thing on the card, so its heading is the card's own first size. */
 .takeover [part~='heading'] {
 	font-size: var(--_t-xl);
+}
+
+/*
+ * a saved pledge's pending screen is the takeover whose details list is drawn (`pledgedScreen` in
+ * ../views.ts; the thank-you hides it), and it is a page of instructions under the heading rather
+ * than one sentence, so the heading takes the card's own step heading size.
+ */
+.takeover:has(.pledge-details:not([hidden])) [part~='heading'] {
+	font-size: var(--_t-lg);
 }
 
 [part~='label'] {
@@ -2027,6 +2038,18 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 }
 
 /*
+ * on a pledge's pending screen the sentence introduces the lists under it rather than being the
+ * screen's news, so it steps down to the small size in the quiet ink, at the registry's own leading
+ * for that size: `calc(1.25 / 0.875)`, which it states on its classes alone (`--ds-text-sm-lh` in
+ * ../registry/styles/button-css.css) and ./tokens.css lists as a registry gap.
+ */
+.takeover:has(.pledge-details:not([hidden])) .prose {
+	color: var(--_n11);
+	font-size: var(--_t-sm);
+	line-height: calc(1.25 / 0.875);
+}
+
+/*
  * a line about the figure above it: the reconciliation sentence, the rail, the authorization — and
  * on the review step, where the receipt is going.
  *
@@ -2435,6 +2458,8 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 .pledge-details .pledge-label {
 	/* raw-length-ok: the floor, for the reason above. */
 	font-size: max(12px, var(--_t-xs));
+	/* the registry's leading for that size (`--ds-text-xs-lh` in ../registry/styles/button-css.css). */
+	line-height: calc(1 / 0.75);
 }
 
 .pledge-value {
@@ -2442,9 +2467,30 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 	line-height: var(--_lh-body);
 }
 
+/*
+ * on the pending screen the summary's label reads at the body's leading and its value a shade under
+ * it, at the 1.4 the design draws, which neither leading here nor the registry's states.
+ */
+.takeover:has(.pledge-details:not([hidden])) .pledge-summary .pledge-label {
+	line-height: var(--_lh-body);
+}
+
+.takeover:has(.pledge-details:not([hidden])) .pledge-summary .pledge-value {
+	line-height: 1.4;
+}
+
 /* a value a donor checks character by character — a code or a number — in the monospace face. */
 .pledge-value.mono {
 	font-family: var(--_font-mono);
+}
+
+/*
+ * a size under the words around it, because a monospace face draws wider and taller at the same
+ * size than the proportional one beside it.
+ */
+.pledge-details .pledge-value.mono {
+	/* raw-length-ok: fifteen sixteenths of the base, a size the type scale has no step at. */
+	font-size: 0.9375em;
 }
 
 /*

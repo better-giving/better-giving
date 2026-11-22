@@ -1077,6 +1077,15 @@ form {
 }
 
 /*
+ * on the pending screen, the takeover whose details list is drawn (the thank-you hides it), the
+ * lists are long and read down, so a row stands tighter than the thank-you's: the registry's spacing step (`--ds-spacing`, a quarter of `--ds-rem`) two and a half
+ * times over, which it declares on its classes alone and ./tokens.css lists as a registry gap.
+ */
+.takeover:has(.pledge-details:not([hidden])) .pledge-row {
+	padding-block: calc(var(--ds-rem) * 0.25 * 2.5);
+}
+
+/*
  * a summary label is the form's own short words and its value can be a custodian the donor typed:
  * an `auto` track grows to its max-content before an `fr` track gets any space, so the label takes
  * the `auto` track and the value the `fr` one, and the value wraps rather than squeezing the label.
@@ -1084,6 +1093,11 @@ form {
 .pledge-summary .pledge-row {
 	grid-template-columns: auto minmax(0, 1fr);
 	align-items: baseline;
+}
+
+/* a detail's label stands half a registry spacing step over its value (the step as above). */
+.pledge-details .pledge-row {
+	row-gap: calc(var(--ds-rem) * 0.25 * 0.5);
 }
 
 .pledge-details .pledge-label {
