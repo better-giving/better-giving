@@ -42,7 +42,7 @@ it('is named Photo, optional, and described by where donors see it', () => {
 	const group = host.querySelector('fieldset');
 	expect(group?.querySelector('legend')?.textContent).toBe('Photo (optional)');
 	expect(document.getElementById(group?.getAttribute('aria-describedby') ?? '')?.textContent).toBe(
-		'Shown on the program’s page and beside its name in the donate page’s program chooser, cropped square.'
+		'Shown on the program’s page and beside its name in the Donation page’s program chooser, cropped square.'
 	);
 });
 
