@@ -252,7 +252,8 @@ describe('the two cards', () => {
 	});
 
 	// the record stands in the 3fr card of `.adm-cardpair`, too narrow beside a setting row's 20rem
-	// label track: packages/operator/src/styles/adm.css draws both classes read here.
+	// label track: packages/operator/src/styles/adm.css draws both classes read here, and
+	// packages/operator/src/styles/setting-row-shapes.spec.ts asserts what each rule draws.
 	it('stacks the archived description under its label and wraps a long word in it', () => {
 		const { root } = screen({ archived: true });
 

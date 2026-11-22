@@ -343,9 +343,10 @@ describe('POST /api/v1/forms/:id/donations — the status each refusal carries',
 	/**
 	 * a program page's `pageProgramId` is honoured on the Donation page's form alone, the form
 	 * `/programs/{id}` serves, and only for an active program. anything else reads as the form being
-	 * unknown: the same status, body and headers, so the field is no way to learn which program ids
-	 * exist or that the form does. the program page reads the answer same-origin, which needs no echo
-	 * from the form's own sites.
+	 * unknown: the same status, body and headers, so an archived id, an unknown id and another form
+	 * read alike. an active id on the Donation page's form passes on to the spam check, so the field
+	 * can still tell a caller an id is active. the program page reads the answer same-origin, which
+	 * needs no echo from the form's own sites.
 	 */
 	describe('a program page’s `pageProgramId`', () => {
 		const ACTIVE = '019fb601-0000-7000-8000-000000000002';

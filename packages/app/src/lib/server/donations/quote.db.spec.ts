@@ -1572,7 +1572,8 @@ describe('mintQuote() — the cause the gift is credited to', () => {
 	 * so that form is the only one the field is honoured on. the id is still an input to look up: a
 	 * cause that is not an active row on this deployment, or the field on any other form, is answered
 	 * exactly as a form id nothing matches — the form row included, which is what the route builds
-	 * its CORS headers from — so the field cannot be used to learn which program ids exist.
+	 * its CORS headers from — so an archived id, an unknown id and another form read alike. an active
+	 * id on the Donation page's form passes on to the challenge, so a caller can still learn it is.
 	 */
 	describe('from a program page', () => {
 		const OTHER_FORM_ID = 'frm_quotepathother01';

@@ -39,11 +39,17 @@ beforeEach(async () => {
 		stmt('delete from org_profile')
 	]);
 	await writeOrgRow(client, { tax_id: '12-3456789' });
-	// the served cadences, warmed so the loader never sends the fixture key to Stripe
-	// ($lib/server/forms/cadence-cache.ts).
+	// the served cadences and rails, warmed so the loader never sends the fixture key to Stripe
+	// ($lib/server/forms/cadence-cache.ts, $lib/server/forms/rail-cache.ts).
 	await edgeCache().put(
 		new Request(`${OWN}/__recurring-cadences`),
 		new Response(JSON.stringify(['one_time']), {
+			headers: { 'content-type': 'application/json', 'cache-control': 'max-age=300' }
+		})
+	);
+	await edgeCache().put(
+		new Request(`${OWN}/__offered-rails`),
+		new Response(JSON.stringify(['card']), {
 			headers: { 'content-type': 'application/json', 'cache-control': 'max-age=300' }
 		})
 	);
