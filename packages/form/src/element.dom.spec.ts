@@ -8577,6 +8577,24 @@ describe('a stock or IRA (QCD) pledge', () => {
 		expect(shows(card, '[part~="submit"] .action-label')).toBe('Donate $26.06');
 	});
 
+	it('keeps Continue, with no total and no receipt line, while the save is in flight', async () => {
+		const card = await onIra({
+			config: { ...PLEDGES, receipts: true },
+			ports: {
+				pledges: { id: () => 'pledge-1', save: () => new Promise(() => {}), told: async () => {} }
+			}
+		});
+		type(custodian(card), 'Fidelity Investments');
+		card.find('[part~="submit"]').click();
+		await settle();
+
+		expect(card.find('[part~="submit"]').getAttribute('aria-busy')).toBe('true');
+		expect(shows(card, '[part~="submit"] .action-label')).toBe('Continue');
+		expect(card.find('.step-give .row.fee').hidden).toBe(true);
+		expect(card.find('.step-give .row.total').hidden).toBe(true);
+		expect(shows(card, '.step-give .aside')).toBe('');
+	});
+
 	it('saves nothing on a Continue with no custodian, says so under the box and puts the caret in it', async () => {
 		const saves: (QuoteRequest | StockPledgeRequest)[] = [];
 		const card = await onIra({ saves });

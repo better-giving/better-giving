@@ -3943,8 +3943,10 @@ export function createCard(
 		// nothing is worse than one that is not there.
 		// an IRA (QCD) gift is pledged rather than charged: no processor, a fee of nothing, and nothing
 		// totalled today. the receipt states the gift alone, the fee decision is not offered, and the
-		// press saves the pledge rather than spending money, so it says Continue.
-		const pledging = state.step === 'give' && state.method === 'ira_qcd';
+		// press saves the pledge rather than spending money, so it says Continue. the save in flight is
+		// `working` on the same rail, and keeps the review step on screen (`visibleStep` above).
+		const pledging =
+			(state.step === 'give' || state.step === 'working') && state.method === 'ira_qcd';
 		const changeable = state.step === 'give' && !pledging;
 
 		setText(giftLabel, `${FREQUENCY_LABELS[fv.frequency]} gift`);
