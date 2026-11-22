@@ -369,6 +369,74 @@ describe('the donation card handed `pageProgramId`', () => {
 	});
 });
 
+describe('the donation card when the gift endpoint answers the quote as an unknown form', () => {
+	const UNKNOWN = {
+		error: 'form_not_found',
+		message: 'No form with id `ff00…0002` exists on this deployment.',
+		fix: 'Check the `form` attribute on the donation element against the snippet shown under Forms in /admin.'
+	};
+	const STOPPED = 'This program stopped taking gifts. You can still give on the donate page.';
+
+	/** the quote answered as the endpoint answers a program archived since the page was drawn. */
+	function answeredUnknown(): void {
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(
+				async () =>
+					new Response(JSON.stringify(UNKNOWN), {
+						status: 404,
+						headers: { 'content-type': 'application/json' }
+					})
+			)
+		);
+	}
+
+	async function refused(root: HTMLElement): Promise<void> {
+		await donate(root);
+		await act(async () => {
+			for (let at = 0; at < 4; at += 1) await new Promise((done) => setTimeout(done, 0));
+		});
+	}
+
+	it('says the program stopped taking gifts and links the donate page, on a program page', async () => {
+		answeredUnknown();
+		const root = await mount(
+			<DonateCard config={CONFIG} seams={payment.seams} pageProgramId="prog-coats" />
+		);
+		await refused(root);
+		const takeover = one(root, 'section.takeover');
+		expect(takeover.hidden).toBe(false);
+		expect(takeover.textContent).toContain(STOPPED);
+		const link = [...takeover.querySelectorAll('a')].find((a) => a.textContent === 'donate page');
+		expect(link?.getAttribute('href')).toBe('/');
+		expect(root.textContent).not.toContain(UNKNOWN.message);
+		expect(root.textContent).not.toContain(UNKNOWN.fix);
+	});
+
+	it('offers no Try again once the program has stopped taking gifts', async () => {
+		answeredUnknown();
+		const root = await mount(
+			<DonateCard config={CONFIG} seams={payment.seams} pageProgramId="prog-coats" />
+		);
+		await refused(root);
+		const takeover = one(root, 'section.takeover');
+		const visible = [...takeover.querySelectorAll('button')].filter(
+			(button) => !button.hidden && button.closest('[hidden]') === null
+		);
+		expect(visible).toEqual([]);
+	});
+
+	it('keeps the API’s own sentence on a card with no program page', async () => {
+		answeredUnknown();
+		const root = await mount(<DonateCard config={CONFIG} seams={payment.seams} />);
+		await refused(root);
+		const takeover = one(root, 'section.takeover');
+		expect(takeover.hidden).toBe(false);
+		expect(takeover.textContent).not.toContain(STOPPED);
+		expect(takeover.textContent).toContain(UNKNOWN.message);
+	});
+});
+
 describe('a program not taking gifts', () => {
 	async function closed(preview?: boolean) {
 		return mount(
@@ -402,6 +470,19 @@ describe('a program not taking gifts', () => {
 		expect(way(root).getAttribute('href')).toBe('/');
 		expect(root.querySelector('[part~="card"]')).toBeNull();
 	});
+
+	it.each(['Hope Now!', 'Why Not Us?', 'Cedar Fork Pantry'])(
+		'ends its sentence with one mark after the name %s',
+		async (name) => {
+			const root = await mount(
+				<ProgramClosedPage org={{ ...ORG, name }} logo={null} look={{ brandColour: null }} />
+			);
+			const text = one(root, 'main').textContent ?? '';
+			const closes = /[.!?]$/.test(name) ? name : `${name}.`;
+			expect(text).toContain(`You can still give to ${closes}`);
+			expect(text).not.toMatch(/[.!?]{2}/);
+		}
+	);
 
 	it('keeps the way on, and the console link, in the tab order on the page itself', async () => {
 		const root = await closed();

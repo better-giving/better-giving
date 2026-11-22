@@ -10,6 +10,7 @@ import type { CheckoutEvent, CheckoutInput, Failure } from '@better-giving/form/
 import { toState, type CheckoutSnapshot, type State } from '@better-giving/form/connect';
 import type { CheckoutPorts, FundReports } from '@better-giving/form/ports';
 import { createPaymentSurface, type PaymentSeams } from '@better-giving/form/embed/surface';
+import { EmbedFailure } from '@better-giving/form/embed/api';
 import { createChallenge, type ChallengeSeams } from '@better-giving/form/embed/challenge';
 import type { FormConfig, PaymentMethod } from '@better-giving/form/v1';
 import { createActor, type Actor } from 'xstate';
@@ -114,6 +115,13 @@ export type Checkout = {
 	 */
 	rows(listener: (count: number) => void): void;
 	/**
+	 * tells `listener` when a program page's quote is refused as an unknown form, which is how the
+	 * endpoint answers a program no longer active (`pageProgramId` in
+	 * packages/app/src/lib/server/donations/quote.ts). told before the flow hears the refusal; never
+	 * told on a card with no `pageProgramId`. one listener; a second call replaces the first.
+	 */
+	stopped(listener: () => void): void;
+	/**
 	 * everything this checkout started, let go of.
 	 *
 	 * safe in any order and any number of times, because every stop it reaches is. the provider's
@@ -124,6 +132,23 @@ export type Checkout = {
 	 */
 	stop(): void;
 };
+
+/**
+ * `quote`, telling `heard` of a refusal as an unknown form before rethrowing it unchanged.
+ *
+ * the inner port is called before anything is awaited: `quoteThrough` in
+ * @better-giving/form/embed/surface opens a provider's window inside the donor's press.
+ */
+function heardStopping(quote: CheckoutPorts['quote'], heard: () => void): CheckoutPorts['quote'] {
+	return async (request) => {
+		try {
+			return await quote(request);
+		} catch (error) {
+			if (error instanceof EmbedFailure && error.code === 'form_not_found') heard();
+			throw error;
+		}
+	};
+}
 
 /**
  * the flow, running, with every provider wired into it.
@@ -168,6 +193,7 @@ export function startCheckout(
 	let unavailable: (failure: Failure) => void = () => {};
 	let fundSays: (event: CheckoutEvent) => void = () => {};
 	let opened: FundReports['opened'] = () => null;
+	let stopped: () => void = () => {};
 
 	const coins = createCoinPicker(paymentMount.ownerDocument);
 
@@ -185,10 +211,14 @@ export function startCheckout(
 		seams?.payment
 	);
 
+	const ports = deploymentPorts(surface);
 	const actor = createActor(checkoutMachine, {
 		input: {
 			config,
-			ports: deploymentPorts(surface),
+			ports:
+				pageProgramId === undefined
+					? ports
+					: { ...ports, quote: heardStopping(ports.quote, () => stopped()) },
 			...(resumeToken === null ? {} : { resume: { paymentToken: resumeToken } }),
 			...(opening === undefined ? {} : { opening }),
 			...(pageProgramId === undefined ? {} : { pageProgramId })
@@ -251,6 +281,9 @@ export function startCheckout(
 		actor,
 		coins,
 		rows: (listener) => surface.rows(listener),
+		stopped: (listener) => {
+			stopped = listener;
+		},
 		stop() {
 			subscription.unsubscribe();
 			actor.stop();

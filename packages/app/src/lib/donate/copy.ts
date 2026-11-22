@@ -650,11 +650,20 @@ export function giveToProgram(name: string): string {
 export const PROGRAM_SHARE_HEADING = 'Share this program';
 export const PROGRAM_CLOSED_TITLE = 'This program isn’t taking gifts';
 export function programClosedBody(orgName: string): string {
-	// a legal name often ends in a full stop ("Inc."), which already closes the sentence.
-	const stop = orgName.endsWith('.') ? '' : '.';
+	// a name often ends in a mark that already closes the sentence ("Inc.", "Hope Now!").
+	const stop = /[.!?]$/.test(orgName) ? '' : '.';
 	return `Gifts to it are closed, or the link isn’t right. You can still give to ${orgName}${stop}`;
 }
 export const PROGRAM_CLOSED_ACTION = 'Go to the donate page';
+/**
+ * the card's word on a program page whose program closed after the page was drawn, the sentence
+ * read as `before`, `link`, `after` with `link` drawn as a link to the donate page.
+ */
+export const PROGRAM_STOPPED = {
+	before: 'This program stopped taking gifts. You can still give on the ',
+	link: 'donate page',
+	after: '.'
+} as const;
 
 // ── the gift page ────────────────────────────────────────────────────────────────────────────
 //

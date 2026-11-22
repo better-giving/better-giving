@@ -32,7 +32,13 @@ import { useBrandScope } from './page-root';
 import { AmountStep, type AmountRefs } from './steps/amount';
 import { DetailsStep, fieldProblem, type DetailsRefs } from './steps/details';
 import { GiveStep, readReceipt, Receipt, type ReceiptReading } from './steps/give';
-import { BLANK, EmployerAskBlock, takeoverFor, TakeoverScreen } from './takeover';
+import {
+	BLANK,
+	EmployerAskBlock,
+	programStoppedTakeover,
+	takeoverFor,
+	TakeoverScreen
+} from './takeover';
 
 // the donation card, drawn in the document tree.
 //
@@ -287,6 +293,8 @@ function CheckoutCard({
 	const [live, setLive] = useState<Checkout | null>(null);
 	const [deposit, setDeposit] = useState<DepositView | null>(null);
 	const [paymentRows, setPaymentRows] = useState(0);
+	/** whether this program page's quote was refused because the program stopped taking gifts. */
+	const [programStopped, setProgramStopped] = useState(false);
 
 	const paymentMount = useRef<HTMLDivElement | null>(null);
 	const challengeMount = useRef<HTMLDivElement | null>(null);
@@ -321,6 +329,7 @@ function CheckoutCard({
 			pageProgramId
 		);
 		started.rows(setPaymentRows);
+		started.stopped(() => setProgramStopped(true));
 		setLive(started);
 		// a Copy's outcome is said on the card's one region, again on every press: the words do not
 		// change between two presses of one control. it is tied to the heading the press was made
@@ -623,7 +632,12 @@ function CheckoutCard({
 	});
 	const shown = visibleStep(api.state, screen.current.shown);
 	const moved = screen.current.moved || shown !== screen.current.shown;
-	const takeover = shown === 'takeover' ? takeoverFor(api.state, config, money) : BLANK;
+	const takeover =
+		shown !== 'takeover'
+			? BLANK
+			: programStopped && api.state.step === 'failed'
+				? programStoppedTakeover()
+				: takeoverFor(api.state, config, money);
 
 	const headings = {
 		amount: useRef<HTMLHeadingElement | null>(null),
