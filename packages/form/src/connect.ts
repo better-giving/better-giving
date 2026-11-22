@@ -40,7 +40,11 @@
 import type { SnapshotFrom } from 'xstate';
 import type { AdjustedReconciliation } from './fee';
 import {
+	coinEstimate,
 	declinedFee,
+	isInKindRail,
+	unitsOffered,
+	missingAmount,
 	NUMBERED_STEPS,
 	oneTimeIsOfferedInstead,
 	payerIsComplete,
@@ -56,13 +60,13 @@ import {
 import {
 	custodianIsMissing,
 	methodIsChargeable,
-	missingAmountDecisions,
 	missingPayerFields,
 	MAX_TRIBUTE_EMAIL,
 	MAX_TRIBUTE_NAME,
 	NAME_PATTERN,
 	OPENED_TRIBUTE,
 	payerCoversFee,
+	isInKind,
 	type AmountDecision,
 	type FormValue,
 	type PayerField
@@ -77,12 +81,28 @@ import {
 	TRIBUTE_KIND_LABELS,
 	TRIBUTE_KINDS,
 	type Deposit,
+	type FormConfig,
 	type Frequency,
+	type PayableCoin,
 	type Pledge,
 	type PaymentMethod,
 	type Quote,
 	type TributeKind
 } from './v1';
+import {
+	cadenceNote,
+	continueCase,
+	currencyOf,
+	unitEntry,
+	unitKey,
+	unitOfKey,
+	unitPill,
+	SEARCH_WITH_STOCK,
+	SEARCH_WITHOUT_STOCK,
+	type ContinueCase,
+	type UnitEntry,
+	type UnitPill
+} from './unit';
 
 export type CheckoutSnapshot = SnapshotFrom<typeof checkoutMachine>;
 
@@ -184,6 +204,12 @@ export type State =
 			 * step is where a donor fixes, standing until the amount, the coin or the rail changes.
 			 */
 			readonly refusal?: CoinRefusal & { readonly code: 'below_minimum' | 'above_maximum' };
+			/**
+			 * every refusal of a coin gift a quote answered — its amount or the coin itself — standing on
+			 * this step beside the entry, where it is fixed, until the amount or the unit changes.
+			 * `coinRefusalSentence` in ./unit.ts words it.
+			 */
+			readonly coinRefusal?: CoinRefusal;
 	  }
 	| {
 			readonly step: 'details';
@@ -389,11 +415,43 @@ export type EmployerAsk = {
 	readonly email: string;
 };
 
+/**
+ * what the donor gives, as the first step draws it: the unit pill, the entry for a coin or shares, the
+ * note under the cadence track, and the Continue's case. read off the draft rather than a committed
+ * value, so the step reads what the donor is choosing; every word comes from ./unit.ts.
+ *
+ * `returned` is the donor back from the address screen's "Change what you give", which a renderer
+ * answers by focusing the pill once, and which stands until the donor picks or leaves the step.
+ */
+export type UnitView = {
+	readonly pill: UnitPill;
+	readonly entry: UnitEntry | null;
+	readonly cadenceNote: string | null;
+	readonly next: ContinueCase;
+	readonly returned: boolean;
+};
+
 /** the whole surface a host renders from. */
 export type CheckoutApi<
 	T extends { button: unknown; group: unknown; field: unknown; select: unknown }
 > = {
 	readonly state: State;
+	/** what the donor gives on the first step — see `UnitView`. */
+	readonly unit: UnitView;
+	/**
+	 * the unit list: the currency and the served coins as `options`, each with the `group` it is listed
+	 * under, keyed by `unitKey` (./unit.ts); the picked one's key as `value` (`''` before a pick); its
+	 * search box's placeholder and hidden label as `search`; whether a ticker search stands under it
+	 * (`stocks`, which ./ticker-search.ts answers); and `onChange` taking a key, a ticker row's
+	 * included. a coin the account refused on this card stays listed, `refused`.
+	 */
+	readonly unitSelect: T['select'];
+	/** the one box a coin amount or share count is typed in, as decimal text. */
+	readonly quantityField: T['field'];
+	/**
+	 * the cadences, each with whether the flow takes it now: `unavailable` is a repeating cadence on
+	 * a gift in kind, drawn `aria-disabled` over the note `unit.cadenceNote`, and its press is refused.
+	 */
 	readonly frequencyGroup: T['group'];
 	readonly amountGroup: T['group'];
 	readonly noteToggle: T['button'];
@@ -589,12 +647,14 @@ export function toState(snapshot: CheckoutSnapshot): State {
 
 	switch (step) {
 		case 'amount': {
-			const missing = missingAmountDecisions(context.draft, context.config);
+			const missing = missingAmount(context);
 			const { coinRefusal } = context;
-			const refusal =
-				coinRefusal !== null && coinRefusal.code !== 'coin_not_accepted'
+			const refusal = {
+				...(coinRefusal !== null && coinRefusal.code !== 'coin_not_accepted'
 					? { refusal: { ...coinRefusal, code: coinRefusal.code } }
-					: {};
+					: {}),
+				...(coinRefusal === null ? {} : { coinRefusal })
+			};
 			return fv === null
 				? { step: 'amount', missing, ...refusal }
 				: { step: 'amount', fv, missing, ...refusal };
@@ -667,8 +727,12 @@ export function toState(snapshot: CheckoutSnapshot): State {
 				? working('quoting')
 				: { step: 'details', fv, missing: missingPayerFields(context.payerDraft) };
 		case 'give':
-		// a press held for the challenge token is still the review step, with its press busy.
+		// a press held for the challenge token is still the step it was made on, with its press busy:
+		// the review step's, or the details step's for a gift in kind, which has no review step.
 		case 'holding':
+			if (step === 'holding' && fv !== null && isInKindRail(context.payerDraft.method)) {
+				return { step: 'details', fv, missing: missingPayerFields(context.payerDraft) };
+			}
 			return fv === null
 				? working('quoting')
 				: {
@@ -730,7 +794,8 @@ export function toState(snapshot: CheckoutSnapshot): State {
  */
 function numberedStepOf(snapshot: CheckoutSnapshot): NumberedStep | null {
 	const top = topLevelStateOf(snapshot);
-	const step = top === 'holding' ? 'give' : top;
+	const held = isInKindRail(snapshot.context.payerDraft.method) ? 'details' : 'give';
+	const step = top === 'holding' ? held : top;
 	return (NUMBERED_STEPS as readonly string[]).includes(step) ? (step as NumberedStep) : null;
 }
 
@@ -782,6 +847,22 @@ const NO_PROGRAM = '';
 /** what the coin choice carries while no coin is picked, for `NO_PROGRAM`'s reason. */
 const NO_COIN = '';
 
+/** the deployment's own currency as the unit list's Currencies group lists it. */
+function currencyOption(config: FormConfig) {
+	const { code, ...currency } = currencyOf(config.currency, config.locale);
+	return { group: 'currency', value: unitKey({ kind: 'currency' }), label: code, ...currency };
+}
+
+/**
+ * the served coins by ticker, which is how a donor holding a coin knows it, so both surfaces list
+ * them in one order.
+ */
+function sortedCoins(config: FormConfig): PayableCoin[] {
+	return [...(config.coins ?? [])].sort(
+		(a, b) => a.ticker.localeCompare(b.ticker) || a.name.localeCompare(b.name)
+	);
+}
+
 /**
  * derives the render surface from a snapshot.
  *
@@ -808,8 +889,20 @@ export function connect<
 	const button = (props: GenericProps): T['button'] =>
 		normalize.button({ 'aria-busy': busy, ...props });
 
+	const offered = unitsOffered(context);
+	const inKind = isInKind(draft.unit);
+	const estimate = coinEstimate(context);
+
 	return {
 		state: toState(snapshot),
+
+		unit: {
+			pill: unitPill(config, offered, draft.unit),
+			entry: unitEntry(config, draft.unit, estimate?.status === 'priced' ? estimate.minor : null),
+			cadenceNote: cadenceNote(draft.unit),
+			next: continueCase(config, inKind),
+			returned: context.unitReturned
+		},
 
 		// the org's enabled frequencies in the contract's own order, each with the word a donor
 		// reads. the `name` is what makes them one native radio family, which is where the
@@ -821,9 +914,42 @@ export function connect<
 					value: frequency,
 					label: FREQUENCY_LABELS[frequency],
 					checked: frequency === selectedFrequency,
+					unavailable: inKind && frequency !== 'one_time',
 					onChange: () => send({ type: 'SET_FREQUENCY', frequency })
 				})
 			)
+		}),
+
+		unitSelect: normalize.select({
+			name: 'unit',
+			value: draft.unit === undefined ? '' : unitKey(draft.unit),
+			search: offered.stock ? SEARCH_WITH_STOCK : SEARCH_WITHOUT_STOCK,
+			options: [
+				currencyOption(config),
+				...(offered.coin
+					? sortedCoins(config).map((coin) => ({
+							group: 'coin',
+							value: unitKey({ kind: 'coin', coin: coin.coin }),
+							label: coin.ticker.toUpperCase(),
+							name: coin.name,
+							network: coin.network,
+							...(coin.logo === undefined ? {} : { logo: coin.logo }),
+							refused: context.refusedCoins.includes(coin.coin)
+						}))
+					: [])
+			],
+			stocks: offered.stock,
+			onChange: (value: string) => {
+				const unit = unitOfKey(value);
+				if (unit !== null) send({ type: 'SET_UNIT', unit });
+			}
+		}),
+
+		quantityField: normalize.field({
+			name: 'quantity',
+			inputMode: 'decimal',
+			value: draft.quantity ?? '',
+			onChange: (quantity: string) => send({ type: 'SET_QUANTITY', quantity })
 		}),
 
 		// one name, one selection, one value. the entry is the last card in the same family rather
@@ -946,16 +1072,14 @@ export function connect<
 		coinSelect: normalize.select({
 			name: 'coin',
 			value: payerDraft.coin ?? NO_COIN,
-			options: [...(config.coins ?? [])]
-				.sort((a, b) => a.ticker.localeCompare(b.ticker) || a.name.localeCompare(b.name))
-				.map((coin) => ({
-					value: coin.coin,
-					label: coin.ticker.toUpperCase(),
-					name: coin.name,
-					network: coin.network,
-					...(coin.logo === undefined ? {} : { logo: coin.logo }),
-					refused: context.refusedCoins.includes(coin.coin)
-				})),
+			options: sortedCoins(config).map((coin) => ({
+				value: coin.coin,
+				label: coin.ticker.toUpperCase(),
+				name: coin.name,
+				network: coin.network,
+				...(coin.logo === undefined ? {} : { logo: coin.logo }),
+				refused: context.refusedCoins.includes(coin.coin)
+			})),
 			onChange: (value: string) =>
 				send({ type: 'SET_COIN', coin: value === NO_COIN ? null : value })
 		}),

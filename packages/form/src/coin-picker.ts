@@ -40,6 +40,7 @@ import coinStyles from './styles/coins.css?inline';
 import { searchCoins } from './coins';
 import { glyph } from './glyph';
 import { part, partWhen } from './parts';
+import { COIN_REFUSED } from './unit';
 import { lostWhileOpen, type Props, rootNodeOf, showWhile, spread } from './zag';
 
 /**
@@ -88,8 +89,8 @@ const SEARCH = 'Search by symbol or name';
 /** what the list says when a search finds no coin. */
 const NO_MATCH = 'No coin matches';
 
-/** the sentence a refused coin carries in the list, under its own unchanged label. */
-const REFUSED = 'no longer accepted';
+/** the sentence a refused coin carries in the list, under its own unchanged label (./unit.ts). */
+const REFUSED = COIN_REFUSED;
 
 /** the sheets, built once per document for the reason `sheetFor` in ./embed/rows.ts builds its own. */
 const sheets = new WeakMap<Document, readonly CSSStyleSheet[]>();

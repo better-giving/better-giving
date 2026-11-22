@@ -2,14 +2,17 @@ import { createActor } from 'xstate';
 import { describe, expect, it } from 'vitest';
 import {
 	checkoutMachine,
+	coinEstimate,
 	cryptoIsOffered,
 	fundIsOffered,
 	oneTimeIsOfferedInstead,
 	openFund,
 	pledgeIsOffered,
 	stepIsReachable,
+	unitsOffered,
 	venmoIsOffered,
 	DEPOSIT_POLL_MS,
+	ESTIMATE_DEBOUNCE_MS,
 	MICRODEPOSIT_WINDOW_MS,
 	PORT_TIMEOUT_MS
 } from './checkout.machine';
@@ -114,6 +117,7 @@ type Calls = {
 	resume: string[];
 	status: string[];
 	employer: { formId: string; giftToken: string; employer: string }[];
+	estimate: { formId: string; coin: string; amount: string }[];
 };
 
 const QUOTE: Quote = { paymentToken: 'pi_1_secret_x', feeMinor: 106, totalMinor: 2606 };
@@ -132,6 +136,10 @@ type HarnessOptions = {
 	readonly pledge?: (request: QuoteRequest | StockPledgeRequest) => Promise<Quote>;
 	/** what the told press answers. */
 	readonly told?: () => Promise<void>;
+	/** what a coin amount is priced at, handed the request; `null` builds the ports without one. */
+	readonly estimate?:
+		| ((input: { coin: string; amount: string }, signal: AbortSignal) => Promise<number | null>)
+		| null;
 };
 
 /**
@@ -149,7 +157,8 @@ function harness(options: HarnessOptions = {}) {
 		confirm: [],
 		resume: [],
 		status: [],
-		employer: []
+		employer: [],
+		estimate: []
 	};
 	let pledgeIds = 0;
 	const clock = manualClock();
@@ -189,6 +198,14 @@ function harness(options: HarnessOptions = {}) {
 					employer: (input, signal) => {
 						calls.employer.push(input);
 						return options.employer?.(signal) ?? Promise.resolve();
+					}
+				}),
+		...(options.estimate === null
+			? {}
+			: {
+					estimate: (input, signal) => {
+						calls.estimate.push(input);
+						return options.estimate?.(input, signal) ?? Promise.resolve(null);
 					}
 				})
 	};
@@ -1708,6 +1725,10 @@ const EVERY_EVENT: readonly CheckoutEvent[] = Object.values({
 	SET_AMOUNT: { type: 'SET_AMOUNT', amountMinor: 2500 },
 	CLEAR_AMOUNT: { type: 'CLEAR_AMOUNT' },
 	SET_FREQUENCY: { type: 'SET_FREQUENCY', frequency: 'monthly' },
+	SET_UNIT: { type: 'SET_UNIT', unit: { kind: 'stock', ticker: 'AAPL' } },
+	SET_QUANTITY: { type: 'SET_QUANTITY', quantity: '50' },
+	PRICE_COIN: { type: 'PRICE_COIN' },
+	COIN_PRICED: { type: 'COIN_PRICED', coin: 'btc', quantity: '0.005', estimateMinor: 48_210 },
 	SET_NOTE: { type: 'SET_NOTE', note: 'for the roof' },
 	TOGGLE_NOTE: { type: 'TOGGLE_NOTE' },
 	TOGGLE_NOTE_PUBLIC: { type: 'TOGGLE_NOTE_PUBLIC' },
@@ -2040,7 +2061,7 @@ describe('a repeating gift no processor still up can take', () => {
 	it('makes the gift one-time on the donor’s press and offers the one-time rails', () => {
 		const { actor } = monthlyAtGive({
 			...FUND_CONFIG,
-			paymentMethods: ['card', 'daf', 'crypto']
+			paymentMethods: ['card', 'daf', 'venmo']
 		});
 		actor.send({ type: 'REPEATING_UNAVAILABLE' });
 		actor.send({ type: 'MAKE_ONE_TIME' });
@@ -2051,7 +2072,7 @@ describe('a repeating gift no processor still up can take', () => {
 		expect(snapshot.context.draft.frequency).toBe('one_time');
 		expect(oneTimeIsOfferedInstead(snapshot)).toBe(false);
 		expect(fundIsOffered(snapshot)).toBe(true);
-		expect(cryptoIsOffered(snapshot)).toBe(true);
+		expect(venmoIsOffered(snapshot)).toBe(true);
 	});
 
 	it('takes no such press while a repeating gift can still be paid', () => {
@@ -2767,21 +2788,32 @@ describe('a crypto gift', () => {
 		}
 	};
 
-	/** the review step of a one-time crypto gift, with the rail reported and no coin picked yet. */
-	function onCryptoRail(options: HarnessOptions = {}) {
-		const h = readyToSubmit({
+	/** the details step of a $25 gift in Tether on Tron, priced and filled in, with a token minted. */
+	async function coinDetails(options: HarnessOptions = {}) {
+		const h = harness({
 			config: CRYPTO_CONFIG,
 			quote: async () => DEPOSIT_QUOTE,
+			estimate: async () => 2500,
 			...options
 		});
-		h.actor.send({ type: 'SET_METHOD', method: 'crypto' });
+		h.actor.send({ type: 'SET_UNIT', unit: { kind: 'coin', coin: 'usdttrc20' } });
+		h.actor.send({ type: 'SET_QUANTITY', quantity: '25' });
+		h.clock.advance(ESTIMATE_DEBOUNCE_MS);
+		await settle();
+		h.actor.send({ type: 'CONTINUE' });
+		h.actor.send({
+			type: 'SET_CONTACT',
+			email: 'donor@example.org',
+			firstName: 'Ada',
+			lastName: 'Lovelace'
+		});
+		h.actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'tk_ready' });
 		return h;
 	}
 
 	it('sends the coin the donor picked and waits on the address the quote minted', async () => {
-		const { actor, calls } = onCryptoRail();
-		actor.send({ type: 'SET_COIN', coin: 'usdttrc20' });
-		actor.send({ type: 'SUBMIT' });
+		const { actor, calls } = await coinDetails();
+		actor.send({ type: 'CONTINUE' });
 		await settle();
 
 		expect(calls.quote[0]?.coin).toBe('usdttrc20');
@@ -2791,9 +2823,8 @@ describe('a crypto gift', () => {
 
 	/** the address screen, reached with a coin picked and the quote's deposit in hand. */
 	async function awaitingDeposit(options: HarnessOptions = {}) {
-		const h = onCryptoRail(options);
-		h.actor.send({ type: 'SET_COIN', coin: 'usdttrc20' });
-		h.actor.send({ type: 'SUBMIT' });
+		const h = await coinDetails(options);
+		h.actor.send({ type: 'CONTINUE' });
 		await settle();
 		return h;
 	}
@@ -2849,30 +2880,42 @@ describe('a crypto gift', () => {
 		expect(actor.getSnapshot().value).toBe('depositExpired');
 	});
 
-	it('starts again on the review step with the coin still picked', async () => {
-		const { actor, clock } = await awaitingDeposit({ status: async () => ({ state: 'expired' }) });
+	it('mints a fresh address for the same coin on a Try again, never through the review step', async () => {
+		const { actor, calls, clock } = await awaitingDeposit({
+			status: async () => ({ state: 'expired' })
+		});
 		clock.advance(DEPOSIT_POLL_MS);
 		await settle();
+		const steps: string[] = [];
+		actor.subscribe((snapshot) => steps.push(toState(snapshot).step));
 
 		actor.send({ type: 'RETRY' });
+		actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'tk_again' });
+		await settle();
 
-		expect(actor.getSnapshot().value).toBe('give');
+		expect(steps).not.toContain('give');
 		expect(actor.getSnapshot().context.payerDraft).toMatchObject({
 			method: 'crypto',
 			coin: 'usdttrc20'
 		});
-		expect(actor.getSnapshot().context.quote).toBeNull();
+		expect(calls.quote.map((request) => request.coin)).toEqual(['usdttrc20', 'usdttrc20']);
+		expect(actor.getSnapshot().matches('awaitingDeposit')).toBe(true);
 	});
 
-	it('reads nothing once the donor leaves the address for a different coin', async () => {
+	// "Change what you give": the first step, where the coin and its amount are picked.
+	it('returns to the first step with what the donor gives kept, and reads nothing more', async () => {
 		const { actor, calls, clock } = await awaitingDeposit();
 
 		actor.send({ type: 'BACK' });
 		clock.advance(DEPOSIT_POLL_MS * 3);
 		await settle();
 
-		expect(actor.getSnapshot().value).toBe('give');
-		expect(actor.getSnapshot().context.payerDraft.coin).toBe('usdttrc20');
+		expect(actor.getSnapshot().value).toBe('amount');
+		expect(actor.getSnapshot().context.draft).toMatchObject({
+			unit: { kind: 'coin', coin: 'usdttrc20' },
+			quantity: '25'
+		});
+		expect(actor.getSnapshot().context.unitReturned).toBe(true);
 		expect(calls.status).toHaveLength(0);
 	});
 
@@ -2882,7 +2925,7 @@ describe('a crypto gift', () => {
 		let state: DonationStatus['state'] = 'waiting';
 		const { actor, clock } = await awaitingDeposit({ status: async () => ({ state }) });
 
-		clock.advance(VALID_UNTIL - EPOCH - 1);
+		clock.advance(VALID_UNTIL - clock.now() - 1);
 		await settle();
 		expect(actor.getSnapshot().matches({ awaitingDeposit: { address: 'open' } })).toBe(true);
 
@@ -2910,22 +2953,6 @@ describe('a crypto gift', () => {
 		clock.advance(0);
 
 		expect(actor.getSnapshot().matches({ awaitingDeposit: { address: 'closed' } })).toBe(true);
-	});
-
-	// the option comes off the payment box the moment a repeating cadence is chosen, before any step
-	// commits it, and comes back with one-time — nothing is said on the amount step either way.
-	it('offers crypto on a one-time gift only, following the cadence as the donor picks it', () => {
-		const { actor } = onCryptoRail();
-		expect(cryptoIsOffered(actor.getSnapshot())).toBe(true);
-
-		actor.send({ type: 'GO_TO_STEP', step: 'amount' });
-		actor.send({ type: 'SET_FREQUENCY', frequency: 'monthly' });
-		expect(cryptoIsOffered(actor.getSnapshot())).toBe(false);
-
-		actor.send({ type: 'SET_FREQUENCY', frequency: 'one_time' });
-		expect(cryptoIsOffered(actor.getSnapshot())).toBe(true);
-
-		expect(cryptoIsOffered(readyToSubmit().actor.getSnapshot())).toBe(false);
 	});
 
 	describe('a refusal of the coin or the amount', () => {
@@ -2968,40 +2995,55 @@ describe('a crypto gift', () => {
 			expect(actor.getSnapshot().context.coinRefusal).toBeNull();
 		});
 
-		it('keeps the coin and the rail for the press after the amount is raised', async () => {
-			const { actor } = await refusedWith('below_minimum', { minAmountMinor: 1200 });
-			actor.send({ type: 'SET_AMOUNT', amountMinor: 5000 });
-			actor.send({ type: 'CONTINUE' });
-			actor.send({ type: 'CONTINUE' });
+		/** a new quantity typed on the first step, and priced. */
+		async function retyped(h: Awaited<ReturnType<typeof awaitingDeposit>>, quantity: string) {
+			h.actor.send({ type: 'SET_QUANTITY', quantity });
+			h.clock.advance(ESTIMATE_DEBOUNCE_MS);
+			await settle();
+		}
 
-			expect(actor.getSnapshot().value).toBe('give');
-			expect(actor.getSnapshot().context.payerDraft).toMatchObject({
+		it('keeps the coin and the rail for the press after the amount is raised', async () => {
+			const h = await refusedWith('below_minimum', { minAmountMinor: 1200 });
+			await retyped(h, '50');
+			h.actor.send({ type: 'CONTINUE' });
+			h.actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'tk_next' });
+			h.actor.send({ type: 'CONTINUE' });
+
+			expect(h.actor.getSnapshot().value).toBe('quoting');
+			expect(h.actor.getSnapshot().context.payerDraft).toMatchObject({
 				method: 'crypto',
 				coin: 'usdttrc20'
 			});
 		});
 
-		it('lands a coin the account no longer takes back on the review step, that coin refused', async () => {
+		it('lands a coin the account no longer takes back on the first step, that coin refused', async () => {
 			const { actor, calls } = await refusedWith('coin_not_accepted');
 
-			expect(actor.getSnapshot().value).toBe('give');
+			expect(actor.getSnapshot().value).toBe('amount');
 			expect(actor.getSnapshot().context.refusedCoins).toEqual(['usdttrc20']);
+			expect(toState(actor.getSnapshot())).toMatchObject({
+				step: 'amount',
+				coinRefusal: { code: 'coin_not_accepted', coin: 'usdttrc20' }
+			});
 
 			// a retry of the same coin answers the same, so the press is refused here instead.
-			actor.send({ type: 'SUBMIT' });
-			expect(actor.getSnapshot().value).toBe('give');
+			actor.send({ type: 'CONTINUE' });
+			expect(actor.getSnapshot().value).toBe('amount');
 			expect(calls.quote).toHaveLength(1);
 		});
 
 		it('takes the press again once the donor picks a coin the account has not refused', async () => {
-			const { actor } = await refusedWith('coin_not_accepted');
+			const h = await refusedWith('coin_not_accepted');
 
-			actor.send({ type: 'SET_COIN', coin: 'btc' });
-			expect(actor.getSnapshot().context.coinRefusal).toBeNull();
-			actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'tk_next' });
-			actor.send({ type: 'SUBMIT' });
+			h.actor.send({ type: 'SET_UNIT', unit: { kind: 'coin', coin: 'btc' } });
+			expect(h.actor.getSnapshot().context.coinRefusal).toBeNull();
+			await retyped(h, '0.001');
+			h.actor.send({ type: 'CONTINUE' });
+			h.actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'tk_next' });
+			h.actor.send({ type: 'CONTINUE' });
 
-			expect(actor.getSnapshot().value).toBe('quoting');
+			expect(h.actor.getSnapshot().value).toBe('quoting');
+			expect(h.actor.getSnapshot().context.payerDraft.coin).toBe('btc');
 		});
 
 		it('leaves every other refusal on the failure screen, as it does today', async () => {
@@ -3883,43 +3925,346 @@ describe('a stock pledge', () => {
 		expect(actor.getSnapshot().value).toBe('details');
 	});
 
-	it('goes back to the details step on a Try again, and saves under the same id', async () => {
+	// the failed screen's Try again is the stock pledge pressed again: no projection after it is the
+	// review step, so no Donate press is drawn, and the save it makes is the pledge's.
+	it('retries the stock pledge on a Try again, never through the review step’s Donate press', async () => {
 		let answer: () => Promise<Quote> = () => Promise.reject(new TypeError('Failed to fetch'));
 		const { actor, calls } = detailsGiven({ pledge: () => answer() });
 		actor.send({ type: 'PLEDGE_STOCK', ticker: 'AAPL', shares: '50' });
 		await settle();
 		expect(actor.getSnapshot().value).toBe('failed');
 
-		actor.send({ type: 'RETRY' });
-		expect(actor.getSnapshot().value).toBe('details');
-
+		const steps: string[] = [];
+		actor.subscribe((snapshot) => steps.push(toState(snapshot).step));
 		answer = async () => STOCK_PLEDGE;
+		actor.send({ type: 'RETRY' });
 		actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'tk_again' });
-		actor.send({ type: 'PLEDGE_STOCK', ticker: 'AAPL', shares: '50' });
 		await settle();
-		expect(calls.pledge.map((request) => request.pledgeId)).toEqual(['pledge-1', 'pledge-1']);
+
+		expect(steps).not.toContain('give');
+		expect(calls.quote).toEqual([]);
+		expect(calls.pledge).toMatchObject([
+			{ method: 'stock', pledgeId: 'pledge-1', ticker: 'AAPL', shares: '50' },
+			{ method: 'stock', pledgeId: 'pledge-1', ticker: 'AAPL', shares: '50' }
+		]);
 		expect(actor.getSnapshot().matches({ pledged: 'pending' })).toBe(true);
 	});
+});
 
-	// the payment box reports a rail on a change only, so a card row left open is not said again.
-	it('stands the donor back on the rail the stock save displaced once it fails, so the review press pays by it', async () => {
-		const { actor, calls } = detailsGiven({
+describe('what the donor gives', () => {
+	const COINS = [
+		{ coin: 'btc', ticker: 'btc', name: 'Bitcoin', network: 'btc', memoRequired: false },
+		{ coin: 'eth', ticker: 'eth', name: 'Ethereum', network: 'eth', memoRequired: false }
+	];
+	const EVERYTHING: FormConfig = {
+		...CONFIG,
+		paymentMethods: ['card', 'ach', 'crypto', 'stock'],
+		coins: COINS
+	};
+	const BTC_QUOTE: Quote = {
+		paymentToken: 'don_btc_1',
+		feeMinor: 0,
+		totalMinor: 48_210,
+		deposit: {
+			address: 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4',
+			memo: null,
+			coin: 'btc',
+			network: 'btc',
+			coinAmount: '0.005',
+			validUntil: new Date(EPOCH + 6 * 24 * 60 * 60 * 1000).toISOString(),
+			qr: { rows: ['101', '010', '101'] }
+		}
+	};
+
+	it('gives in the deployment’s own currency until the donor picks otherwise', () => {
+		const { actor } = harness({ config: EVERYTHING });
+
+		expect(actor.getSnapshot().context.draft.unit).toBeUndefined();
+		expect(unitsOffered(actor.getSnapshot().context)).toEqual({ coin: true, stock: true });
+	});
+
+	it('offers a coin only where crypto is taken with a coin to send, and stock only where it is taken', () => {
+		const offered = (config: FormConfig) =>
+			unitsOffered(harness({ config }).actor.getSnapshot().context);
+
+		expect(offered(CONFIG)).toEqual({ coin: false, stock: false });
+		expect(offered({ ...EVERYTHING, coins: [] })).toEqual({ coin: false, stock: true });
+		expect(offered({ ...EVERYTHING, paymentMethods: ['card', 'crypto'] })).toEqual({
+			coin: true,
+			stock: false
+		});
+	});
+
+	it('refuses a pick the deployment does not offer', () => {
+		const { actor } = harness({ config: { ...CONFIG, coins: COINS } });
+
+		actor.send({ type: 'SET_UNIT', unit: { kind: 'coin', coin: 'btc' } });
+		actor.send({ type: 'SET_UNIT', unit: { kind: 'stock', ticker: 'AAPL' } });
+		expect(actor.getSnapshot().context.draft.unit).toBeUndefined();
+
+		const offering = harness({ config: EVERYTHING }).actor;
+		offering.send({ type: 'SET_UNIT', unit: { kind: 'coin', coin: 'doge' } });
+		expect(offering.getSnapshot().context.draft.unit).toBeUndefined();
+	});
+
+	it('makes a coin or stock gift one-time, and refuses Monthly while it is one', () => {
+		const { actor } = harness({ config: EVERYTHING, opening: { monthly: true } });
+		expect(actor.getSnapshot().context.draft.frequency).toBe('monthly');
+
+		actor.send({ type: 'SET_UNIT', unit: { kind: 'coin', coin: 'btc' } });
+		expect(actor.getSnapshot().context.draft).toMatchObject({
+			unit: { kind: 'coin', coin: 'btc' },
+			frequency: 'one_time'
+		});
+
+		actor.send({ type: 'SET_FREQUENCY', frequency: 'monthly' });
+		expect(actor.getSnapshot().context.draft.frequency).toBe('one_time');
+
+		actor.send({ type: 'SET_UNIT', unit: { kind: 'stock', ticker: 'AAPL' } });
+		actor.send({ type: 'SET_FREQUENCY', frequency: 'monthly' });
+		expect(actor.getSnapshot().context.draft.frequency).toBe('one_time');
+	});
+
+	it('restores nothing else when the donor picks the currency again', () => {
+		const { actor } = harness({ config: EVERYTHING, opening: { monthly: true } });
+		actor.send({ type: 'SET_UNIT', unit: { kind: 'coin', coin: 'btc' } });
+
+		actor.send({ type: 'SET_UNIT', unit: { kind: 'currency' } });
+
+		expect(actor.getSnapshot().context.draft).toMatchObject({
+			unit: { kind: 'currency' },
+			frequency: 'one_time'
+		});
+		actor.send({ type: 'SET_FREQUENCY', frequency: 'monthly' });
+		expect(actor.getSnapshot().context.draft.frequency).toBe('monthly');
+	});
+
+	/** a donor on the first step who has picked BTC, on a surface pricing every amount as asked. */
+	function onCoin(options: HarnessOptions = {}) {
+		const h = harness({ config: EVERYTHING, ...options });
+		h.actor.send({ type: 'SET_UNIT', unit: { kind: 'coin', coin: 'btc' } });
+		return h;
+	}
+
+	it('prices the coin amount once the donor stops typing, as decimal text', async () => {
+		const { actor, calls, clock } = onCoin({ estimate: async () => 48_210 });
+
+		actor.send({ type: 'SET_QUANTITY', quantity: '0.00' });
+		clock.advance(ESTIMATE_DEBOUNCE_MS - 1);
+		actor.send({ type: 'SET_QUANTITY', quantity: '0.005' });
+		clock.advance(ESTIMATE_DEBOUNCE_MS - 1);
+		expect(calls.estimate).toEqual([]);
+
+		clock.advance(1);
+		await settle();
+		expect(calls.estimate).toEqual([{ formId: 'frm_a8x2k9', coin: 'btc', amount: '0.005' }]);
+		expect(coinEstimate(actor.getSnapshot().context)).toEqual({ status: 'priced', minor: 48_210 });
+	});
+
+	it('keeps the newest amount’s answer and drops a stale one that lands after it', async () => {
+		const answers: Record<string, (minor: number) => void> = {};
+		const signals: Record<string, AbortSignal> = {};
+		const { actor, clock } = onCoin({
+			estimate: ({ amount }, signal) => {
+				signals[amount] = signal;
+				return new Promise((resolve) => {
+					answers[amount] = resolve;
+				});
+			}
+		});
+
+		actor.send({ type: 'SET_QUANTITY', quantity: '1' });
+		clock.advance(ESTIMATE_DEBOUNCE_MS);
+		actor.send({ type: 'SET_QUANTITY', quantity: '2' });
+		clock.advance(ESTIMATE_DEBOUNCE_MS);
+		expect(signals['1']?.aborted).toBe(true);
+		expect(coinEstimate(actor.getSnapshot().context)).toEqual({ status: 'pricing' });
+
+		answers['2']?.(200_000);
+		await settle();
+		answers['1']?.(100_000);
+		await settle();
+		expect(coinEstimate(actor.getSnapshot().context)).toEqual({ status: 'priced', minor: 200_000 });
+	});
+
+	it('states no estimate for an amount the surface cannot price or did not answer for', async () => {
+		let answer: () => Promise<number | null> = async () => null;
+		const { actor, clock } = onCoin({ estimate: () => answer() });
+
+		actor.send({ type: 'SET_QUANTITY', quantity: '0.005' });
+		clock.advance(ESTIMATE_DEBOUNCE_MS);
+		await settle();
+		expect(coinEstimate(actor.getSnapshot().context)).toEqual({ status: 'unpriced' });
+
+		answer = () => Promise.reject(new TypeError('Failed to fetch'));
+		actor.send({ type: 'SET_QUANTITY', quantity: '0.006' });
+		clock.advance(ESTIMATE_DEBOUNCE_MS);
+		await settle();
+		expect(coinEstimate(actor.getSnapshot().context)).toEqual({ status: 'unpriced' });
+	});
+
+	it('refuses Continue on a coin amount with no estimate, as an amount still missing', async () => {
+		const { actor, clock } = onCoin({ estimate: async () => null });
+		actor.send({ type: 'SET_QUANTITY', quantity: '0.005' });
+		clock.advance(ESTIMATE_DEBOUNCE_MS);
+		await settle();
+
+		actor.send({ type: 'CONTINUE' });
+
+		expect(actor.getSnapshot().value).toBe('amount');
+		expect(toState(actor.getSnapshot())).toMatchObject({ step: 'amount', missing: ['amount'] });
+	});
+
+	it('decides a coin gift at its estimate when the donor presses Continue', async () => {
+		const { actor, clock } = onCoin({ estimate: async () => 48_210 });
+		actor.send({ type: 'SET_QUANTITY', quantity: ' .0050 ' });
+		clock.advance(ESTIMATE_DEBOUNCE_MS);
+		await settle();
+
+		actor.send({ type: 'CONTINUE' });
+
+		expect(actor.getSnapshot().value).toBe('details');
+		expect(actor.getSnapshot().context.fv).toMatchObject({
+			amountMinor: 48_210,
+			frequency: 'one_time',
+			inKind: { kind: 'coin', coin: 'btc', quantity: '0.005' }
+		});
+	});
+
+	it('decides a stock gift as a decimal count of shares, with nothing priced', () => {
+		const { actor, calls, clock } = harness({ config: EVERYTHING });
+		actor.send({ type: 'SET_UNIT', unit: { kind: 'stock', ticker: 'AAPL' } });
+
+		for (const refused of ['', '0', '-5', '1e3', '1.1234567', '10000001', '12,5']) {
+			actor.send({ type: 'SET_QUANTITY', quantity: refused });
+			actor.send({ type: 'CONTINUE' });
+			expect(actor.getSnapshot().value).toBe('amount');
+		}
+
+		actor.send({ type: 'SET_QUANTITY', quantity: '012.50' });
+		clock.advance(ESTIMATE_DEBOUNCE_MS);
+		actor.send({ type: 'CONTINUE' });
+
+		expect(calls.estimate).toEqual([]);
+		expect(actor.getSnapshot().context.fv).toMatchObject({
+			frequency: 'one_time',
+			inKind: { kind: 'stock', ticker: 'AAPL', shares: '12.5' }
+		});
+	});
+
+	/** the details step of a priced BTC gift, filled in, with a token minted. */
+	async function coinDetails(options: HarnessOptions = {}) {
+		const h = onCoin({ estimate: async () => 48_210, quote: async () => BTC_QUOTE, ...options });
+		h.actor.send({ type: 'SET_QUANTITY', quantity: '0.005' });
+		h.clock.advance(ESTIMATE_DEBOUNCE_MS);
+		await settle();
+		h.actor.send({ type: 'CONTINUE' });
+		h.actor.send({
+			type: 'SET_CONTACT',
+			email: 'donor@example.org',
+			firstName: 'Ada',
+			lastName: 'Lovelace'
+		});
+		h.actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'tk_ready' });
+		return h;
+	}
+
+	it('sends a coin gift from the details step straight to its address, at the estimate', async () => {
+		const { actor, calls } = await coinDetails();
+		const steps: string[] = [];
+		actor.subscribe((snapshot) => steps.push(toState(snapshot).step));
+
+		actor.send({ type: 'CONTINUE' });
+		await settle();
+
+		expect(steps).not.toContain('give');
+		expect(calls.quote).toMatchObject([
+			{
+				method: 'crypto',
+				coin: 'btc',
+				amountMinor: 48_210,
+				coversFee: false,
+				frequency: 'one_time'
+			}
+		]);
+		expect(actor.getSnapshot().matches('awaitingDeposit')).toBe(true);
+	});
+
+	/** the details step of 50 shares of AAPL, filled in, with a token minted. */
+	function stockDetails(options: HarnessOptions = {}) {
+		const h = harness({ config: EVERYTHING, ...options });
+		h.actor.send({ type: 'SET_UNIT', unit: { kind: 'stock', ticker: 'AAPL' } });
+		h.actor.send({ type: 'SET_QUANTITY', quantity: '50' });
+		h.actor.send({ type: 'CONTINUE' });
+		h.actor.send({
+			type: 'SET_CONTACT',
+			email: 'donor@example.org',
+			firstName: 'Ada',
+			lastName: 'Lovelace'
+		});
+		h.actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'tk_ready' });
+		return h;
+	}
+
+	it('saves a stock gift from the details step’s Continue, as the shares picked', async () => {
+		const { actor, calls } = stockDetails();
+		actor.send({ type: 'CONTINUE' });
+		await settle();
+
+		expect(calls.quote).toEqual([]);
+		expect(calls.pledge).toMatchObject([
+			{ method: 'stock', ticker: 'AAPL', shares: '50', frequency: 'one_time' }
+		]);
+	});
+
+	it('reaches no money step by a mark while the gift is in kind', () => {
+		const { actor } = stockDetails();
+		actor.send({ type: 'GO_TO_STEP', step: 'give' });
+		expect(actor.getSnapshot().value).toBe('details');
+	});
+
+	// a failed stock save, and a donor who goes back and gives money instead: no stock save is made
+	// for that press, and it pays by the rail the money step shows.
+	it('pays by the donor’s own method after a failed stock save they went back from', async () => {
+		const { actor, calls } = stockDetails({
 			pledge: () => Promise.reject(new TypeError('Failed to fetch'))
 		});
 		actor.send({ type: 'CONTINUE' });
-		actor.send({ type: 'SET_METHOD', method: 'card' });
-		actor.send({ type: 'GO_TO_STEP', step: 'details' });
-		actor.send({ type: 'PLEDGE_STOCK', ticker: 'AAPL', shares: '50' });
 		await settle();
 		actor.send({ type: 'RETRY' });
-
-		expect(actor.getSnapshot().context.payerDraft.method).toBe('card');
-
+		actor.send({ type: 'GO_TO_STEP', step: 'amount' });
+		expect(actor.getSnapshot().value).toBe('amount');
+		actor.send({ type: 'SET_UNIT', unit: { kind: 'currency' } });
 		actor.send({ type: 'CONTINUE' });
+		actor.send({ type: 'CONTINUE' });
+		actor.send({ type: 'SET_METHOD', method: 'card' });
 		actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'tk_again' });
 		actor.send({ type: 'SUBMIT' });
 		await settle();
+
 		expect(calls.pledge).toHaveLength(1);
 		expect(calls.quote).toMatchObject([{ method: 'card', turnstileToken: 'tk_again' }]);
+	});
+
+	// the payment box is mounted for the card's life and reports on its own schedule: a report while
+	// a stock press waits on its token is the rail the box shows, and never the press's own.
+	it('saves the held stock press, not a card gift, when the payment box reports a rail meanwhile', async () => {
+		const { actor, calls } = stockDetails();
+		actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'tk_ready' });
+		actor.send({ type: 'CONTINUE' });
+		await settle();
+		actor.send({ type: 'RETRY' });
+
+		actor.send({ type: 'SET_METHOD', method: 'card' });
+		actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'tk_again' });
+		await settle();
+
+		expect(calls.quote).toEqual([]);
+		expect(calls.pledge).toHaveLength(2);
+	});
+
+	it('draws no crypto row on the money step', () => {
+		const { actor } = harness({ config: EVERYTHING });
+		expect(cryptoIsOffered(actor.getSnapshot())).toBe(false);
 	});
 });

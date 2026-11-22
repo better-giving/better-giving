@@ -26,10 +26,12 @@ import type {
 	DonationStatus,
 	EmployerAnswer,
 	EmployerRequest,
+	EstimateAnswer,
 	PledgeToldAnswer,
 	Quote,
 	QuoteRequest,
-	StockPledgeRequest
+	StockPledgeRequest,
+	TickerMatch
 } from '../v1';
 import { LOADER_PATH } from './loader';
 
@@ -298,6 +300,81 @@ export function createStatusRead(origin: string | null): CheckoutPorts['status']
 		if (!parsed.ok) throw new Error(`GET ${url} answered a body that is not JSON`);
 		return parsed.value as DonationStatus;
 	};
+}
+
+/** where a coin amount is priced. `v1` is permanent, so this path is too. */
+export function estimateUrl(origin: string, formId: string, coin: string, amount: string): string {
+	const query = new URLSearchParams({ coin, amount });
+	return `${origin}/api/v1/forms/${encodeURIComponent(formId)}/estimate?${query}`;
+}
+
+/**
+ * the port the first step prices a coin amount through: `GET /api/v1/forms/:id/estimate`.
+ *
+ * the estimate when the answer carries a whole count of minor units, `null` when it carries `null` or
+ * anything else; a refusal or an unreachable deployment rejects, and the flow states no estimate for
+ * either (`readEstimate` in ../checkout.machine.ts). aborted by the flow's signal when a newer amount
+ * replaces this one. `credentials: 'omit'` for `createQuote`'s reason.
+ */
+export function createEstimateRead(origin: string | null): NonNullable<CheckoutPorts['estimate']> {
+	return async ({ formId, coin, amount }, signal) => {
+		if (origin === null) {
+			throw new Error('the embedded runtime could not tell which deployment it was served from');
+		}
+		const url = estimateUrl(origin, formId, coin, amount);
+		const response = await fetch(url, {
+			credentials: 'omit',
+			headers: { accept: 'application/json' },
+			signal
+		});
+		if (!response.ok) throw new Error(`GET ${url} answered ${response.status}`);
+		const parsed = await readJson(response);
+		const answer = parsed.ok ? (parsed.value as Partial<EstimateAnswer> | null) : null;
+		const minor = answer?.estimateMinor;
+		return Number.isSafeInteger(minor) ? (minor as number) : null;
+	};
+}
+
+/** where the Stocks group searches tickers. `v1` is permanent, so this path is too. */
+export function tickersUrl(origin: string, formId: string, query: string): string {
+	return `${origin}/api/v1/forms/${encodeURIComponent(formId)}/tickers?${new URLSearchParams({ q: query })}`;
+}
+
+/**
+ * the search the unit panel's Stocks group makes: `GET /api/v1/forms/:id/tickers?q=`, for
+ * `TickerSearchPorts.search` in ../ticker-search.ts.
+ *
+ * the rows that are `{ symbol, name }`, in the deployment's order; an answer that is no list, a
+ * refusal and an unreachable deployment all reject, which the group states as the search failing.
+ * `credentials: 'omit'` for `createQuote`'s reason.
+ */
+export function createTickerRead(
+	origin: string | null,
+	formId: string
+): (query: string, signal: AbortSignal) => Promise<TickerMatch[]> {
+	return async (query, signal) => {
+		if (origin === null) {
+			throw new Error('the embedded runtime could not tell which deployment it was served from');
+		}
+		const url = tickersUrl(origin, formId, query);
+		const response = await fetch(url, {
+			credentials: 'omit',
+			headers: { accept: 'application/json' },
+			signal
+		});
+		if (!response.ok) throw new Error(`GET ${url} answered ${response.status}`);
+		const parsed = await readJson(response);
+		if (!parsed.ok || !Array.isArray(parsed.value)) {
+			throw new Error(`GET ${url} answered a body that is not a list`);
+		}
+		return parsed.value.filter(isTickerMatch);
+	};
+}
+
+function isTickerMatch(row: unknown): row is TickerMatch {
+	if (typeof row !== 'object' || row === null) return false;
+	const { symbol, name } = row as { symbol?: unknown; name?: unknown };
+	return typeof symbol === 'string' && symbol !== '' && (typeof name === 'string' || name === null);
 }
 
 /** where the thank-you names a gift's employer. `v1` is permanent, so this path is too. */

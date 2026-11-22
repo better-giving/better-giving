@@ -104,7 +104,36 @@ export type AmountDraft = {
 	 * `missingAmountDecisions` below can refuse a press for.
 	 */
 	readonly programId?: string | undefined;
+	/**
+	 * what the donor gives, absent until they pick from the unit list: absent is the deployment's own
+	 * currency, the default, and a pick of that currency again is present, which is the one difference
+	 * between the pill's initial and picked states.
+	 */
+	readonly unit?: GiftUnit | undefined;
+	/**
+	 * a coin or share count as the donor typed it, read only while `unit` is a coin or a stock. text
+	 * rather than a number: a coin carries more precision than a double keeps (`Deposit.coinAmount` in
+	 * ./v1.ts), and a share count is decimal text on the wire (`StockPledgeRequest.shares`).
+	 */
+	readonly quantity?: string | undefined;
 };
+
+/**
+ * what a gift is given in: the deployment's own currency, a coin as `PayableCoin.coin` names it, or
+ * shares of a ticker as `GET /api/v1/forms/:id/tickers` names it (`StockPledgeRequest.ticker` in
+ * ./v1.ts).
+ */
+export type GiftUnit =
+	| { readonly kind: 'currency' }
+	| { readonly kind: 'coin'; readonly coin: string }
+	| { readonly kind: 'stock'; readonly ticker: string };
+
+/** a unit other than the currency, which makes the gift one-time and skips the money step. */
+export function isInKind(
+	unit: GiftUnit | undefined
+): unit is Exclude<GiftUnit, { kind: 'currency' }> {
+	return unit !== undefined && unit.kind !== 'currency';
+}
 
 /** how a shown note is signed: the donor's first name and last initial, or "Anonymous". */
 export type NoteShown = 'named' | 'anonymous';
@@ -185,7 +214,52 @@ export type FormValue = {
 	 * blank value it stores — it is a kind on every gift, standing in as the enum's first member.
 	 */
 	readonly tribute?: Tribute;
+	/**
+	 * what a gift in kind gives, absent on a gift in the currency. a coin gift's `amountMinor` is the
+	 * estimate its quantity was priced at when the donor pressed Continue, which is the gift the
+	 * quote is asked for; a stock gift's is 0, since a stock pledge states shares and no amount
+	 * (`StockPledgeRequest` in ./v1.ts). both quantities are `canonicalDecimal` text.
+	 */
+	readonly inKind?:
+		| { readonly kind: 'coin'; readonly coin: string; readonly quantity: string }
+		| { readonly kind: 'stock'; readonly ticker: string; readonly shares: string };
 };
+
+/**
+ * decimal text as one canonical positive figure, or `null` where it is not one above zero.
+ *
+ * digits with an optional `.` fraction, surrounding space ignored, leading zeros of the whole part and
+ * trailing zeros of the fraction dropped: ` .0050 ` is `0.005`. no grouping, sign or exponent, and no
+ * decimal comma: a comma is a group separator in the deployment's default locale, so `1,000` read as
+ * a decimal would be a gift a thousand times smaller than the one typed.
+ */
+export function canonicalDecimal(text: string): string | null {
+	const match = /^(\d*)(?:\.(\d*))?$/.exec(text.trim());
+	if (match === null) return null;
+	const whole = (match[1] ?? '').replace(/^0+(?=\d)/, '');
+	const fraction = (match[2] ?? '').replace(/0+$/, '');
+	if (whole === '' && fraction === '') return null;
+	if (/^0*$/.test(whole) && fraction === '') return null;
+	return fraction === '' ? whole : `${whole === '' ? '0' : whole}.${fraction}`;
+}
+
+/**
+ * the bounds the endpoint holds a stock pledge's `shares` to (`StockPledgeRequest` in ./v1.ts),
+ * copied because this package imports nothing from the app.
+ */
+export const MAX_SHARE_DECIMALS = 6;
+export const MAX_SHARES = 10_000_000;
+
+/** a share count the endpoint takes, as canonical text, or `null`. */
+export function sharesOf(text: string): string | null {
+	const shares = canonicalDecimal(text);
+	if (shares === null) return null;
+	const [whole = '', fraction = ''] = shares.split('.');
+	if (fraction.length > MAX_SHARE_DECIMALS) return null;
+	return Number(whole) > MAX_SHARES || (Number(whole) === MAX_SHARES && fraction !== '')
+		? null
+		: shares;
+}
 
 /** the give screen mid-edit. */
 export type PayerDraft = {
@@ -283,25 +357,52 @@ export const MAX_TRIBUTE_EMAIL = 320;
  */
 export function missingAmountDecisions(
 	draft: AmountDraft,
-	config: FormConfig
+	config: FormConfig,
+	pricedMinor: number | null = null
 ): readonly AmountDecision[] {
-	const { amountMinor, note } = draft;
+	const { note } = draft;
 	const missing: AmountDecision[] = [];
 
-	if (
-		amountMinor === undefined ||
-		!Number.isInteger(amountMinor) ||
-		amountMinor < config.minAmountMinor ||
-		amountMinor > config.maxAmountMinor
-	) {
-		missing.push('amount');
-	}
+	if (giftMinorOf(draft, config, pricedMinor) === null) missing.push('amount');
 	// trimmed, because that is what `completeAmount` carries: a note of spaces reaches the endpoint
 	// as nothing at all, so accepting it here would be a press refused nowhere and a note nobody
 	// sent. an absent note is a donor who asked for none and is short of nothing.
 	if (note !== undefined && note.trim().length === 0) missing.push('note');
 	missing.push(...missingTributeDecisions(draft.tribute));
 	return missing;
+}
+
+/**
+ * the gift in minor units this draft decides, or `null` while its amount is not decided.
+ *
+ * in the currency it is the amount chosen, within the form's bounds. a coin's is `pricedMinor`, the
+ * estimate of its typed quantity, held to the same bounds the endpoint re-reads, so a quantity with no
+ * estimate is an amount not yet decided. a stock gift states shares and no amount, so its figure is 0
+ * once the share count is one the endpoint takes.
+ */
+function giftMinorOf(
+	draft: AmountDraft,
+	config: FormConfig,
+	pricedMinor: number | null
+): number | null {
+	const { unit } = draft;
+	if (unit?.kind === 'stock') return sharesOf(draft.quantity ?? '') === null ? null : 0;
+	const amountMinor =
+		unit?.kind === 'coin'
+			? canonicalDecimal(draft.quantity ?? '') === null
+				? null
+				: pricedMinor
+			: draft.amountMinor;
+	if (
+		amountMinor === undefined ||
+		amountMinor === null ||
+		!Number.isInteger(amountMinor) ||
+		amountMinor < config.minAmountMinor ||
+		amountMinor > config.maxAmountMinor
+	) {
+		return null;
+	}
+	return amountMinor;
 }
 
 /**
@@ -346,21 +447,43 @@ function missingTributeDecisions(tribute: TributeDraft | undefined): readonly Am
  * decision the set above carries, so this is the type being satisfied rather than a press being
  * turned away. it is unreachable in the same sense and for the same reason.
  */
-export function completeAmount(draft: AmountDraft, config: FormConfig): FormValue | null {
-	if (missingAmountDecisions(draft, config).length > 0) return null;
-	const { amountMinor, frequency } = draft;
-	if (amountMinor === undefined || frequency === undefined) return null;
+export function completeAmount(
+	draft: AmountDraft,
+	config: FormConfig,
+	pricedMinor: number | null = null
+): FormValue | null {
+	if (missingAmountDecisions(draft, config, pricedMinor).length > 0) return null;
+	const amountMinor = giftMinorOf(draft, config, pricedMinor);
+	const { frequency } = draft;
+	if (amountMinor === null || frequency === undefined) return null;
 
 	const note = (draft.note ?? '').trim();
 	const tribute = settledTribute(draft.tribute);
+	const inKind = inKindOf(draft);
 	return {
 		amountMinor,
 		frequency,
 		programId: draft.programId ?? null,
 		...(note.length > 0 ? { note } : {}),
 		...(note.length > 0 && draft.noteShown !== undefined ? { noteShown: draft.noteShown } : {}),
-		...(tribute === null ? {} : { tribute })
+		...(tribute === null ? {} : { tribute }),
+		...(inKind === null ? {} : { inKind })
 	};
+}
+
+/** a decided draft's gift in kind, reached only past `missingAmountDecisions`. */
+function inKindOf(draft: AmountDraft): NonNullable<FormValue['inKind']> | null {
+	const { unit } = draft;
+	const quantity = draft.quantity ?? '';
+	if (unit?.kind === 'coin') {
+		const canonical = canonicalDecimal(quantity);
+		return canonical === null ? null : { kind: 'coin', coin: unit.coin, quantity: canonical };
+	}
+	if (unit?.kind === 'stock') {
+		const shares = sharesOf(quantity);
+		return shares === null ? null : { kind: 'stock', ticker: unit.ticker, shares };
+	}
+	return null;
 }
 
 /**

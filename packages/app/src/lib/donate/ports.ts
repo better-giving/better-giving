@@ -1,5 +1,6 @@
 import {
 	createEmployerWrite,
+	createEstimateRead,
 	createPledgeTold,
 	createQuote,
 	createStatusRead
@@ -12,7 +13,8 @@ import type { CheckoutPorts } from '@better-giving/form/ports';
 //
 // the set `CheckoutPorts` names. three of them are the payment surface's — `confirm` and `resume`
 // are its own, and the write is wrapped so the provider's fields learn the total the server just
-// named. then the read of a crypto gift the donor sends from their own wallet, the thank-you's
+// named. then the read of a crypto gift the donor sends from their own wallet, the estimate a coin
+// amount is priced at on the first step, the thank-you's
 // employer write, the clock, and the two pledge rails' ports: the same write unwrapped, since no
 // processor stands behind a pledge, and the pending screen's told press.
 //
@@ -68,6 +70,7 @@ export function deploymentPorts(surface: PaymentSurface): CheckoutPorts {
 		confirm: surface.confirm,
 		resume: surface.resume,
 		status: createStatusRead(SAME_DEPLOYMENT),
+		estimate: createEstimateRead(SAME_DEPLOYMENT),
 		employer: createEmployerWrite(SAME_DEPLOYMENT),
 		now: () => Date.now(),
 		pledges: {

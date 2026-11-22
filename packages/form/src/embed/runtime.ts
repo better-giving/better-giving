@@ -28,6 +28,7 @@ import { defineDonateForm, type FormBoot, type FormRuntime } from '../element';
 import {
 	apiWords,
 	createEmployerWrite,
+	createEstimateRead,
 	createPledgeTold,
 	createQuote,
 	createStatusRead,
@@ -139,6 +140,7 @@ export function createFormRuntime(origin: string | null, doc: Document): FormRun
 	// itself — a payment SDK is initialised with the publishable key it carries.
 	const post = createQuote(origin);
 	const status = createStatusRead(origin);
+	const estimate = createEstimateRead(origin);
 	const employer = createEmployerWrite(origin);
 	const pledgeTold = createPledgeTold(origin);
 
@@ -223,6 +225,7 @@ export function createFormRuntime(origin: string | null, doc: Document): FormRun
 						confirm: surface.confirm,
 						resume: surface.resume,
 						status,
+						estimate,
 						now: () => Date.now(),
 						employer,
 						// a pledge's save is the press's own write with a pledge's body, told to no payment

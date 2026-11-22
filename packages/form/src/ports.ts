@@ -219,6 +219,20 @@ export type CheckoutPorts = {
 	): Promise<void>;
 
 	/**
+	 * `GET /api/v1/forms/:id/estimate` — what a coin amount the donor typed on the first step is worth
+	 * in minor units of the deployment's currency, or `null` where it cannot be priced.
+	 *
+	 * optional, as `pledges` below is: a surface leaving it out offers no coin on the first step
+	 * (`unitsOffered` in ./checkout.machine.ts), because a coin gift is quoted at this figure. `amount`
+	 * is canonical decimal text (`canonicalDecimal` in ./value.ts). `signal` aborts when a newer amount
+	 * replaces this one, and an adapter hands it to the request.
+	 */
+	estimate?(
+		input: { readonly formId: string; readonly coin: string; readonly amount: string },
+		signal: AbortSignal
+	): Promise<number | null>;
+
+	/**
 	 * the two pledge rails' half of the world, absent on a surface that offers neither.
 	 *
 	 * optional for the employer port's reason: a surface leaving it out loses the IRA (QCD) and stock

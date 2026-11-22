@@ -30,6 +30,7 @@ import {
 import { createIraPanel } from './ira-panel';
 import { instructionsMailto, pledgeDetails, pledgeSummary } from './pledge';
 import { BENEFITS, createPledgeBlock, type PledgeNotice, type PledgeScreen } from './pledge-screen';
+import { coinRefusalSentence } from './unit';
 import type { AmountDecision, PayerField } from './value';
 import { RECONCILIATION_LABELS, type DeductedFee } from './fee';
 import { currencySymbol, formatFigure, formatMinor, formatOffer, parseMinor } from './money';
@@ -2198,21 +2199,9 @@ export function createCard(
 		return entryInput;
 	}
 
-	/**
-	 * a coin's refusal of the amount, as the predicate under `How much`.
-	 *
-	 * the coin is named by the name the served list gives it, and by its own code where the list no
-	 * longer carries it. the minimum is offered the way a tile offers a figure (./money.ts).
-	 */
+	/** a coin's refusal of the amount, as the predicate under `How much` (./unit.ts). */
 	function coinRefusalWords(refusal: NonNullable<(State & { step: 'amount' })['refusal']>): string {
-		const coinName =
-			config.coins?.find((coin) => coin.coin === refusal.coin)?.name ?? refusal.coin.toUpperCase();
-		if (refusal.code === 'above_maximum') {
-			return `Enter a smaller amount for ${coinName}, or choose another coin`;
-		}
-		return refusal.minAmountMinor === undefined
-			? `Enter a larger amount for ${coinName}, or choose another coin`
-			: `Enter at least ${offer(refusal.minAmountMinor)} in ${coinName}, or choose another coin`;
+		return coinRefusalSentence(refusal, config);
 	}
 
 	/**
