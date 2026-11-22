@@ -615,6 +615,14 @@ export type QuoteRequest = {
 	 */
 	readonly programId?: string;
 	/**
+	 * the program a program page was drawn for, absent on every other page.
+	 *
+	 * the page's choice rather than the donor's, so it credits the gift whatever the form's program
+	 * setting says, and it outranks `programId` where both arrive. an inactive or unknown id is
+	 * answered as `form_not_found`.
+	 */
+	readonly pageProgramId?: string;
+	/**
 	 * the gift given for someone else, as four flat fields.
 	 *
 	 * flat rather than one nested object, and it is the same rule the element's attributes are
