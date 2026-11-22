@@ -150,11 +150,15 @@
 }
 
 /*
- * a saved pledge's pending screen is the takeover whose details list is drawn (`pledgedScreen` in
- * ../views.ts; the thank-you hides it), and it is a page of instructions under the heading rather
- * than one sentence, so the heading takes the card's own step heading size.
+ * a saved pledge's pending screen is the takeover whose pledge block is shown with its details list
+ * drawn (`pledgedScreen` in ../views.ts; the thank-you hides the list, and every other takeover hides
+ * the block and leaves the list as it was), and it is a page of instructions under the heading rather
+ * than one sentence, so the heading takes the card's own step heading size. every rule keyed on the
+ * pending screen, here and in ./layout.css, is keyed on this one selector. it is two `:has()` rather
+ * than one `> .pledge > .pledge-details` chain because happy-dom, which the dom specs match these
+ * selectors in, matches that chain on the thank-you, where the list is hidden.
  */
-.takeover:has(.pledge-details:not([hidden])) [part~='heading'] {
+.takeover:has(> .pledge:not([hidden])):has(.pledge-details:not([hidden])) [part~='heading'] {
 	font-size: var(--_t-lg);
 }
 
@@ -2043,7 +2047,7 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * for that size: `calc(1.25 / 0.875)`, which it states on its classes alone (`--ds-text-sm-lh` in
  * ../registry/styles/button-css.css) and ./tokens.css lists as a registry gap.
  */
-.takeover:has(.pledge-details:not([hidden])) .prose {
+.takeover:has(> .pledge:not([hidden])):has(.pledge-details:not([hidden])) .prose {
 	color: var(--_n11);
 	font-size: var(--_t-sm);
 	line-height: calc(1.25 / 0.875);
@@ -2471,11 +2475,15 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * on the pending screen the summary's label reads at the body's leading and its value a shade under
  * it, at the 1.4 the design draws, which neither leading here nor the registry's states.
  */
-.takeover:has(.pledge-details:not([hidden])) .pledge-summary .pledge-label {
+.takeover:has(> .pledge:not([hidden])):has(.pledge-details:not([hidden]))
+	.pledge-summary
+	.pledge-label {
 	line-height: var(--_lh-body);
 }
 
-.takeover:has(.pledge-details:not([hidden])) .pledge-summary .pledge-value {
+.takeover:has(> .pledge:not([hidden])):has(.pledge-details:not([hidden]))
+	.pledge-summary
+	.pledge-value {
 	line-height: 1.4;
 }
 
@@ -2539,8 +2547,8 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * on the pending screen the lists and the panel are the blocks the screen is made of rather than
  * boxes inside one, so they take the card's own corner.
  */
-.takeover:has(.pledge-details:not([hidden])) .pledge-list,
-.takeover:has(.pledge-details:not([hidden])) .benefits {
+.takeover:has(> .pledge:not([hidden])):has(.pledge-details:not([hidden])) .pledge-list,
+.takeover:has(> .pledge:not([hidden])):has(.pledge-details:not([hidden])) .benefits {
 	border-radius: var(--_r);
 }
 
@@ -2548,7 +2556,7 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * and the lists sit on the neutral's second ground, as the panel under them does, which sets them
  * off the card's own face. the thank-you hides the details, so its summary list keeps the first.
  */
-.takeover:has(.pledge-details:not([hidden])) .pledge-list {
+.takeover:has(> .pledge:not([hidden])):has(.pledge-details:not([hidden])) .pledge-list {
 	background: var(--_n2);
 }
 
@@ -2582,16 +2590,16 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * tenth. the title keeps the card's emphasis weight in the card's own face: the 700 the design draws
  * is in a display face this card never loads.
  */
-.takeover:has(.pledge-details:not([hidden])) .benefits-title {
+.takeover:has(> .pledge:not([hidden])):has(.pledge-details:not([hidden])) .benefits-title {
 	margin-block-end: calc(var(--ds-rem) * 0.25);
 	line-height: calc(1.25 / 0.875);
 }
 
-.takeover:has(.pledge-details:not([hidden])) .benefits-body {
+.takeover:has(> .pledge:not([hidden])):has(.pledge-details:not([hidden])) .benefits-body {
 	line-height: calc(1.25 / 0.875);
 }
 
-.takeover:has(.pledge-details:not([hidden])) .benefits-fine {
+.takeover:has(> .pledge:not([hidden])):has(.pledge-details:not([hidden])) .benefits-fine {
 	margin-block-start: calc(var(--ds-rem) * 0.25 * 2);
 	line-height: calc(1 / 0.75);
 }

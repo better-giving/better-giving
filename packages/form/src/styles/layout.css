@@ -1077,12 +1077,12 @@ form {
 }
 
 /*
- * on the pending screen, the takeover whose details list is drawn (the thank-you hides it), the
+ * on the pending screen, the takeover whose shown pledge block draws its details list, the
  * lists are long and read down, so a row stands tighter than the thank-you's: the registry's
  * spacing step (`--ds-spacing`, a quarter of `--ds-rem`) two and a half times over, which it
  * declares on its classes alone and ./tokens.css lists as a registry gap.
  */
-.takeover:has(.pledge-details:not([hidden])) .pledge-row {
+.takeover:has(> .pledge:not([hidden])):has(.pledge-details:not([hidden])) .pledge-row {
 	padding-block: calc(var(--ds-rem) * 0.25 * 2.5);
 }
 
@@ -1163,11 +1163,11 @@ form {
  * to the lead. the foot's length is spent past the empty challenge box (`.challenge` above), which
  * cancels its own gap.
  */
-.takeover:has(.pledge-details:not([hidden])) .pledge {
+.takeover:has(> .pledge:not([hidden])):has(.pledge-details:not([hidden])) .pledge {
 	margin-block: calc(var(--_sp4) - var(--_step-gap));
 }
 
-.takeover:has(.pledge-details:not([hidden])) .foot {
+.takeover:has(> .pledge:not([hidden])):has(.pledge-details:not([hidden])) .foot {
 	margin-block-start: calc(var(--_sp3) - var(--_step-gap));
 }
 

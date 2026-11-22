@@ -62,10 +62,11 @@ describe('a pledge’s detail labels', () => {
 	});
 });
 
-// the pending screens are the takeovers whose details list is drawn (`pledgedScreen` in ../views.ts):
-// the thank-you lists what was pledged alone and hides it, and no other takeover has one. the rules
-// below are keyed on that so the thank-you, the crypto deposit and every other takeover keep theirs.
-const PENDING = `.takeover:has(.pledge-details:not([hidden]))`;
+// the pending screens are the takeovers whose pledge block is shown with its details list drawn
+// (`pledgedScreen` in ../views.ts): the thank-you hides the list, and every other takeover hides the
+// block. which screens the rules below reach is held on the drawn screens in ../element.dom.spec.ts
+// ("the rules the sheets keep for a pledge’s screens"); this file holds what they state.
+const PENDING = `.takeover:has(> .pledge:not([hidden])):has(.pledge-details:not([hidden]))`;
 
 describe('a pledge’s pending screen', () => {
 	it('sets its heading a step under the other takeovers’', () => {

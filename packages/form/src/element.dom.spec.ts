@@ -9157,4 +9157,136 @@ describe('a stock or IRA (QCD) pledge', () => {
 			'We’ve told the organization. Your gift counts when the shares arrive.'
 		);
 	});
+
+	// happy-dom lays nothing out, so a rule is held to the elements it selects: each selector the
+	// sheets the card adopts write, matched against the screens the card really draws.
+	describe('the rules the sheets keep for a pledge’s screens', () => {
+		const selectors = [partStyles, layoutStyles].flatMap((css) =>
+			[...css.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/([^{};]+)\{([^{}]*)\}/g)].flatMap(
+				([, list = '', body = '']) =>
+					list.split(/,(?![^(]*\))/).map((selector) => ({ selector: selector.trim(), body }))
+			)
+		);
+		/** every rule keyed on a pledge's pending screen: a takeover holding a drawn details list. */
+		const pending = selectors
+			.map(({ selector }) => selector)
+			.filter(
+				(selector) => selector.startsWith('.takeover:has(') && selector.includes('.pledge-details')
+			);
+		/** the pending rules that select nothing on the screen the card is showing, and those that do. */
+		const unmatched = (card: Mounted) =>
+			pending.filter((selector) => card.shadow.querySelector(selector) === null);
+		const matched = (card: Mounted) =>
+			pending.filter((selector) => card.shadow.querySelector(selector) !== null);
+
+		const ONE_COIN: FormConfig = {
+			...CONFIG,
+			paymentMethods: ['card', 'crypto'],
+			coins: [
+				{ coin: 'btc', ticker: 'btc', name: 'Bitcoin', network: 'Bitcoin', memoRequired: false }
+			]
+		};
+		const BTC: Quote = {
+			paymentToken: 'don_1',
+			feeMinor: 25,
+			totalMinor: 2525,
+			deposit: {
+				address: 'bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh',
+				memo: null,
+				coin: 'btc',
+				network: 'Bitcoin',
+				coinAmount: '0.00072',
+				giftCoinAmount: '0.00071',
+				validUntil: '2023-11-21T12:00:00.000Z',
+				qr: { rows: ['110', '011', '101'] }
+			}
+		};
+		/** the crypto address screen, its one coin picked in the coin list's own root. */
+		const atDeposit = async (status: CheckoutPorts['status']) => {
+			const card = await atReviewBeforeRail({
+				config: ONE_COIN,
+				ports: { quote: async () => BTC, status }
+			});
+			card.rail('crypto');
+			const list = [...card.host.querySelectorAll('*')].find((node) =>
+				node.shadowRoot?.querySelector('[role="combobox"]')
+			)?.shadowRoot;
+			if (list == null) throw new Error('no coin list was handed to the runtime');
+			(list.querySelector('.picker') as HTMLElement).click();
+			await settle();
+			(list.querySelector('[role="option"]') as HTMLElement).click();
+			await settle();
+			card.find('[part~="submit"]').click();
+			await settle();
+			return card;
+		};
+
+		it.each([
+			['card thank-you', 'Thank you', () => atSubmitted()],
+			[
+				'failed',
+				'',
+				() =>
+					atSubmitted({
+						ports: {
+							confirm: async () => ({
+								kind: 'declined' as const,
+								message: 'Your card was declined.'
+							})
+						}
+					})
+			],
+			['confirm', '', () => atCorrection()],
+			[
+				'mandate',
+				'',
+				() =>
+					atSubmitted({
+						ports: {
+							quote: async () => ({
+								paymentToken: 'pi_1',
+								feeMinor: 106,
+								totalMinor: 2606,
+								mandate: { text: 'By clicking, you authorize the debit of your account.' }
+							})
+						}
+					})
+			],
+			['crypto deposit', 'Send your gift', () => atDeposit(async () => ({ state: 'waiting' }))],
+			[
+				'crypto thank-you',
+				'Thank you',
+				async () => {
+					vi.useFakeTimers({ shouldAdvanceTime: true });
+					onTestFinished(() => void vi.useRealTimers());
+					const card = await atDeposit(async () => ({ state: 'received' }));
+					await vi.advanceTimersByTimeAsync(DEPOSIT_POLL_MS);
+					return card;
+				}
+			]
+		])('selects nothing on the %s screen', async (_screen, title, reach) => {
+			const card = await reach();
+			expect(card.find('.takeover').hidden).toBe(false);
+			if (title !== '') expect(heading(card)).toBe(title);
+			expect(pending.length).toBeGreaterThan(0);
+			expect(matched(card)).toEqual([]);
+		});
+
+		it.each([
+			['stock', () => stockPending()],
+			['IRA (QCD)', () => iraPending()]
+		])('selects every part it names on the pending %s screen', async (_rail, reach) => {
+			const card = await reach();
+			expect(pending.length).toBeGreaterThan(0);
+			expect(unmatched(card)).toEqual([]);
+		});
+
+		it('selects nothing on a pledge’s thank-you', async () => {
+			const card = await iraPending();
+			primary(card).click();
+			await settle();
+			expect(heading(card)).toBe('Thank you');
+			expect(matched(card)).toEqual([]);
+		});
+	});
 });
