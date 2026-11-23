@@ -7950,7 +7950,7 @@ describe('a crypto gift', () => {
 		await throughDetails(card);
 
 		expect(card.find('.step').hidden).toBe(false);
-		expect(card.text('#amount-problem')).toBe('no longer accepted');
+		expect(card.text('#amount-problem')).toBe('Tether USD (Tron) is no longer accepted');
 		expect(card.shadow.activeElement).toBe(pill(card));
 		expect(
 			unitPanel(card)

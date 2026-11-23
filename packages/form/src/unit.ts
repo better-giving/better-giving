@@ -63,7 +63,8 @@ export const COIN_REFUSED = 'no longer accepted';
 /**
  * a coin gift's refusal, beside the entry where it is fixed. the coin is named by the name the served
  * list gives it, and by its own code where the list no longer carries it; the minimum is offered the
- * way a tile offers a figure (./money.ts). a coin no longer accepted says what its list row says.
+ * way a tile offers a figure (./money.ts). a coin no longer accepted is named before the words its
+ * list row carries.
  */
 export function coinRefusalSentence(
 	refusal: CoinRefusal,
@@ -74,7 +75,7 @@ export function coinRefusalSentence(
 	if (refusal.code !== 'below_minimum') {
 		return refusal.code === 'above_maximum'
 			? `Enter a smaller amount for ${coinName}, or choose another coin`
-			: COIN_REFUSED;
+			: `${coinName} is ${COIN_REFUSED}`;
 	}
 	return refusal.minAmountMinor === undefined
 		? `Enter a larger amount for ${coinName}, or choose another coin`

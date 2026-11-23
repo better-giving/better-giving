@@ -426,8 +426,10 @@ export function createUnitPanel(doc: Document, handlers: UnitPanelHandlers): Uni
 	/**
 	 * has the machine re-read what changed outside it — the panel's open state, the options, a ticker
 	 * answer. it runs its watchers on those only when it publishes, and it publishes on its own state
-	 * alone. `notify` is that publish, a public field at runtime and private in its types;
-	 * `updateProps`, the typed way, nests one more closure around the props on every call.
+	 * and context alone. `notify` is that publish, a public field at runtime and `private` in
+	 * `dist/machine.d.ts` of `@zag-js/vanilla` 1.43.3, read with `@zag-js/combobox` 1.43.3; that
+	 * version has no public publish. `updateProps`, the typed way, nests one more closure around the
+	 * props on every call, and every prop read then runs through all of them.
 	 */
 	const publish = (): void => (machine as unknown as { notify(): void }).notify();
 

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
-import { cdp, userEvent } from 'vitest/browser';
+import { cdp, page, userEvent } from 'vitest/browser';
 import { createCoinPicker } from './coin-picker';
 import { PRE_UPGRADE_RESERVATION_CSS, RESERVED_MIN_HEIGHT } from './embed/reservation';
 import { defineDonateForm, DONATE_FORM_TAG } from './element';
@@ -1510,6 +1510,15 @@ describe('the first step’s unit pill and Continue', () => {
 		}
 		throw new Error('no unit panel');
 	};
+	/** a deployment taking its currency and a coin, on a surface that can price the coin. */
+	const WITH_CRYPTO: FormConfig = {
+		...CONFIG,
+		paymentMethods: ['card', 'crypto'],
+		coins: [
+			{ coin: 'btc', ticker: 'btc', name: 'Bitcoin', network: 'Bitcoin', memoRequired: false }
+		]
+	};
+	const PRICED: Partial<CheckoutPorts> = { ...PLEDGES, estimate: async () => 48_210 };
 	/** two frames, which is when the panel's machine moves the caret after a pick. */
 	const frames = () =>
 		new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
@@ -1526,6 +1535,23 @@ describe('the first step’s unit pill and Continue', () => {
 		await userEvent.click(usd);
 		await frames();
 
+		expect(root.activeElement).toBe(pillOf(root));
+		expect(pillOf(root).getAttribute('aria-expanded')).toBe('false');
+	});
+
+	// the case ./element.dom.spec.ts leaves here: a pick of another unit redraws the pill, and the
+	// caret the card puts on it is still there once the panel's machine has had its frame.
+	it('leaves the caret on the pill after a pick of another unit', async () => {
+		const root = shadow(await mount(WITH_CRYPTO, { ports: PRICED }));
+		await userEvent.click(pillOf(root));
+		await frames();
+		const btc = panelOf(root).querySelector<HTMLElement>('[role="option"][data-value="coin:btc"]');
+		if (btc === null) throw new Error('no bitcoin row');
+
+		await userEvent.click(btc);
+		await frames();
+
+		expect(pillOf(root).getAttribute('aria-label')).toBe('Crypto: BTC');
 		expect(root.activeElement).toBe(pillOf(root));
 		expect(pillOf(root).getAttribute('aria-expanded')).toBe('false');
 	});
@@ -1547,6 +1573,38 @@ describe('the first step’s unit pill and Continue', () => {
 		const [flag, apple] = discs as [DOMRect, DOMRect];
 		expect(flag.right - apple.left).toBe(3.5);
 	});
+
+	// the panel's host is the line's last child, after the pill (`howMuchLine` in ./views.ts), and
+	// takes no box there (`:host` in ./styles/units.css): the shut panel draws nothing and the open
+	// one stands in the top layer, so neither is a flex item that would take the line's end.
+	for (const [width, height] of [
+		[1440, 900],
+		[375, 812]
+	] as const) {
+		it(`keeps the pill at the How much line’s end at ${width}px, the panel shut and open`, async () => {
+			await page.viewport(width, height);
+			// vitest's own default viewport, which every other case in this file runs at.
+			onTestFinished(() => page.viewport(414, 896));
+			const root = shadow(await mount(WITH_CRYPTO, { ports: PRICED }));
+			const line = root.querySelector('.amount-head') as HTMLElement;
+			const dialog = panelOf(root).querySelector('[role="dialog"]') as HTMLElement;
+			const ends = () =>
+				[line.getBoundingClientRect().right, pillOf(root).getBoundingClientRect().right].map(
+					Math.round
+				);
+
+			expect(document.documentElement.clientWidth).toBe(width);
+			expect(line.lastElementChild?.shadowRoot).toBe(panelOf(root));
+			const [lineEnd, pillEnd] = ends();
+			expect(pillEnd).toBe(lineEnd);
+
+			await userEvent.click(pillOf(root));
+			await frames();
+
+			expect(dialog.matches(':popover-open')).toBe(true);
+			expect(ends()).toEqual([lineEnd, lineEnd]);
+		});
+	}
 
 	it('stands the eyebrow 6px over a full-width 52px Continue whose label leads', async () => {
 		const root = shadow(await mount(WITH_STOCK, { ports: PLEDGES }));

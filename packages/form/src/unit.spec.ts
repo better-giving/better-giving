@@ -181,7 +181,8 @@ describe('a coin refusal beside the entry', () => {
 		expect(say({ code: 'below_minimum', coin: 'doge', minAmountMinor: 1200 })).toBe(
 			'Enter at least $12 in DOGE, or choose another coin'
 		);
-		expect(say({ code: 'coin_not_accepted', coin: 'btc' })).toBe('no longer accepted');
+		expect(say({ code: 'coin_not_accepted', coin: 'btc' })).toBe('Bitcoin is no longer accepted');
+		expect(say({ code: 'coin_not_accepted', coin: 'doge' })).toBe('DOGE is no longer accepted');
 	});
 });
 
