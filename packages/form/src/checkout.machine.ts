@@ -358,27 +358,36 @@ export type CheckoutContext = {
 	 * since one landed.
 	 */
 	readonly employerWriteRefusal: Exclude<EmployerRefusal, 'blank'> | null;
-	/** the id the last pledge save was sent under, which the told press names. */
+	/**
+	 * the id the pledge is saved under, which the told press names: minted for the first save, and
+	 * minted afresh (`remintPledgeId`) for the save made again where the endpoint holds nothing under
+	 * the last one or holds something that is not this pledge.
+	 */
 	readonly pledgeId: string | null;
 	/**
 	 * each distinct pledge request this card has sent, keyed by `pledgeRequestKey`, and the id it was
 	 * sent under. kept for the card's life: a save whose answer was lost may have landed, so a resend
 	 * of the same request names that pledge and is answered with it rather than saving a second
 	 * (`QuoteRequest.pledgeId` in ./v1.ts), while a changed request is a pledge of its own, since the
-	 * endpoint answers a known id with the pledge it saved, whatever else the request carries.
+	 * endpoint answers a known id with its pledge only for the same pledge and refuses any other
+	 * request under it as `pledge_id_taken`.
 	 */
 	readonly pledgeIds: Readonly<Record<string, string>>;
 	/** the shares a stock pledge gives, from the `PLEDGE_STOCK` that started it. */
 	readonly stock: StockPick | null;
 	/** the endpoint refused the custodian a save named (`pledge_detail_invalid`), until it is retyped. */
 	readonly custodianRefused: boolean;
-	/** the last told press did not reach the organisation, until one does. */
+	/**
+	 * the last press on the pending screen was refused: the told press, or the save made again in its
+	 * place. cleared when a save made again lands or a told press reaches the organisation.
+	 */
 	readonly toldRefused: boolean;
 	/**
-	 * where the pledge stands after a told press was refused `pledge_not_found`: `needed` while the
-	 * endpoint holds nothing under `pledgeId` (a fresh one, minted by the refusal), so the next press
-	 * saves the same request again instead of telling, and `done` once that save answered, until the
-	 * next press. `null` on every other pledge.
+	 * where the pledge stands after a told press was refused `pledge_not_found`: `needed` until a
+	 * save made again lands, since the endpoint holds nothing under `pledgeId` (a fresh one, minted by
+	 * the refusal), so each press saves the same request again instead of telling; and `done` once
+	 * that save answered with the pledge, until the next press is answered. `null` on every other
+	 * pledge.
 	 */
 	readonly pledgeResave: 'needed' | 'done' | null;
 	/**
@@ -659,8 +668,9 @@ function minAmountOf(error: unknown): number | undefined {
 /**
  * a rejected quote as the refusal a `crypto` gift is routed on, or `null` where it is not one.
  *
- * only the three codes a donor fixes on a step of the form: every other refusal keeps today's path
- * through `failed`.
+ * only the three codes a donor fixes on a step of the form. every other refusal takes `failed`,
+ * except an IRA (QCD) save refused for its custodian (`refusesCustodian` below) and a first
+ * `pledge_id_taken`, which is sent again under a fresh id (`retakesPledgeId`).
  */
 function coinRefusalOf(context: CheckoutContext, error: unknown): CoinRefusal | null {
 	const coin = context.payer?.method === 'crypto' ? context.payer.coin : undefined;

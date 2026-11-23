@@ -396,9 +396,11 @@ export type FormConfig = {
 	 * the rails a donor may pick here.
 	 *
 	 * `stock` and `ira_qcd` are listed exactly while the organisation has turned each on under
-	 * Payments, each priced by a zero rule in `feeRules`, and neither takes a gift that repeats.
-	 * `ira_qcd` is a row on the money step's method list. `stock` is not: a donor picks shares of a
-	 * ticker on the first step, so the method list draws no row for it.
+	 * Payments, `stock` only once a ticker list is held as well (`offersStock` in the app's
+	 * `src/lib/server/forms/published-config.ts`), each priced by a zero rule in `feeRules`, and
+	 * neither takes a gift that repeats. `ira_qcd` is a row in the review step's payment box. `stock`
+	 * is not: the payment box draws no row for it, and no screen in this package sends a stock pledge
+	 * (`steer` in ./element.ts).
 	 */
 	readonly paymentMethods: readonly PaymentMethod[];
 	readonly feeCoverage: FeeCoverage;
@@ -559,7 +561,8 @@ export type Quote = {
  * send mail (`FormConfig.receipts` not true).
  *
  * the rest is the organisation's own transfer details, as saved under Payments, and what the donor
- * pledged. `shares` is decimal text, at most six places and never a number (`QuoteRequest.shares`).
+ * pledged. `shares` is decimal text, at most six places and never a number
+ * (`StockPledgeRequest.shares`).
  * `mailingAddress` is as the organisation saved it, one line per line, separated by `\n`.
  * `ein` is `FormConfig.ein`.
  */
@@ -765,10 +768,11 @@ export const MAX_CUSTODIAN = 200;
  * what the machine sends to save a stock pledge, to the same `POST /api/v1/forms/:id/donations`.
  *
  * a `QuoteRequest` with no `amountMinor` and no `coversFee`: the donor states shares rather than an
- * amount, the gift's value is set when the shares arrive, and neither has a fee. `amountMinor` sent
- * here is refused. `ticker` is one `symbol` from `GET /api/v1/forms/:id/tickers`, refused as
- * `ticker_not_listed` where the list does not hold it. `shares` is decimal text above zero, at most
- * six decimal places and at most 10,000,000: `"50"`, `"12.5"`.
+ * amount, the gift's value is set when the shares arrive, and a pledge carries no fee.
+ * `amountMinor` sent here is refused. `ticker` is one `symbol` from
+ * `GET /api/v1/forms/:id/tickers`, refused as `ticker_not_listed` where the list does not hold it.
+ * `shares` is decimal text above zero, at most six decimal places and at most 10,000,000: `"50"`,
+ * `"12.5"`.
  */
 export type StockPledgeRequest = Omit<QuoteRequest, 'amountMinor' | 'coversFee' | 'method'> & {
 	readonly method: 'stock';
@@ -875,10 +879,11 @@ export type ApiError = {
  * processor answering badly, `challenge_failed` is a token the challenge service would not
  * honour, the two `daf_` members are a donor-advised fund's own answer to a grant, the three
  * crypto members are the processor refusing the coin or the amount the donor chose, and the four
- * pledge members are a box on a pledge's screen to fill again or a pledge the screen holds that
- * this deployment does not. every other failure of the payment path is either a hole an operator
- * fills, which the six already say, or a bug of ours, which is a 500 and no code at all: a member
- * for one would ask a donation form to render a screen about our defect.
+ * pledge members are a box on a pledge's screen to fill again, a pledge the screen holds that
+ * this deployment does not, or a pledge id the form mints afresh and sends again. every other
+ * failure of the payment path is either a hole an operator fills, which the six already say, or a
+ * bug of ours, which is a 500 and no code at all: a member for one would ask a donation form to
+ * render a screen about our defect.
  *
  * `error` stays typed `string` and is not narrowed to this union. narrowing the type of a shipped
  * field is itself the breaking change this file exists to prevent — a pinned client must still
@@ -968,7 +973,8 @@ export const API_ERROR_CODES = [
 	'above_maximum',
 	/**
 	 * a stock or IRA (QCD) pledge whose ticker, shares or custodian is missing or malformed, so
-	 * nothing was saved. `field` names which, and the form marks that box.
+	 * nothing was saved. `field` names which. the form marks the custodian box where that is the
+	 * field named, and draws no box for a ticker or shares.
 	 */
 	'pledge_detail_invalid',
 	/**
