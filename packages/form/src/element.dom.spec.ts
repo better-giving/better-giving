@@ -9159,31 +9159,43 @@ describe('a stock or IRA (QCD) pledge', () => {
 		expect(shows(card, '.takeover > .foot > button')).toBe('Done');
 	});
 
-	/** `quote`'s pledge with no address to send its receipt to, as the endpoint answers one with none on file. */
-	const unaddressed = (quote: Quote): Quote => ({
+	/**
+	 * `quote`'s pledge with no address to send its receipt to: `''`, as the endpoint answers one with
+	 * none on file or on a deployment that cannot send mail (`Pledge.receiptTo` in ./v1.ts), or blank.
+	 */
+	const unaddressed = (quote: Quote, receiptTo: string): Quote => ({
 		...quote,
-		pledge: { ...(quote.pledge as NonNullable<Quote['pledge']>), receiptTo: ' ' }
+		pledge: { ...(quote.pledge as NonNullable<Quote['pledge']>), receiptTo }
 	});
 
-	it('names no receipt address on the IRA (QCD) thank-you when the pledge has none', async () => {
-		const card = await iraPending({ saved: unaddressed(IRA_PLEDGE) });
+	it.each([
+		['empty', ''],
+		['blank', ' ']
+	])(
+		'names no receipt address on the IRA (QCD) thank-you when the pledge’s is %s',
+		async (_, to) => {
+			const card = await iraPending({ saved: unaddressed(IRA_PLEDGE, to) });
 
-		primary(card).click();
-		await settle();
+			primary(card).click();
+			await settle();
 
-		expect(heading(card)).toBe('Thank you');
-		expect(notice(card)).toEqual([
-			{
-				role: null,
-				title: 'We’ve told the organization',
-				body: 'Your gift counts when it arrives.'
-			}
-		]);
-		expect(said(card)).toBe('We’ve told the organization. Your gift counts when it arrives.');
-	});
+			expect(heading(card)).toBe('Thank you');
+			expect(notice(card)).toEqual([
+				{
+					role: null,
+					title: 'We’ve told the organization',
+					body: 'Your gift counts when it arrives.'
+				}
+			]);
+			expect(said(card)).toBe('We’ve told the organization. Your gift counts when it arrives.');
+		}
+	);
 
-	it('names no receipt address on the stock thank-you when the pledge has none', async () => {
-		const card = await stockPending({ saved: unaddressed(STOCK_PLEDGE) });
+	it.each([
+		['empty', ''],
+		['blank', ' ']
+	])('names no receipt address on the stock thank-you when the pledge’s is %s', async (_, to) => {
+		const card = await stockPending({ saved: unaddressed(STOCK_PLEDGE, to) });
 
 		primary(card).click();
 		await settle();
