@@ -167,7 +167,7 @@
 
 /*
  * a text box the form draws itself: the element's floating-label pair (`.floating` below, `textField`
- * in ../views.ts) and the coin search's box (../coin-picker.ts). every other box is the registry's
+ * in ../views.ts). every other box is the registry's
  * text box, `.ds-field-input` (../registry/styles/field-css.css), which this rule does not reach: a
  * box labelled over the top on the element, and every box on the deployment's own donor page, whose
  * react card (packages/app/src/lib/donate) puts the registry's class on its floating pair too; the two
@@ -238,8 +238,8 @@ textarea[part~='field'] {
  * which is the anatomy `@ark-ui/react`'s `Select` writes too, so a page drawing that component is
  * dressed by these rules without a class of its own.
  *
- * the chevron is `--_glyph-among` in the quiet ink, as the coin list's box draws its own
- * (./coins.css), and the open box takes the ring a box holding the caret takes: the caret is in the
+ * the chevron is `--_glyph-among` in the quiet ink, and the open box takes the ring a box holding
+ * the caret takes: the caret is in the
  * list while it is open, and the ring says which box the list belongs to.
  */
 [data-scope='select'][data-part='trigger'] {
@@ -281,8 +281,7 @@ textarea[part~='field'] {
 /*
  * the list's positioner is a popover in the top layer, and every property the UA sheet gives a
  * popover is taken back here: the box is zag's to place (`top`, `left` and the translate it writes
- * inline), so a UA inset, margin or border would move it off the box it is measured against. the
- * coin list's (./coins.css) is one too, and this sheet is the one both roots adopt.
+ * inline), so a UA inset, margin or border would move it off the box it is measured against.
  */
 [data-scope='select'][data-part='positioner'],
 [data-scope='combobox'][data-part='positioner'] {
@@ -296,7 +295,7 @@ textarea[part~='field'] {
 }
 
 /*
- * the open list, the closed choices' and the coin list's alike: the card's own ground inside a
+ * the open list of a closed choice: the card's own ground inside a
  * step-6 edge — the border radix gives a surface nothing operates, because the list is no box a
  * donor finds — at the inner radius, and flat like everything else on the card: the edge and the
  * step-1 face are what set it over the card it stands in front of. it stands in the top layer
@@ -1337,7 +1336,7 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * and the opacity, which is what keeps it that rung on screen. an engine fades a placeholder of
  * its own accord, and the fade is over the ink rather than instead of it, so left at the default
  * the rung a donor reads is one nothing here chose — and which engine a pasted embed runs in is not
- * ours to pick. `.picker input::placeholder` in ./coins.css declares it for the same reason.
+ * ours to pick.
  */
 [part~='amount-input'] input::placeholder {
 	color: var(--_n11);

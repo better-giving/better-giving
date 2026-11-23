@@ -43,7 +43,6 @@ import buttonStyles from './registry/styles/button-css.css?inline';
 import checkboxStyles from './registry/styles/checkbox-css.css?inline';
 import fieldStyles from './registry/styles/field-css.css?inline';
 import rowStyles from './styles/rows.css?inline';
-import coinStyles from './styles/coins.css?inline';
 import unitStyles from './styles/units.css?inline';
 
 // the dom pool. what a lightweight DOM can prove about a custom element is structure, attributes,
@@ -5237,11 +5236,11 @@ describe('the stylesheets', () => {
 	const still = `${declarations(partStyles)}\n${declarations(layoutStyles)}`;
 	const moving = declarations(motionStyles);
 	const css = `${still}\n${moving}`;
-	// the two sheets the card's own three do not cover: the coin list's (../coin-picker.ts) and the
+	// the two sheets the card's own three do not cover: the unit panel's (../unit-panel.ts) and the
 	// payment rows' (../embed/rows.ts). they are adopted into shadow roots of their own rather than
 	// into the card's, which is why they are not in `css` above — and why a token spent only in one
 	// of them is still a token this element spends.
-	const adopted = `${css}\n${declarations(coinStyles)}\n${declarations(rowStyles)}`;
+	const adopted = `${css}\n${declarations(unitStyles)}\n${declarations(rowStyles)}`;
 	// kept out of `css` above rather than folded into it: the token file is where every colour
 	// literal in this component is authored, so a sheet holding the ramp cannot be swept by the
 	// case below that refuses one.
@@ -5478,7 +5477,6 @@ describe('the stylesheets', () => {
 		// their sheets by a named import: a new file is swept for lengths the moment it lands and
 		// has to be carried into the colour cases by hand, and this is what says so.
 		expect(drawnFrom.map(([name]) => name)).toEqual([
-			'coins.css',
 			'layout.css',
 			'motion.css',
 			'parts.css',
@@ -5499,8 +5497,8 @@ describe('the stylesheets', () => {
 	it('spells a duration as a token in every sheet the motion case does not read', async () => {
 		// `reads every duration from a token` above reads ./styles/motion.css, the one sheet that
 		// moves. the rest are swept here. `declares no transition and no animation outside the
-		// motion sheet` holds ./styles/parts.css and ./styles/layout.css, and the coin list's own
-		// colour case holds ./styles/coins.css to the same — but ./styles/rows.css is held by
+		// motion sheet` holds ./styles/parts.css and ./styles/layout.css, and the unit panel's own
+		// colour case holds ./styles/units.css to the same — but ./styles/rows.css is held by
 		// neither, and it is adopted into a shadow root of its own, so the collapse under `reduce`
 		// reaches it only through the tokens a rule there spells.
 		//
@@ -5771,15 +5769,6 @@ describe('the stylesheets', () => {
 			expect(declarations(styles)).not.toMatch(/#[0-9a-f]{3,8}\b/i);
 			expect(declarations(styles)).not.toMatch(/\b(rgb|rgba|hsl|oklch)\(/);
 		}
-	});
-
-	// the coin list inside the crypto option carries a sheet of its own (./coin-picker.ts), held to it too.
-	it('derives every colour in the coin list from a token too', async () => {
-		const list = declarations(coinStyles);
-		expect(list.length).toBeGreaterThan(300);
-		expect(list).not.toMatch(/#[0-9a-f]{3,8}\b/i);
-		expect(list).not.toMatch(/\b(rgb|rgba|hsl|oklch)\(/);
-		expect(list).not.toMatch(/\btransition\b|\banimation\b|!important/);
 	});
 
 	// the unit panel carries a sheet of its own (./unit-panel.ts), held to it too.
@@ -7187,7 +7176,7 @@ describe('what the donor gives, on the first step', () => {
 		}
 	};
 
-	it('goes from a coin picked on step 1 through the details straight to its address', async () => {
+	it('goes from a coin picked on step 1 through the details and the review to its address', async () => {
 		const quotes: QuoteRequest[] = [];
 		const steps: string[] = [];
 		const card = await mount({
@@ -7213,8 +7202,10 @@ describe('what the donor gives, on the first step', () => {
 		onTestFinished(() => watch.disconnect());
 
 		await throughDetails(card);
+		card.find('.step-give [part~="submit"]').click();
+		await settle();
 
-		expect(steps).not.toContain('give');
+		expect(steps.slice(-2)).toEqual(['give', 'step takeover']);
 		expect(card.text('.takeover [part~="heading"]')).toBe('Send your gift');
 		expect(quotes.map((request) => [request.method, request.coin])).toEqual([['crypto', 'btc']]);
 	});
@@ -7228,6 +7219,8 @@ describe('what the donor gives, on the first step', () => {
 		type(quantity(card), '0.005');
 		await priced();
 		await throughDetails(card);
+		card.find('.step-give [part~="submit"]').click();
+		await settle();
 		const back = card.find('.takeover > .foot > [part~="action-quiet"]');
 		expect(back.textContent).toBe('Change what you give');
 
@@ -7272,9 +7265,17 @@ describe('what the donor gives, on the first step', () => {
 			}
 		});
 		type(quantity(card), '50');
+		// a stock gift has no review step, so the review step is never shown on the way.
+		let reviewed = false;
+		const watch = new MutationObserver(() => {
+			if (!card.find('.step-give').hidden) reviewed = true;
+		});
+		watch.observe(card.shadow, { attributes: true, subtree: true, attributeFilter: ['hidden'] });
+		onTestFinished(() => watch.disconnect());
 
 		await throughDetails(card);
 
+		expect(reviewed).toBe(false);
 		expect(card.find('.step-give').hidden).toBe(true);
 		expect(card.text('.takeover [part~="heading"]')).toBe('Your stock gift is pending');
 		expect(saved).toHaveLength(1);
@@ -7286,6 +7287,49 @@ describe('what the donor gives, on the first step', () => {
 		expect(tilesShown(card)).toBe(true);
 		expect(card.all('[part~="amount-option"]').at(-1)?.textContent).toBe('Other');
 		expect(quantity(card).closest('[part~="amount-input"]')?.closest('[hidden]')).not.toBeNull();
+	});
+
+	// the card box carries money alone, so on a form whose first step offers a coin its failure to
+	// come up is held rather than said (`paymentUnavailable` in ./checkout.machine.ts).
+	const BOX_DOWN = { message: 'This form cannot take a payment right now.', fix: 'Check the key.' };
+
+	it('keeps the first step when the card box never came up, and still gives a coin', async () => {
+		const card = await mount({
+			config: WITH_CRYPTO,
+			ports: { ...UNIT_PORTS, quote: async () => BTC_QUOTE }
+		});
+		card.unavailable(BOX_DOWN);
+		await settle();
+		expect(card.find('.step').hidden).toBe(false);
+		expect(card.find('.takeover').hidden).toBe(true);
+
+		await give(card, 'coin:btc');
+		type(quantity(card), '0.005');
+		await priced();
+		await throughDetails(card);
+		card.find('.step-give [part~="submit"]').click();
+		await settle();
+
+		expect(card.text('.takeover [part~="heading"]')).toBe('Send your gift');
+	});
+
+	it('refuses a gift of money with the box’s words at Review, and Try again goes to step 1', async () => {
+		const card = await mount({ config: WITH_CRYPTO, ports: UNIT_PORTS });
+		card.unavailable(BOX_DOWN);
+		await settle();
+		press(card.all('[part~="amount-option"] input')[0] as HTMLElement);
+
+		await throughDetails(card);
+
+		expect(shows(card, '.takeover .message')).toBe(BOX_DOWN.message);
+		expect(card.text('.takeover')).not.toContain('Check the key');
+		expect(primary(card).textContent).toBe('Try again');
+
+		primary(card).click();
+		await settle();
+
+		expect(card.find('.step').hidden).toBe(false);
+		expect(card.find('.takeover').hidden).toBe(true);
 	});
 });
 
@@ -7355,7 +7399,13 @@ describe('a crypto gift', () => {
 		await priced();
 		return card;
 	};
-	/** the address screen, for `quote`: the coin picked on the first step and the details given. */
+	/** the details given and the review step's Continue pressed, which sends the quote. */
+	const throughReview = async (card: Mounted) => {
+		await throughDetails(card);
+		action(card).click();
+		await settle();
+	};
+	/** the address screen, for `quote`: the coin picked on the first step and both later steps passed. */
 	const atAddress = async (quote: Quote = USDT, ticker = 'USDT', options: Options = {}) => {
 		const quotes: QuoteRequest[] = [];
 		const card = await onCoin(ticker, {
@@ -7368,13 +7418,87 @@ describe('a crypto gift', () => {
 				...options.ports
 			}
 		});
-		await throughDetails(card);
+		await throughReview(card);
 		return { card, quotes };
 	};
 	const heading = (card: Mounted) => card.text('.takeover [part~="heading"]');
 	const region = (card: Mounted) => card.text('[role="status"]');
+	/** the review step's one press, which on a coin gift mints the address. */
+	const action = (card: Mounted) => card.find('.step-give [part~="submit"]');
+	/** whether a node is on screen: neither it nor anything over it is `hidden`. */
+	const drawn = (node: Element) => node.closest('[hidden]') === null;
 
 	opensTheUnitPanel();
+
+	it('reaches step 3 with the receipt and the fee switch, and no payment method', async () => {
+		const card = await onCoin();
+		await throughDetails(card);
+		const step = card.find('.step-give');
+
+		expect(step.hidden).toBe(false);
+		expect(card.text('.step-give h2')).toBe('Review');
+		expect(
+			[...step.querySelectorAll('.step-dot')].findIndex(
+				(dot) => dot.getAttribute('aria-current') === 'step'
+			)
+		).toBe(2);
+		expect(card.text('.step-give [part~="summary"] .row:first-child')).toBe(
+			'One-time giftAbout $25.00'
+		);
+		expect(drawn(card.find('.fee-decision'))).toBe(true);
+		expect(card.find('.fee-decision').textContent).toBe('Cover the processing fee');
+		expect(drawn(card.find('[part~="payment"]'))).toBe(false);
+		expect(drawn(card.find('#payment-heading'))).toBe(false);
+		expect(drawn(card.find('.step-give .aside'))).toBe(false);
+		expect(action(card).textContent).toBe('Continue');
+	});
+
+	it('mints the address on the review step’s Continue, and not before', async () => {
+		const quotes: QuoteRequest[] = [];
+		const card = await onCoin('USDT', {
+			ports: {
+				quote: async (request) => {
+					quotes.push(request);
+					return USDT;
+				}
+			}
+		});
+		await throughDetails(card);
+		expect(quotes).toEqual([]);
+
+		action(card).click();
+		await settle();
+
+		expect(heading(card)).toBe('Send your gift');
+		expect(quotes.map((request) => [request.method, request.coin])).toEqual([
+			['crypto', 'usdttrc20']
+		]);
+	});
+
+	it.each([
+		[0, true],
+		[1, false],
+		[2, true]
+	])('sends the switch as it stands after %i presses', async (presses, covers) => {
+		const quotes: QuoteRequest[] = [];
+		const card = await onCoin('USDT', {
+			ports: {
+				quote: async (request) => {
+					quotes.push(request);
+					return USDT;
+				}
+			}
+		});
+		await throughDetails(card);
+		const box = card.find('.fee-decision input') as HTMLInputElement;
+		for (let at = 0; at < presses; at += 1) box.click();
+		expect(box.checked).toBe(covers);
+
+		action(card).click();
+		await settle();
+
+		expect(quotes.map((request) => request.coversFee)).toEqual([covers]);
+	});
 
 	afterEach(() => {
 		vi.useRealTimers();
@@ -7409,16 +7533,27 @@ describe('a crypto gift', () => {
 		).toEqual([true, false, false]);
 	});
 
-	it('asks for an amount on a Continue with none typed, and puts the caret in the box', async () => {
+	// the bounds sentence is the currency's, and no sentence names a missing coin amount, so the box
+	// is marked alone (`AmountDecision` in ./value.ts).
+	it('marks an empty box on a Continue, with the caret in it and no sentence', async () => {
 		const card = await mount({ config: CRYPTO, ports: PRICED });
 		await give(card, KEYS.USDT ?? '');
 
 		proceed(card);
 
+		const box = quantity(card).closest('[part~="amount-input"]') as HTMLElement;
 		expect(card.find('.step').hidden).toBe(false);
-		expect(shows(card, '#amount-problem')).toBe('Enter an amount between $5 and $50,000');
+		expect(shows(card, '#amount-problem')).toBe('');
 		expect(card.shadow.activeElement).toBe(quantity(card));
-		expect(quantity(card).getAttribute('aria-describedby')).toBe('amount-problem');
+		expect(quantity(card).getAttribute('aria-invalid')).toBe('true');
+		expect(box.getAttribute('part')).toContain('invalid');
+		expect(quantity(card).hasAttribute('aria-describedby')).toBe(false);
+
+		type(quantity(card), '25');
+		await priced();
+
+		expect(quantity(card).hasAttribute('aria-invalid')).toBe(false);
+		expect(box.getAttribute('part')).not.toContain('invalid');
 	});
 
 	it('shows what is being sent and where, in the order a donor reads it', async () => {
@@ -7851,8 +7986,8 @@ describe('a crypto gift', () => {
 		expect(region(card)).toBe('Checking for your gift.');
 	});
 
-	// the coin stays picked, so Start again mints a fresh address for the same coin from the details
-	// step's press (`depositExpired` in ./checkout.machine.ts).
+	// the coin stays picked, so Start again lands on the review step and its Continue mints a fresh
+	// address for the same coin (`depositExpired` in ./checkout.machine.ts).
 	it('offers a new address once the server says this one expired, and starts again on the coin', async () => {
 		vi.useFakeTimers({ shouldAdvanceTime: true });
 		let state: 'waiting' | 'expired' = 'expired';
@@ -7867,6 +8002,11 @@ describe('a crypto gift', () => {
 		);
 		state = 'waiting';
 		primary(card).click();
+		await settle();
+
+		expect(card.find('.step-give').hidden).toBe(false);
+		expect(action(card).textContent).toBe('Continue');
+		action(card).click();
 		await settle();
 
 		expect(heading(card)).toBe('Send your gift');
@@ -7889,7 +8029,7 @@ describe('a crypto gift', () => {
 					Promise.reject({ code: 'below_minimum', message: 'too small', minAmountMinor: 1200 })
 			}
 		});
-		await throughDetails(card);
+		await throughReview(card);
 
 		expect(card.find('.step').hidden).toBe(false);
 		expect(card.text('#amount-problem')).toBe(
@@ -7916,7 +8056,7 @@ describe('a crypto gift', () => {
 		const card = await onCoin('USDT', {
 			ports: { quote: () => Promise.reject({ ...refusal, message: 'refused' }) }
 		});
-		await throughDetails(card);
+		await throughReview(card);
 
 		expect(card.text('#amount-problem')).toBe(words);
 	});
@@ -7929,7 +8069,7 @@ describe('a crypto gift', () => {
 		const card = await onCoin('USDT', {
 			ports: { quote: () => Promise.reject({ code: 'above_maximum', message: 'refused' }) }
 		});
-		await throughDetails(card);
+		await throughReview(card);
 		const box = quantity(card).closest('[part~="amount-input"]') as HTMLElement;
 
 		expect(box.getAttribute('part')).toContain('invalid');
@@ -7947,7 +8087,7 @@ describe('a crypto gift', () => {
 		const card = await onCoin('USDT', {
 			ports: { quote: () => Promise.reject({ code: 'coin_not_accepted', message: 'refused' }) }
 		});
-		await throughDetails(card);
+		await throughReview(card);
 
 		expect(card.find('.step').hidden).toBe(false);
 		expect(card.text('#amount-problem')).toBe('Tether USD (Tron) is no longer accepted');

@@ -21,7 +21,10 @@ export const SEARCH_WITHOUT_STOCK = 'Search currency or crypto';
 /** the list's three group headings. */
 export const UNIT_GROUPS = { currency: 'Currencies', coin: 'Crypto', stock: 'Stocks' } as const;
 
-/** the Stocks group's sentence where the search found nothing, quoting what was typed. */
+/**
+ * the sentence for a search that found nothing, quoting what was typed: the Stocks group's, or the
+ * Crypto group's where stocks are off (`Listing` in ./unit-panel.ts).
+ */
 export function noStockMatch(query: string): string {
 	return `No match for “${query}”. Try a name or a ticker.`;
 }

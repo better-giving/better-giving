@@ -285,7 +285,7 @@ export type FormRuntime = {
 	 * what the box says and where a refusal about the custodian sends the caret, and the runtime only
 	 * stands it in the payment box. a caller handing none is one whose payment box draws no IRA (QCD)
 	 * option. a coin is picked on the first step (`unitsOffered` in ./checkout.machine.ts), so the
-	 * payment box lists no crypto option and is handed no coin list.
+	 * payment box lists no crypto option.
 	 */
 	readonly checkout: (
 		config: FormConfig,

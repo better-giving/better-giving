@@ -32,7 +32,11 @@ import { BENEFITS, createPledgeBlock, type PledgeNotice, type PledgeScreen } fro
 import {
 	CHANGE_WHAT_YOU_GIVE,
 	CONTINUE,
+	COVER_THE_FEE,
 	coinRefusalSentence,
+	REVIEW,
+	TOTAL_TODAY,
+	type CoinReview,
 	type ContinueCase,
 	type UnitMark,
 	type UnitPill
@@ -252,7 +256,7 @@ type Screen = (typeof SCREENS)[number];
  * same thing about the same three screens, in the words each layer needs: the flow names states,
  * this names what a donor reads.
  */
-const STEP_HEADINGS = ['Your gift', 'Your details', 'Review'] as const;
+const STEP_HEADINGS = ['Your gift', 'Your details', REVIEW] as const;
 
 /**
  * how many numbered steps a donor is told there are, which is the length of the list above.
@@ -1139,7 +1143,7 @@ type DetailsField = {
  * it names the decision rather than the row. the row is called `Processing fee` on every screen
  * past the review step, where the decision has been made and the line is an entry in the account.
  */
-const FEE_TOGGLE_LABEL = 'Cover the processing fee';
+const FEE_TOGGLE_LABEL = COVER_THE_FEE;
 
 /**
  * the notify press, in the two directions it goes.
@@ -1181,6 +1185,15 @@ const MADE_ONE_TIME = 'This is now a one-time gift.';
 /** whether the review step is offering a one-time gift in place of the repeating one chosen. */
 function oneTimeOffered(state: State): state is State & { readonly step: 'give' } {
 	return state.step === 'give' && state.oneTimeInstead;
+}
+
+/**
+ * the words of a coin gift's review step, present on that step alone (`coinReview` in ./connect.ts).
+ * the step is then the receipt, its fee switch and one press: the coin's rail is already chosen, so
+ * no payment method is listed and no provider's fields are asked for.
+ */
+function coinReviewOf(state: State): CoinReview | undefined {
+	return state.step === 'give' ? state.coinReview : undefined;
 }
 
 /** the repeating cadence an offer is made over, which is never one-time while one stands. */
@@ -2521,7 +2534,7 @@ export function createCard(
 	// between `giveStep` and `receiptSlot` and both are in it — and an `<output>` submits nothing, so
 	// the form is unchanged by it.
 	const totalFigure = make(doc, 'output', { class: 'figure' });
-	const totalLabel = make(doc, 'span', { class: 'row-label' }, ['Total today']);
+	const totalLabel = make(doc, 'span', { class: 'row-label' }, [TOTAL_TODAY]);
 	// inside the block rather than under it: the ongoing obligation, and "nothing has been charged
 	// yet", are statements about the total, so a donor reading the figure reads them with it.
 	const receiptNote = make(doc, 'p', { class: 'receipt-note', hidden: true });
@@ -3445,8 +3458,10 @@ export function createCard(
 				? ''
 				: coinRefusalWords(coinRefusal);
 		// either is a refused amount, and marks the tray, the tiles and the entry the same way — or,
-		// on a gift in kind, the one box its quantity is typed in, which stands in their place.
-		const amountRefused = missingAmount || refusal !== undefined;
+		// on a gift in kind, the one box its quantity is typed in, which stands in their place. a
+		// quantity missing from that box marks it too, with no sentence: the bounds above are the
+		// currency's, and no copy names a missing quantity (`AmountDecision` in ./value.ts).
+		const amountRefused = missingAmount || missing.includes('quantity') || refusal !== undefined;
 		const inKind = api.unit.entry !== null;
 		const tilesRefused = amountRefused && !inKind;
 		setText(amountMessage, amountWords);
@@ -3872,9 +3887,11 @@ export function createCard(
 		if (state.step !== 'give') pressed = false;
 		// an IRA (QCD) press is refused for its custodian, and that box says so under itself instead
 		// (`custodianProblem` below): the rail is chosen, so this box has nothing to say about it.
+		// a coin gift's review step draws no box (`coinReviewOf` above), so it has nothing to say here.
+		const boxed = state.step === 'give' && state.coinReview === undefined;
 		const refused =
 			pressed &&
-			state.step === 'give' &&
+			boxed &&
 			!state.payerComplete &&
 			state.method !== 'ira_qcd' &&
 			!state.oneTimeInstead;
@@ -3883,7 +3900,7 @@ export function createCard(
 		// other screen hides that step, so a sentence written here off it is one kept quiet by the
 		// layout rather than by this function — and the next thing to un-hide a step for a reason of
 		// its own would put a refusal on a screen that has nothing to do with it.
-		const words = state.step !== 'give' ? '' : refused ? PAYMENT_PROBLEM : declined;
+		const words = !boxed ? '' : refused ? PAYMENT_PROBLEM : declined;
 		setText(paymentMessage, words);
 		setHidden(paymentMessage, words === '');
 		toggleAttribute(payment, 'aria-describedby', words === '' ? null : 'payment-problem');
@@ -3914,7 +3931,7 @@ export function createCard(
 		const words = offered ? oneTimeOfferWords(oneTimeFrequency(state)) : '';
 		setText(oneTimeOffer, words);
 		setHidden(oneTimeGroup, !offered);
-		setHidden(paymentGroup, offered);
+		setHidden(paymentGroup, offered || coinReviewOf(state) !== undefined);
 		setHidden(submitButton, offered);
 		const arrived = offered && !offerDrawn;
 		offerDrawn = offered;
@@ -4140,9 +4157,12 @@ export function createCard(
 		// press saves the pledge rather than spending money, so it says Continue.
 		const pledging = state.step === 'give' && state.method === 'ira_qcd';
 		const changeable = state.step === 'give' && !pledging;
+		// a coin gift's review step words every line of this block itself, each figure "about" because
+		// the coin is valued when it arrives (`coinReview` in ./unit.ts); only the rows are this file's.
+		const coin = coinReviewOf(state);
 
-		setText(giftLabel, `${FREQUENCY_LABELS[fv.frequency]} gift`);
-		setText(giftFigure, money(fv.amountMinor));
+		setText(giftLabel, coin?.giftLabel ?? `${FREQUENCY_LABELS[fv.frequency]} gift`);
+		setText(giftFigure, coin?.gift ?? money(fv.amountMinor));
 		// the cause the donor chose, named. only a choice moves this line — a pinned name is the
 		// config's and was written at build — and a donor who chose none is told where the gift goes
 		// rather than shown a blank, because choosing none is an answer.
@@ -4169,7 +4189,10 @@ export function createCard(
 		// label with an empty column beside it. the two lines are one rule and neither survives the
 		// other being relaxed — ./element.dom.spec.ts, "drops the fee line once the press is past and
 		// there is no fee to state".
-		setText(feeFigure, feeShown ? `+ ${money(feeMinor)}` : '');
+		setText(
+			feeFigure,
+			coin !== undefined ? (coin.fee ?? '') : feeShown ? `+ ${money(feeMinor)}` : ''
+		);
 		// what the decision does to the money, priced both ways round: the money is the whole of what
 		// the switch is about, and a decision offered with a figure on one side only is one a donor
 		// cannot weigh.
@@ -4193,18 +4216,21 @@ export function createCard(
 		// figure to name.
 		const declined = api.feeToggle.declinedFee ?? null;
 		const consequence =
-			api.feeToggle.pressed === true
-				? feeShown
-					? `You add ${money(feeMinor)} so ${config.orgLegalName} receives the full ${money(fv.amountMinor)}.`
-					: ''
-				: declined === null
-					? `${config.orgLegalName} pays the processing fee out of your ${money(fv.amountMinor)}.`
-					: `${config.orgLegalName} pays ${money(declined.feeMinor)} out of your gift and receives ${money(declined.netMinor)}.`;
+			coin !== undefined
+				? (coin.feeLine ?? '')
+				: api.feeToggle.pressed === true
+					? feeShown
+						? `You add ${money(feeMinor)} so ${config.orgLegalName} receives the full ${money(fv.amountMinor)}.`
+						: ''
+					: declined === null
+						? `${config.orgLegalName} pays the processing fee out of your ${money(fv.amountMinor)}.`
+						: `${config.orgLegalName} pays ${money(declined.feeMinor)} out of your gift and receives ${money(declined.netMinor)}.`;
 		updateFeeDecision(api, changeable, changeable ? consequence : '');
-		setText(totalFigure, money(totalMinor));
+		setText(totalFigure, coin?.total ?? money(totalMinor));
 		// what the total is called is the one thing that changes about this block across screens:
 		// the gift is charged today, or it is one a bank has not moved yet.
-		const totalName = screen.totalLabel === '' ? 'Total today' : screen.totalLabel;
+		const totalName =
+			coin?.totalLabel ?? (screen.totalLabel === '' ? TOTAL_TODAY : screen.totalLabel);
 		setText(totalLabel, totalName);
 		// the repeat sentence is owed on the review step too, and that is a correctness requirement
 		// rather than a preference: the takeovers state it, and a monthly donor whose only sight of
@@ -4216,14 +4242,15 @@ export function createCard(
 		setHidden(receiptNote, receiptNote.textContent === '');
 		receiptWritten = true;
 		// the control that spends the money restates it.
-		setText(submitLabel, pledging ? 'Continue' : `Donate ${money(totalMinor)}`);
+		setText(submitLabel, coin?.action ?? (pledging ? CONTINUE : `Donate ${money(totalMinor)}`));
 
 		// an empty address stays empty and hidden. `receipts === true` names the address the receipt
 		// is going to. otherwise the line says no email will be sent, so the step does not promise
 		// a receipt this deployment cannot send.
 		// a pledge's receipt is sent when staff mark it received, which its pending screen says, so the
-		// line promising one now is not drawn over it.
-		const email = pledging ? '' : api.emailField.value.trim();
+		// line promising one now is not drawn over it. nor over a coin gift's press, which mints an
+		// address rather than making the gift: the design draws that step with no such line.
+		const email = pledging || coin !== undefined ? '' : api.emailField.value.trim();
 		const receiptLine =
 			email === ''
 				? ''

@@ -190,7 +190,7 @@ describe('the unit panel', () => {
 		await typed('aa', SEARCHED);
 
 		expect(asked).toEqual([]);
-		expect(groups()).toEqual([]);
+		expect(groups()).not.toContain('Stocks');
 	});
 
 	it('draws a stock row as its ticker over its company name, and nothing else', async () => {
@@ -284,6 +284,28 @@ describe('the unit panel', () => {
 			sentence
 		);
 		expect(root.querySelector('[role="status"]')?.textContent).toBe(sentence);
+	});
+
+	// with stocks off no Stocks group answers a search, so the sentence stands in the Crypto group, as
+	// the registry's own example draws a group's no-match (combobox-css.usage.md).
+	it('says no match where stocks are not offered, under Crypto, described and read out', async () => {
+		const { root, groups, listed, typed } = mounted({ choice: { stocks: false } });
+		await typed('zzq');
+		const crypto = root.querySelector('#unit-group-coin') as HTMLElement;
+		const sentence = 'No match for “zzq”. Try a name or a ticker.';
+
+		expect(groups()).toEqual(['Crypto']);
+		expect(listed()).toEqual([]);
+		expect(root.getElementById(crypto.getAttribute('aria-describedby') ?? '')?.textContent).toBe(
+			sentence
+		);
+		expect(root.querySelector('[role="status"]')?.textContent).toBe(sentence);
+
+		await typed('bt');
+
+		expect(groups()).toEqual(['Crypto']);
+		expect(crypto.hasAttribute('aria-describedby')).toBe(false);
+		expect(root.querySelector('[role="status"]')?.textContent).toBe('');
 	});
 
 	it('says the stock search failed in the Stocks group, and still lists what it found', async () => {

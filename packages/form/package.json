@@ -14,7 +14,6 @@
 		"./money": "./src/money.ts",
 		"./parts": "./src/parts.ts",
 		"./glyph": "./src/glyph.ts",
-		"./coin-picker": "./src/coin-picker.ts",
 		"./unit-panel": "./src/unit-panel.ts",
 		"./unit": "./src/unit.ts",
 		"./ticker-search": "./src/ticker-search.ts",

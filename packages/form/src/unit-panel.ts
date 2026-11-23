@@ -2,8 +2,8 @@
 // the served coins and, once the donor types, the stocks a ticker search finds.
 //
 // the card (./views.ts) and the deployment's own donation page (`src/lib/donate/` in packages/app)
-// mount it the way they mount `createCoinPicker` (./coin-picker.ts): `createUnitPanel(doc, handlers)`
-// hands back `host`, a node the caller places beside the pill, and
+// mount it alike: `createUnitPanel(doc, handlers)` hands back `host`, a node the caller places beside
+// the pill, and
 //
 //   update(choice)   the list patched to `choice`, which is `unitSelect` (./connect.ts) narrowed to
 //                    `UnitChoice` below;
@@ -17,17 +17,17 @@
 // and for Escape, where the caret has nowhere left to stand and the caller puts it back on the pill;
 // false where the donor already took it somewhere else.
 //
-// a shadow root of its own, for the reason ./coin-picker.ts carries one: a host page's `input { … }`
-// rule would otherwise reach the box. the panel stands in the top layer and is positioned against the
-// viewport (./zag.ts); the registry's colour and type variables reach it by inheritance from where the
-// caller places `host`, which is why it is placed inside the card rather than on the page's body.
+// a shadow root of its own: a host page's `input { … }` rule would otherwise reach the box. the panel
+// stands in the top layer and is positioned against the viewport (./zag.ts); the registry's colour and
+// type variables reach it by inheritance from where the caller places `host`, which is why it is
+// placed inside the card rather than on the page's body.
 //
 // the look is the registry's combobox (./registry/styles/combobox-css.usage.md is the markup contract)
 // on its select rows (select-css), with the marks and the panel's own placement in ./styles/units.css.
 //
-// zag's combobox machine runs the search box and the list, as it runs the coin list's. three things
-// it does not: the panel's own open state, which the machine is held to (`open`); a press or a focus
-// outside, because its layer would swallow Escape before the box saw it (`disableLayer`, and
+// zag's combobox machine runs the search box and the list. three things it does not: the panel's
+// own open state, which the machine is held to (`open`); a press or a focus outside, because its
+// layer would swallow Escape before the box saw it (`disableLayer`, and
 // `dismissOutside` below); and Escape itself, which bubbles out of the box with its default already
 // prevented by the machine and is answered by the host's own keydown listener below, which never
 // skips an event for that.
@@ -45,6 +45,7 @@ import {
 	COIN_REFUSED,
 	FLAG_SRC,
 	type FlagCountry,
+	noStockMatch,
 	UNIT_GROUPS,
 	UNIT_PANEL_NAME,
 	unitKey
@@ -207,9 +208,9 @@ function rowOfStock(match: TickerMatch): Row {
  * a row's mark in the registry's 32px slot: a round disc holding the letter, with the image laid
  * over it or the stock glyph in its place.
  *
- * a coin's logo is the processor's, fetched into a page this project does not own, and is drawn as
- * the coin list draws it (`logo` in ./coin-picker.ts): lazy, no referrer, and taken out on `error` so
- * the letter under it shows. a flag is inline (`FLAG_SRC` in ./unit.ts) and asks no origin.
+ * a coin's logo is the processor's, fetched into a page this project does not own, so it is drawn
+ * lazy, with no referrer, and taken out on `error` so the letter under it shows. a flag is inline
+ * (`FLAG_SRC` in ./unit.ts) and asks no origin.
  */
 function markNode(doc: Document, mark: Mark): HTMLElement {
 	const disc = node(doc, 'span', 'unit-mark');
@@ -264,10 +265,15 @@ const ID = 'unit';
 /** the groups in the order the list draws them. */
 const GROUPS: readonly Group[] = ['currency', 'coin', 'stock'];
 
-/** what the list draws for the search as typed: its rows in order, and the Stocks group's sentence. */
+/**
+ * what the list draws for the search as typed: its rows in order, and the one sentence a group says
+ * under its heading. the Stocks group's is the ticker search's answer; with stocks off no search is
+ * made, so a search that finds no row at all is said under the Crypto group instead, where the
+ * registry's own example draws a no-match (./registry/styles/combobox-css.usage.md).
+ */
 type Listing = {
 	readonly rows: readonly Row[];
-	readonly sentence: string | null;
+	readonly said: { readonly group: Group; readonly sentence: string } | null;
 	readonly collection: ReturnType<typeof zag.collection<Row>>;
 };
 
@@ -276,7 +282,7 @@ function found(options: readonly UnitOption[], group: Group, query: string): Row
 	const searchable = options
 		.filter((option) => option.group === group)
 		.map((option) => ({
-			// a coin is found by its processor code too, as the coin list finds it; a currency by
+			// a coin is found by its processor code too (`searchCoins` in ./coins.ts); a currency by
 			// its code, never by the list's own key.
 			value: option.group === 'coin' ? option.value.slice('coin:'.length) : option.label,
 			label: option.label,
@@ -303,8 +309,8 @@ export function createUnitPanel(doc: Document, handlers: UnitPanelHandlers): Uni
 	const label = node(doc, 'label', 'ds-sr-only');
 	const input = node(doc, 'input', 'ds-combobox-input');
 	const box = node(doc, 'div', 'ds-combobox-box', [glyph(doc, 'search', ''), input]);
-	// in the panel rather than outside it, unlike the coin list's: the donor types into a panel
-	// already showing, so the region is in the tree before any sentence arrives in it.
+	// in the panel rather than outside it: the donor types into a panel already showing, so the
+	// region is in the tree before any sentence arrives in it.
 	const status = node(doc, 'p', 'ds-sr-only');
 	status.setAttribute('role', 'status');
 	status.setAttribute('aria-live', 'polite');
@@ -362,9 +368,15 @@ export function createUnitPanel(doc: Document, handlers: UnitPanelHandlers): Uni
 			...found(options ?? [], 'coin', query),
 			...(group !== null && 'rows' in group ? group.rows.map(rowOfStock) : [])
 		];
+		const searched = query.trim();
 		const next: Listing = {
 			rows,
-			sentence: group !== null && 'sentence' in group ? group.sentence : null,
+			said:
+				group !== null && 'sentence' in group
+					? { group: 'stock', sentence: group.sentence }
+					: choice?.stocks !== true && searched !== '' && rows.length === 0
+						? { group: 'coin', sentence: noStockMatch(searched) }
+						: null,
 			collection: zag.collection({
 				items: rows,
 				itemToValue: (row) => row.value,
@@ -463,12 +475,13 @@ export function createUnitPanel(doc: Document, handlers: UnitPanelHandlers): Uni
 		if (label.textContent !== choice.search) label.textContent = choice.search;
 		input.placeholder = choice.search;
 
-		const { rows, sentence } = listing();
+		const now = listing();
+		const sentence = now.said?.sentence ?? null;
 		const drawn: HTMLElement[] = [];
 		for (const key of GROUPS) {
 			const group = groups.get(key);
-			const mine = rows.filter((row) => row.group === key);
-			const said = key === 'stock' ? sentence : null;
+			const mine = now.rows.filter((row) => row.group === key);
+			const said = now.said?.group === key ? sentence : null;
 			// a group draws only with rows or a sentence of its own: a bare heading reads as an empty
 			// section, so the Stocks group stays away until a search has answered.
 			if (group === undefined || (mine.length === 0 && said === null)) continue;

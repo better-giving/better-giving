@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { cdp, page, userEvent } from 'vitest/browser';
-import { createCoinPicker } from './coin-picker';
 import { PRE_UPGRADE_RESERVATION_CSS, RESERVED_MIN_HEIGHT } from './embed/reservation';
 import { defineDonateForm, DONATE_FORM_TAG } from './element';
 import type { CheckoutPorts } from './ports';
@@ -598,39 +597,6 @@ describe('the closed choices on the amount step', () => {
 				box.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
 			};
 			return { page: host, root, box, press };
-		},
-		'the open coin list': async () => {
-			const picker = createCoinPicker(document);
-			onTestFinished(() => picker.stop());
-			const page = document.createElement('div');
-			page.appendChild(picker.host);
-			document.body.appendChild(page);
-			planted.push(page);
-			picker.update(
-				{
-					value: '',
-					options: [
-						{ value: 'btc', label: 'BTC', name: 'Bitcoin', network: 'Bitcoin', refused: false },
-						{ value: 'sol', label: 'SOL', name: 'Solana', network: 'Solana', refused: false }
-					],
-					onChange: () => {}
-				},
-				''
-			);
-			// a task first, as `mount` waits one: the case before leaves its element with a list open,
-			// and an element tears down a task after it leaves (`#leaving` in ./element.ts). pressed
-			// before then, this list does not open.
-			await settle();
-			const root = shadow(picker.host);
-			const box = root.querySelector<HTMLElement>('.picker');
-			if (box === null) throw new Error('no coin box');
-			const input = box.querySelector('input');
-			if (input === null) throw new Error('no coin search');
-			const press = () => {
-				input.focus();
-				input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
-			};
-			return { page, root, box, press };
 		}
 	};
 
@@ -1619,4 +1585,58 @@ describe('the first step’s unit pill and Continue', () => {
 		expect(Math.round(box.width)).toBe(Math.round(step.width));
 		expect(label.left - box.left).toBeLessThan(box.right - label.right);
 	});
+
+	// a coin gift's review step is the receipt, its fee switch and one Continue (`coinReview` in
+	// ./connect.ts): the switch row and the press stand inside the card at both frame widths, and no
+	// payment method is drawn between them.
+	for (const [width, height] of [
+		[1440, 900],
+		[375, 812]
+	] as const) {
+		it(`draws a coin gift’s switch row and Continue inside the card at ${width}px`, async () => {
+			await page.viewport(width, height);
+			onTestFinished(() => page.viewport(414, 896));
+			const root = shadow(await mount(WITH_CRYPTO, { ports: PRICED }));
+			await userEvent.click(pillOf(root));
+			await frames();
+			await userEvent.click(
+				panelOf(root).querySelector<HTMLElement>(
+					'[role="option"][data-value="coin:btc"]'
+				) as HTMLElement
+			);
+			await frames();
+			await userEvent.fill(root.querySelector('#quantity-entry') as HTMLInputElement, '0.005');
+			const forward = () =>
+				root
+					.querySelector<HTMLElement>('.step:not([hidden]) [part~="action"]:not([part~="submit"])')
+					?.click();
+			await vi.waitFor(() => {
+				forward();
+				if (root.querySelector<HTMLElement>('.step-details')?.hidden !== false)
+					throw new Error('the coin amount is not priced yet');
+			});
+			await userEvent.fill(root.querySelector('#email') as HTMLInputElement, 'donor@example.org');
+			await userEvent.fill(root.querySelector('#first-name') as HTMLInputElement, 'Ada');
+			await userEvent.fill(root.querySelector('#last-name') as HTMLInputElement, 'Lovelace');
+			forward();
+			await frames();
+
+			const card = (root.querySelector("[part~='card']") as HTMLElement).getBoundingClientRect();
+			const row = root.querySelector('.step-give .fee-decision') as HTMLElement;
+			const toggle = root.querySelector('.step-give .fee-decision .switch') as HTMLElement;
+			const press = root.querySelector('.step-give [part~="submit"]') as HTMLElement;
+			const inside = (node: HTMLElement) => {
+				const box = node.getBoundingClientRect();
+				return box.left >= card.left && box.right <= card.right && box.bottom <= card.bottom;
+			};
+
+			expect(row.checkVisibility()).toBe(true);
+			expect(toggle.checkVisibility()).toBe(true);
+			expect(press.checkVisibility()).toBe(true);
+			expect(press.textContent).toBe('Continue');
+			expect([row, toggle, press].map(inside)).toEqual([true, true, true]);
+			expect(root.querySelector<HTMLElement>('[part~="payment"]')?.checkVisibility()).toBe(false);
+			expect(press.getBoundingClientRect().top).toBeGreaterThan(row.getBoundingClientRect().bottom);
+		});
+	}
 });
