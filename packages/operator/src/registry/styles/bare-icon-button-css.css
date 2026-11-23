@@ -1,5 +1,5 @@
 /* the registry's bare icon button as plain css, no tailwind: the glyph alone,
-   no container or padding, 20px or 16px with -sm. reads only the variables the
+   no container or padding, 20px, 16px with -sm or 12px with -xs. reads only the variables the
    `variables` item declares. bare-icon-button-css.test.tsx renders the React
    `BareIconButton` beside it and asserts the same computed look in light and
    dark, for the default and example themes.
@@ -36,6 +36,9 @@
 .ds-icon-bare-sm {
   --ds-icon: calc(1 * var(--ds-rem, 1rem));
 }
+.ds-icon-bare-xs {
+  --ds-icon: calc(0.75 * var(--ds-rem, 1rem));
+}
 .ds-icon-bare > svg {
   inline-size: 100%;
   block-size: 100%;
@@ -50,7 +53,8 @@
 }
 
 /* hover and press: gray-12, the press 1px down. off, busy and done take
-   neither; held open and a pressed toggle keep their accent ink */
+   neither; held open, a pressed toggle and an active button keep their
+   accent ink */
 @media (hover: hover) and (pointer: fine) {
   .ds-icon-bare:hover:not(
     :disabled,
@@ -58,7 +62,8 @@
     [aria-busy="true"],
     [data-done="true"],
     [aria-expanded="true"],
-    [aria-pressed="true"]
+    [aria-pressed="true"],
+    [data-active="true"]
   ) {
     color: var(--gray-12);
   }
@@ -69,7 +74,8 @@
   [aria-busy="true"],
   [data-done="true"],
   [aria-expanded="true"],
-  [aria-pressed="true"]
+  [aria-pressed="true"],
+  [data-active="true"]
 ) {
   color: var(--gray-12);
 }
@@ -98,6 +104,14 @@
   color: var(--accent-11);
 }
 .ds-icon-bare[aria-pressed="true"] > svg {
+  fill: currentColor;
+}
+/* active, data-active="true": a setting off its default (a filter applied);
+   a look, not a toggle state, so it is no aria-pressed */
+.ds-icon-bare[data-active="true"] {
+  color: var(--accent-11);
+}
+.ds-icon-bare[data-active="true"] > svg {
   fill: currentColor;
 }
 

@@ -1,7 +1,9 @@
 /* the registry's menu as plain css, no tailwind: the floating panel of
-   actions a row's "more" or an account button opens, its rows, a group label,
-   a header that is not a row, and a separator. reads only the variables the
-   `variables` item declares; a row's glyph sits in lead-css's ds-lead-1lh.
+   actions a row's "more" or an account button opens, its rows, a row with a
+   checkbox, a group label, a header that is not a row, a separator, and a
+   scroller for a long list. reads only the variables the `variables` item
+   declares; a row's glyph sits in lead-css's ds-lead-1lh, and a checkbox row's
+   box is checkbox-css's ds-checkbox.
    menu-css.test.tsx renders the React `Menu` beside it and asserts the same
    computed look in light and dark, for the default and example themes.
 
@@ -31,6 +33,12 @@
     calc(var(--ds-spacing) * 80),
     calc(100vw - calc(var(--ds-spacing) * 4))
   );
+  max-block-size: min(
+    calc(var(--ds-spacing) * 96),
+    calc(100dvh - calc(var(--ds-spacing) * 4))
+  );
+  overflow-y: auto;
+  overscroll-behavior: contain;
   /* a popover's own inset: 0 would keep right set beside the page's left,
      and under dir="rtl" left is the one dropped */
   inset: auto;
@@ -44,6 +52,12 @@
   z-index: var(--ds-z-index-floating);
   outline: none;
   animation: ds-popup-in var(--duration-fast) var(--ds-ease-out);
+}
+/* a grid's rows never shrink under its max height: with a scroller the panel
+   is a flex column, the same stack, whose scroller gives way */
+.ds-menu:has(> .ds-menu-scroller) {
+  display: flex;
+  flex-direction: column;
 }
 /* the class's display would otherwise beat the browser's own hiding */
 .ds-menu:is([hidden], [popover]:not(:popover-open)) {
@@ -149,6 +163,27 @@
   opacity: 0.6;
 }
 
+/* a row with a checkbox: a ds-checkbox in the one-line box, 12px before the
+   label. a ticked row is not tinted; the box carries the state, and a mixed
+   row's box is :indeterminate, set from script. the row takes the click */
+.ds-menu-check {
+  gap: calc(var(--ds-spacing) * 3);
+}
+.ds-menu-check .ds-checkbox {
+  pointer-events: none;
+}
+
+/* the rows of a long list, which scroll inside the panel's 24rem while the
+   rows before it stay put */
+.ds-menu-scroller {
+  display: grid;
+  gap: calc(var(--ds-spacing) * 0.5);
+  min-block-size: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
 /* the label over a group of rows */
 .ds-menu-label {
   margin: 0;
@@ -192,6 +227,7 @@
 }
 
 .ds-menu-separator {
+  flex-shrink: 0;
   block-size: 1px;
   margin: var(--ds-spacing) 0;
   border: 0;
