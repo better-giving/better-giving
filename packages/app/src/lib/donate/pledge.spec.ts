@@ -2,9 +2,10 @@ import type { Pledge } from '@better-giving/form/v1';
 import { describe, expect, it } from 'vitest';
 import { instructionsMailto, pledgeDetails, pledgeSummary } from './pledge';
 
-// the instructions this page's card links, pinned to the output packages/form/src/pledge.spec.ts
-// pins for the element's `instructionsMailto`: the same pledges, the same subject and the same body
-// lines, so a wording changed on one side fails here until the other says it too.
+// the instructions this page's card links, held to the same pledges, subjects and body lines that
+// packages/form/src/pledge.spec.ts holds the element's `instructionsMailto` to. the two specs share
+// no code, so a wording changed on one side fails only that side's spec, and the other is changed by
+// hand to match.
 
 const STOCK: Pledge = {
 	id: 'p1',

@@ -2,8 +2,9 @@ import type { PaymentSurface } from '@better-giving/form/embed/stripe';
 import { describe, expect, it, vi } from 'vitest';
 import { deploymentPorts } from './ports';
 
-// the pledge id this page's card mints, pinned to `pledgeUuid` in packages/form/src/embed/runtime.ts:
-// the same bytes make the same id, so the two renderers send one shape of `pledgeId`.
+// the pledge id this page's card mints, against ids written out here for the bytes drawn. nothing
+// here runs `pledgeUuid` in packages/form/src/embed/runtime.ts, so the element's mint is kept to the
+// same version and variant bits by hand.
 
 /** the pledge ports, over a surface nothing here reaches. */
 const pledges = () => deploymentPorts({} as PaymentSurface).pledges;

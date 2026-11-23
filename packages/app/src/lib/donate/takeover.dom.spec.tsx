@@ -868,8 +868,9 @@ describe('a saved pledge’s screens', () => {
 	});
 
 	// the form's sheets size a pending screen by a takeover whose own shown pledge holds an unhidden
-	// details list, and this page draws its pledge screens in the element's tree so those rules reach
-	// them and no other takeover.
+	// details list. this page draws its pledge screens in the element's shape so those rules reach
+	// them, and these match the sheets' own selectors against the tree this page draws: every part
+	// they name on a pending screen, and no other takeover.
 	describe('the form’s pending-screen rules', () => {
 		const require = createRequire(import.meta.url);
 		const PENDING = '.takeover:has(> .pledge:not([hidden])):has(.pledge-details:not([hidden]))';

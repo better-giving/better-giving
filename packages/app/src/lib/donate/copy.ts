@@ -305,7 +305,7 @@ export function mandateNote(org: string, total: string): string {
 export const USE_DIFFERENT_METHOD = 'Use a different payment method';
 
 /**
- * who a donor on a given rail is waiting on, which is four answers rather than eight.
+ * who a donor on a given rail is waiting on, which is five answers rather than one per rail.
  *
  * the wallets are a card presented differently and wait on the same issuer; the two hosted-window
  * rails wait on the processor whose window opened, and there the word a donor read on the button is

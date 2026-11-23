@@ -38,7 +38,7 @@ const SAME_DEPLOYMENT = '';
 
 /**
  * a version 4 UUID (RFC 9562), the `pledgeId` a pledge's save carries, as `pledgeUuid` in
- * packages/form/src/embed/runtime.ts mints it (pinned by ./ports.spec.ts).
+ * packages/form/src/embed/runtime.ts mints it (this one's output pinned by ./ports.spec.ts).
  *
  * drawn from `crypto.getRandomValues`, the one `Crypto` member an insecure context keeps (MDN,
  * Crypto.getRandomValues): a deployment may serve this page over http, where `crypto.randomUUID`

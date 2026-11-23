@@ -63,7 +63,7 @@ import {
 //     commit, on the same opening — the payment provider reads computed style off a mounted node,
 //     and taking the resume token rewrites the URL, which is not a thing a render may do.
 //   - which screen the card is on. a busy flow stays on the last screen shown, because the flow
-//     collapses five machine states into one thing a donor is told and the projection cannot say
+//     collapses several machine states into one thing a donor is told and the projection cannot say
 //     which screen asked.
 //   - the caret. a screen change hides the control that held focus, so focus is put on the heading
 //     of the screen that arrived — never on the flow's first paint, and never before the section it
@@ -785,9 +785,10 @@ function CheckoutCard({
 			withinTakeover &&
 			caretInTakeover &&
 			(takeover.heading !== before.heading || (!relabelledInPlace && primary !== before.primary));
-		// three arrivals put the caret on the control that fixes what the donor arrived about rather
-		// than on the heading: a coin's refusal of the amount on the control holding the figure, and a
-		// refusal of the coin — or a way back from the address screen — on the coin list.
+		// four arrivals put the caret on the control that fixes what the donor arrived about rather
+		// than on the heading: a coin's refusal of the amount on the control holding the figure, a
+		// refusal of the coin — or a way back from the address screen — on the coin list, and a refused
+		// custodian on the custodian box.
 		const backToCoins =
 			state.step === 'give' &&
 			state.method === 'crypto' &&
@@ -1108,8 +1109,8 @@ function CheckoutCard({
 			? (shot.words ?? '')
 			: '';
 	// a pledge's Copy pressed while its screen's notice stood, which the region said before the press:
-	// it outranks that notice as the element's does (`createPledgeBlock` in @better-giving/form's
-	// views.ts says it straight onto the region), and a notice that changes since spends it.
+	// it outranks that notice as the element's does (views.ts in @better-giving/form says the outcome
+	// `createPledgeBlock` hands it straight onto the region), and a notice that changes since spends it.
 	const copiedOverNotice =
 		takeover.announce !== '' && shot?.over === takeover.announce ? copied : '';
 	// in the order the fields are asked in, which is the order they are laid out in and the order the
@@ -1142,7 +1143,7 @@ function CheckoutCard({
 			: '';
 	const bounds = copy.amountProblem(offer, config.minAmountMinor, config.maxAmountMinor);
 	// what a numbered step was refused for, said out loud, and one sentence however many steps there
-	// are: the two are mutually exclusive, because a press is refused on the step it was made on. each
+	// are: the three are mutually exclusive, because a press is refused on the step it was made on. each
 	// is here only for the press that moved no caret and had no other channel (`askedInPlace`,
 	// `detailsSaid`, and a Continue refused with the caret already in the custodian box).
 	const askedFor = [

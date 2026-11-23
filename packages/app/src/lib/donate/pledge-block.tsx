@@ -10,8 +10,9 @@ import { Glyph } from './sections/glyph';
 // element's draw these too (`.pledge`, `.pledge-list`, `.benefits` and `.ira-panel` in
 // packages/form/src/styles/parts.css and layout.css; the notice is the registry's notice-card-css).
 //
-// the order is the screen's: the info notice heads the thank-you, and the error notice stands under
-// the benefits panel, directly over the press it asks the donor to make again.
+// the order is the screen's: the info notice heads the thank-you and a pledge saved again, and the
+// error notice stands under the benefits panel, directly over the press it asks the donor to make
+// again.
 
 /** a notice the registry's notice card draws (notice-card-css.usage.md). */
 export type PledgeNotice = {

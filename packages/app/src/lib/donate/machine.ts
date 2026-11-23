@@ -200,7 +200,7 @@ async function formStillReads(formId: string, signal: AbortSignal): Promise<bool
 /**
  * the flow, running, with every provider wired into it.
  *
- * the payment surface is built before the actor because two of the actor's five ports are its own
+ * the payment surface is built before the actor because two of the actor's ports are its own
  * and a third is wrapped around it (./ports.ts).
  * it is the composer in @better-giving/form/embed/surface rather than either processor's adapter,
  * so a deployment holding two of them still hands the flow one surface and nothing below this line
