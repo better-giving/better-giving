@@ -1,5 +1,5 @@
-// the rows the payment box lists outside the provider's frame: one per PayPal rail, the fund's, the
-// IRA (QCD) option's and the crypto option's.
+// the rows the payment box lists outside the provider's frame: one per PayPal rail, the fund's and
+// the IRA (QCD) option's.
 //
 // the provider paints its own rails as rows inside its frame (`layout` in ./stripe.ts), and a donor
 // reads the box as one list, so the options the other adapters draw are rows of the same shape: the
@@ -22,7 +22,7 @@
 import rowStyles from '../styles/rows.css?inline';
 
 /** which mark a row carries. */
-export type RowMark = 'paypal' | 'venmo' | 'fund' | 'crypto' | 'ira';
+export type RowMark = 'paypal' | 'venmo' | 'fund' | 'ira';
 
 /** one row, as the adapter that drew it and the composer that coordinates it hold it. */
 export type Row = {
@@ -104,7 +104,7 @@ type Glyph = {
  * (`.head` in ../styles/rows.css). the processors' are their brands' colours and change with
  * nothing.
  *
- * raw-colour-ok: PayPal's, Venmo's and NOWPayments' fills are a third party's trademark rather than a
+ * raw-colour-ok: PayPal's and Venmo's fills are a third party's trademark rather than a
  * colour of this card. the provider's own rows carry their brands' marks in their brands' colours inside its frame,
  * and these stand in that list.
  */
@@ -133,15 +133,6 @@ const BRAND_MARKS: Readonly<Record<RowMark, Glyph>> = {
 				fill: '#008CFF',
 				d: 'M42.3 2L28.5 4.8c.8 1.9 1.4 4.1 1.4 7.4 0 6-4.2 14.8-7.7 20.4L18.5 3 3.3 4.5l7 41.5h17.4c7.7-10 17-24.3 17-35.2 0-3.4-.8-6.1-2.4-8.8z'
 			}
-		]
-	},
-	// NOWPayments' favicon, https://nowpayments.io/images/favicon.ico: a 64px raster of two squares,
-	// written as the two paths its pixels draw, fills verbatim.
-	crypto: {
-		viewBox: '0 0 64 64',
-		paths: [
-			{ fill: '#68AAFF', d: 'M0 0h64v64H0z' },
-			{ fill: '#000000', d: 'M15 15h34v34H15z' }
 		]
 	},
 	// lucide's `piggy-bank` (https://lucide.dev, ISC), the mark the design draws on this row: no

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	APPLE_SRC,
 	coinRefusalSentence,
+	coinReview,
 	FLAG_SRC,
 	continueCase,
 	currencyOf,
@@ -216,7 +217,43 @@ describe('the Continue on the first step', () => {
 		});
 	});
 
-	it('is a plain Continue for a coin or stock gift, which skips the payment step', () => {
+	it('is a plain Continue for a coin or stock gift, which chooses no payment method', () => {
 		expect(continueCase(CONFIG, true)).toEqual({ case: 'in-kind', label: 'Continue' });
+	});
+});
+
+describe('a coin gift’s review step', () => {
+	const ORG = { ...CONFIG, orgLegalName: 'Cedar Fork Community Pantry Inc.' } as FormConfig;
+
+	it('states the gift, the fee it adds and the total, each as about, with the switch on', () => {
+		expect(
+			coinReview(ORG, { giftMinor: 225_000, covers: true, feeMinor: 2273, totalMinor: 227_273 })
+		).toEqual({
+			heading: 'Review',
+			giftLabel: 'One-time gift',
+			gift: 'About $2,250.00',
+			feeSwitch: 'Cover the processing fee',
+			fee: '+ about $22.73',
+			feeLine: 'You add about $22.73 toward the processing fee.',
+			totalLabel: 'Total today',
+			total: 'About $2,272.73',
+			action: 'Continue'
+		});
+	});
+
+	it('names who pays the fee and adds nothing, with the switch off', () => {
+		expect(
+			coinReview(ORG, { giftMinor: 225_000, covers: false, feeMinor: null, totalMinor: 225_000 })
+		).toMatchObject({
+			fee: null,
+			feeLine: 'Cedar Fork Community Pantry Inc. pays the processing fee out of your gift.',
+			total: 'About $2,250.00'
+		});
+	});
+
+	it('states no fee and no fee line where the switch is on and the rail prices no fee', () => {
+		expect(
+			coinReview(ORG, { giftMinor: 225_000, covers: true, feeMinor: null, totalMinor: 225_000 })
+		).toMatchObject({ fee: null, feeLine: null, total: 'About $2,250.00' });
 	});
 });

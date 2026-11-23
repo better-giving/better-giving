@@ -54,6 +54,64 @@ export const CONTINUE = 'Continue';
 export const NEXT_PAYMENT = 'Next: payment';
 export const CONTINUE_TO_PAYMENT = 'Continue to payment';
 
+/** a coin gift's review step: its head, the receipt's three labels, and its one press, `CONTINUE`. */
+export const REVIEW = 'Review';
+export const ONE_TIME_GIFT = 'One-time gift';
+export const COVER_THE_FEE = 'Cover the processing fee';
+export const TOTAL_TODAY = 'Total today';
+
+/**
+ * a coin gift's review step as it reads: the money step's receipt with its fee switch, every figure
+ * "about" because the coin is valued when it arrives. `fee` stands beside the switch only while it is
+ * on; `feeLine` says what the switch does either way, and both are `null` where it is on and the rail
+ * prices no fee, which leaves nothing true to add.
+ */
+export type CoinReview = {
+	readonly heading: typeof REVIEW;
+	readonly giftLabel: typeof ONE_TIME_GIFT;
+	readonly gift: string;
+	readonly feeSwitch: typeof COVER_THE_FEE;
+	readonly fee: string | null;
+	readonly feeLine: string | null;
+	readonly totalLabel: typeof TOTAL_TODAY;
+	readonly total: string;
+	readonly action: typeof CONTINUE;
+};
+
+/**
+ * the words for a coin gift's review step. `feeMinor` is the covered fee, `null` with the switch off
+ * or unpriced; `totalMinor` is the figure the quote is measured against (`shownTotalMinor` in
+ * ./checkout.machine.ts), passed in rather than summed here so the receipt and the press state one.
+ */
+export function coinReview(
+	config: Pick<FormConfig, 'locale' | 'currency' | 'orgLegalName'>,
+	figures: {
+		readonly giftMinor: number;
+		readonly covers: boolean;
+		readonly feeMinor: number | null;
+		readonly totalMinor: number;
+	}
+): CoinReview {
+	const money = (minor: number) => formatMinor(minor, config.locale, config.currency);
+	const { covers, feeMinor } = figures;
+	const added = covers && feeMinor !== null ? money(feeMinor) : null;
+	return {
+		heading: REVIEW,
+		giftLabel: ONE_TIME_GIFT,
+		gift: aboutEstimate(figures.giftMinor, config),
+		feeSwitch: COVER_THE_FEE,
+		fee: added === null ? null : `+ about ${added}`,
+		feeLine: !covers
+			? `${config.orgLegalName} pays the processing fee out of your gift.`
+			: added === null
+				? null
+				: `You add about ${added} toward the processing fee.`,
+		totalLabel: TOTAL_TODAY,
+		total: aboutEstimate(figures.totalMinor, config),
+		action: CONTINUE
+	};
+}
+
 /** the address screen's way back to the first step. */
 export const CHANGE_WHAT_YOU_GIVE = 'Change what you give';
 
@@ -286,7 +344,7 @@ function exampleCoinMark(config: PillConfig): UnitMark[] {
 /**
  * the first step's Continue. `methods` and `one-method` go to the payment step, whose methods are
  * named in the eyebrow's hidden description, in the order the design lists them and only the
- * deployment's own; `in-kind` is a coin or stock gift, which skips that step.
+ * deployment's own; `in-kind` is a coin or stock gift, which chooses no payment method.
  */
 export type ContinueCase =
 	| {

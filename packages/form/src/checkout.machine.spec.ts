@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest';
 import {
 	checkoutMachine,
 	coinEstimate,
-	cryptoIsOffered,
 	fundIsOffered,
 	oneTimeIsOfferedInstead,
 	openFund,
@@ -1740,7 +1739,6 @@ const EVERY_EVENT: readonly CheckoutEvent[] = Object.values({
 	BACK: { type: 'BACK' },
 	GO_TO_STEP: { type: 'GO_TO_STEP', step: 'amount' },
 	SET_METHOD: { type: 'SET_METHOD', method: 'card' },
-	SET_COIN: { type: 'SET_COIN', coin: 'btc' },
 	SET_CUSTODIAN: { type: 'SET_CUSTODIAN', custodian: 'Fidelity Investments' },
 	PLEDGE_STOCK: { type: 'PLEDGE_STOCK', ticker: 'AAPL', shares: '50' },
 	TELL_ORGANIZATION: { type: 'TELL_ORGANIZATION' },
@@ -2814,6 +2812,7 @@ describe('a crypto gift', () => {
 	it('sends the coin the donor picked and waits on the address the quote minted', async () => {
 		const { actor, calls } = await coinDetails();
 		actor.send({ type: 'CONTINUE' });
+		actor.send({ type: 'SUBMIT' });
 		await settle();
 
 		expect(calls.quote[0]?.coin).toBe('usdttrc20');
@@ -2821,10 +2820,11 @@ describe('a crypto gift', () => {
 		expect(actor.getSnapshot().matches('awaitingDeposit')).toBe(true);
 	});
 
-	/** the address screen, reached with a coin picked and the quote's deposit in hand. */
+	/** the address screen, reached through the review step's press with the quote's deposit in hand. */
 	async function awaitingDeposit(options: HarnessOptions = {}) {
 		const h = await coinDetails(options);
 		h.actor.send({ type: 'CONTINUE' });
+		h.actor.send({ type: 'SUBMIT' });
 		await settle();
 		return h;
 	}
@@ -2880,24 +2880,23 @@ describe('a crypto gift', () => {
 		expect(actor.getSnapshot().value).toBe('depositExpired');
 	});
 
-	it('mints a fresh address for the same coin on a Try again, never through the review step', async () => {
+	it('lands a Try again on the review step, whose press mints a fresh address for the same coin', async () => {
 		const { actor, calls, clock } = await awaitingDeposit({
 			status: async () => ({ state: 'expired' })
 		});
 		clock.advance(DEPOSIT_POLL_MS);
 		await settle();
-		const steps: string[] = [];
-		actor.subscribe((snapshot) => steps.push(toState(snapshot).step));
 
 		actor.send({ type: 'RETRY' });
-		actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'tk_again' });
-		await settle();
-
-		expect(steps).not.toContain('give');
+		expect(actor.getSnapshot().value).toBe('give');
 		expect(actor.getSnapshot().context.payerDraft).toMatchObject({
 			method: 'crypto',
 			coin: 'usdttrc20'
 		});
+		actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'tk_again' });
+		actor.send({ type: 'SUBMIT' });
+		await settle();
+
 		expect(calls.quote.map((request) => request.coin)).toEqual(['usdttrc20', 'usdttrc20']);
 		expect(actor.getSnapshot().matches('awaitingDeposit')).toBe(true);
 	});
@@ -3008,6 +3007,7 @@ describe('a crypto gift', () => {
 			h.actor.send({ type: 'CONTINUE' });
 			h.actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'tk_next' });
 			h.actor.send({ type: 'CONTINUE' });
+			h.actor.send({ type: 'SUBMIT' });
 
 			expect(h.actor.getSnapshot().value).toBe('quoting');
 			expect(h.actor.getSnapshot().context.payerDraft).toMatchObject({
@@ -3041,6 +3041,7 @@ describe('a crypto gift', () => {
 			h.actor.send({ type: 'CONTINUE' });
 			h.actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'tk_next' });
 			h.actor.send({ type: 'CONTINUE' });
+			h.actor.send({ type: 'SUBMIT' });
 
 			expect(h.actor.getSnapshot().value).toBe('quoting');
 			expect(h.actor.getSnapshot().context.payerDraft.coin).toBe('btc');
@@ -4103,7 +4104,7 @@ describe('what the donor gives', () => {
 		expect(coinEstimate(actor.getSnapshot().context)).toEqual({ status: 'unpriced' });
 	});
 
-	it('refuses Continue on a coin amount with no estimate, as an amount still missing', async () => {
+	it('refuses Continue on a coin amount with no estimate, as a quantity still missing', async () => {
 		const { actor, clock } = onCoin({ estimate: async () => null });
 		actor.send({ type: 'SET_QUANTITY', quantity: '0.005' });
 		clock.advance(ESTIMATE_DEBOUNCE_MS);
@@ -4112,6 +4113,22 @@ describe('what the donor gives', () => {
 		actor.send({ type: 'CONTINUE' });
 
 		expect(actor.getSnapshot().value).toBe('amount');
+		expect(toState(actor.getSnapshot())).toMatchObject({ step: 'amount', missing: ['quantity'] });
+	});
+
+	// the currency's amount names the form's bounds; a coin's or a share count's box is a quantity,
+	// which no sentence names, so a renderer marks the box alone.
+	it('refuses Continue on an empty coin or share box as a quantity missing, never an amount', () => {
+		const { actor } = onCoin();
+		actor.send({ type: 'CONTINUE' });
+		expect(toState(actor.getSnapshot())).toMatchObject({ step: 'amount', missing: ['quantity'] });
+
+		actor.send({ type: 'SET_UNIT', unit: { kind: 'stock', ticker: 'AAPL' } });
+		actor.send({ type: 'CONTINUE' });
+		expect(toState(actor.getSnapshot())).toMatchObject({ step: 'amount', missing: ['quantity'] });
+
+		actor.send({ type: 'SET_UNIT', unit: { kind: 'currency' } });
+		actor.send({ type: 'CLEAR_AMOUNT' });
 		expect(toState(actor.getSnapshot())).toMatchObject({ step: 'amount', missing: ['amount'] });
 	});
 
@@ -4169,15 +4186,25 @@ describe('what the donor gives', () => {
 		return h;
 	}
 
-	it('sends a coin gift from the details step straight to its address, at the estimate', async () => {
+	it('takes a coin gift from the details step to the review step, on the coin’s rail, minting nothing', async () => {
 		const { actor, calls } = await coinDetails();
-		const steps: string[] = [];
-		actor.subscribe((snapshot) => steps.push(toState(snapshot).step));
 
 		actor.send({ type: 'CONTINUE' });
 		await settle();
 
-		expect(steps).not.toContain('give');
+		expect(actor.getSnapshot().value).toBe('give');
+		expect(actor.getSnapshot().context.payerDraft).toMatchObject({ method: 'crypto', coin: 'btc' });
+		expect(calls.quote).toEqual([]);
+	});
+
+	it('sends a coin gift from the review step’s press to its address, at the estimate', async () => {
+		const { actor, calls } = await coinDetails();
+		actor.send({ type: 'CONTINUE' });
+		actor.send({ type: 'TOGGLE_FEE_COVERAGE' });
+
+		actor.send({ type: 'SUBMIT' });
+		await settle();
+
 		expect(calls.quote).toMatchObject([
 			{
 				method: 'crypto',
@@ -4188,6 +4215,102 @@ describe('what the donor gives', () => {
 			}
 		]);
 		expect(actor.getSnapshot().matches('awaitingDeposit')).toBe(true);
+	});
+
+	it('reaches a coin gift’s review step by its mark, as a money gift’s', async () => {
+		const { actor } = await coinDetails();
+		actor.send({ type: 'GO_TO_STEP', step: 'give' });
+		expect(actor.getSnapshot().value).toBe('give');
+	});
+
+	// the review step's Continue is the press a Try again stands the donor in front of again.
+	it('lands a Try again after a failed coin quote on the review step, whose press mints again', async () => {
+		let answer: () => Promise<Quote> = () => Promise.reject(new TypeError('Failed to fetch'));
+		const { actor, calls } = await coinDetails({ quote: () => answer() });
+		actor.send({ type: 'CONTINUE' });
+		actor.send({ type: 'SUBMIT' });
+		await settle();
+		expect(actor.getSnapshot().value).toBe('failed');
+
+		answer = async () => BTC_QUOTE;
+		actor.send({ type: 'RETRY' });
+		expect(actor.getSnapshot().value).toBe('give');
+		actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'tk_again' });
+		actor.send({ type: 'SUBMIT' });
+		await settle();
+
+		expect(calls.quote).toMatchObject([
+			{ method: 'crypto', coin: 'btc' },
+			{ method: 'crypto', coin: 'btc', turnstileToken: 'tk_again' }
+		]);
+		expect(actor.getSnapshot().matches('awaitingDeposit')).toBe(true);
+	});
+
+	// the payment box carries money alone, so its never coming up leaves a gift in kind to give.
+	const BOX_DOWN = {
+		type: 'PAYMENT_UNAVAILABLE',
+		failure: { message: 'The payment fields could not be shown.' }
+	} as const;
+
+	it('keeps a coin gift going when the payment box never came up', async () => {
+		const { actor, calls } = await coinDetails();
+		actor.send(BOX_DOWN);
+		expect(actor.getSnapshot().value).toBe('details');
+
+		actor.send({ type: 'CONTINUE' });
+		actor.send({ type: 'SUBMIT' });
+		await settle();
+
+		expect(calls.quote).toMatchObject([{ method: 'crypto', coin: 'btc' }]);
+		expect(actor.getSnapshot().matches('awaitingDeposit')).toBe(true);
+	});
+
+	it('refuses money once it reaches its review step with no payment box, and goes back to pick again', () => {
+		const { actor } = harness({ config: EVERYTHING });
+		actor.send(BOX_DOWN);
+		expect(actor.getSnapshot().value).toBe('amount');
+
+		actor.send({ type: 'CONTINUE' });
+		actor.send({
+			type: 'SET_CONTACT',
+			email: 'donor@example.org',
+			firstName: 'Ada',
+			lastName: 'Lovelace'
+		});
+		actor.send({ type: 'CONTINUE' });
+		expect(toState(actor.getSnapshot())).toEqual({
+			step: 'failed',
+			message: 'The payment fields could not be shown.'
+		});
+
+		actor.send({ type: 'RETRY' });
+		expect(actor.getSnapshot().value).toBe('amount');
+	});
+
+	it('offers no fund’s button on a coin gift’s review step', async () => {
+		const funded: FormConfig = {
+			...EVERYTHING,
+			paymentMethods: [...EVERYTHING.paymentMethods, 'daf']
+		};
+		const { actor } = await coinDetails({ config: funded });
+		actor.send({ type: 'CONTINUE' });
+
+		expect(fundIsOffered(actor.getSnapshot())).toBe(false);
+		actor.send({ type: 'OPEN_FUND' });
+		expect(actor.getSnapshot().value).toBe('give');
+	});
+
+	// the switch stands where the deployment sets it (`DEFAULT_COVERS_FEE` in ./value.ts) until the
+	// donor moves it, and the quote is minted for the fee on the coin rail's own rule.
+	it('covers the fee on a coin gift as the deployment sets it, at the coin rail’s rule', async () => {
+		const { actor, calls } = await coinDetails();
+		actor.send({ type: 'CONTINUE' });
+
+		expect(actor.getSnapshot().context.estimate).toEqual({ feeMinor: 487, totalMinor: 48_697 });
+		actor.send({ type: 'SUBMIT' });
+		await settle();
+
+		expect(calls.quote).toMatchObject([{ method: 'crypto', amountMinor: 48_210, coversFee: true }]);
 	});
 
 	/** the details step of 50 shares of AAPL, filled in, with a token minted. */
@@ -4215,6 +4338,19 @@ describe('what the donor gives', () => {
 		expect(calls.pledge).toMatchObject([
 			{ method: 'stock', ticker: 'AAPL', shares: '50', frequency: 'one_time' }
 		]);
+	});
+
+	// a stock pledge states shares and no amount, so it carries no fee decision at all
+	// (`StockPledgeRequest` in ./v1.ts), whichever way the switch stands.
+	it('sends a stock gift with no fee decision while the switch stands at its default', async () => {
+		const { actor, calls } = stockDetails();
+		expect(actor.getSnapshot().context.payerDraft.coversFee).toBeUndefined();
+		actor.send({ type: 'CONTINUE' });
+		await settle();
+
+		expect(calls.pledge).toHaveLength(1);
+		expect(calls.pledge[0]).not.toHaveProperty('coversFee');
+		expect(calls.pledge[0]).not.toHaveProperty('amountMinor');
 	});
 
 	it('reaches no money step by a mark while the gift is in kind', () => {
@@ -4261,10 +4397,5 @@ describe('what the donor gives', () => {
 
 		expect(calls.quote).toEqual([]);
 		expect(calls.pledge).toHaveLength(2);
-	});
-
-	it('draws no crypto row on the money step', () => {
-		const { actor } = harness({ config: EVERYTHING });
-		expect(cryptoIsOffered(actor.getSnapshot())).toBe(false);
 	});
 });

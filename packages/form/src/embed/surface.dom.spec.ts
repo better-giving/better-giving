@@ -75,7 +75,7 @@ type Kit = {
 	readonly collapses: number[];
 	readonly paypalSessions: SessionOptionsLike[];
 	readonly paypalStarts: Promise<{ orderId: string }>[];
-	readonly seams: Parameters<typeof createPaymentSurface>[6];
+	readonly seams: Parameters<typeof createPaymentSurface>[5];
 };
 
 type Answers = {
@@ -193,9 +193,6 @@ if (customElements.get(CHARIOT_TAG) === undefined) {
 	);
 }
 
-/** the coin list the card hands over, which the crypto row stands in and nothing here reads. */
-const COIN_LIST = document.createElement('div');
-
 async function composed(k: Kit, config: FormConfig = CONFIG) {
 	const surface = createPaymentSurface(
 		config,
@@ -203,7 +200,6 @@ async function composed(k: Kit, config: FormConfig = CONFIG) {
 		(rail) => k.rails.push(rail),
 		(failure) => k.unavailable.push(failure),
 		NO_FUND,
-		COIN_LIST,
 		k.seams
 	);
 	for (let turn = 0; turn < 8; turn += 1) await Promise.resolve();
@@ -282,21 +278,25 @@ describe('one payment surface over however many processors a config names', () =
 	});
 
 	// PayPal's adapter answers inside its own constructor where the config names no client id, which
-	// is before the crypto option after it has been built at all.
+	// is before the IRA (QCD) option after it has been built at all.
 	it('says nothing when PayPal fails at once ahead of an option still to be built', async () => {
 		const k = kit();
-		await composed(k, {
-			...CONFIG,
-			providers: [],
-			paymentMethods: ['paypal', 'crypto']
-		});
+		createPaymentSurface(
+			{ ...CONFIG, providers: [], paymentMethods: ['paypal', 'ira_qcd'] },
+			k.mount,
+			(rail) => k.rails.push(rail),
+			(failure) => k.unavailable.push(failure),
+			NO_FUND,
+			k.seams,
+			document.createElement('div')
+		);
+		for (let turn = 0; turn < 8; turn += 1) await Promise.resolve();
 		expect(k.unavailable).toHaveLength(0);
 	});
 
-	// a fund and crypto are one-time rails (`fundIsOffered` and `cryptoIsOffered` in
-	// ../checkout.machine.ts), so with the card down they are a way to pay a one-time gift and no way
-	// to pay a repeating one — which is a gift the donor can still make, once, rather than a form with
-	// no way to pay.
+	// a fund is a one-time rail (`fundIsOffered` in ../checkout.machine.ts), so with the card down it
+	// is a way to pay a one-time gift and no way to pay a repeating one — which is a gift the donor
+	// can still make, once, rather than a form with no way to pay.
 	describe('the processors left up taking only one-time gifts', () => {
 		const STRIPE = { name: 'stripe', publishableKey: 'pk_live_x' } as const;
 		const CARD_AND_FUND: FormConfig = {
@@ -305,27 +305,16 @@ describe('one payment surface over however many processors a config names', () =
 			frequencies: ['one_time', 'monthly'],
 			paymentMethods: ['card', 'daf']
 		};
-		const CARD_AND_CRYPTO: FormConfig = {
-			...CONFIG,
-			providers: [STRIPE],
-			frequencies: ['one_time', 'monthly'],
-			paymentMethods: ['card', 'crypto']
-		};
-		const ONE_TIME_RAILS = [CARD_AND_FUND, CARD_AND_CRYPTO];
-
 		it('says a repeating gift cannot be paid, once, and not that nothing can', async () => {
-			for (const config of ONE_TIME_RAILS) {
-				const k = kit({ stripe: () => Promise.resolve(null) });
-				const surface = await composed(k, config);
-				const said: number[] = [];
-				surface.repeatingUnavailable(() => said.push(1));
-				surface.cadence('monthly');
-				surface.cadence('one_time');
-				expect(said, config.paymentMethods.join('+')).toHaveLength(1);
-				expect(k.unavailable, config.paymentMethods.join('+')).toHaveLength(0);
-				surface.stop();
-				document.body.replaceChildren();
-			}
+			const k = kit({ stripe: () => Promise.resolve(null) });
+			const surface = await composed(k, CARD_AND_FUND);
+			const said: number[] = [];
+			surface.repeatingUnavailable(() => said.push(1));
+			surface.cadence('monthly');
+			surface.cadence('one_time');
+			expect(said).toHaveLength(1);
+			expect(k.unavailable).toHaveLength(0);
+			surface.stop();
 		});
 
 		it('says nothing of a repeating gift while the card box is still loading', async () => {
@@ -371,7 +360,7 @@ describe('one payment surface over however many processors a config names', () =
 		// a form offering no one-time gift has no gift these rails can take at all.
 		it('says nothing can be paid where the form offers no one-time gift', async () => {
 			const k = kit({ stripe: () => Promise.resolve(null) });
-			await composed(k, { ...CARD_AND_CRYPTO, frequencies: ['monthly'] });
+			await composed(k, { ...CARD_AND_FUND, frequencies: ['monthly'] });
 			expect(k.unavailable).toHaveLength(1);
 		});
 	});
@@ -652,73 +641,6 @@ describe('one payment surface over however many processors a config names', () =
 			surface.stop();
 		});
 
-		describe('the crypto option', () => {
-			const CRYPTO: FormConfig = {
-				...CONFIG,
-				paymentMethods: ['card', 'paypal', 'crypto'],
-				coins: [
-					{ coin: 'btc', ticker: 'btc', name: 'Bitcoin', network: 'btc', memoRequired: false }
-				]
-			};
-
-			it('stands last, holding the card’s coin list, while crypto is offered', async () => {
-				const k = kit();
-				const surface = await composed(k, CRYPTO);
-				expect(rowsIn(k).map((row) => head(row)?.textContent)).toEqual(['PayPal']);
-
-				surface.offerCrypto(true);
-				expect(rowsIn(k).map((row) => head(row)?.textContent)).toEqual(['PayPal', 'Crypto']);
-				expect(rowsIn(k)[1]?.contains(COIN_LIST)).toBe(true);
-
-				surface.offerCrypto(false);
-				expect(rowsIn(k).map((row) => head(row)?.textContent)).toEqual(['PayPal']);
-				surface.stop();
-			});
-
-			// opening the row is choosing the rail: the coin list inside it is the rest of the choice.
-			it('chooses the rail when its row is opened and lets it go when the row closes', async () => {
-				const k = kit();
-				const surface = await composed(k, CRYPTO);
-				surface.offerCrypto(true);
-
-				head(rowsIn(k)[1])?.click();
-				expect(k.rails).toEqual(['crypto']);
-				head(rowsIn(k)[0])?.click();
-				expect(k.rails).toEqual(['crypto', null]);
-				head(rowsIn(k)[1])?.click();
-				k.pickCard('card');
-				expect(k.rails).toEqual(['crypto', null, 'crypto', null, 'card']);
-				surface.stop();
-			});
-
-			it('lets the rail go with the row when crypto stops being offered while it is open', async () => {
-				const k = kit();
-				const surface = await composed(k, CRYPTO);
-				surface.offerCrypto(true);
-				head(rowsIn(k)[1])?.click();
-
-				surface.offerCrypto(false);
-
-				expect(k.rails).toEqual(['crypto', null]);
-				surface.stop();
-			});
-
-			// raw-colour-ok: NOWPayments' favicon fills, as ./rows.ts states them.
-			it('draws NOWPayments’ mark in its own fills, with no id', async () => {
-				const k = kit();
-				const surface = await composed(k, CRYPTO);
-				surface.offerCrypto(true);
-
-				const glyph = head(rowsIn(k)[1])?.querySelector('svg');
-				expect(glyph?.getAttribute('viewBox')).toBe('0 0 64 64');
-				expect(
-					[...(glyph?.querySelectorAll('path') ?? [])].map((path) => path.getAttribute('fill'))
-				).toEqual(['#68AAFF', '#000000']);
-				expect(glyph?.querySelector('[id]')).toBeNull();
-				surface.stop();
-			});
-		});
-
 		describe('the IRA (QCD) option', () => {
 			const PLEDGES: FormConfig = {
 				...CONFIG,
@@ -736,7 +658,6 @@ describe('one payment surface over however many processors a config names', () =
 					(rail) => k.rails.push(rail),
 					(failure) => k.unavailable.push(failure),
 					NO_FUND,
-					COIN_LIST,
 					k.seams,
 					IRA_PANEL
 				);
@@ -744,23 +665,19 @@ describe('one payment surface over however many processors a config names', () =
 				return surface;
 			};
 
-			// stock is picked on the first step, so it never has a row (`FormConfig.paymentMethods`).
-			it('stands after the hosted window’s rows and before crypto while it is offered, and stock has no row', async () => {
+			// a coin and stock are picked on the first step, so neither ever has a row
+			// (`FormConfig.paymentMethods`).
+			it('stands after the hosted window’s rows while it is offered, and a coin and stock have no row', async () => {
 				const k = kit();
 				const surface = await pledging(k);
-				surface.offerCrypto(true);
-				expect(rowsIn(k).map((row) => head(row)?.textContent)).toEqual(['PayPal', 'Crypto']);
+				expect(rowsIn(k).map((row) => head(row)?.textContent)).toEqual(['PayPal']);
 
 				surface.offerIra(true);
-				expect(rowsIn(k).map((row) => head(row)?.textContent)).toEqual([
-					'PayPal',
-					'IRA (QCD)',
-					'Crypto'
-				]);
+				expect(rowsIn(k).map((row) => head(row)?.textContent)).toEqual(['PayPal', 'IRA (QCD)']);
 				expect(rowsIn(k)[1]?.contains(IRA_PANEL)).toBe(true);
 
 				surface.offerIra(false);
-				expect(rowsIn(k).map((row) => head(row)?.textContent)).toEqual(['PayPal', 'Crypto']);
+				expect(rowsIn(k).map((row) => head(row)?.textContent)).toEqual(['PayPal']);
 				surface.stop();
 			});
 

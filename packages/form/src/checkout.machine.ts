@@ -46,12 +46,13 @@
 // creates the grant inside that request, so a usable answer is the gift made and nothing is
 // confirmed after it. closing the window unapproved goes back to `give`.
 //
-// a gift in kind is picked on the first step (`SET_UNIT`) and has no money step. a coin gift's rail is
-// `details ─► holding ─► quoting ─► awaitingDeposit`: the quote mints an address for the estimate the
-// coin amount was priced at, the donor sends the coin from their own wallet, and the gift is read until
-// it arrives (`success`) or the address closes empty (`depositExpired`). a refusal of its amount or its
-// coin lands back on the first step, which fixes it, rather than on `failed`. a stock gift's is
-// `details ─► holding ─► quoting ─► pledged`.
+// a gift in kind is picked on the first step (`SET_UNIT`) and has no payment method to choose. a coin
+// gift's rail is `details ─► give ─► holding ─► quoting ─► awaitingDeposit`: its review step is the
+// receipt and the fee switch with no method rows, the quote mints an address for the estimate the coin
+// amount was priced at and any fee covered on it, the donor sends the coin from their own wallet, and
+// the gift is read until it arrives (`success`) or the address closes empty (`depositExpired`). a
+// refusal of its amount or its coin lands back on the first step, which fixes it, rather than on
+// `failed`. a stock gift has no review step: its rail is `details ─► holding ─► quoting ─► pledged`.
 //
 // `quoted` is a junction rather than a screen. it routes to `confirm` where the total moved and
 // to `mandate` where the rail wants an authorization; both of those lead on to `confirming`, and
@@ -306,10 +307,10 @@ export type CheckoutContext = {
 	 */
 	readonly authorization: FundAuthorization | null;
 	/**
-	 * the rail the donor stood on before pressing a fund's own button or saving a stock pledge, which
-	 * is where they stand again when that attempt is over.
+	 * the rail the donor stood on before pressing a fund's own button, saving a stock pledge or
+	 * reaching a coin gift's review step, which is where they stand again when that attempt is over.
 	 *
-	 * either press is a rail being chosen with no row of the payment box opened for it, so the rail
+	 * each is a rail being chosen with no row of the payment box opened for it, so the rail
 	 * it displaced is still the one picked in the other boxes on the card — a donor who closes the
 	 * window or presses Try again is back in front of those boxes, and nothing in them reports the
 	 * pick a second time.
@@ -353,6 +354,13 @@ export type CheckoutContext = {
 	 * it once. kept for the card's life: a processor that never came up does not come up later.
 	 */
 	readonly repeatingUnavailable: boolean;
+	/**
+	 * the payment surface's report that it never came up, held on a form whose first step also offers
+	 * a coin or stock (`unitsOffered`): the box carries money alone, so a gift in kind is still one to
+	 * give, and a gift of money is refused with this once it reaches the step the box is on
+	 * (`moneyHasNoBox`). kept for the card's life, as `repeatingUnavailable` is.
+	 */
+	readonly paymentUnavailable: Failure | null;
 	/**
 	 * what the donor has typed into the thank-you's employer box, kept until the write takes it.
 	 *
@@ -555,13 +563,6 @@ export type CheckoutEvent =
 	 */
 	| { readonly type: 'GO_TO_STEP'; readonly step: NumberedStep }
 	| { readonly type: 'SET_METHOD'; readonly method: PaymentMethod | null }
-	/**
-	 * the coin a `crypto` gift is sent in, as `PayableCoin.coin` names it, or `null` for none.
-	 *
-	 * answered on the review step alone, for a coin chosen there; a coin picked on the first step is
-	 * `SET_UNIT`'s, and the details step's press sets it on the payer (`chooseCoin`).
-	 */
-	| { readonly type: 'SET_COIN'; readonly coin: string | null }
 	/** the IRA custodian an `ira_qcd` pledge names, as the donor types it on the review step. */
 	| { readonly type: 'SET_CUSTODIAN'; readonly custodian: string }
 	/**
@@ -801,9 +802,9 @@ function quoteRequest(context: CheckoutContext, payer: Payer): QuoteRequest {
 		amountMinor: fv.amountMinor,
 		frequency: fv.frequency,
 		method: payer.method,
-		// a gift in kind is never shown the fee switch, which is on the money step it skips, so it
-		// covers no fee: the deposit asks for the coin the donor priced, not more.
-		coversFee: fv.inKind === undefined && payer.coversFee,
+		// the review step's switch, a coin gift's as well: covered, the server grosses the price the
+		// address is minted for up by the same fee, so the deposit asks for the gift and the fee.
+		coversFee: payer.coversFee,
 		email: payer.email,
 		firstName: payer.firstName,
 		lastName: payer.lastName,
@@ -1012,26 +1013,30 @@ export function shownTotalMinor(context: CheckoutContext): number | null {
 }
 
 /**
- * the rail the donor stands on once a fund's or a stock pledge's attempt is over: either rail is held
- * only between its press and the end of that attempt, and gives way to the rail it displaced.
+ * the rail the donor stands on once a fund's, a stock pledge's or a coin gift's attempt is over: each
+ * rail is held only for that attempt (`isHeldRail`), and gives way to the rail it displaced.
  */
 function standingRail(context: CheckoutContext): PaymentMethod | undefined {
 	const { method } = context.payerDraft;
 	return method !== undefined && isHeldRail(method) ? context.displacedRail : method;
 }
 
-/** a rail chosen by a press of its own rather than by a row of the payment box. */
+/**
+ * a rail the flow holds rather than a row of the payment box: a gift in kind's, set by the details
+ * step's press for stock and by the review step's entry for a coin (`standOnGift`), and a fund's, set
+ * by its own button's press.
+ */
 function isHeldRail(method: PaymentMethod): boolean {
-	return isInKindRail(method) || isChariotRail(method);
+	return method === 'stock' || method === 'crypto' || isChariotRail(method);
 }
 
 /**
- * a rail a gift in kind is given on, which the details step's own press chooses: such a gift has no
- * review step, so its press, its wait for a token and its Try again all belong to the details step.
- * exported for ./connect.ts, which projects the held press there.
+ * whether a press on `method` is the details step's: a stock gift has no review step, so its press,
+ * its wait for a token and its Try again all belong to the details step. exported for ./connect.ts,
+ * which projects the held press there.
  */
-export function isInKindRail(method: PaymentMethod | undefined): boolean {
-	return method === 'stock' || method === 'crypto';
+export function pressesOnDetails(method: PaymentMethod | undefined): boolean {
+	return method === 'stock';
 }
 
 /**
@@ -1062,9 +1067,15 @@ export function openFund(
 	};
 }
 
+/** a decided one-time gift in the deployment's own currency, which is the gift a fund may grant. */
+function givesMoneyOnce(context: CheckoutContext): boolean {
+	return context.fv?.frequency === 'one_time' && context.fv.inKind === undefined;
+}
+
 /**
- * whether a fund's own button stands on the card: the review step of a one-time gift on a form
- * offering the fund's rail, and the fund's window opened from it.
+ * whether a fund's own button stands on the card: the review step of a one-time gift of money on a
+ * form offering the fund's rail, and the fund's window opened from it. a coin gift's review step
+ * lists no payment method, so it offers no fund either.
  *
  * the window is included because its endings are heard on that element, and an element taken off
  * the page while its window is open drops the approval the donor is giving in it. exported for both
@@ -1077,19 +1088,9 @@ export function fundIsOffered(snapshot: {
 	const { context, value } = snapshot;
 	return (
 		(value === 'give' || value === 'holding' || value === 'authorizing') &&
-		context.fv?.frequency === 'one_time' &&
+		givesMoneyOnce(context) &&
 		context.config.paymentMethods.some(isChariotRail)
 	);
-}
-
-/**
- * whether the payment box lists the crypto option, which it never does: a coin is picked on the first
- * step (`unitsOffered`), and a coin gift goes from the details step straight to its address. kept for
- * the deployment's own donation page, which tells its payment surface on every reading; the element's
- * payment box is built with no crypto option at all (`createFormRuntime` in ./embed/runtime.ts).
- */
-export function cryptoIsOffered(_snapshot: { readonly context: CheckoutContext }): boolean {
-	return false;
 }
 
 /**
@@ -1098,8 +1099,9 @@ export function cryptoIsOffered(_snapshot: { readonly context: CheckoutContext }
  *
  * Venmo has a one-time session and no subscription session (`venmo-payments` in `@paypal/paypal-js`),
  * so a repeating gift on it is a subscription nobody can approve. read off the cadence as it is being
- * picked, for the reason `cryptoIsOffered` above gives. PayPal's own rail is not narrowed here.
- * exported for both surfaces that run this flow, which tell their payment surface on every reading.
+ * picked, so the option leaves the box the moment a repeating cadence is chosen rather than once it
+ * is committed. PayPal's own rail is not narrowed here. exported for both surfaces that run this
+ * flow, which tell their payment surface on every reading.
  */
 export function venmoIsOffered(snapshot: { readonly context: CheckoutContext }): boolean {
 	const { config, draft } = snapshot.context;
@@ -1112,7 +1114,7 @@ export function venmoIsOffered(snapshot: { readonly context: CheckoutContext }):
  *
  * neither pledge rail takes a gift that repeats (`FormConfig.paymentMethods` in ./v1.ts), so the IRA
  * (QCD) row leaves the payment box with a repeating cadence, read off the cadence as it is being
- * picked for the reason `cryptoIsOffered` above gives. exported for both surfaces that run this flow,
+ * picked for the reason `venmoIsOffered` above gives. exported for both surfaces that run this flow,
  * which tell their payment surface on every reading.
  */
 export function pledgeIsOffered(
@@ -1240,7 +1242,7 @@ export function missingAmount(context: CheckoutContext): readonly AmountDecision
 	// a coin the account refused on this card is refused again (`refusedCoins`), so its amount is not
 	// one a press may carry.
 	const refused = unit?.kind === 'coin' && context.refusedCoins.includes(unit.coin);
-	return refused && !missing.includes('amount') ? ['amount', ...missing] : missing;
+	return refused && !missing.includes('quantity') ? ['quantity', ...missing] : missing;
 }
 
 /** everything the amount step exists to decide has been decided. */
@@ -1301,8 +1303,8 @@ export function stepIsReachable(
 	if (target < at) return true;
 	if (target === at) return false;
 	if (!amountIsDecided(context)) return false;
-	// a gift in kind has no money step: its details step's press goes on to the address or the pledge.
-	if (to === 'give' && isInKind(context.draft.unit)) return false;
+	// a stock gift has no review step: its details step's press goes on to the pledge.
+	if (to === 'give' && context.draft.unit?.kind === 'stock') return false;
 	return to !== 'give' || payerFieldsAreGiven(context);
 }
 
@@ -1526,21 +1528,29 @@ export const checkoutMachine = setup({
 		stockCanPledge: ({ context }) => stockCanPledge(context),
 
 		// the details step's Continue, by what the decided gift gives.
-		givesCoinFromHere: ({ context }) =>
-			context.fv?.inKind?.kind === 'coin' && payerFieldsAreGiven(context),
 		givesStockFromHere: ({ context }) =>
 			context.fv?.inKind?.kind === 'stock' && stockCanPledge(context),
-		givesMoneyFromHere: ({ context }) =>
-			context.fv?.inKind === undefined && payerFieldsAreGiven(context),
+		reviewsFromHere: ({ context }) =>
+			context.fv?.inKind?.kind !== 'stock' && payerFieldsAreGiven(context),
 
-		/** the press being retried was a gift in kind's, which is made from the details step. */
-		givesInKind: ({ context }) => isInKindRail(context.payerDraft.method),
+		/** the first step offers a coin or stock, which the payment box does not carry. */
+		givesInKindWithoutBox: ({ context }) => {
+			const offered = unitsOffered(context);
+			return offered.coin || offered.stock;
+		},
 
-		/** a mark pressed for the first step while a gift in kind's press is held. */
-		givesInKindToFirstStep: ({ context, event }) =>
+		/** a gift of money on a card whose payment box never came up (`paymentUnavailable`). */
+		moneyHasNoBox: ({ context }) =>
+			context.paymentUnavailable !== null && context.fv?.inKind === undefined,
+
+		/** the press being retried was a stock gift's, which is made from the details step. */
+		givesStock: ({ context }) => pressesOnDetails(context.payerDraft.method),
+
+		/** a mark pressed for the first step while a stock gift's press is held. */
+		givesStockToFirstStep: ({ context, event }) =>
 			event.type === 'GO_TO_STEP' &&
 			event.step === 'amount' &&
-			isInKindRail(context.payerDraft.method),
+			pressesOnDetails(context.payerDraft.method),
 
 		/** the donor has filled in everything a typed rail needs before an intent can be minted. */
 		payerIsComplete: ({ context }) => payerIsComplete(context),
@@ -1549,12 +1559,12 @@ export const checkoutMachine = setup({
 		repeatingIsRefused: ({ context }) => repeatingIsRefused(context),
 
 		/**
-		 * the donor on a fund's rail may open its window: a one-time gift and every field the receipt
-		 * needs. a fund's grant repeats nowhere this deployment can match, so a repeating gift never
-		 * reaches the window.
+		 * the donor on a fund's rail may open its window: a one-time gift of money and every field the
+		 * receipt needs. a fund's grant repeats nowhere this deployment can match, so a repeating gift
+		 * never reaches the window, and a coin is sent from the donor's own wallet rather than granted.
 		 */
 		fundCanOpen: ({ context }) =>
-			context.fv?.frequency === 'one_time' &&
+			givesMoneyOnce(context) &&
 			completeFundPayer({ ...context.payerDraft, method: 'daf' }, context.config) !== null,
 
 		/**
@@ -1745,6 +1755,15 @@ export const checkoutMachine = setup({
 			payerDraft: { ...context.payerDraft, method: standingRail(context) }
 		})),
 
+		/** the payment box's report that it never came up, held rather than said (`paymentUnavailable`). */
+		holdBoxDown: assign({
+			paymentUnavailable: ({ context, event }) =>
+				event.type === 'PAYMENT_UNAVAILABLE' ? event.failure : context.paymentUnavailable
+		}),
+
+		/** the box's report said, to a gift of money that has reached the step the box is on. */
+		deliverBoxDown: assign({ failure: ({ context }) => context.paymentUnavailable }),
+
 		/**
 		 * the held challenge report, said at last, and taken off the context in the same breath.
 		 *
@@ -1798,16 +1817,18 @@ export const checkoutMachine = setup({
 			};
 		}),
 
-		/** the crypto rail and the coin picked on the first step, chosen by the details step's press. */
-		chooseCoin: assign(({ context }) => {
+		/**
+		 * the review step's rail, off the decided gift: a coin gift stands on the crypto rail in the coin
+		 * picked on the first step, and the rail it displaces is kept to stand on again once the gift is
+		 * money again (`displacedRail`). any other gift carries no coin, so no request names one.
+		 */
+		standOnGift: assign(({ context }) => {
+			const { coin: _coin, ...payerDraft } = context.payerDraft;
 			const inKind = context.fv?.inKind;
+			if (inKind?.kind !== 'coin') return { payerDraft };
 			return {
 				displacedRail: standingRail(context),
-				payerDraft: {
-					...context.payerDraft,
-					method: 'crypto' as const,
-					...(inKind?.kind === 'coin' ? { coin: inKind.coin } : {})
-				}
+				payerDraft: { ...payerDraft, method: 'crypto' as const, coin: inKind.coin }
 			};
 		}),
 
@@ -1952,6 +1973,7 @@ export const checkoutMachine = setup({
 		coinRefusal: null,
 		refusedCoins: [],
 		repeatingUnavailable: false,
+		paymentUnavailable: null,
 		employer: '',
 		employerRefusal: null,
 		employerWriteRefusal: null,
@@ -2022,8 +2044,8 @@ export const checkoutMachine = setup({
 		 * picker, and that default is display alone: nothing is reconciled against it.
 		 */
 		SET_METHOD: [
-			// while a press of its own holds a rail — a fund's window, a gift in kind's press — the box's
-			// report is the rail that press displaced, which the donor stands on again once it is over.
+			// while the flow holds a rail (`isHeldRail`) — a fund's window, a gift in kind's — the box's
+			// report is the rail that hold displaced, which the donor stands on again once it is over.
 			{
 				guard: 'holdsRail',
 				actions: assign({ displacedRail: ({ event }) => event.method ?? undefined })
@@ -2293,11 +2315,15 @@ export const checkoutMachine = setup({
 				 * to say: a donor is told what went wrong and offered a Retry, which is what `failed`
 				 * already is. What the Retry finds is the same dead surface, and that is honest — the
 				 * card is rebuilt only by a re-boot of the element, which a reload is.
+				 *
+				 * except on a form whose first step offers a coin or stock, which the box does not carry:
+				 * there the report is held (`paymentUnavailable`), a gift in kind goes on, and a gift of
+				 * money is refused once it reaches the review step (`moneyHasNoBox`).
 				 */
-				PAYMENT_UNAVAILABLE: {
-					target: 'failed',
-					actions: assign({ failure: ({ event }) => event.failure })
-				}
+				PAYMENT_UNAVAILABLE: [
+					{ guard: 'givesInKindWithoutBox', actions: 'holdBoxDown' },
+					{ target: 'failed', actions: assign({ failure: ({ event }) => event.failure }) }
+				]
 			}
 		},
 
@@ -2338,12 +2364,11 @@ export const checkoutMachine = setup({
 				// a press with a field still missing stays on this step, the way the amount step's
 				// own does: the guard is what stops a donor reaching the screen that spends the money
 				// with no address for the receipt it produces.
-				// a gift in kind has no money step: a coin goes on to its address and stock to its pledge
-				// from this press, each on the rail the pick set, through `holding` for a token.
+				// a stock gift has no review step: its pledge is saved from this press, on the rail the pick
+				// set, through `holding` for a token. money and a coin go on to the review step.
 				CONTINUE: [
-					{ guard: 'givesCoinFromHere', target: 'holding', actions: 'chooseCoin' },
 					{ guard: 'givesStockFromHere', target: 'holding', actions: 'chooseStock' },
-					{ guard: 'givesMoneyFromHere', target: 'give' }
+					{ guard: 'reviewsFromHere', target: 'give' }
 				],
 				/**
 				 * a stock pledge saved from here, through `holding` as the review step's press is, so it
@@ -2379,10 +2404,11 @@ export const checkoutMachine = setup({
 						target: 'give'
 					}
 				],
-				PAYMENT_UNAVAILABLE: {
-					target: 'failed',
-					actions: assign({ failure: ({ event }) => event.failure })
-				}
+				// held on a form offering a gift in kind, for the reason the `amount` step's says.
+				PAYMENT_UNAVAILABLE: [
+					{ guard: 'givesInKindWithoutBox', actions: 'holdBoxDown' },
+					{ target: 'failed', actions: assign({ failure: ({ event }) => event.failure }) }
+				]
 			}
 		},
 
@@ -2392,25 +2418,23 @@ export const checkoutMachine = setup({
 		 * the last step a donor edits anything on, and the only one that states a total. the fee
 		 * decision lives here rather than on the step before it because the control that offers it
 		 * sits inside the receipt, and the receipt is here.
+		 *
+		 * a coin gift's is the receipt and the switch alone: its rail is the coin's (`standOnGift`),
+		 * so no provider's fields are asked for, and its press mints the address.
 		 */
 		give: {
 			// entered from the step before it and from every way back into the pair, so the attempt
 			// is begun here too — see `beginAttempt`, which is idempotent for exactly this.
-			entry: ['beginAttempt', 'refreshEstimate'],
+			entry: ['beginAttempt', 'standOnGift', 'refreshEstimate'],
 			// the step a Try again usually lands on, which makes it the usual place a report held
-			// through a charge is delivered — see the `amount` step's own.
-			always: { guard: 'challengeIsHeld', target: 'failed', actions: 'deliverChallenge' },
+			// through a charge is delivered — see the `amount` step's own. the payment box's report is
+			// held for a gift of money until it stands here, where the box is.
+			always: [
+				{ guard: 'challengeIsHeld', target: 'failed', actions: 'deliverChallenge' },
+				{ guard: 'moneyHasNoBox', target: 'failed', actions: 'deliverBoxDown' }
+			],
 			on: {
 				SET_PROGRAM: { actions: 'pickProgram' },
-				SET_COIN: {
-					actions: assign({
-						payerDraft: ({ context, event }) => ({
-							...context.payerDraft,
-							coin: event.coin ?? undefined
-						}),
-						coinRefusal: null
-					})
-				},
 				SET_CUSTODIAN: {
 					actions: assign({
 						payerDraft: ({ context, event }) => ({
@@ -2475,10 +2499,12 @@ export const checkoutMachine = setup({
 						target: 'details'
 					}
 				],
-				PAYMENT_UNAVAILABLE: {
-					target: 'failed',
-					actions: assign({ failure: ({ event }) => event.failure })
-				}
+				// held on a form offering a gift in kind, for the reason the `amount` step's says; the
+				// `always` above refuses a gift of money with it straight away.
+				PAYMENT_UNAVAILABLE: [
+					{ guard: 'givesInKindWithoutBox', actions: 'holdBoxDown' },
+					{ target: 'failed', actions: assign({ failure: ({ event }) => event.failure }) }
+				]
 			}
 		},
 
@@ -2504,6 +2530,7 @@ export const checkoutMachine = setup({
 		holding: {
 			always: [
 				{ guard: 'challengeIsHeld', target: 'failed', actions: 'deliverChallenge' },
+				{ guard: 'moneyHasNoBox', target: 'failed', actions: 'deliverBoxDown' },
 				{ guard: not('payerIsComplete'), target: 'give' },
 				{ guard: 'tokenIsFresh', target: 'quoting', actions: 'commitPayer' }
 			],
@@ -2520,10 +2547,10 @@ export const checkoutMachine = setup({
 				}
 			},
 			on: {
-				// a gift in kind's press is held on the details step, whose mark back to the first step
+				// a stock gift's press is held on the details step, whose mark back to the first step
 				// stays a way back: nothing has been sent, so leaving abandons nothing.
 				GO_TO_STEP: {
-					guard: 'givesInKindToFirstStep',
+					guard: 'givesStockToFirstStep',
 					target: 'amount'
 				},
 				// re-entered so the wait runs again from here: a puzzle put away without a token
@@ -2533,10 +2560,12 @@ export const checkoutMachine = setup({
 					reenter: true,
 					actions: assign({ challengeInteractive: ({ event }) => event.interactive })
 				},
-				PAYMENT_UNAVAILABLE: {
-					target: 'failed',
-					actions: assign({ failure: ({ event }) => event.failure })
-				}
+				// held on a form offering a gift in kind, for the reason the `amount` step's says; the
+				// `always` above refuses a held press of money with it straight away.
+				PAYMENT_UNAVAILABLE: [
+					{ guard: 'givesInKindWithoutBox', actions: 'holdBoxDown' },
+					{ target: 'failed', actions: assign({ failure: ({ event }) => event.failure }) }
+				]
 			}
 		},
 
@@ -3084,14 +3113,12 @@ export const checkoutMachine = setup({
 		 * the address closed with nothing received, as the server read it.
 		 *
 		 * `RETRY` goes to the review step for the reason `verificationExpired` below gives: the entry
-		 * there drops the spent quote, and the rail and the coin stay picked, so the next press mints a
-		 * fresh address for the same coin.
+		 * there drops the spent quote and stands on the coin's rail again (`standOnGift`), so the next
+		 * press mints a fresh address for the same coin.
 		 */
 		depositExpired: {
 			on: {
-				// a coin picked on the first step has no review step, so its Try again is the details
-				// step's press again, for the reason `failed` gives.
-				RETRY: [{ guard: 'givesInKind', target: 'holding' }, { target: 'give' }]
+				RETRY: { target: 'give' }
 			}
 		},
 
@@ -3506,10 +3533,13 @@ export const checkoutMachine = setup({
 					{ guard: 'grantIsHeld', target: 'resending' },
 					{ guard: not('amountIsDecided'), target: 'amount' },
 					{ guard: not('payerFieldsAreGiven'), target: 'details' },
-					// a gift in kind is pressed from the details step and has no review step, so its Try
+					// a stock gift is pressed from the details step and has no review step, so its Try
 					// again is the same press again: landing it on the details step would drop the held
 					// rail (`beginAttempt`) and put the next Continue in front of a Donate press.
-					{ guard: 'givesInKind', target: 'holding' },
+					{ guard: 'givesStock', target: 'holding' },
+					// a gift of money with no payment box goes back to the first step, where a coin or
+					// stock can still be given (`paymentUnavailable`).
+					{ guard: 'moneyHasNoBox', target: 'amount' },
 					{ target: 'give' }
 				]
 			}

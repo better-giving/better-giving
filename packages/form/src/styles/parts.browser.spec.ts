@@ -3164,11 +3164,10 @@ describe('a payment row drawn beside the provider’s frame', () => {
 	// colours, which the head's own `color` would take back from a glyph filled `currentColor`.
 	//
 	// raw-colour-ok: the trademarks' own fills, as ../embed/rows.ts states them — `#008CFF`, the one
-	// colour PayPal's and Venmo's files both state, and NOWPayments' `#68AAFF`.
+	// colour PayPal's and Venmo's files both state.
 	it.each([
 		['paypal', 'rgb(0, 140, 255)'],
-		['venmo', 'rgb(0, 140, 255)'],
-		['crypto', 'rgb(104, 170, 255)']
+		['venmo', 'rgb(0, 140, 255)']
 	] as const)('fills the %s mark with the brand’s colours', (mark, brand) => {
 		const { head } = measured(mark);
 		const fills = [...head.querySelectorAll('.mark path')].map(

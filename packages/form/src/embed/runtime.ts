@@ -205,15 +205,12 @@ export function createFormRuntime(origin: string | null, doc: Document): FormRun
 			// one of this deployment's rails or into `null`, and the sentence a donor reads when
 			// nothing came up is written there too, next to what it knows about why.
 			// ../element.ts is what turns each report into an event the flow accepts.
-			// no coin list: the card takes a coin on its first step, so its payment box lists no crypto
-			// option.
 			const surface = createPaymentSurface(
 				config,
 				mount,
 				onRail,
 				onUnavailable,
 				fund,
-				undefined,
 				undefined,
 				ira
 			);

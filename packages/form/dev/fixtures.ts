@@ -307,7 +307,7 @@ const QR_ROWS = [
 	'1111111001111111111111101'
 ] as const;
 
-/** card and crypto, on both cadences, so the monthly one shows the crypto row leaving the box. */
+/** card and crypto, on both cadences, so picking a coin shows Monthly refused under its note. */
 const CRYPTO: ServedConfig = {
 	...DEFAULT,
 	formId: 'frm_crypto',
@@ -671,10 +671,10 @@ function ports(
  * through.
  *
  * `crypto` and `pledges` are the exceptions, composed the way ../src/embed/runtime.ts composes them
- * so the coin row and the IRA (QCD) row, what each holds and the monthly cadence taking them away
- * are the shipped code. the Stripe half is handed a loader that answers nothing, which that adapter
- * reads as fields that never came up and ../src/embed/surface.ts withholds, since the other half
- * never reports the same — so the card row is counted in the box's header and never drawn. `pledges`
+ * so the IRA (QCD) row, what it holds and the monthly cadence taking it away are the shipped code.
+ * the Stripe half is handed a loader that answers nothing, which that adapter reads as fields that
+ * never came up, and the flow holds that report on a form whose first step offers a coin or stock
+ * (`paymentUnavailable` in ../src/checkout.machine.ts) — so a gift in kind goes on. `pledges`
  * also hands the panel its hold on the flow (`steer`), which is how Pledge stock reaches it.
  */
 export function devRuntime(
@@ -701,7 +701,6 @@ export function devRuntime(
 					onRail,
 					onUnavailable,
 					fund,
-					undefined,
 					{ stripe: { load: async () => null } },
 					ira
 				);

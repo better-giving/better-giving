@@ -42,7 +42,7 @@ import type { AdjustedReconciliation } from './fee';
 import {
 	coinEstimate,
 	declinedFee,
-	isInKindRail,
+	pressesOnDetails,
 	unitsOffered,
 	missingAmount,
 	NUMBERED_STEPS,
@@ -91,6 +91,7 @@ import {
 } from './v1';
 import {
 	cadenceNote,
+	coinReview,
 	continueCase,
 	currencyOf,
 	unitEntry,
@@ -99,6 +100,7 @@ import {
 	unitPill,
 	SEARCH_WITH_STOCK,
 	SEARCH_WITHOUT_STOCK,
+	type CoinReview,
 	type ContinueCase,
 	type UnitEntry,
 	type UnitPill
@@ -275,6 +277,13 @@ export type State =
 			readonly custodianMissing: boolean;
 			/** the endpoint refused the custodian the last save named, until the donor retypes it. */
 			readonly custodianRefused: boolean;
+			/**
+			 * present exactly on a coin gift's review step, and its presence is what makes this step that
+			 * variant: the receipt and the fee switch (`feeToggle`) in these words, and `submitButton`
+			 * drawn as `coinReview.action`, whose press mints the address. it lists no payment method
+			 * and asks for no provider's fields, because the coin's rail is already chosen.
+			 */
+			readonly coinReview?: CoinReview;
 	  }
 	| {
 			readonly step: 'confirm';
@@ -487,15 +496,6 @@ export type CheckoutApi<
 	readonly emailField: T['field'];
 	readonly firstNameField: T['field'];
 	readonly lastNameField: T['field'];
-	/**
-	 * the coin a `crypto` gift is sent in: every coin the account takes, sorted by ticker, each with
-	 * the words it is listed under and whether the account refused it on this card.
-	 *
-	 * a `select` because it is one choice from a closed list, with `''` for none as the tribute's and
-	 * the program's are. what a renderer draws it as is the renderer's; the element draws a searchable
-	 * list, which is a way of choosing from this list rather than a different list.
-	 */
-	readonly coinSelect: T['select'];
 	/**
 	 * the IRA custodian an `ira_qcd` pledge names, required and held to the endpoint's cap. which box
 	 * a press was refused for is `custodianMissing` and `custodianRefused` on the review step's state.
@@ -728,9 +728,9 @@ export function toState(snapshot: CheckoutSnapshot): State {
 				: { step: 'details', fv, missing: missingPayerFields(context.payerDraft) };
 		case 'give':
 		// a press held for the challenge token is still the step it was made on, with its press busy:
-		// the review step's, or the details step's for a gift in kind, which has no review step.
+		// the review step's, or the details step's for a stock gift, which has no review step.
 		case 'holding':
-			if (step === 'holding' && fv !== null && isInKindRail(context.payerDraft.method)) {
+			if (step === 'holding' && fv !== null && pressesOnDetails(context.payerDraft.method)) {
 				return { step: 'details', fv, missing: missingPayerFields(context.payerDraft) };
 			}
 			return fv === null
@@ -746,7 +746,17 @@ export function toState(snapshot: CheckoutSnapshot): State {
 						custodianRefused: context.custodianRefused,
 						...(context.payerDraft.method === undefined
 							? {}
-							: { method: context.payerDraft.method })
+							: { method: context.payerDraft.method }),
+						...(fv.inKind?.kind === 'coin'
+							? {
+									coinReview: coinReview(context.config, {
+										giftMinor: fv.amountMinor,
+										covers: payerCoversFee(context.payerDraft),
+										feeMinor: context.estimate?.feeMinor ?? null,
+										totalMinor: shownTotalMinor(context) ?? fv.amountMinor
+									})
+								}
+							: {})
 					};
 		case 'mandate':
 			return fv === null || context.quote === null
@@ -794,7 +804,7 @@ export function toState(snapshot: CheckoutSnapshot): State {
  */
 function numberedStepOf(snapshot: CheckoutSnapshot): NumberedStep | null {
 	const top = topLevelStateOf(snapshot);
-	const held = isInKindRail(snapshot.context.payerDraft.method) ? 'details' : 'give';
+	const held = pressesOnDetails(snapshot.context.payerDraft.method) ? 'details' : 'give';
 	const step = top === 'holding' ? held : top;
 	return (NUMBERED_STEPS as readonly string[]).includes(step) ? (step as NumberedStep) : null;
 }
@@ -843,9 +853,6 @@ function isWorking(snapshot: CheckoutSnapshot): boolean {
  * ./checkout.machine.ts). a control's encoding rather than a wire one: no request ever carries it.
  */
 const NO_PROGRAM = '';
-
-/** what the coin choice carries while no coin is picked, for `NO_PROGRAM`'s reason. */
-const NO_COIN = '';
 
 /** the deployment's own currency as the unit list's Currencies group lists it. */
 function currencyOption(config: FormConfig) {
@@ -1061,27 +1068,6 @@ export function connect<
 			maxLength: MAX_TRIBUTE_EMAIL,
 			value: draft.tribute?.notifyEmail ?? '',
 			onChange: (notifyEmail: string) => send({ type: 'SET_TRIBUTE', notifyEmail })
-		}),
-
-		// sorted here rather than by a renderer, so both surfaces list the coins in one order: by ticker,
-		// which is how a donor holding a coin knows it.
-		//
-		// the network and the logo ride through as the served config carries them and are read by no
-		// rule here: what a row draws from them is ./coin-picker.ts's, and a value derived on the way
-		// through would be one this seam had to keep true as well.
-		coinSelect: normalize.select({
-			name: 'coin',
-			value: payerDraft.coin ?? NO_COIN,
-			options: sortedCoins(config).map((coin) => ({
-				value: coin.coin,
-				label: coin.ticker.toUpperCase(),
-				name: coin.name,
-				network: coin.network,
-				...(coin.logo === undefined ? {} : { logo: coin.logo }),
-				refused: context.refusedCoins.includes(coin.coin)
-			})),
-			onChange: (value: string) =>
-				send({ type: 'SET_COIN', coin: value === NO_COIN ? null : value })
 		}),
 
 		custodianField: normalize.field({

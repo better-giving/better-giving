@@ -186,7 +186,6 @@ export function startCheckout(
 
 	const ira = paymentMount.ownerDocument.createElement('div');
 
-	// no coin list: a coin is picked on the first step, so the payment box lists no crypto option.
 	const surface = createPaymentSurface(
 		config,
 		paymentMount,
@@ -197,7 +196,6 @@ export function startCheckout(
 			approved: (authorization) => fundSays({ type: 'FUND_APPROVED', ...authorization }),
 			closed: () => fundSays({ type: 'FUND_CLOSED' })
 		},
-		undefined,
 		seams?.payment,
 		ira
 	);

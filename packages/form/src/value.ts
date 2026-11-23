@@ -310,9 +310,15 @@ export type Payer = {
  *
  * `note` is the conditional one: the step asks for it only where the donor asked for it first, and
  * a draft that never opened one is never short of it.
+ *
+ * `amount` is a gift in the currency, outside the form's bounds or not chosen; `quantity` is the one
+ * box a coin amount or a share count is typed in, not yet one the gift can be decided at. the two
+ * are apart because only the first has a sentence: the bounds are the currency's, and no copy names
+ * a quantity that is missing, so a renderer marks that box alone.
  */
 export type AmountDecision =
 	| 'amount'
+	| 'quantity'
 	| 'note'
 	| 'tribute-honoree'
 	| 'tribute-notify-name'
@@ -363,7 +369,9 @@ export function missingAmountDecisions(
 	const { note } = draft;
 	const missing: AmountDecision[] = [];
 
-	if (giftMinorOf(draft, config, pricedMinor) === null) missing.push('amount');
+	if (giftMinorOf(draft, config, pricedMinor) === null) {
+		missing.push(isInKind(draft.unit) ? 'quantity' : 'amount');
+	}
 	// trimmed, because that is what `completeAmount` carries: a note of spaces reaches the endpoint
 	// as nothing at all, so accepting it here would be a press refused nowhere and a note nobody
 	// sent. an absent note is a donor who asked for none and is short of nothing.
