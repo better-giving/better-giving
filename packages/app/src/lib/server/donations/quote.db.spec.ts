@@ -17,7 +17,7 @@ import { edgeCache } from '../edge-cache.testing';
 import { processorsOf, soleProcessor } from '../payments/processors.testing';
 import type { EmailMessage, EmailProvider } from '../email/provider';
 import { CHARIOT_FEE_RULES, NOWPAYMENTS_FEE_RULE } from '../payments/fees';
-import { mintQuote, refusalCode, type QuoteDeps } from './quote';
+import { mintQuote, refusalCode, type QuoteDeps, type QuoteResult } from './quote';
 import { client, first, run, stmt } from '$lib/server/db/database.testing';
 
 // the whole quote path, against a real database and against every arm of the two ports it reaches
@@ -91,6 +91,7 @@ beforeEach(async () => {
 	await run(stmt('delete from gift_match'));
 	await run(stmt('delete from donation'));
 	await run(stmt('delete from contact'));
+	await run(stmt('delete from page'));
 	await run(stmt('delete from form'));
 	await run(stmt('delete from org_profile'));
 	await seedForm();
@@ -1562,6 +1563,178 @@ describe('mintQuote() — the cause the gift is credited to', () => {
 		await mint(deps({ provider: port.port }));
 
 		expect(JSON.stringify(port.requests[0]?.metadata)).not.toContain(CLEAN);
+	});
+
+	/**
+	 * `pageProgramId`, sent by a program page, credits that program whatever the form's own setting.
+	 *
+	 * a program page serves the Donation page's form (`loadProgramPage` in ../pages/program-page.ts),
+	 * so that form is the only one the field is honoured on. the id is still an input to look up: a
+	 * cause that is not an active row on this deployment, or the field on any other form, is answered
+	 * exactly as a form id nothing matches — the form row included, which is what the route builds
+	 * its CORS headers from — so an archived id, an unknown id and another form read alike. an active
+	 * id on the Donation page's form passes on to the challenge, so a caller can still learn it is.
+	 */
+	describe('from a program page', () => {
+		const OTHER_FORM_ID = 'frm_quotepathother01';
+
+		beforeEach(async () => {
+			await run(
+				stmt(
+					`insert into page (id, type, state, form_id, draft, published, created_at, updated_at)
+				 values ('pge_donationpage', 'donation_page', 'live', ?, '{}', '{}', 0, 0)`,
+					FORM_ID
+				)
+			);
+		});
+
+		const refusalOf = (result: QuoteResult) =>
+			result.ok
+				? result
+				: { reason: result.reason, message: result.message, fix: result.fix, form: result.form };
+
+		const mintOn = async (formId: string, over: Record<string, unknown> = {}, d = deps()) => {
+			const result = await mintQuote(d, {
+				formId,
+				body: body({ formId, ...over }),
+				request: request()
+			});
+			await Promise.allSettled(deferred.splice(0));
+			return result;
+		};
+
+		/** what the same submission is answered with once the form's own id matches nothing. */
+		async function unknownFormRefusal(formId = FORM_ID, over: Record<string, unknown> = {}) {
+			await run(stmt('delete from page'));
+			await run(stmt('delete from form where id = ?', formId));
+			return refusalOf(await mintOn(formId, over));
+		}
+
+		/**
+		 * a second live form, not the Donation page's, that names the same site: a live campaign's
+		 * own, so a page owns it as a page owns FORM_ID.
+		 */
+		async function seedOtherForm() {
+			await run(
+				stmt(
+					`insert into form (id, name, status, revenue_account_id, currency, min_minor, max_minor,
+				                   suggested_amounts, allowed_origins, created_at, updated_at)
+				 values (?, 'Spring appeal', 'live', ?, 'USD', 500, 1000000, '[2500,5000]', ?, 0, 0)`,
+					OTHER_FORM_ID,
+					revenueAccountId,
+					JSON.stringify([ALLOWED])
+				)
+			);
+			await run(
+				stmt(
+					`insert into page (id, type, name, slug, state, form_id, draft, published, created_at, updated_at)
+				 values ('pge_springappeal', 'campaign', 'Spring appeal', 'spring-appeal', 'live', ?, '{}', '{}', 0, 0)`,
+					OTHER_FORM_ID
+				)
+			);
+		}
+
+		it('refuses the field on a form that is not the Donation page’s as it refuses a form id nothing matches, writing nothing', async () => {
+			await seedOtherForm();
+			const port = provider();
+
+			const result = await mintOn(
+				OTHER_FORM_ID,
+				{ pageProgramId: MEALS },
+				deps({ provider: port.port })
+			);
+
+			expect(port.requests).toHaveLength(0);
+			expect(await db.select().from(donation)).toHaveLength(0);
+			expect(refusalOf(result)).toEqual(
+				await unknownFormRefusal(OTHER_FORM_ID, { pageProgramId: MEALS })
+			);
+		});
+
+		it('takes a gift on a form that is not the Donation page’s when the field is absent', async () => {
+			await seedOtherForm();
+
+			expect((await mintOn(OTHER_FORM_ID)).ok).toBe(true);
+			expect((await onlyGift()).formId).toBe(OTHER_FORM_ID);
+		});
+
+		it('refuses the field on every form while no Donation page has been made, writing nothing', async () => {
+			await run(stmt('delete from page'));
+
+			const result = await mint(deps(), { pageProgramId: MEALS });
+
+			expect(await db.select().from(donation)).toHaveLength(0);
+			expect(refusalOf(result)).toEqual(await unknownFormRefusal());
+		});
+
+		it('credits the page’s program on a form that asks about no cause', async () => {
+			expect((await mint(deps(), { pageProgramId: MEALS })).ok).toBe(true);
+			expect((await onlyGift()).programId).toBe(MEALS);
+		});
+
+		it('credits the page’s program over a form’s own pin', async () => {
+			await asks('pinned', CLEAN);
+
+			expect((await mint(deps(), { pageProgramId: MEALS })).ok).toBe(true);
+			expect((await onlyGift()).programId).toBe(MEALS);
+		});
+
+		it('credits the page’s program on a form that offers a choice the donor left alone', async () => {
+			await asks('choice');
+
+			expect((await mint(deps(), { pageProgramId: MEALS })).ok).toBe(true);
+			expect((await onlyGift()).programId).toBe(MEALS);
+		});
+
+		it('credits the page’s program over a donor’s pick sent beside it', async () => {
+			await asks('choice');
+
+			expect((await mint(deps(), { programId: CLEAN, pageProgramId: MEALS })).ok).toBe(true);
+			expect((await onlyGift()).programId).toBe(MEALS);
+		});
+
+		it('credits the page’s program over a pick a pinned form would refuse on its own', async () => {
+			await asks('pinned', CLEAN);
+
+			expect((await mint(deps(), { programId: CLEAN, pageProgramId: MEALS })).ok).toBe(true);
+			expect((await onlyGift()).programId).toBe(MEALS);
+		});
+
+		it('credits the page’s program on the gift a repeating commitment was authorized for', async () => {
+			await asks('pinned', CLEAN);
+
+			expect((await mint(deps(), { frequency: 'monthly', pageProgramId: MEALS })).ok).toBe(true);
+			expect((await onlyGift()).programId).toBe(MEALS);
+		});
+
+		it('refuses an archived program as it refuses a form id nothing matches, writing nothing', async () => {
+			await run(
+				stmt(`update program set status = 'archived', archived_at = 1 where id = ?`, MEALS)
+			);
+			const port = provider();
+
+			const result = await mint(deps({ provider: port.port }), { pageProgramId: MEALS });
+
+			expect(port.requests).toHaveLength(0);
+			expect(await db.select().from(donation)).toHaveLength(0);
+			expect(refusalOf(result)).toEqual(
+				await unknownFormRefusal(FORM_ID, { pageProgramId: MEALS })
+			);
+		});
+
+		it('refuses an id no program has as it refuses a form id nothing matches, writing nothing', async () => {
+			const port = provider();
+
+			const result = await mint(deps({ provider: port.port }), {
+				pageProgramId: '019fb600-0000-7000-8000-0000000000ff'
+			});
+
+			expect(port.requests).toHaveLength(0);
+			expect(await db.select().from(donation)).toHaveLength(0);
+			expect(refusalOf(result)).toEqual(
+				await unknownFormRefusal(FORM_ID, { pageProgramId: '019fb600-0000-7000-8000-0000000000ff' })
+			);
+		});
 	});
 });
 

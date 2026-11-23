@@ -3,10 +3,11 @@ import type { Resized } from '@better-giving/operator/images/resize';
 import { imageSrc } from '$lib/page/image-src';
 import { ReplacePhotoControl, type ReplacePhotoControlProps } from '../page-edit/replace-photo';
 
-// a program's photo, in the program's own group beside its name: the two things a donor sees of a
-// program on the Donation page's chooser. the placed-photo control (../page-edit/replace-photo.tsx),
-// cropped square as the chooser crops it, with Remove beside the press and no description box —
-// the program's name beside the photo is what it says.
+// a program's photo, in the program's own group beside its name: the two a donor sees of a program
+// both on its public page and on the Donation page's chooser, and the public page draws its
+// description too. the placed-photo control
+// (../page-edit/replace-photo.tsx), cropped square as the chooser crops it, with Remove beside the
+// press and no description box — the program's name beside the photo is what it says.
 //
 // the photo is part of the program and saved with it: a new one is uploaded as soon as it is
 // resized, and Save program writes it, as a block's photo is kept by Done. so the id stands in a
@@ -39,7 +40,8 @@ export function ProgramPhotoControl({
 				Photo<span className="adm-field__optional"> (optional)</span>
 			</legend>
 			<p className="adm-hint" id={hintId}>
-				Beside the name on the Donation page’s program chooser, cropped square.
+				Shown on the program’s page and beside its name in the Donation page’s program chooser,
+				cropped square.
 			</p>
 			<ReplacePhotoControl
 				imageSrc={imageId === null ? undefined : imageSrc(imageId)}

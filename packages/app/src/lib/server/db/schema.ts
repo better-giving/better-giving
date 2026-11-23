@@ -881,8 +881,8 @@ export const program = sqliteTable(
 		// transition, not a soft delete.
 		archivedAt: at('archived_at'),
 		/**
-		 * the cause's photo on a donor page's chooser, null for none. it rides the program's own save,
-		 * so there is no `_previous` beside it.
+		 * the cause's photo on a donor page's chooser and on its own program page, null for none. it
+		 * rides the program's own save, so there is no `_previous` beside it.
 		 */
 		imageId: text('image_id').references(() => image.id)
 		// append new columns below this line — see rule 1 at the top of this file.

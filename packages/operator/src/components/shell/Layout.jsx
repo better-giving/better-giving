@@ -15,6 +15,8 @@
  * @typedef {object} SectionProps
  * @property {boolean | undefined} [card] the division drawn as a box of its own rather than as a
  *   band of the page. which frame a division takes is the screen's answer and not the division's.
+ * @property {string | undefined} [labelledBy] the id of the heading the division is read by, which
+ *   the caller draws inside it and so owns the id of. unset, the section takes no name.
  * @property {ReactNode} [children]
  *
  * @typedef {object} ListProps
@@ -87,8 +89,12 @@ export function Stack({ tight = false, children }) {
    two a division wears is chosen by the screen mounting it — `.adm-card` in
    packages/operator/src/styles/adm.css argues the choice. */
 /** @param {SectionProps} props */
-export function Section({ card = false, children }) {
-	return <section className={card ? 'adm-card' : 'adm-section'}>{children}</section>;
+export function Section({ card = false, labelledBy, children }) {
+	return (
+		<section className={card ? 'adm-card' : 'adm-section'} aria-labelledby={labelledBy}>
+			{children}
+		</section>
+	);
 }
 
 /* the groups of a page that is one section with no heading over any of them, a break step apart.

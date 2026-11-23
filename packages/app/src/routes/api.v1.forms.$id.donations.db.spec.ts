@@ -414,6 +414,116 @@ describe('POST /api/v1/forms/:id/donations — the status each refusal carries',
 		expect(await response.json()).toMatchObject({ error: 'form_not_found' });
 	});
 
+	/**
+	 * a program page's `pageProgramId` is honoured on the Donation page's form alone, the form
+	 * `/programs/{id}` serves, and only for an active program. anything else reads as the form being
+	 * unknown: the same status, body and headers, so an archived id, an unknown id and another form
+	 * read alike. an active id on the Donation page's form passes on to the spam check, so the field
+	 * can still tell a caller an id is active. the program page reads the answer same-origin, which
+	 * needs no echo from the form's own sites.
+	 */
+	describe('a program page’s `pageProgramId`', () => {
+		const ACTIVE = '019fb601-0000-7000-8000-000000000002';
+		const ARCHIVED = '019fb601-0000-7000-8000-000000000001';
+		const OTHER_FORM_ID = 'frm_quoteendpoint02';
+
+		beforeEach(async () => {
+			await run(stmt('delete from program'));
+			await run(
+				stmt(
+					`insert into program (id, name, status, archived_at, created_at, updated_at)
+					 values (?, 'Clean water', 'archived', 1, 0, 0), (?, 'School meals', 'active', null, 0, 0)`,
+					ARCHIVED,
+					ACTIVE
+				)
+			);
+			await run(
+				stmt(
+					`insert into page (id, type, state, form_id, draft, published, created_at, updated_at)
+				 values ('pge_donationpage', 'donation_page', 'live', ?, '{}', '{}', 0, 0)`,
+					FORM_ID
+				)
+			);
+			await run(
+				stmt(
+					`insert into form (id, name, status, revenue_account_id, currency, min_minor, max_minor,
+				                   suggested_amounts, allowed_origins, created_at, updated_at)
+				 values (?, 'Spring appeal', 'live', ?, 'USD', 500, 1000000, '[2500,5000]', ?, 0, 0)`,
+					OTHER_FORM_ID,
+					revenueAccountId,
+					JSON.stringify([ALLOWED])
+				)
+			);
+			// the other form is a live campaign's own, so a page owns it as a page owns FORM_ID.
+			await run(
+				stmt(
+					`insert into page (id, type, name, slug, state, form_id, draft, published, created_at, updated_at)
+				 values ('pge_springappeal', 'campaign', 'Spring appeal', 'spring-appeal', 'live', ?, '{}', '{}', 0, 0)`,
+					OTHER_FORM_ID
+				)
+			);
+		});
+
+		/** the refusal as a caller sees it, headers included. */
+		async function answerOf(response: Response) {
+			return {
+				status: response.status,
+				body: await response.json(),
+				headers: Object.fromEntries(response.headers)
+			};
+		}
+
+		/** the same submission once `id` matches no form on this deployment. */
+		async function unknownFormAnswer(id: string, over: Record<string, unknown>) {
+			await run(stmt('delete from page'));
+			await run(stmt('delete from form where id = ?', id));
+			return answerOf(await post({ formId: id, ...over }, { id }));
+		}
+
+		const gifts = async () =>
+			(await first<{ n: number }>(stmt('select count(*) as n from donation')))?.n;
+
+		it('takes an active program on the Donation page’s form on to the challenge', async () => {
+			const response = await post({ pageProgramId: ACTIVE });
+
+			expect(response.status).toBe(403);
+			expect(await response.json()).toMatchObject({ error: 'challenge_failed' });
+		});
+
+		it('answers it on a form that is not the Donation page’s exactly as an unknown form, to a site that form names', async () => {
+			const over = { formId: OTHER_FORM_ID, pageProgramId: ACTIVE };
+
+			const refused = await answerOf(await post(over, { id: OTHER_FORM_ID }));
+			const written = await gifts();
+
+			expect(written).toBe(0);
+			expect(refused.status).toBe(404);
+			expect(refused).toEqual(await unknownFormAnswer(OTHER_FORM_ID, over));
+		});
+
+		it.each([
+			['an archived program', ARCHIVED],
+			['an id no program has', '019fb601-0000-7000-8000-0000000000ff']
+		])(
+			'answers %s on the Donation page’s form exactly as an unknown form',
+			async (_, pageProgramId) => {
+				const refused = await answerOf(await post({ pageProgramId }));
+				const written = await gifts();
+
+				expect(written).toBe(0);
+				expect(refused.status).toBe(404);
+				expect(refused).toEqual(await unknownFormAnswer(FORM_ID, { pageProgramId }));
+			}
+		);
+
+		it('answers a form that is not the Donation page’s as before when the field is absent', async () => {
+			const response = await post({ formId: OTHER_FORM_ID }, { id: OTHER_FORM_ID });
+
+			expect(response.status).toBe(403);
+			expect(response.headers.get('access-control-allow-origin')).toBe(ALLOWED);
+		});
+	});
+
 	it('answers 409 for a form that is still a draft, naming Forms', async () => {
 		await run(stmt(`update form set status = 'draft' where id = ?`, FORM_ID));
 

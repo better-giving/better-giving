@@ -29,6 +29,13 @@ type Receipt = 'none' | 'charged' | 'pending';
 export type Takeover = {
 	readonly heading: string;
 	readonly body: string;
+	/** a body that carries a link, drawn in the body's place on the one screen that has one. */
+	readonly bodyLink: {
+		readonly before: string;
+		readonly link: string;
+		readonly href: string;
+		readonly after: string;
+	} | null;
 	readonly receipt: Receipt;
 	/** what the receipt's total is called on this screen. */
 	readonly totalLabel: string;
@@ -91,6 +98,7 @@ export type EmployerAskScreen = {
 export const BLANK: Takeover = {
 	heading: '',
 	body: '',
+	bodyLink: null,
 	receipt: 'none',
 	totalLabel: '',
 	receiptNote: '',
@@ -518,6 +526,24 @@ function pendingNotice(state: State & { readonly step: 'pledged' }): PledgeNotic
 	};
 }
 
+/**
+ * the failure screen on a program page whose program closed after the page was drawn: the quote was
+ * refused as an unknown form (`pageProgramId` in packages/app/src/lib/server/donations/quote.ts)
+ * while the form's own config still reads (`stopped` in ./machine.ts).
+ *
+ * no Try again. the program stays closed, so a retry only lands back here; the way on is the donate
+ * page, as on `ProgramClosedPage` in ./program-page.tsx.
+ */
+export function programStoppedTakeover(): Takeover {
+	const { before, link, after } = copy.PROGRAM_STOPPED;
+	return {
+		...BLANK,
+		heading: copy.FAILED_HEADING,
+		bodyLink: { before, link, href: '/', after },
+		announce: `${before}${link}${after}`
+	};
+}
+
 export type TakeoverScreenProps = {
 	readonly screen: Takeover;
 	readonly hidden: boolean;
@@ -577,8 +603,16 @@ export function TakeoverScreen({
 			<h2 part={part('heading')} tabIndex={-1} ref={headingRef} hidden={screen.heading === ''}>
 				{screen.heading}
 			</h2>
-			<p className="prose" hidden={screen.body === ''}>
-				{screen.body}
+			<p className="prose" hidden={screen.body === '' && screen.bodyLink === null}>
+				{screen.bodyLink === null ? (
+					screen.body
+				) : (
+					<>
+						{screen.bodyLink.before}
+						<a href={screen.bodyLink.href}>{screen.bodyLink.link}</a>
+						{screen.bodyLink.after}
+					</>
+				)}
 			</p>
 			<div className="receipt-slot" hidden={receipt === null}>
 				{receipt}

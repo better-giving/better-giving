@@ -94,6 +94,7 @@ describe('a campaign address', () => {
 		['api', '/api'],
 		['donate', '/donate'],
 		['login', '/login'],
+		['programs', '/programs'],
 		['assets', '/assets']
 	])('is refused as %s, naming the address it would shadow', (slug, clashesWith) => {
 		expect(checkSlug(slug)).toEqual({ ok: false, reason: 'reserved', clashesWith });

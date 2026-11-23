@@ -11,6 +11,11 @@ import { Mark } from '../status/Mark.jsx';
  *   attribute: the control keeps its focus, so a reader standing on it is not dropped on `<body>`.
  * @property {Ref<HTMLButtonElement> | undefined} [ref] the button, for a caller moving focus onto it
  *   once the text it copies has arrived.
+ * @property {string | undefined} [copied] what a landed copy is named and announced as, for a
+ *   control whose bare `Copied` would not say what landed — `Link copied`. a control given it also
+ *   wears the registry's done state for the settle window (`data-done`,
+ *   ../../registry/styles/button-css.css), its success fill; unset, a landed copy is the tick
+ *   alone.
  *
  * @typedef {object} CopyControlMarkOnly
  * @property {string | undefined} [label] the accessible name at rest, for a call site where a bare
@@ -72,7 +77,8 @@ export function CopyControl({
 	wayOut,
 	disabled = false,
 	onBlocked,
-	ref
+	ref,
+	copied
 }) {
 	// idle, and the two things that can come back from an attempt. `blocked` is the one worth
 	// drawing: `writeText` rejects on a refused permission and throws outright on an insecure
@@ -103,8 +109,13 @@ export function CopyControl({
 	// through what the caller `onBlocked` tells draws — a masked box shown, a link to the document.
 	// a worded control's region says that way out as well (`wayOut`), and its name does not: the name
 	// stays the words the button draws.
+	const landedWords = copied ?? 'Copied';
 	const spoken =
-		outcome === 'copied' ? 'Copied' : outcome === 'blocked' ? 'Copy blocked' : (wording ?? label);
+		outcome === 'copied'
+			? landedWords
+			: outcome === 'blocked'
+				? 'Copy blocked'
+				: (wording ?? label);
 
 	async function copy() {
 		if (disabled) return;
@@ -127,7 +138,7 @@ export function CopyControl({
 		clearTimeout(unsay.current);
 		const words =
 			landed === 'copied'
-				? 'Copied'
+				? landedWords
 				: wayOut === undefined
 					? 'Copy blocked'
 					: `Copy blocked. ${wayOut}`;
@@ -157,6 +168,7 @@ export function CopyControl({
 				onClick={copy}
 				aria-disabled={disabled || undefined}
 				aria-label={spoken}
+				data-done={copied !== undefined && outcome === 'copied' ? 'true' : undefined}
 				// ./Button.jsx's quiet small press, spelled out because this one is a plain `<button>`
 				// with a ref of its own.
 				className={

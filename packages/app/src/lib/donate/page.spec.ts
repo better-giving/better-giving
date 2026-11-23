@@ -383,7 +383,8 @@ describe('every colour lands on the radix step for its job', () => {
 				".page-video-box[data-face='loading'] .page-video-status | background": 'slate-3',
 				".page-video-box[data-face='error'] | background": 'red-3',
 				'.gift-card | background': 'slate-1',
-				'.gift-employer | background': 'slate-3'
+				'.gift-employer | background': 'slate-3',
+				'.page-program-photo | background': 'slate-3'
 			}
 		},
 		'3, 4 and 5: a control’s ground, its hover and its press': {
@@ -425,7 +426,9 @@ describe('every colour lands on the radix step for its job', () => {
 				'.page-video-box | border': 'slate-6',
 				".page-video-box[data-face='error'] | border-color": 'red-6',
 				'.gift-card | border': 'slate-6',
-				'.gift-detail | border-block-start': 'slate-6'
+				'.gift-detail | border-block-start': 'slate-6',
+				'.page-program-photo | border': 'slate-6',
+				'.page-program-org | border-block-start': 'slate-6'
 			}
 		},
 		[RING]: {
@@ -457,6 +460,7 @@ describe('every colour lands on the radix step for its job', () => {
 			at: {
 				'.page-profile-badge | color': 'on-brand-9',
 				".ended [part~='action'] | color": 'on-brand-9',
+				'.page-ground .page-closed a.ds-btn-primary | color': 'on-brand-9',
 				[`${WIDE} » ${OVER_FILL} | --page-quiet`]: 'on-brand-9',
 				[`${WIDE} » ${OVER_FILL} | color`]: 'on-brand-9',
 				[`${WIDE} » ${HERO_OVER_FILL} | --page-quiet`]: 'on-brand-9',
@@ -497,6 +501,7 @@ describe('every colour lands on the radix step for its job', () => {
 					'slate-11',
 				'.page-ground .amount-label | color': 'slate-11',
 				'.page-profile-ein | color': 'slate-11',
+				'.page-program-of | color': 'slate-11',
 				'.page-profile .page-about .page-label | color': 'slate-12',
 				'.page-profile :is(.page-about-statement, .page-about-beneath) | color': 'slate-12',
 				'.page-messages-time | color': 'slate-11',
@@ -1297,6 +1302,7 @@ describe('the sections ./page.css draws', () => {
 	const components = [
 		join(here, 'page-view.tsx'),
 		join(here, 'gift-page.tsx'),
+		join(here, 'program-page.tsx'),
 		join(here, 'site-nav.tsx'),
 		join(here, 'site-footer.tsx'),
 		...globSync(join(here, 'sections/*.tsx')).filter((file) => !file.includes('.spec.'))
@@ -1317,11 +1323,16 @@ describe('the sections ./page.css draws', () => {
 	const CHROME = ['site-nav-css', 'site-footer-css'].map((item) =>
 		require.resolve(`@better-giving/operator/registry/styles/${item}.css`)
 	);
+	// the registry's avatar and page state the program page links (`programPageLinks` in
+	// ./program-page.tsx).
+	const PROGRAM = ['avatar-css', 'page-state-css'].map((item) =>
+		require.resolve(`@better-giving/operator/registry/styles/${item}.css`)
+	);
 	const drawn = new Set(
 		[
 			pageText,
-			...[FORM_LAYOUT, FORM_BUTTON, SPINNER, LEAD, FIELD, ...GIFT, ...CHROME].map((file) =>
-				readFileSync(file, 'utf8')
+			...[FORM_LAYOUT, FORM_BUTTON, SPINNER, LEAD, FIELD, ...GIFT, ...CHROME, ...PROGRAM].map(
+				(file) => readFileSync(file, 'utf8')
 			)
 		].flatMap((css) =>
 			[...stripComments(css).matchAll(/\.(-?[_a-zA-Z][\w-]*)/g)].map((m) => m[1] ?? '')
@@ -1408,5 +1419,14 @@ describe('the entry card’s width', () => {
 		expect(declared(page, '.page-fundraise-heading')['overflow-wrap']).toBe(
 			declared(page, '.page-profile-name')['overflow-wrap']
 		);
+	});
+});
+
+describe('a program’s page', () => {
+	it('wraps the description and the heading over the card as it wraps the program’s name, never past the column', () => {
+		const wrap = declared(page, '.page-program-name')['overflow-wrap'];
+		expect(wrap).toBe('anywhere');
+		for (const selector of ['.page-program-description', '.page-program .page-profile-box-heading'])
+			expect(declared(page, selector)['overflow-wrap'], selector).toBe(wrap);
 	});
 });

@@ -662,6 +662,16 @@ describe('parseQuoteRequest() — the cause the donor chose', () => {
 		expect(result.ok).toBe(false);
 		expect(result.ok || result.message).toContain('programId');
 	});
+
+	it.each([
+		['null', null],
+		['a number', 12],
+		['an array', ['a']]
+	] as const)('refuses a `pageProgramId` that is %s', (_label, pageProgramId) => {
+		const result = parseQuoteRequest(body({ pageProgramId }), choosing);
+		expect(result.ok).toBe(false);
+		expect(result.ok || result.message).toContain('`pageProgramId` is');
+	});
 });
 
 describe('parseQuoteRequest() — a body that is not one', () => {

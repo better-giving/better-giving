@@ -20,12 +20,19 @@ const DASHBOARD: Screen = {
 };
 /**
  * the donor pages: the organisation's donation page, a campaign at its own address, a supporter's
- * fundraiser, and the supporter's own screens under /fundraise.
+ * fundraiser, a program's page and its public preview, and the supporter's own screens under
+ * /fundraise.
  */
 const DONOR_PAGES: readonly Screen[] = [
 	{ id: 'routes/_index', path: '/', at: '/' },
 	{ id: 'routes/$slug', path: '/:slug', at: '/spring-appeal' },
 	{ id: 'routes/f.$slug', path: '/f/:slug', at: '/f/sams-run' },
+	{ id: 'routes/programs.$id', path: '/programs/:id', at: '/programs/winter-coats' },
+	{
+		id: 'routes/programs.$id_.preview',
+		path: '/programs/:id/preview',
+		at: '/programs/winter-coats/preview'
+	},
 	{ id: 'routes/fundraise.pages._index', path: '/fundraise/pages', at: '/fundraise/pages' }
 ];
 

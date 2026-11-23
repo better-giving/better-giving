@@ -357,7 +357,10 @@ async function readFormProgram(db: Db, form: FormRecord): Promise<Program | null
 export function publishedConfig(sources: PublishedConfigSources): PublishedConfigResult {
 	const { id, form, owner } = sources;
 
-	if (form === null) return { ok: false, form, reason: 'form_not_found', error: formNotFound(id) };
+	if (form === null) {
+		const unknown = formNotFound(id);
+		return refusal(null, 'form_not_found', unknown.message, unknown.fix);
+	}
 
 	// a fundraiser's row serves while the page is live and shown, whatever the row's own status: the
 	// page's state is the one source, and pending, ended and hidden read alike to a caller.
@@ -808,8 +811,15 @@ function repeatsAGift(rail: PaymentMethod): boolean {
 /**
  * the 404 body for a form id this deployment never had, which every form-scoped read under
  * `/api/v1` answers alike.
+ *
+ * the gift submission answers an unusable `pageProgramId` with exactly these words
+ * (`unusablePageProgram` in ../donations/quote.ts), so an archived id, an unknown id and another
+ * form's id read alike. an active id on the Donation page's form passes on to the spam check, so a
+ * caller can still learn which ids are active.
  */
-export function formNotFound(id: string): ApiError {
+export function formNotFound(
+	id: string
+): ApiError & { readonly message: string; readonly fix: string } {
 	return {
 		error: 'form_not_found',
 		message: `No form with id \`${redactPublicId(id)}\` exists on this deployment.`,
