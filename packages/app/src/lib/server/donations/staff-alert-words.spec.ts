@@ -569,12 +569,14 @@ describe('staff alerts', () => {
 			'donations/collect.ts',
 			'donations/crypto-pending.ts',
 			'donations/grant-requested.ts',
+			'donations/pledge-told.ts',
 			'donations/quote.ts',
 			'donations/receipt.ts',
 			'donations/refund-notice.ts',
 			'donations/reverse.ts',
 			'donations/settle.ts',
 			'donations/settled-notice.ts',
+			'donations/ticker-refresh.ts',
 			'donations/tribute-notice.ts'
 		]);
 		// a phrase written only in ./entries.ts's missingFeeCorrection.

@@ -507,7 +507,7 @@ describe('every colour lands on the radix step for its job', () => {
 				'.page-messages-time | color': 'slate-11',
 				'.page-messages-count | color': 'slate-11',
 				'.page-fundraise-note | color': 'slate-11',
-				'.page-ground .page-fundraise-act > a.ds-btn | color': 'slate-12',
+				'.page-ground a:where(.ds-btn-secondary) | color': 'slate-12',
 				'.page-messages-refused | color': 'red-11',
 				".page-video-box[data-face='loading'] .page-video-status | color": 'slate-12',
 				'.page-video-error-title | color': 'red-11',
@@ -703,17 +703,18 @@ describe('the scrim over the feature’s cover', () => {
 	});
 });
 
+/** a selector's specificity as one number, ids over classes over types; `:where()` counts nothing. */
+function specificity(selector: string): number {
+	const bare = selector.replace(/:where\((?:[^()]|\([^()]*\))*\)/g, '');
+	const ids = (bare.match(/#[\w-]+/g) ?? []).length;
+	const classes = (bare.match(/\.[\w-]+|\[[^\]]+\]|:(?!:)[\w-]+/g) ?? []).length;
+	const types = (bare.match(/(?:^|[\s>+~])[a-z][\w-]*/gi) ?? []).length;
+	return ids * 10000 + classes * 100 + types;
+}
+
 describe('an ended page’s way on to /donate', () => {
 	// the link is the form's action drawn without the registry's class, so the label's ink is
 	// whichever `color` outranks the rest: the page's link rule, or the ended page's own.
-	const specificity = (selector: string) => {
-		const bare = selector.replace(/:where\([^)]*\)/g, '');
-		const ids = (bare.match(/#[\w-]+/g) ?? []).length;
-		const classes = (bare.match(/\.[\w-]+|\[[^\]]+\]|:(?!:)[\w-]+/g) ?? []).length;
-		const types = (bare.match(/(?:^|[\s>+~])[a-z][\w-]*/gi) ?? []).length;
-		return ids * 10000 + classes * 100 + types;
-	};
-
 	it('draws its label in the fill’s ink, over the ink the page draws a link in', () => {
 		const own = ".ended [part~='action']";
 		expect(declared(page, own).color).toBe('var(--_on-p)');
@@ -722,17 +723,47 @@ describe('an ended page’s way on to /donate', () => {
 	});
 });
 
-describe('the entry card’s press, a link drawn as the registry’s secondary press', () => {
-	const button = blocks(
-		readFileSync(require.resolve('@better-giving/form/registry/styles/button-css.css'), 'utf8')
+// the entry card's press and a pledge's emailed instructions (./takeover.tsx) are links drawn as the
+// registry's secondary press, and the page's link ink, `.page-ground a`, outranks the variant's own
+// `.ds-btn-secondary`.
+describe('a link drawn as the registry’s secondary press', () => {
+	const buttonText = readFileSync(
+		require.resolve('@better-giving/form/registry/styles/button-css.css'),
+		'utf8'
 	);
+	const button = blocks(buttonText);
 	const scope: Scope = { ...formBase, ...declared(page, '.page > .page-ground') };
+	const own = '.page-ground a:where(.ds-btn-secondary)';
 
 	it('draws its label in the variant’s own ink, not the ink of whatever holds it', () => {
-		const own = declared(page, '.page-ground .page-fundraise-act > a.ds-btn').color ?? '';
+		const ink = declared(page, own).color ?? '';
 		const variant = declared(button, '.ds-btn-secondary').color ?? '';
-		expect(own).not.toBe('inherit');
-		expect(substitute(scope, own)).toBe(substitute(scope, variant));
+		expect(ink).not.toBe('inherit');
+		expect(substitute(scope, ink)).toBe(substitute(scope, variant));
+	});
+
+	// level with the link rule, so the later of the two in the sheet wins.
+	it('takes the ink back from the page’s link rule, standing after it at its specificity', () => {
+		const at = (selector: string) => page.findIndex((block) => block.at.at(-1) === selector);
+		expect(specificity(own)).toBe(specificity('.page-ground a'));
+		expect(at(own)).toBeGreaterThan(at('.page-ground a'));
+	});
+
+	// under the pointer and pressed the variant moves its ground and edge and keeps its ink; disabled
+	// and busy it draws gray 11, on selectors this rule must not outrank.
+	it('leaves every state the registry draws to the registry', () => {
+		const states = button.filter(({ at }) =>
+			/\.ds-btn-secondary:(?:hover|active)/.test(at.at(-1) ?? '')
+		);
+		expect(states.length).toBeGreaterThan(0);
+		expect(states.every(({ decls }) => decls.color === undefined)).toBe(true);
+		for (const state of [
+			'a.ds-btn-secondary[aria-disabled="true"]',
+			'.ds-btn-secondary[aria-busy="true"]'
+		]) {
+			expect(buttonText).toContain(state);
+			expect(specificity(state)).toBeGreaterThan(specificity(own));
+		}
 	});
 
 	// the press is an `a`, so a page ring on every focused link would outrank `.ds-btn:focus-visible`.
@@ -746,6 +777,29 @@ describe('the entry card’s press, a link drawn as the registry’s secondary p
 			.filter((selector) => /(?:^|[\s>+~])a(?::not\([^)]*\))*:focus/.test(selector));
 		expect(linkRings).toEqual(['.page-ground a:not(.ds-btn):focus-visible']);
 		expect(declared(button, '.ds-btn:focus-visible').outline).toBe('2px solid var(--ring)');
+	});
+});
+
+// the form draws the benefits panel's fine print a step under the claim, and the page's paragraph
+// reset is level with that rule on specificity and loads after it.
+describe('the benefits panel’s fine print', () => {
+	it('keeps the form’s space above it: the page’s paragraph reset reaches every paragraph but it', () => {
+		const parts = blocks(
+			readFileSync(require.resolve('@better-giving/form/styles/parts.css'), 'utf8')
+		);
+		expect(declared(parts, '.benefits-fine').margin).toBe('var(--_sp2) 0 0');
+
+		const resets = page.filter(
+			({ at, decls }) =>
+				decls.margin === '0' && (at.at(-1) ?? '').startsWith('.page-ground :where(')
+		);
+		expect(resets).toHaveLength(1);
+		const listed = (resets[0]?.at.at(-1) ?? '')
+			.slice('.page-ground :where('.length, -1)
+			.split(',')
+			.map((selector) => selector.trim());
+		const paragraphs = listed.filter((selector) => /^p(?![\w-])/.test(selector));
+		expect(paragraphs).toEqual(['p:not(.benefits-fine)']);
 	});
 });
 

@@ -47,7 +47,9 @@ const FEE_RULES: FeeRules = {
 	paypal: { percent: 0.0349, fixedMinor: 49 },
 	venmo: { percent: 0.0349, fixedMinor: 49 },
 	daf: { percent: 0.029, fixedMinor: 0, roundUpMinor: 100 },
-	crypto: { percent: 0.01, fixedMinor: 0 }
+	crypto: { percent: 0.01, fixedMinor: 0 },
+	stock: { percent: 0, fixedMinor: 0 },
+	ira_qcd: { percent: 0, fixedMinor: 0 }
 };
 
 const CONFIG: FormConfig = {
@@ -88,6 +90,9 @@ const WITH_FUND: FormConfig = {
 	providers: [...CONFIG.providers, { name: 'chariot', publishableKey: 'cid_spec' }],
 	paymentMethods: ['card', 'daf']
 };
+
+/** the same deployment, offering an IRA (QCD) pledge beside the card. */
+const WITH_IRA: FormConfig = { ...CONFIG, paymentMethods: ['card', 'ira_qcd'] };
 
 /** Chariot's element, standing in: it keeps the one callback it is handed and nothing else. */
 class StubConnect extends HTMLElement {
@@ -215,14 +220,16 @@ function boxes() {
 	const paymentMount = document.createElement('div');
 	const challengeMount = document.createElement('div');
 	const heldChallengeMount = document.createElement('div');
+	const toldChallengeMount = document.createElement('div');
 	host.appendChild(paymentMount);
 	host.appendChild(challengeMount);
 	host.appendChild(heldChallengeMount);
+	host.appendChild(toldChallengeMount);
 	document.body.appendChild(host);
 	onTestFinished(() => {
 		host.remove();
 	});
-	return { paymentMount, challengeMount, heldChallengeMount };
+	return { paymentMount, challengeMount, heldChallengeMount, toldChallengeMount };
 }
 
 /** a tick long enough for both providers' own promise chains to settle. */
@@ -254,13 +261,14 @@ it('starts the live flow on the step and draft the served snapshot was read with
 
 	for (const opening of openings) {
 		const served = initialSnapshot(config, opening);
-		const { paymentMount, challengeMount, heldChallengeMount } = boxes();
+		const { paymentMount, challengeMount, heldChallengeMount, toldChallengeMount } = boxes();
 		const checkout = startCheckout(
 			config,
 			{
 				paymentMount,
 				challengeMount,
 				heldChallengeMount,
+				toldChallengeMount,
 				resumeToken: null,
 				seams: { payment: { stripe: { load: payment.load, delay: timer.delay } } }
 			},
@@ -285,7 +293,7 @@ it('reads monthly on a one-time-only config as no opening at all', () => {
 });
 
 it('mounts the payment provider into the box it was handed and draws no challenge yet', async () => {
-	const { paymentMount, challengeMount, heldChallengeMount } = boxes();
+	const { paymentMount, challengeMount, heldChallengeMount, toldChallengeMount } = boxes();
 	const payment = paymentProvider();
 	const challenge = challengeProvider();
 	const timer = clock();
@@ -294,6 +302,7 @@ it('mounts the payment provider into the box it was handed and draws no challeng
 		paymentMount,
 		challengeMount,
 		heldChallengeMount,
+		toldChallengeMount,
 		resumeToken: null,
 		seams: {
 			payment: { stripe: { load: payment.load, delay: timer.delay } },
@@ -312,7 +321,7 @@ it('mounts the payment provider into the box it was handed and draws no challeng
 });
 
 it('draws the challenge on arrival at the details step and resets it on the way out of a busy flow', async () => {
-	const { paymentMount, challengeMount, heldChallengeMount } = boxes();
+	const { paymentMount, challengeMount, heldChallengeMount, toldChallengeMount } = boxes();
 	const payment = paymentProvider();
 	const challenge = challengeProvider();
 	const timer = clock();
@@ -329,6 +338,7 @@ it('draws the challenge on arrival at the details step and resets it on the way 
 		paymentMount,
 		challengeMount,
 		heldChallengeMount,
+		toldChallengeMount,
 		resumeToken: null,
 		seams: {
 			payment: { stripe: { load: payment.load, delay: timer.delay } },
@@ -358,10 +368,190 @@ it('draws the challenge on arrival at the details step and resets it on the way 
 	expect(challenge.resets).toEqual(['widget-1']);
 });
 
+it('saves a pledge the told press could not find again under a new reference on a fresh token, and tells on the press after', async () => {
+	const { paymentMount, challengeMount, heldChallengeMount, toldChallengeMount } = boxes();
+	const payment = paymentProvider();
+	const challenge = challengeProvider();
+	const timer = clock();
+	const saves: Record<string, unknown>[] = [];
+	// the first told press finds no pledge and the second is taken, through the real `createPledgeTold`.
+	const told: string[] = [];
+	const references = ['CFCP-IRA-4K9M', 'CFCP-IRA-8Z3P'];
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async (url: string, init?: RequestInit) => {
+			const tellsFor = /\/donations\/([^/]+)\/told$/.exec(url)?.[1];
+			if (tellsFor !== undefined) {
+				told.push(decodeURIComponent(tellsFor));
+				return told.length === 1
+					? Response.json({ error: 'pledge_not_found' }, { status: 404 })
+					: Response.json({ ok: true });
+			}
+			const request = JSON.parse(String(init?.body)) as Record<string, unknown>;
+			saves.push(request);
+			return Response.json({
+				paymentToken: request.pledgeId,
+				feeMinor: 0,
+				totalMinor: request.amountMinor,
+				pledge: {
+					id: request.pledgeId,
+					method: 'ira_qcd',
+					reference: references[saves.length - 1],
+					receiptTo: request.email,
+					amountMinor: request.amountMinor,
+					custodian: request.custodian,
+					payeeName: 'Helping Hands',
+					ein: '12-3456789',
+					mailingAddress: '412 Alder Lane\nCedar Fork, OR 97330'
+				}
+			});
+		})
+	);
+
+	const checkout = startCheckout(WITH_IRA, {
+		paymentMount,
+		challengeMount,
+		heldChallengeMount,
+		toldChallengeMount,
+		resumeToken: null,
+		seams: {
+			payment: { stripe: { load: payment.load, delay: timer.delay } },
+			challenge: { turnstile: { load: challenge.load, delay: timer.delay } }
+		}
+	});
+	onTestFinished(() => checkout.stop());
+	await settle();
+
+	const { actor } = checkout;
+	actor.send({ type: 'CONTINUE' });
+	actor.send({ type: 'SET_CONTACT', email: 'donor@example.org' });
+	actor.send({ type: 'SET_CONTACT', firstName: 'Ada' });
+	actor.send({ type: 'SET_CONTACT', lastName: 'Lovelace' });
+	actor.send({ type: 'CONTINUE' });
+	actor.send({ type: 'SET_METHOD', method: 'ira_qcd' });
+	actor.send({ type: 'SET_CUSTODIAN', custodian: 'Fidelity Investments' });
+	actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'token-1' });
+	actor.send({ type: 'SUBMIT' });
+	await vi.waitFor(() => expect(toState(actor.getSnapshot()).step).toBe('pledged'));
+	expect(challenge.resets).toEqual(['widget-1']);
+
+	actor.send({ type: 'TELL_ORGANIZATION' });
+	await vi.waitFor(() =>
+		expect(toState(actor.getSnapshot())).toMatchObject({ refused: true, resave: 'needed' })
+	);
+
+	// the widget's reset answers with a fresh token, and the press saves on it under a fresh id in
+	// place of telling, so the donor has the new reference before anyone is told.
+	actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'token-2' });
+	actor.send({ type: 'TELL_ORGANIZATION' });
+	await vi.waitFor(() =>
+		expect(toState(actor.getSnapshot())).toMatchObject({
+			phase: 'pending',
+			refused: false,
+			resave: 'done'
+		})
+	);
+	const resaved = toState(actor.getSnapshot());
+	expect(resaved.step === 'pledged' ? resaved.pledge.reference : null).toBe('CFCP-IRA-8Z3P');
+
+	const [first, second] = saves;
+	expect(saves.map((save) => [save.pledgeId, save.turnstileToken])).toEqual([
+		[first?.pledgeId, 'token-1'],
+		[second?.pledgeId, 'token-2']
+	]);
+	expect(second?.pledgeId).toMatch(/^[0-9a-f-]{36}$/);
+	expect(second?.pledgeId).not.toBe(first?.pledgeId);
+	expect(told).toEqual([first?.pledgeId]);
+	// the second save spent a token without leaving the pledge's screen.
+	expect(challenge.resets).toEqual(['widget-1', 'widget-1']);
+
+	actor.send({ type: 'TELL_ORGANIZATION' });
+	await vi.waitFor(() => expect(toState(actor.getSnapshot())).toMatchObject({ phase: 'told' }));
+	expect(told).toEqual([first?.pledgeId, second?.pledgeId]);
+	expect(saves).toHaveLength(2);
+});
+
+it('sends a save refused pledge_id_taken once more under a fresh id, on a token the reset minted', async () => {
+	const { paymentMount, challengeMount, heldChallengeMount, toldChallengeMount } = boxes();
+	const payment = paymentProvider();
+	const challenge = challengeProvider();
+	const timer = clock();
+	const saves: Record<string, unknown>[] = [];
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async (_url: string, init?: RequestInit) => {
+			const request = JSON.parse(String(init?.body)) as Record<string, unknown>;
+			saves.push(request);
+			if (saves.length === 1) {
+				return Response.json(
+					{ error: 'pledge_id_taken', message: 'This gift reference is already in use.' },
+					{ status: 409 }
+				);
+			}
+			return Response.json({
+				paymentToken: request.pledgeId,
+				feeMinor: 0,
+				totalMinor: request.amountMinor,
+				pledge: {
+					id: request.pledgeId,
+					method: 'ira_qcd',
+					reference: 'CFCP-IRA-4K9M',
+					receiptTo: request.email,
+					amountMinor: request.amountMinor,
+					custodian: request.custodian,
+					payeeName: 'Helping Hands',
+					ein: '12-3456789',
+					mailingAddress: '412 Alder Lane\nCedar Fork, OR 97330'
+				}
+			});
+		})
+	);
+
+	const checkout = startCheckout(WITH_IRA, {
+		paymentMount,
+		challengeMount,
+		heldChallengeMount,
+		toldChallengeMount,
+		resumeToken: null,
+		seams: {
+			payment: { stripe: { load: payment.load, delay: timer.delay } },
+			challenge: { turnstile: { load: challenge.load, delay: timer.delay } }
+		}
+	});
+	onTestFinished(() => checkout.stop());
+	await settle();
+
+	const { actor } = checkout;
+	actor.send({ type: 'CONTINUE' });
+	actor.send({ type: 'SET_CONTACT', email: 'donor@example.org' });
+	actor.send({ type: 'SET_CONTACT', firstName: 'Ada' });
+	actor.send({ type: 'SET_CONTACT', lastName: 'Lovelace' });
+	actor.send({ type: 'CONTINUE' });
+	actor.send({ type: 'SET_METHOD', method: 'ira_qcd' });
+	actor.send({ type: 'SET_CUSTODIAN', custodian: 'Fidelity Investments' });
+	actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'token-1' });
+	actor.send({ type: 'SUBMIT' });
+	await vi.waitFor(() => expect(actor.getSnapshot().matches('retaking')).toBe(true));
+	// the refused send spent the token, so the widget is reset on the way in.
+	expect(challenge.resets).toEqual(['widget-1']);
+
+	actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'token-2' });
+	await vi.waitFor(() => expect(toState(actor.getSnapshot()).step).toBe('pledged'));
+
+	const [first, second] = saves;
+	expect(saves.map((save) => [save.pledgeId, save.turnstileToken])).toEqual([
+		[first?.pledgeId, 'token-1'],
+		[second?.pledgeId, 'token-2']
+	]);
+	expect(second?.pledgeId).not.toBe(first?.pledgeId);
+	// and once more on the way out of the busy flow, as after any save.
+	expect(challenge.resets).toEqual(['widget-1', 'widget-1']);
+});
+
 // a deployment holding no Turnstile pair serves the ALTCHA path instead, and this page reads its
 // config off its own address, so the path resolves against the page's.
 it('solves the ALTCHA challenge this deployment serves and posts it as the payload', async () => {
-	const { paymentMount, challengeMount, heldChallengeMount } = boxes();
+	const { paymentMount, challengeMount, heldChallengeMount, toldChallengeMount } = boxes();
 	const payment = paymentProvider();
 	const timer = clock();
 	const asked: string[] = [];
@@ -391,6 +581,7 @@ it('solves the ALTCHA challenge this deployment serves and posts it as the paylo
 		paymentMount,
 		challengeMount,
 		heldChallengeMount,
+		toldChallengeMount,
 		resumeToken: null,
 		seams: {
 			payment: { stripe: { load: payment.load, delay: timer.delay } },
@@ -420,7 +611,7 @@ it('solves the ALTCHA challenge this deployment serves and posts it as the paylo
 });
 
 it('stops without leaving a subscription, a widget or a deadline behind', async () => {
-	const { paymentMount, challengeMount, heldChallengeMount } = boxes();
+	const { paymentMount, challengeMount, heldChallengeMount, toldChallengeMount } = boxes();
 	const payment = paymentProvider();
 	const challenge = challengeProvider();
 	const timer = clock();
@@ -429,6 +620,7 @@ it('stops without leaving a subscription, a widget or a deadline behind', async 
 		paymentMount,
 		challengeMount,
 		heldChallengeMount,
+		toldChallengeMount,
 		resumeToken: null,
 		seams: {
 			payment: { stripe: { load: payment.load, delay: timer.delay } },
@@ -456,11 +648,12 @@ it('tells a listener how many options the payment box lists', async () => {
 	const payment = paymentProvider();
 	const timer = clock();
 	const start = (config: FormConfig) => {
-		const { paymentMount, challengeMount, heldChallengeMount } = boxes();
+		const { paymentMount, challengeMount, heldChallengeMount, toldChallengeMount } = boxes();
 		const checkout = startCheckout(config, {
 			paymentMount,
 			challengeMount,
 			heldChallengeMount,
+			toldChallengeMount,
 			resumeToken: null,
 			seams: { payment: { stripe: { load: payment.load, delay: timer.delay } } }
 		});
@@ -482,7 +675,7 @@ it('tells a listener how many options the payment box lists', async () => {
 // no Venmo session can approve a subscription, so a repeating cadence takes Venmo off this page's
 // box as it does off the embed's (`venmoIsOffered` in packages/form/src/checkout.machine.ts).
 it('lists Venmo on a one-time gift only, with PayPal standing on every cadence', async () => {
-	const { paymentMount, challengeMount, heldChallengeMount } = boxes();
+	const { paymentMount, challengeMount, heldChallengeMount, toldChallengeMount } = boxes();
 	const paypal = paypalProvider();
 	const challenge = challengeProvider();
 	const timer = clock();
@@ -497,6 +690,7 @@ it('lists Venmo on a one-time gift only, with PayPal standing on every cadence',
 			paymentMount,
 			challengeMount,
 			heldChallengeMount,
+			toldChallengeMount,
 			resumeToken: null,
 			seams: {
 				payment: { paypal: { load: paypal.load, delay: timer.delay } },
@@ -524,7 +718,7 @@ it('lists Venmo on a one-time gift only, with PayPal standing on every cadence',
 // the hole this page had until the surface it composes stopped being one processor's: a deployment
 // holding PayPal's keys and no card processor's drew a box nothing could be paid in.
 it('draws a payment surface for a config offering only PayPal’s rails, and confirms on one', async () => {
-	const { paymentMount, challengeMount, heldChallengeMount } = boxes();
+	const { paymentMount, challengeMount, heldChallengeMount, toldChallengeMount } = boxes();
 	const paypal = paypalProvider();
 	const challenge = challengeProvider();
 	const timer = clock();
@@ -533,6 +727,7 @@ it('draws a payment surface for a config offering only PayPal’s rails, and con
 		paymentMount,
 		challengeMount,
 		heldChallengeMount,
+		toldChallengeMount,
 		resumeToken: null,
 		seams: {
 			payment: { paypal: { load: paypal.load, delay: timer.delay } },
@@ -584,7 +779,7 @@ it('draws a payment surface for a config offering only PayPal’s rails, and con
 });
 
 it('tells the flow the rail a donor pressed, on whichever processor’s box they pressed it in', async () => {
-	const { paymentMount, challengeMount, heldChallengeMount } = boxes();
+	const { paymentMount, challengeMount, heldChallengeMount, toldChallengeMount } = boxes();
 	const payment = paymentProvider();
 	const paypal = paypalProvider();
 	const challenge = challengeProvider();
@@ -600,6 +795,7 @@ it('tells the flow the rail a donor pressed, on whichever processor’s box they
 			paymentMount,
 			challengeMount,
 			heldChallengeMount,
+			toldChallengeMount,
 			resumeToken: null,
 			seams: {
 				payment: {
@@ -631,7 +827,7 @@ it('tells the flow the rail a donor pressed, on whichever processor’s box they
 // endings are reports rather than a confirmation — so this page hands the surface a third kind of
 // report, and tells it on every reading whether the button stands.
 it('stands a fund’s button on the review step alone, and carries its window’s reports into the flow', async () => {
-	const { paymentMount, challengeMount, heldChallengeMount } = boxes();
+	const { paymentMount, challengeMount, heldChallengeMount, toldChallengeMount } = boxes();
 	const payment = paymentProvider();
 	const challenge = challengeProvider();
 	const timer = clock();
@@ -652,6 +848,7 @@ it('stands a fund’s button on the review step alone, and carries its window’
 		paymentMount,
 		challengeMount,
 		heldChallengeMount,
+		toldChallengeMount,
 		resumeToken: null,
 		seams: {
 			payment: {
@@ -707,7 +904,7 @@ it('stands a fund’s button on the review step alone, and carries its window’
 });
 
 it('puts a donor who closed the fund’s window back on the review step with nothing sent', async () => {
-	const { paymentMount, challengeMount, heldChallengeMount } = boxes();
+	const { paymentMount, challengeMount, heldChallengeMount, toldChallengeMount } = boxes();
 	const payment = paymentProvider();
 	const challenge = challengeProvider();
 	const timer = clock();
@@ -718,6 +915,7 @@ it('puts a donor who closed the fund’s window back on the review step with not
 		paymentMount,
 		challengeMount,
 		heldChallengeMount,
+		toldChallengeMount,
 		resumeToken: null,
 		seams: {
 			payment: {
@@ -785,7 +983,7 @@ afterEach(() => {
 });
 
 it('stands the coin list in the crypto option on a one-time gift, and takes it away on a repeating one', async () => {
-	const { paymentMount, challengeMount, heldChallengeMount } = boxes();
+	const { paymentMount, challengeMount, heldChallengeMount, toldChallengeMount } = boxes();
 	const payment = paymentProvider();
 	const timer = clock();
 
@@ -793,6 +991,7 @@ it('stands the coin list in the crypto option on a one-time gift, and takes it a
 		paymentMount,
 		challengeMount,
 		heldChallengeMount,
+		toldChallengeMount,
 		resumeToken: null,
 		seams: { payment: { stripe: { load: payment.load, delay: timer.delay } } }
 	});
@@ -810,7 +1009,7 @@ it('stands the coin list in the crypto option on a one-time gift, and takes it a
 
 it('reads a crypto gift at this deployment until it arrives', async () => {
 	vi.useFakeTimers({ shouldAdvanceTime: true });
-	const { paymentMount, challengeMount, heldChallengeMount } = boxes();
+	const { paymentMount, challengeMount, heldChallengeMount, toldChallengeMount } = boxes();
 	const payment = paymentProvider();
 	const timer = clock();
 	const reads: string[] = [];
@@ -837,6 +1036,7 @@ it('reads a crypto gift at this deployment until it arrives', async () => {
 		paymentMount,
 		challengeMount,
 		heldChallengeMount,
+		toldChallengeMount,
 		resumeToken: null,
 		seams: {
 			payment: { stripe: { load: payment.load, delay: timer.delay } },

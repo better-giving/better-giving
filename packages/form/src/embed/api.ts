@@ -15,14 +15,22 @@
 // nor is this reachable through ./runtime.ts, which is why the split is a module and not an
 // export. that file imports `defineDonateForm` and reads its own script tag, so importing it from a
 // page that renders no custom element would register the tag and install the embed's boot. this
-// module imports no element, no payment SDK and no DOM global — `fetch`, `Response` and the four
+// module imports no element, no payment SDK and no DOM global — `fetch`, `Response` and the
 // helpers below are the whole of it.
 //
 // `../../package.json` exports it as `./embed/api` for that second surface, and for nothing else:
 // a host page pasting the snippet reaches this through ./runtime.ts and never by name.
 
-import type { CheckoutPorts } from '../ports';
-import type { DonationStatus, EmployerAnswer, EmployerRequest } from '../v1';
+import type { CheckoutPorts, PledgePorts } from '../ports';
+import type {
+	DonationStatus,
+	EmployerAnswer,
+	EmployerRequest,
+	PledgeToldAnswer,
+	Quote,
+	QuoteRequest,
+	StockPledgeRequest
+} from '../v1';
 import { LOADER_PATH } from './loader';
 
 /** the write one press makes. `v1` is permanent, so this path is too. */
@@ -56,13 +64,16 @@ export class EmbedFailure extends Error {
 	readonly unanswered?: true;
 	/** the least gift the coin takes, where a `below_minimum` refusal named it (`ApiError` in ../v1.ts). */
 	readonly minAmountMinor?: number;
+	/** the box a pledge's refusal named (`ApiError.field` in ../v1.ts), read by `errorField` in ../checkout.machine.ts. */
+	readonly field?: string;
 
 	constructor(
 		message: string,
 		fix: string,
 		code?: string,
 		unanswered?: true,
-		minAmountMinor?: number
+		minAmountMinor?: number,
+		field?: string
 	) {
 		super(message);
 		this.name = 'EmbedFailure';
@@ -70,6 +81,7 @@ export class EmbedFailure extends Error {
 		if (code !== undefined) this.code = code;
 		if (unanswered !== undefined) this.unanswered = unanswered;
 		if (minAmountMinor !== undefined) this.minAmountMinor = minAmountMinor;
+		if (field !== undefined) this.field = field;
 	}
 }
 
@@ -102,6 +114,13 @@ function apiMinAmountMinor(body: unknown): number | undefined {
 	return Number.isSafeInteger(minAmountMinor) && (minAmountMinor as number) >= 0
 		? (minAmountMinor as number)
 		: undefined;
+}
+
+/** the box a pledge's refusal names, where it names one. */
+function apiField(body: unknown): string | undefined {
+	if (typeof body !== 'object' || body === null) return undefined;
+	const { field } = body as { field?: unknown };
+	return typeof field === 'string' && field.length > 0 ? field : undefined;
 }
 
 /** the sentence and the fix an api error carries, where it carries them. */
@@ -155,8 +174,13 @@ const UNCHARGED = 'This donation could not be started, and nothing was charged.'
  *
  * `credentials: 'omit'` for the reason the read has it: this surface is unauthenticated by design,
  * so sending a cookie would be sending a credential to an endpoint with nothing to do with one.
+ *
+ * a pledge's save is the same write with a pledge's body, so this one function is both the `quote`
+ * port and `save` on `PledgePorts` (../ports.ts).
  */
-export function createQuote(origin: string | null): CheckoutPorts['quote'] {
+export function createQuote(
+	origin: string | null
+): (request: QuoteRequest | StockPledgeRequest) => Promise<Quote> {
 	return async (request) => {
 		if (origin === null) {
 			throw new EmbedFailure(
@@ -191,7 +215,8 @@ export function createQuote(origin: string | null): CheckoutPorts['quote'] {
 				words?.fix ?? `POST ${url} answered ${response.status}.`,
 				parsed.ok ? apiCode(parsed.value) : undefined,
 				undefined,
-				parsed.ok ? apiMinAmountMinor(parsed.value) : undefined
+				parsed.ok ? apiMinAmountMinor(parsed.value) : undefined,
+				parsed.ok ? apiField(parsed.value) : undefined
 			);
 		}
 
@@ -202,7 +227,44 @@ export function createQuote(origin: string | null): CheckoutPorts['quote'] {
 				`POST ${url} answered ${response.status} with a body that is not JSON.`
 			);
 		}
-		return parsed.value as Awaited<ReturnType<CheckoutPorts['quote']>>;
+		return parsed.value as Quote;
+	};
+}
+
+/** where a pledge's donor says they have asked for the transfer. `v1` is permanent, so this path is too. */
+export function toldUrl(origin: string, formId: string, pledgeId: string): string {
+	return `${statusUrl(origin, formId, pledgeId)}/told`;
+}
+
+/**
+ * the port a pending pledge's primary presses: `POST /api/v1/forms/:id/donations/:pledgeId/told`.
+ *
+ * no body, and none is worded: the flow answers a failure with one of two notices of its own on the
+ * pending screen (`pendingNotice` in ../views.ts), so a sentence here would be one no donor is shown.
+ * a refusal still carries the endpoint's code, as `createQuote`'s does: `pledge_not_found` is what
+ * makes the next press save the pledge again before it tells (`pledgeIsLost` in ../checkout.machine.ts).
+ * `credentials: 'omit'` for `createQuote`'s reason.
+ */
+export function createPledgeTold(origin: string | null): PledgePorts['told'] {
+	return async ({ formId, pledgeId }) => {
+		if (origin === null) {
+			throw new Error('the embedded runtime could not tell which deployment it was served from');
+		}
+		const url = toldUrl(origin, formId, pledgeId);
+		const response = await fetch(url, {
+			method: 'POST',
+			credentials: 'omit',
+			headers: { accept: 'application/json' }
+		});
+		if (!response.ok) {
+			const refused = await readJson(response);
+			const answered = `POST ${url} answered ${response.status}.`;
+			throw new EmbedFailure(answered, answered, refused.ok ? apiCode(refused.value) : undefined);
+		}
+		const parsed = await readJson(response);
+		const answer = parsed.ok ? (parsed.value as Partial<PledgeToldAnswer> | null) : null;
+		if (answer?.ok !== true)
+			throw new Error(`POST ${url} answered a body that is not { "ok": true }`);
 	};
 }
 

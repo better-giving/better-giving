@@ -21,6 +21,7 @@ import type { RenderedEmail } from './provider';
 
 /** what arrived on a crypto gift, as the template prints it. */
 export type CryptoReceived = receipt.CryptoReceived;
+export type PledgeReceived = receipt.PledgeReceived;
 
 /** the gift, as the `donation` row holds it. */
 export interface ReceiptContribution extends receipt.ReceiptContribution {
@@ -85,8 +86,14 @@ export interface ReceiptInput {
 	 */
 	readonly crypto: CryptoReceived | null;
 	/**
+	 * the stock or IRA (QCD) pledge a received gift was; absent on every other rail. a stock
+	 * receipt prints the shares and no dollar figure, `contribution.totalMinor` included.
+	 */
+	readonly pledge?: PledgeReceived;
+	/**
 	 * the address of the donor's own page for this gift. given, the receipt closes on the employer
-	 * match note that links to it; absent, it is the receipt it always was.
+	 * match note that links to it, except a stock receipt, which drops it; absent, it is the receipt
+	 * it always was.
 	 */
 	readonly giftPageUrl?: string;
 }
@@ -286,6 +293,7 @@ export async function renderReceipt(input: ReceiptInput): Promise<ReceiptResult>
 							},
 				program: input.program,
 				crypto: input.crypto,
+				...(input.pledge === undefined ? {} : { pledge: input.pledge }),
 				...(input.giftPageUrl === undefined ? {} : { giftPageUrl: input.giftPageUrl })
 			})
 		)

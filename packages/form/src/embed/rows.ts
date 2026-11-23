@@ -1,17 +1,19 @@
-// the rows the payment box lists outside the provider's frame: one per PayPal rail, the fund's, and
-// the crypto option's.
+// the rows the payment box lists outside the provider's frame: one per PayPal rail, the fund's, the
+// IRA (QCD) option's and the crypto option's.
 //
 // the provider paints its own rails as rows inside its frame (`layout` in ./stripe.ts), and a donor
 // reads the box as one list, so the options the other adapters draw are rows of the same shape: the
 // rail's mark at the start, its name after it, no line between one row and the next, and the rail's
-// own branded button behind a press on the name. the row reports nothing to the flow. opening one is
-// looking rather than choosing — the button inside it is still the press that chooses, exactly as it
-// was with no row around it.
+// own branded button behind a press on the name. a row holding a processor's button reports nothing
+// to the flow: opening one is looking rather than choosing — the button inside it is still the press
+// that chooses, exactly as it was with no row around it. the IRA (QCD) and crypto rows hold the
+// card's own controls instead, and opening either chooses its rail (./pledge.ts, ./nowpayments.ts).
 //
-// each row is a light-DOM node with a shadow root of its own. light DOM because what it holds is a
-// processor's own element, which has to stay reachable by that processor's script (Chariot's finds
-// its element by a document query, ./chariot.ts); a shadow root because a host page's stylesheet
-// reaches light DOM, and a `button { … }` rule on their page would otherwise redraw the row's name.
+// each row is a light-DOM node with a shadow root of its own. light DOM because what a processor's
+// row holds is that processor's own element, which has to stay reachable by its script (Chariot's
+// finds its element by a document query, ./chariot.ts); a shadow root because a host page's
+// stylesheet reaches light DOM, and a `button { … }` rule on their page would otherwise redraw the
+// row's name.
 // the branded button is slotted, so it stays in the document tree while the name, the mark and the
 // panel it is drawn in stay out of a host's reach.
 //
@@ -22,7 +24,7 @@
 import rowStyles from '../styles/rows.css?inline';
 
 /** which mark a row carries. */
-export type RowMark = 'paypal' | 'venmo' | 'fund' | 'crypto';
+export type RowMark = 'paypal' | 'venmo' | 'fund' | 'crypto' | 'ira';
 
 /** one row, as the adapter that drew it and the composer that coordinates it hold it. */
 export type Row = {
@@ -78,11 +80,19 @@ const PINNED =
 /** one path of a drawn glyph, as its source file states it. */
 type GlyphPath = { readonly d: string; readonly fill: string };
 
-/** a glyph as its source file draws it: the file's own viewBox and paths, in order, each with its fill. */
-type Glyph = { readonly viewBox: string; readonly paths: readonly GlyphPath[] };
+/**
+ * a glyph as its source file draws it: the file's own viewBox and paths, in order, each with its fill.
+ * `stroked` is a line icon's, drawn in `currentColor` at its source's own stroke (../glyph.ts).
+ */
+type Glyph = {
+	readonly viewBox: string;
+	readonly paths: readonly GlyphPath[];
+	readonly stroked?: true;
+};
 
 /**
- * each row's mark as the company behind the rail publishes it,
+ * each row's mark as the company behind the rail publishes it, but the IRA (QCD) row's, which no
+ * company stands behind (its entry below),
  * https://www.paypalobjects.com/paypal-ui/logos/svg/paypal-mark-color.svg,
  * https://www.paypalobjects.com/paypal-ui/logos/svg/venmo-mark-color.svg and Chariot's icon glyph
  * from https://www.givechariot.com, paths and fills verbatim — including Chariot's third path, which
@@ -137,6 +147,21 @@ const BRAND_MARKS: Readonly<Record<RowMark, Glyph>> = {
 			{ fill: '#000000', d: 'M15 15h34v34H15z' }
 		]
 	},
+	// lucide's `piggy-bank` (https://lucide.dev, ISC), the mark the design draws on this row: no
+	// processor stands behind an IRA (QCD) gift, so the mark is the form's own rather than a brand's,
+	// in the head's ink as the fund's is.
+	ira: {
+		viewBox: '0 0 24 24',
+		stroked: true,
+		paths: [
+			{
+				fill: 'none',
+				d: 'M11 17h3v2a1 1 0 0 0 1 1h2a1 1 0 0 0 1-1v-3a3.16 3.16 0 0 0 2-2h1a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1h-1a5 5 0 0 0-2-4V3a4 4 0 0 0-3.2 1.6l-.3.4H11a6 6 0 0 0-6 6v1a5 5 0 0 0 2 4v3a1 1 0 0 0 1 1h2a1 1 0 0 0 1-1z'
+			},
+			{ fill: 'none', d: 'M16 10h.01' },
+			{ fill: 'none', d: 'M2 8v1a2 2 0 0 0 2 2h1' }
+		]
+	},
 	fund: {
 		viewBox: '0 0 33 33',
 		paths: [
@@ -169,6 +194,12 @@ function drawGlyph(doc: Document, glyph: Glyph): SVGElement {
 	svg.setAttribute('viewBox', glyph.viewBox);
 	svg.setAttribute('aria-hidden', 'true');
 	svg.setAttribute('focusable', 'false');
+	if (glyph.stroked === true) {
+		svg.setAttribute('stroke', 'currentColor');
+		svg.setAttribute('stroke-width', '2');
+		svg.setAttribute('stroke-linecap', 'round');
+		svg.setAttribute('stroke-linejoin', 'round');
+	}
 	for (const { d, fill } of glyph.paths) {
 		const path = doc.createElementNS(SVG, 'path');
 		path.setAttribute('d', d);

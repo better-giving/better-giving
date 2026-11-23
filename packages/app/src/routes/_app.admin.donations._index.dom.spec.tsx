@@ -81,17 +81,35 @@ function gift(over: Partial<Gift> = {}): Gift {
  * for, and the cast is ./_app.admin.forms.new.dom.spec.tsx's — the props under test are `loaderData`
  * alone.
  */
-function screen(donations: Gift[], match: MatchFilter | null = null): HTMLElement {
-	return mount(stubbed(donations, match));
+function screen(
+	donations: Gift[],
+	match: MatchFilter | null = null,
+	waiting: Waiting = NOTHING_WAITING
+): HTMLElement {
+	return mount(stubbed(donations, match, waiting));
 }
 
-function stubbed(donations: Gift[], match: MatchFilter | null = null): ReactNode {
+type Waiting = Parameters<typeof Donations>[0]['loaderData']['waiting'];
+
+const NOTHING_WAITING: Waiting = { total: 0, receipts: true, pledges: [] };
+
+function stubbed(
+	donations: Gift[],
+	match: MatchFilter | null = null,
+	waiting: Waiting = NOTHING_WAITING
+): ReactNode {
 	const Stub = createRoutesStub([
 		{
 			path: '/admin/donations',
 			Component: () =>
 				createElement(Donations as never, {
-					loaderData: { donations, limit: 50, hasMore: false, match },
+					loaderData: {
+						donations,
+						limit: 50,
+						hasMore: false,
+						match,
+						waiting
+					},
 					params: {},
 					matches: []
 				})
@@ -201,6 +219,29 @@ it('says there are no gifts yet in the empty state, with no second Add donation'
 	expect(
 		[...root.querySelectorAll('a')].filter((a) => a.textContent === 'Add donation')
 	).toHaveLength(1);
+});
+
+it('says no gifts are received yet while a pledge waits to arrive above it', () => {
+	const root = screen([], null, {
+		total: 1,
+		receipts: true,
+		pledges: [
+			{
+				id: '019fb300-0000-7000-8000-0000000000a1',
+				method: 'stock',
+				donorName: 'Ada Okafor',
+				donorEmail: null,
+				pledged: '50 shares of AAPL',
+				reference: 'BG-7Q4K',
+				told: false
+			}
+		]
+	});
+	const state = root.querySelector('.ds-page-state');
+
+	expect(state?.querySelector('h2')?.textContent).toBe('No gifts received yet');
+	expect(state?.textContent).toContain('Pledges move here once you mark them received.');
+	expect(root.textContent).not.toContain('No gifts yet');
 });
 
 it('says under a note where it stands on the donate page, and nothing under a private one', () => {

@@ -99,8 +99,11 @@ const donorRule = z.superRefine<DonorBoxes>(
 	{ when: ({ issues }) => !issues.some((issue) => issue.path?.[0] === 'donor') }
 );
 
-/** every box of the form, each still as the text a body carried. */
-const GIFT_FIELD_RULES = {
+/**
+ * every box of the form, each still as the text a body carried. `amount` and `received_on` are
+ * Mark received's too (./pledge-forms.ts), which records a pledge as money in hand.
+ */
+export const GIFT_FIELD_RULES = {
 	/**
 	 * the gift's id and its payment's, minted by the loader and carried hidden.
 	 *

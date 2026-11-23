@@ -127,6 +127,10 @@ Videos are added in `/admin`, Donation page → Videos. The server reads the vid
 
 `YOUTUBE_API_KEY` is optional. It is a YouTube Data API v3 key from a Google Cloud project with that API enabled ([Google's guide](https://developers.google.com/youtube/v3/getting-started)). Set, a video's length is read when it is added and shown beside it. Unset, or when YouTube doesn't answer, the video is added without a length. A video added before the key was set keeps no length until it is removed and added again.
 
+## Stock tickers
+
+A donor giving stock picks it from the ticker list the deployment stores, so their search never leaves your server. The list is the SEC's public company and mutual fund ticker files ([company_tickers_exchange.json](https://www.sec.gov/files/company_tickers_exchange.json) and [company_tickers_mf.json](https://www.sec.gov/files/company_tickers_mf.json), source: U.S. Securities and Exchange Commission). It is fetched each day at 04:20 UTC. While no list is held, saving Stocks under Payments also fetches it straight away, so the first list does not wait for 04:20. sec.gov refuses a request that names no contact, so the fetch names the notification address saved in Settings, or `MAIL_FROM` while none is saved. The server needs outbound access to `www.sec.gov`. A fetch that fails keeps the list from before and sends an alert to the notification address (`packages/app/src/lib/server/donations/ticker-refresh.ts`).
+
 ## The spam check
 
 A donation form solves a self-hosted proof of work (ALTCHA) before a gift is sent, and needs no account. To use Cloudflare Turnstile instead, create a widget at dash.cloudflare.com → Turnstile and set both `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY`. With only one set, ALTCHA stays the check. The widget's hostname list names the deployment's own hostname and every site under Donation forms → Which sites your forms go on. A host the widget does not list renders the form and refuses every gift, because Cloudflare will not issue a challenge pass on an unauthorised host. The page that embeds the form also needs Turnstile's CSP entries ([Embed a form](embed.md)).

@@ -51,6 +51,15 @@ const STRIPE: Card = {
 	charityRate: null
 };
 
+/** both pledge rails never turned on ($lib/admin/payments/pledge-rails.dom.spec.tsx draws the rest). */
+const RAILS_OFF: Drawn['pledgeRails'] = {
+	stock: {
+		enabled: false,
+		details: { brokerage_name: '', dtc_number: '', account_number: '', account_name: '' }
+	},
+	ira_qcd: { enabled: false, details: { payee_name: '', mailing_address: '' } }
+};
+
 /** the screen drawn from `drawn`, with every press recorded as the body it posted. */
 function screen(drawn: Partial<Drawn>, answer: unknown = null) {
 	const posted: FormData[] = [];
@@ -63,7 +72,7 @@ function screen(drawn: Partial<Drawn>, answer: unknown = null) {
 			},
 			Component: () =>
 				createElement(Payments as never, {
-					loaderData: { cards: [], others: [], ...drawn },
+					loaderData: { cards: [], others: [], pledgeRails: RAILS_OFF, ...drawn },
 					actionData: undefined,
 					params: {},
 					matches: []

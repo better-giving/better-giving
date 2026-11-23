@@ -176,6 +176,45 @@ describe('public messages, listed', () => {
 	});
 });
 
+// a pledge marked received, or money entered in hand, is dated by its day and stored at that day's
+// UTC midnight, which a viewer west of UTC would read as the day before.
+describe('a gift recorded by its day', () => {
+	const PLEDGE: ModeratedMessage = {
+		...MAYA,
+		id: 'gift-pledge',
+		name: 'Ana K.',
+		receivedAt: '2026-11-18T00:00:00.000Z',
+		receivedOn: '2026-11-18'
+	};
+	/** a gift received at an instant, which is that viewer's day before. */
+	const LATE: ModeratedMessage = { ...DEV, receivedAt: '2026-11-18T03:00:00.000Z' };
+
+	/** the browser resolving a zone west of UTC, which is what `LocalTime` writes in once hydrated. */
+	function viewerIn(zone: string) {
+		const real = Intl.DateTimeFormat.prototype.resolvedOptions;
+		const spy = vi
+			.spyOn(Intl.DateTimeFormat.prototype, 'resolvedOptions')
+			.mockImplementation(function (this: Intl.DateTimeFormat) {
+				return { ...real.call(this), timeZone: zone };
+			});
+		onTestFinished(() => spy.mockRestore());
+	}
+
+	it('lists and quotes it on its own day for a viewer west of UTC, and a gift at an instant in their zone', () => {
+		viewerIn('America/Los_Angeles');
+		const { host } = mount({ messages: [PLEDGE, LATE] });
+
+		expect(dayOf(host, 'Ana K.')).toBe('2026-11-18');
+		expect(row(host, 'Ana K.')?.querySelector('time')?.dateTime).toBe('2026-11-18');
+		expect(dayOf(host, 'Dev P.')).toBe('2026-11-17');
+
+		act(() => press(host, 'Ana K.')?.click());
+		expect(dialog()?.querySelector('.adm-quote__by')?.textContent).toBe(
+			'Shown as Ana K. · 18 Nov 2026'
+		);
+	});
+});
+
 describe('hiding a message', () => {
 	it('asks first, in an alert dialog quoting the message, with focus on Cancel', () => {
 		const onHide = vi.fn();

@@ -22,6 +22,7 @@
 @import '@better-giving/operator/registry/styles/page-state-css.css' layer(registry);
 @import '@better-giving/operator/registry/styles/settings-layout-css.css' layer(registry);
 @import '@better-giving/operator/registry/styles/app-shell-css.css' layer(registry);
+@import '@better-giving/operator/registry/styles/text-button-css.css' layer(registry);
 @import '@better-giving/operator/styles/tokens.css';
 @import '@better-giving/operator/styles/base.css';
 @import '@better-giving/operator/styles/adm.css';

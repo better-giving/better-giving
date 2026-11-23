@@ -12,14 +12,26 @@ const WEEK = 7 * DAY;
 /** past this many weeks the words are the month, which "5 weeks ago" says less plainly. */
 const WEEKS_SHOWN = 4;
 
-/** `receivedAt` against `now`, both ISO 8601, in `locale`'s words. */
-export function messageAge(receivedAt: string, now: string, locale: string): string {
-	const at = Date.parse(receivedAt);
-	const elapsed = Math.max(0, Date.parse(now) - at);
+/**
+ * `receivedAt` against `now`, both ISO 8601, in `locale`'s words. a gift dated by a day
+ * (`receivedOn`, an ISO day) has no hour, so its age is whole days from that day to `now`'s UTC day.
+ */
+export function messageAge(
+	receivedAt: string,
+	now: string,
+	locale: string,
+	receivedOn?: string
+): string {
+	const at = Date.parse(receivedOn ?? receivedAt);
+	const nowAt = Date.parse(now);
+	const from = receivedOn === undefined ? nowAt : nowAt - (nowAt % DAY);
+	const elapsed = Math.max(0, from - at);
 	const ago = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' });
-	if (elapsed < MINUTE) return ago.format(0, 'second');
-	if (elapsed < HOUR) return ago.format(-Math.floor(elapsed / MINUTE), 'minute');
-	if (elapsed < DAY) return ago.format(-Math.floor(elapsed / HOUR), 'hour');
+	if (receivedOn === undefined) {
+		if (elapsed < MINUTE) return ago.format(0, 'second');
+		if (elapsed < HOUR) return ago.format(-Math.floor(elapsed / MINUTE), 'minute');
+		if (elapsed < DAY) return ago.format(-Math.floor(elapsed / HOUR), 'hour');
+	}
 	if (elapsed < WEEK) return ago.format(-Math.floor(elapsed / DAY), 'day');
 	if (elapsed < (WEEKS_SHOWN + 1) * WEEK) return ago.format(-Math.floor(elapsed / WEEK), 'week');
 	const sameYear = new Date(at).getUTCFullYear() === new Date(Date.parse(now)).getUTCFullYear();

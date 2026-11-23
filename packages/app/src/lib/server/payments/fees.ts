@@ -166,27 +166,37 @@ export const CHARIOT_FEE_RULES: Readonly<Record<ChariotRail, FeeRule>> = Object.
 export const NOWPAYMENTS_FEE_RULE: FeeRule = Object.freeze({ percent: 0.01, fixedMinor: 0 });
 
 /**
+ * the price of a pledged gift: nothing. no processor stands behind `stock` or `ira_qcd`
+ * (`PLEDGE_RAILS` in packages/form/src/embed/rails.ts), so there is no fee to cover.
+ *
+ * frozen for `CARD`'s reason.
+ */
+export const PLEDGE_FEE_RULE: FeeRule = Object.freeze({ percent: 0, fixedMinor: 0 });
+
+/**
  * the table `/api/v1/forms/:id/config` serves, covering every rail the wire vocabulary holds.
  *
- * composed from each processor's own rules rather than picked whole: the tables price disjoint
- * rails, so the composition is total and none can overwrite another's price. a
- * deployment holding one processor serves this same table — `paymentMethods` on the served config
- * is what says which of these rails a donor is actually offered, and a price carried for a rail
- * nobody is offered prices nothing.
+ * composed from each processor's own rules rather than picked whole, and `PLEDGE_FEE_RULE` for the
+ * two pledge rails: the tables price disjoint rails, so the composition is total and none can
+ * overwrite another's price. a deployment holding one processor serves this same table —
+ * `paymentMethods` on the served config is what says which of these rails a donor is actually
+ * offered, and a price carried for a rail nobody is offered prices nothing.
  *
  * which PayPal table is a fact about the org's own PayPal account and arrives as one, so it is a
  * parameter rather than a choice made here.
  *
  * frozen, because this object is handed by reference into every `FormConfig` served from an
  * isolate that outlives the request — `CARD` above states what one caller writing to it in place
- * would cost. the rules inside it are the frozen ones the three tables and `NOWPAYMENTS_FEE_RULE`
- * already hold.
+ * would cost. the rules inside it are the frozen ones the three tables, `NOWPAYMENTS_FEE_RULE` and
+ * `PLEDGE_FEE_RULE` already hold.
  */
 export function servedFeeRules(paypal: Readonly<Record<PaypalRail, FeeRule>>): FeeRules {
 	return Object.freeze({
 		...STRIPE_US_FEE_RULES,
 		...paypal,
 		...CHARIOT_FEE_RULES,
-		crypto: NOWPAYMENTS_FEE_RULE
+		crypto: NOWPAYMENTS_FEE_RULE,
+		stock: PLEDGE_FEE_RULE,
+		ira_qcd: PLEDGE_FEE_RULE
 	});
 }

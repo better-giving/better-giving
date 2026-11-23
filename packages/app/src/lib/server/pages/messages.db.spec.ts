@@ -3,6 +3,7 @@ import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createDb, type Db } from '../db/client';
 import { contact, donation as donationTable } from '../db/schema';
 import { writeOrgRow } from '../org/org-row.testing';
+import { receivePledge } from '../donations/receive-pledge';
 import { ensureDonationPage } from './donation-page';
 import {
 	parseMessageCursor,
@@ -33,6 +34,7 @@ beforeEach(async () => {
 		'quickbooks_sync',
 		'ledger_entry',
 		'entry_group',
+		'pledge',
 		'payment',
 		'line_item',
 		'gift_match',
@@ -52,6 +54,56 @@ beforeEach(async () => {
 /** a settled public note signed Ada O., unless a case says otherwise. */
 const shownGift = (over: Parameters<typeof noteGift>[2] = {}) =>
 	noteGift(db, formId, { note: 'Thank you', noteOnPage: 'named', ...over });
+
+/**
+ * a stock pledge with a public note, marked received on `day` as Mark received records it: stored
+ * at that day's UTC midnight.
+ */
+async function receivedPledgeGift(day: string): Promise<string> {
+	const contactId = crypto.randomUUID();
+	const pledgeId = crypto.randomUUID();
+	await run(
+		stmt(
+			`insert into contact (id, kind, display_name, primary_email, created_at, updated_at)
+			 values (?, 'individual', 'Maya Rivera', 'maya.rivera@example.org', 0, 0)`,
+			contactId
+		)
+	);
+	await run(
+		stmt(
+			`insert into pledge (id, method, contact_id, currency, reference, ticker, shares_millionths,
+			                     form_id, note, note_public, note_anonymous, note_shown_name, created_at)
+			 values (?, 'stock', ?, 'USD', 'CFCP-AAPL-7Q2D', 'AAPL', 50000000, ?, 'Shares for the pantry',
+			         1, 0, 'Maya R.', 0)`,
+			pledgeId,
+			contactId,
+			formId
+		)
+	);
+	const received = await receivePledge(db, {
+		pledgeId,
+		amountMinor: 951_240,
+		dated: new Date(`${day}T00:00:00.000Z`)
+	});
+	if (!received.ok) throw new Error(`the fixture pledge was not received: ${received.reason}`);
+	return pledgeId;
+}
+
+describe('a message’s day, as the Gifts list dates its gift', () => {
+	it('gives a received pledge’s message the day it arrived, and a card gift’s its instant', async () => {
+		await receivedPledgeGift('2026-11-18');
+		await shownGift({ note: 'By card', receivedAt: new Date('2026-11-01T11:00:00.000Z') });
+
+		const shown = (await readShownMessages(db, null)).messages;
+		expect(shown).toEqual([
+			expect.objectContaining({ note: 'Shares for the pantry', receivedOn: '2026-11-18' }),
+			{ name: 'Ada O.', note: 'By card', receivedAt: '2026-11-01T11:00:00.000Z' }
+		]);
+
+		const moderated = (await readModeratedMessages(db)).messages;
+		expect(moderated.map((m) => m.receivedOn)).toEqual(['2026-11-18', undefined]);
+	});
+});
 
 describe('readShownMessages()', () => {
 	it('shows a settled gift’s note under the donor’s first name and last initial', async () => {

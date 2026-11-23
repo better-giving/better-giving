@@ -3,27 +3,31 @@
  * one role token those names carry. every colour and every step of a scale here comes from
  * ./tokens.css, so a host's seed reaches every surface without a second copy of the ramp existing.
  *
- * seven lengths are literals and each is a floor or a shape rather than a step of a scale, which is
- * what a token apiece would misrepresent — a scale nobody counts along. they are stated here so an
- * eighth is a decision rather than a habit, and each is argued at its own rule:
+ * seven lengths are literals and each is a floor, a shape or a drawn size rather than a step of a
+ * scale, which is what a token apiece would misrepresent — a scale nobody counts along. they are
+ * stated here so an eighth is a decision rather than a habit, and each is argued at its own rule:
  *
  *   - `max(16px, 1em)`, twice: on the text boxes this sheet draws and on the registry's,
  *     `.ds-field-input`. iOS Safari zooms the page when a focused control computes below 16px, and
  *     this form is on someone else's page.
- *   - `max(12px, var(--_t-xs))`, six times: `.mandate`, `.fee-note`, the `(optional)` beside
- *     a label, the `.hint` under the note's consent, the notify press inside the tribute and the
- *     words of a floated label. `em` compounds
+ *   - `max(12px, var(--_t-xs))`, eight times: `.mandate`, `.fee-note`, the `(optional)` beside
+ *     a label, the `.hint` under the note's consent, the notify press inside the tribute, the
+ *     words of a floated label, the benefits panel's `.benefits-fine` and the labels of a saved
+ *     pledge's transfer details. `em` compounds
  *     against a parent already at `--_t-sm`, so the step documented as 12px draws at 10.5px and
  *     lower — the floor is what stops the compounding, and the token is what the size still follows
- *     above it. the press and the floated label compound against nothing and take the floor for the
- *     clamp band alone. the registry's badge text (`.ds-badge`) takes the same floor over its own
- *     step off the root, for the same band.
+ *     above it. the press, the floated label, the pledge's detail labels and the benefits panel's
+ *     fine print compound against nothing and take the floor for the clamp band alone. the
+ *     registry's badge text (`.ds-badge`) takes the same floor over its own step off the root, for
+ *     the same band.
  *   - `min-block-size: 5em` on the textarea. how many lines the box opens at, which is a shape of
  *     that box and not a measure anything else on the card shares.
  *   - `overflow-clip-margin: 6px` on `.disclosure-inner`. the room a focus ring painted outside a
  *     box needs to survive the clip, which is the ring's own geometry rather than a spacing step.
  *   - `margin-inline-start: 1ch` on the mark inside the deposit's copy run. one character of the
  *     words the mark follows, which no step of a scale expresses.
+ *   - `font-size: 0.9375em` on a pledge's monospace details. the size the design draws a code at
+ *     beside proportional words, which the type scale has no step at.
  *   - `inline-size: 33%` on the skeleton's label line. a fraction of whatever width the card has,
  *     which is the one thing a length in this file cannot be.
  *
@@ -37,8 +41,8 @@
  * the selectors are `[part~='name']`, not classes, because the part attribute is what a host
  * targets and a second selector for the same surface is a second thing to keep in step. a class
  * appears here only for something that is deliberately not a part, or for the registry's: the
- * button, the text box and the tick box the registry draws (../registry/styles/, adopted before this
- * sheet) carry its classes, and a rule here names one only to keep itself off that control,
+ * controls the registry draws (../registry/styles/, adopted before this sheet; ./tokens.css lists
+ * them) carry its classes, and a rule here names one only to keep itself off that control,
  * `:where(:not(.ds-…))` at no weight of its own, or to place it.
  *
  * naming a part hands over control of it. across the shadow boundary a host's normal declaration
@@ -144,6 +148,19 @@
 /* a takeover is the only thing on the card, so its heading is the card's own first size. */
 .takeover [part~='heading'] {
 	font-size: var(--_t-xl);
+}
+
+/*
+ * a saved pledge's pending screen is the takeover whose pledge block is shown with its details list
+ * drawn (`pledgedScreen` in ../views.ts; the thank-you hides the list, and every other takeover hides
+ * the block and leaves the list as it was), and it is a page of instructions under the heading rather
+ * than one sentence, so the heading takes the card's own step heading size. every rule keyed on the
+ * pending screen, here and in ./layout.css, is keyed on this one selector. it is two `:has()` rather
+ * than one `> .pledge > .pledge-details` chain because happy-dom, which the dom specs match these
+ * selectors in, matches that chain on the thank-you, where the list is hidden.
+ */
+.takeover:has(> .pledge:not([hidden])):has(.pledge-details:not([hidden])) [part~='heading'] {
+	font-size: var(--_t-lg);
 }
 
 [part~='label'] {
@@ -518,10 +535,10 @@ textarea[part~='field'] {
 	white-space: nowrap;
 	text-overflow: ellipsis;
 	/*
-	 * the floor the four other sites under this step state, for the reason the notify press states
-	 * it: this span's parent is the card's own base, so nothing compounds into it and the floor is
-	 * for the clamp band alone. it is the field's visible name rather than fine print, which is why
-	 * it is not one of the two ./tokens.css leaves to draw at 11.25px.
+	 * the floor the other sites under this step state (this file's header), for the reason the
+	 * notify press states it: this span's parent is the card's own base, so nothing compounds into
+	 * it and the floor is for the clamp band alone. it is the field's visible name rather than fine
+	 * print, which is why it is not among the consumers ./tokens.css leaves to draw at 11.25px.
 	 *
 	 * raw-length-ok: the floor, for that reason.
 	 */
@@ -1778,6 +1795,16 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 }
 
 /*
+ * the registry centres a button's content with flex alone (`justify-content` in
+ * ../registry/styles/button-css.css), and a label that wraps fills the box, so its lines align by
+ * `text-align`: the browser's own sheet centres a `<button>`'s, and an `<a>` drawn as one — a pledge
+ * screen's emailed instructions (../views.ts) — inherits the card's `start` (./tokens.css).
+ */
+.ds-btn {
+	text-align: center;
+}
+
+/*
  * the action without the registry's class, drawn here from the same registry variables. every
  * action the element and the react card draw carries it (`REGISTRY_CLASS` in ../parts.ts); the one
  * that does not is an ended campaign's link on to `/` (`EndedCampaignPage` in
@@ -1810,13 +1837,14 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 
 /*
  * the quiet action at its own size: a text control, for stepping back off a numbered step and for
- * the second control on a full-card screen. the one quiet action drawn as the registry's secondary
- * button — the employer ask's Skip, beside its Send (../employer-ask.ts) — is the registry's to draw,
- * so both rules here leave it out by where it stands. it is a button, and the card underlines a link `<a href>`
+ * the second control on a full-card screen. the quiet actions drawn as the registry's secondary
+ * button — the employer ask's Skip, beside its Send (../employer-ask.ts), and a pledge screen's Done
+ * and emailed instructions (../views.ts) — are the registry's to draw, so both rules here leave out
+ * whatever carries its class. it is a button, and the card underlines a link `<a href>`
  * and nothing else (`what is underlined` in ./parts.browser.spec.ts), so what says it is pressable
  * is the brand drawn as ink, step 11, the pointer's step to 12 below, and the card's focus ring.
  */
-[part~='action-quiet']:where(:not(.employer-actions > *)) {
+[part~='action-quiet']:where(:not(.ds-btn)) {
 	display: inline-flex;
 	align-items: center;
 	/* the control hugs its words rather than a box stretched to the column it stands in. */
@@ -1838,7 +1866,7 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * the word steps under the pointer: the brand's 11 at rest, its 12 under the pointer, the other
  * text step.
  */
-[part~='action-quiet']:where(:not(.employer-actions > *)):hover {
+[part~='action-quiet']:where(:not(.ds-btn)):hover {
 	color: var(--_a12);
 }
 
@@ -2012,6 +2040,18 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 	margin: 0;
 	color: var(--_n12);
 	font-size: var(--_t-md);
+}
+
+/*
+ * on a pledge's pending screen the sentence introduces the lists under it rather than being the
+ * screen's news, so it steps down to the small size in the quiet ink, at the registry's own leading
+ * for that size: `calc(1.25 / 0.875)`, which it states on its classes alone (`--ds-text-sm-lh` in
+ * ../registry/styles/button-css.css) and ./tokens.css lists as a registry gap.
+ */
+.takeover:has(> .pledge:not([hidden])):has(.pledge-details:not([hidden])) .prose {
+	color: var(--_n11);
+	font-size: var(--_t-sm);
+	line-height: calc(1.25 / 0.875);
 }
 
 /*
@@ -2396,6 +2436,191 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  */
 .copy-face.failed {
 	color: var(--_bad);
+}
+
+/*
+ * a saved pledge's two lists (../pledge-screen.ts): one box each on the card's own first ground,
+ * which the pending screen's rule below steps to the second, edged with the divider step, and every
+ * row ruled off from the last by the same hairline (`.pledge-row` in ./layout.css).
+ */
+.pledge-list {
+	border: var(--_border) solid var(--_n6);
+	border-radius: var(--_r-in);
+	background: var(--_n1);
+}
+
+.pledge-label {
+	color: var(--_n11);
+	font-size: var(--_t-sm);
+	line-height: var(--_lh-tight);
+}
+
+/*
+ * the details name their values a step down again, since the value under each is what is read. the
+ * name is still what tells a donor which value they are copying into their broker's or custodian's
+ * form, so it carries the floor `.optional` argues: its parent is the card's own base, and `--_t-xs` draws
+ * at 11.25px at the bottom of the clamp band.
+ */
+.pledge-details .pledge-label {
+	/* raw-length-ok: the floor, for the reason above. */
+	font-size: max(12px, var(--_t-xs));
+	/* the registry's leading for that size (`--ds-text-xs-lh` in ../registry/styles/button-css.css). */
+	line-height: calc(1 / 0.75);
+}
+
+.pledge-value {
+	color: var(--_n12);
+	line-height: var(--_lh-body);
+}
+
+/*
+ * on the pending screen the summary's label takes the body's leading, and its value takes 1.4, a
+ * shade under it: the leading the design draws, which no leading token here or in the registry has.
+ */
+.takeover:has(> .pledge:not([hidden])):has(.pledge-details:not([hidden]))
+	.pledge-summary
+	.pledge-label {
+	line-height: var(--_lh-body);
+}
+
+.takeover:has(> .pledge:not([hidden])):has(.pledge-details:not([hidden]))
+	.pledge-summary
+	.pledge-value {
+	line-height: 1.4;
+}
+
+/* a value a donor checks character by character — a code or a number — in the monospace face. */
+.pledge-value.mono {
+	font-family: var(--_font-mono);
+}
+
+/*
+ * a size under the proportional values in the same list, which are drawn at the card's base,
+ * because a monospace face draws wider and taller at the same size than a proportional one.
+ */
+.pledge-details .pledge-value.mono {
+	/* raw-length-ok: fifteen sixteenths of the base, a size the type scale has no step at. */
+	font-size: 0.9375em;
+}
+
+/*
+ * the control that copies a row's value: the copy mark alone in a square box at the row floor, 44px
+ * (`--_row-min`), drawn and touched at that size because the registry's medium icon button has no
+ * touch area yet. the faces stack in one cell as the address screen's do (`.copy-face` above). a
+ * control's ground at rest, under the pointer and pressed — 3, 4 and 5 — with its edge on 7 and 8
+ * under the pointer, the registry's secondary rank (`.ds-btn-secondary`). `::part(action-quiet)`
+ * reaches it, which is why its shape is written here by class rather than on the part.
+ */
+.pledge .copy {
+	display: inline-grid;
+	place-items: center;
+	inline-size: var(--_row-min);
+	min-block-size: var(--_row-min);
+	padding: 0;
+	background: var(--_n3);
+	border: var(--_border) solid var(--_n7);
+	border-radius: var(--_r-in);
+	color: var(--_n11);
+	cursor: pointer;
+}
+
+.pledge .copy:hover {
+	background: var(--_n4);
+	border-color: var(--_n8);
+	color: var(--_n12);
+}
+
+.pledge .copy:active {
+	background: var(--_n5);
+}
+
+/*
+ * the benefits panel: a box on the neutral's second ground, edged with the divider step, with its
+ * title, the claim and the fine print under it. the title is the card's emphasis weight in the card's
+ * own face — no display face is loaded (./tokens.css).
+ */
+.benefits {
+	padding: var(--_sp4);
+	background: var(--_n2);
+	border: var(--_border) solid var(--_n6);
+	border-radius: var(--_r-in);
+}
+
+/*
+ * on the pending screen the lists and the panel are the blocks the screen is made of rather than
+ * boxes inside one, so they take the card's own corner.
+ */
+.takeover:has(> .pledge:not([hidden])):has(.pledge-details:not([hidden])) .pledge-list,
+.takeover:has(> .pledge:not([hidden])):has(.pledge-details:not([hidden])) .benefits {
+	border-radius: var(--_r);
+}
+
+/*
+ * and the lists sit on the neutral's second ground, as the panel under them does, which sets them
+ * off the card's own face. the thank-you hides the details, so its summary list keeps the first.
+ */
+.takeover:has(> .pledge:not([hidden])):has(.pledge-details:not([hidden])) .pledge-list {
+	background: var(--_n2);
+}
+
+.benefits-title {
+	margin: 0 0 var(--_sp1);
+	color: var(--_n12);
+	font-size: var(--_t-sm);
+	font-weight: var(--_w-bold);
+	line-height: var(--_lh-tight);
+}
+
+.benefits-body {
+	margin: 0;
+	color: var(--_n11);
+	font-size: var(--_t-sm);
+	line-height: var(--_lh-body);
+}
+
+.benefits-fine {
+	margin: var(--_sp2) 0 0;
+	color: var(--_n11);
+	/* raw-length-ok: the floor, for the clamp band alone (this file's header). */
+	font-size: max(12px, var(--_t-xs));
+	line-height: var(--_lh-body);
+}
+
+/*
+ * on the pending screen the panel's words take the registry's leadings for their sizes, and its gaps
+ * the registry's spacing step off `--ds-rem` rather than an `em` off the words' own smaller sizes —
+ * one step under the title, two over the fine print. both are the registry gap ./tokens.css lists
+ * tenth.
+ */
+.takeover:has(> .pledge:not([hidden])):has(.pledge-details:not([hidden])) .benefits-title {
+	margin-block-end: calc(var(--ds-rem) * 0.25);
+	line-height: calc(1.25 / 0.875);
+}
+
+.takeover:has(> .pledge:not([hidden])):has(.pledge-details:not([hidden])) .benefits-body {
+	line-height: calc(1.25 / 0.875);
+}
+
+.takeover:has(> .pledge:not([hidden])):has(.pledge-details:not([hidden])) .benefits-fine {
+	margin-block-start: calc(var(--ds-rem) * 0.25 * 2);
+	line-height: calc(1 / 0.75);
+}
+
+/*
+ * the registry's notice card (../registry/styles/notice-card-css.css) states its title in
+ * `--font-display`, a face this card never loads; the card's own face is what every other title on
+ * it is set in, so a pledge block's notice title follows it. a registry gap, listed with the others
+ * at the head of ./tokens.css. keyed on the block (../pledge-screen.ts, and
+ * packages/app/src/lib/donate/pledge-block.tsx) because the gift page and the supporter area read
+ * this sheet too, and their notices keep the registry's face.
+ */
+.pledge .ds-notice-card-title {
+	font-family: inherit;
+}
+
+.notice-glyph {
+	inline-size: var(--_glyph-beside);
+	block-size: var(--_glyph-beside);
 }
 
 /*

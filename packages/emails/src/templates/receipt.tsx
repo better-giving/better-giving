@@ -25,7 +25,8 @@ import { greetingFor } from './greeting';
 // what is on a receipt and why — the content below is researched and settled, not sketched.
 //
 // required on every one: the organization's legal name, the amount, a goods-or-services
-// statement, and the date of the contribution.
+// statement, and the date of the contribution. a gift of stock states its shares in the amount's
+// place and no value (`PledgeReceived`).
 //
 // it is shaped as a record and not as a letter: a greeting, one thank-you naming the
 // organization, then the gift as a labelled block — donor, recipient, date, amount — and the
@@ -47,8 +48,9 @@ import { greetingFor } from './greeting';
 //
 // the goods-or-services sentence branches exactly three ways and one of them always prints:
 // nothing was provided; something was, with a description and a good-faith estimate of its
-// fair market value; or the only benefit was an intangible religious one. there is no fourth
-// case and no "leave it out" case — the statement is what makes the document a receipt.
+// fair market value; or the only benefit was an intangible religious one. an IRA (QCD) gift
+// prints its own sentence in their place (`QCD_GOODS_STATEMENT`). there is no "leave it out"
+// case — the statement is what makes the document a receipt.
 //
 // this is not legal advice and a tax professional reviews the final copy. that sentence
 // belongs in this comment and not in the email: a disclaimer on a receipt is a receipt a
@@ -150,6 +152,20 @@ export interface CryptoReceived {
 	readonly coinAmount: string;
 }
 
+/**
+ * a gift that arrived as a pledge said it would.
+ *
+ * `stock`: the shares as a donor reads them — `50 shares of AAPL` — printed verbatim, with the day
+ * they arrived and no dollar figure anywhere: the donor values a gift of stock, and
+ * `ReceiptContribution.totalMinor` is the organisation's own record of it, never the donor's.
+ *
+ * `ira_qcd`: the amount and the date as on any gift, with `QCD_GOODS_STATEMENT` as its
+ * goods-or-services sentence.
+ */
+export type PledgeReceived =
+	| { readonly method: 'stock'; readonly shares: string }
+	| { readonly method: 'ira_qcd' };
+
 export interface ReceiptData {
 	readonly org: ReceiptOrg;
 	/** who to address it to. `null` prints a neutral greeting rather than "Dear null". */
@@ -190,9 +206,15 @@ export interface ReceiptData {
 	 */
 	readonly crypto: CryptoReceived | null;
 	/**
+	 * the pledge a received stock or IRA (QCD) gift was, or absent on every other rail, whose
+	 * receipt is unchanged by it.
+	 */
+	readonly pledge?: PledgeReceived;
+	/**
 	 * the address of the donor's own page for this gift, where the filing details an employer's
 	 * giving portal asks for are printed. given, the receipt closes on `MATCH_NOTE`; absent, it is
-	 * the receipt it was before the note existed, byte for byte.
+	 * the receipt it was before the note existed, byte for byte. a stock receipt drops both: the page
+	 * states the gift's amount, and a stock receipt states no dollar value.
 	 */
 	readonly giftPageUrl?: string;
 }
@@ -229,7 +251,10 @@ export function template(data: ReceiptData): EmailTemplate {
 	const value = formatMoney(data.contribution.nonDeductibleMinor, data.contribution.currency);
 	const discloses =
 		goods.kind === 'provided' && data.contribution.totalMinor > QUID_PRO_QUO_THRESHOLD_MINOR;
-	const closing = `${goodsStatement(goods, value)} ${KEEP_THIS}`;
+	const pledge = data.pledge ?? null;
+	const statement =
+		pledge?.method === 'ira_qcd' ? QCD_GOODS_STATEMENT : goodsStatement(goods, value);
+	const closing = `${statement} ${KEEP_THIS}`;
 	const subject = `Your donation receipt from ${org.legalName}`;
 	const greeting = greetingFor(data.donorName);
 	const thanks = `Thank you for your gift to ${org.legalName}. ${SUPPORT}`;
@@ -245,8 +270,12 @@ export function template(data: ReceiptData): EmailTemplate {
 	const rows: readonly RecordRow[] = [
 		...(data.donorName === null ? [] : [{ label: RECEIPT_LABELS.donor, value: data.donorName }]),
 		{ label: RECEIPT_LABELS.recipient, value: org.legalName },
-		{ label: RECEIPT_LABELS.date, value: date },
-		...amountRows(data.crypto, amount),
+		...(pledge?.method === 'stock'
+			? [
+					{ label: STOCK_LABELS.dateReceived, value: date },
+					{ label: STOCK_LABELS.shares, value: pledge.shares }
+				]
+			: [{ label: RECEIPT_LABELS.date, value: date }, ...amountRows(data.crypto, amount)]),
 		// after the four and never among them: the quartet is what the law asks a receipt for and
 		// its order is settled, and this is a fact about the gift the donor stated and the document
 		// states back. a gift given for nobody drops the row, the way an unnamed donor drops theirs.
@@ -265,7 +294,7 @@ export function template(data: ReceiptData): EmailTemplate {
 		...(data.program === null ? [] : [{ label: RECEIPT_LABELS.program, value: data.program }])
 	];
 
-	const giftPageUrl = data.giftPageUrl ?? null;
+	const giftPageUrl = pledge?.method === 'stock' ? null : (data.giftPageUrl ?? null);
 	const copy: ReceiptCopy = { org, greeting, thanks, rows, closing, discloses, giftPageUrl };
 	return {
 		subject,
@@ -331,18 +360,24 @@ const CRYPTO_LABELS = {
 	valueWhenReceived: 'Value when received'
 } as const;
 
+/** a stock gift's day and shares, in the date's row and the amount's, with no value row. */
+const STOCK_LABELS = { dateReceived: 'Date received', shares: 'Shares received' } as const;
+
+/** the labels only a crypto or stock receipt prints. */
+const RAIL_LABELS: readonly string[] = [
+	...Object.values(CRYPTO_LABELS),
+	...Object.values(STOCK_LABELS)
+];
+
 /**
- * the label column in the text arm, widened by the longest label printed rather than by a guess.
+ * the label column in the text arm: two past the longest `RECEIPT_LABELS` entry, printed or not.
  *
- * the crypto labels widen it on a crypto receipt alone, so every other receipt's column stays
- * where it was.
+ * a receipt printing any rail label is widened by every one of them, crypto's and stock's alike,
+ * so every other receipt's column stays where it was.
  */
 function labelWidth(rows: readonly RecordRow[]): number {
-	const crypto = rows.some((row) => row.label === CRYPTO_LABELS.valueWhenReceived);
-	const labels = [
-		...Object.values(RECEIPT_LABELS),
-		...(crypto ? Object.values(CRYPTO_LABELS) : [])
-	];
+	const railed = rows.some((row) => RAIL_LABELS.includes(row.label));
+	const labels = [...Object.values(RECEIPT_LABELS), ...(railed ? RAIL_LABELS : [])];
 	return Math.max(...labels.map((label) => label.length)) + 2;
 }
 
@@ -399,7 +434,8 @@ const MATCH_NOTE =
 	"page, including our legal name, EIN and address and this gift's date and amount:";
 
 /**
- * the goods-or-services sentence — the branch that always prints, in all three of its forms.
+ * the goods-or-services sentence in its three forms, printed on every receipt but an IRA (QCD)
+ * gift's, which prints `QCD_GOODS_STATEMENT` below instead.
  *
  * the wording follows IRS Publication 1771 closely on purpose. it is the phrasing donors'
  * accountants recognise, and "we didn't give you anything" is not the same sentence in the
@@ -421,6 +457,13 @@ function goodsStatement(goods: GoodsOrServices, value: string): string {
 			);
 	}
 }
+
+/**
+ * the goods-or-services sentence on a qualified charitable distribution from an IRA, in place of
+ * `goodsStatement`'s: the custodian pays the organisation directly, and the donor's custodian and
+ * preparer read this sentence off the receipt as the acknowledgement that nothing came back.
+ */
+const QCD_GOODS_STATEMENT = 'No goods or services were provided in return for this gift.';
 
 /**
  * the §6115 disclosure itself, printed only when a quid pro quo payment cleared the
@@ -536,9 +579,14 @@ const DISCLOSURE_HEADING_STYLE: CSSProperties = {
 /**
  * the rows set apart in the HTML arm. only the amount is emphasised: it is the figure the donor's
  * bank shows and the one an eye scanning the document is looking for. on a crypto gift that is the
- * amount received, the figure the donor's wallet shows.
+ * amount received, the figure the donor's wallet shows, and on a stock gift the shares, which their
+ * brokerage statement shows.
  */
-const EMPHASISED: readonly string[] = [RECEIPT_LABELS.amount, CRYPTO_LABELS.amountReceived];
+const EMPHASISED: readonly string[] = [
+	RECEIPT_LABELS.amount,
+	CRYPTO_LABELS.amountReceived,
+	STOCK_LABELS.shares
+];
 
 /** one line of the identity block: which detail it came from, and the text to print. */
 interface IdentityLine {

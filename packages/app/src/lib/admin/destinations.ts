@@ -109,8 +109,9 @@ export const DESTINATION_GROUPS = [
 					{ href: '/admin/settings/mail', label: 'Mail', mark: 'mail' }
 				]
 			},
-			// where each payment processor the deployment holds keys for stands, and the two presses
-			// that act on its account (../../routes/_app.admin.payments.tsx).
+			// where each payment processor the deployment holds keys for stands, the two presses that
+			// act on its account, and Save and Disable on the stock and IRA (QCD) cards
+			// (../../routes/_app.admin.payments.tsx).
 			{
 				href: '/admin/payments',
 				label: 'Payments',

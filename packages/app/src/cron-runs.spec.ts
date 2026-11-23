@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { sendDueEntries } from '$lib/server/accounting/deliver';
 import { readPendingCryptoGifts } from '$lib/server/donations/pending-crypto-read';
 import { sendOwedRefundNotices } from '$lib/server/donations/refund-notice';
+import { refreshTickers } from '$lib/server/donations/ticker-refresh';
 import { sendUnsentPacks } from '$lib/server/matching/pack';
 import { sendDueReminders } from '$lib/server/matching/reminders';
 import { sweepSupporterLeftovers } from '$lib/server/supporters/sweep';
@@ -24,14 +25,18 @@ import type { Db } from '$lib/server/db/client';
 // $lib/server/donations/pending-crypto-read.db.spec.ts,
 // $lib/server/donations/refund-notice.db.spec.ts, $lib/server/supporters/sweep.db.spec.ts,
 // $lib/server/matching/reminders.db.spec.ts, $lib/server/matching/pack.db.spec.ts,
-// $lib/server/accounting/deliver.db.spec.ts, $lib/server/zapier/deliver.db.spec.ts and
-// $lib/server/webhooks/deliver.db.spec.ts, against a real database.
+// $lib/server/accounting/deliver.db.spec.ts, $lib/server/zapier/deliver.db.spec.ts,
+// $lib/server/webhooks/deliver.db.spec.ts and $lib/server/donations/ticker-refresh.db.spec.ts,
+// against a real database.
 
 vi.mock('$lib/server/donations/pending-crypto-read', () => ({
 	readPendingCryptoGifts: vi.fn(async () => {})
 }));
 vi.mock('$lib/server/donations/refund-notice', () => ({
 	sendOwedRefundNotices: vi.fn(async () => {})
+}));
+vi.mock('$lib/server/donations/ticker-refresh', () => ({
+	refreshTickers: vi.fn(async () => {})
 }));
 vi.mock('$lib/server/matching/reminders', () => ({
 	sendDueReminders: vi.fn(async () => {})
@@ -85,7 +90,8 @@ const JOBS = [
 	sendUnsentPacks,
 	sendDueEntries,
 	sendDueZapierEvents,
-	sendDueWebhooks
+	sendDueWebhooks,
+	refreshTickers
 ] as const;
 
 // `restoreMocks` in ../vitest.config.ts restores a spy's implementation and leaves a module mock's
@@ -147,6 +153,21 @@ describe('which run an expression reaches', () => {
 		await fires('15 * * * *');
 
 		expect(sweepSupporterLeftovers).toHaveBeenCalledExactlyOnceWith(db, SCHEDULED_AT);
+	});
+
+	it('refreshes the stock ticker list once a day at 04:20, handing it MAIL_FROM for sec.gov', async () => {
+		await fires('20 4 * * *', { MAIL_FROM: ' giving@cedarfork.org ' } as unknown as typeof env);
+
+		expect(refreshTickers).toHaveBeenCalledExactlyOnceWith(
+			{
+				db,
+				fetch: expect.any(Function),
+				email: expect.anything(),
+				mailFrom: 'giving@cedarfork.org'
+			},
+			SCHEDULED_AT
+		);
+		expect(sendDueEntries).not.toHaveBeenCalled();
 	});
 
 	it.each([

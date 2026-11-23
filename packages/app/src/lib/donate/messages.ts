@@ -13,6 +13,12 @@ export type DonorMessage = {
 	readonly note: string;
 	/** when the gift was received, ISO 8601, for a `<time datetime>`. */
 	readonly receivedAt: string;
+	/**
+	 * the ISO day, `2026-11-18`, on a gift dated by a day rather than an instant: a stock or IRA (QCD)
+	 * pledge marked received, or money staff entered in hand. its `receivedAt` is that day's UTC
+	 * midnight, and the day is the date to show. absent on every other gift.
+	 */
+	readonly receivedOn?: string;
 };
 
 export type DonorMessages = {

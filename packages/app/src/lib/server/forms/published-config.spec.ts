@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { SUGGESTED_DEDUCTIBILITY_STATEMENT } from '@better-giving/operator/deductibility';
 import { readFormConfig } from '@better-giving/form/config';
-import { PAYPAL_RAILS, STRIPE_RAILS } from '@better-giving/form/embed/rails';
+import { PAYPAL_RAILS, type PledgeRail, STRIPE_RAILS } from '@better-giving/form/embed/rails';
 import { OFFERED_PAYMENT_METHODS } from '../../forms/offered-rails';
 import { postableFromAccount, type PostableAccountId } from '../db/postable';
 import type { OrgProfile } from '../db/schema';
@@ -654,6 +654,33 @@ describe('renderableConfig', () => {
 		expect(result.error.fix).not.toContain('Try again');
 	});
 
+	/** the served config with the pledge rails Payments has switched on, beside no processor rail. */
+	const pledgesOnly = (pledgeRails: readonly PledgeRail[]) =>
+		publishedConfig({
+			id: FORM_ID,
+			cadences: SERVED_CADENCES,
+			program: null,
+			rails: [],
+			coins: [],
+			pledgeRails,
+			form: formRecord(),
+			owner: null,
+			profile: orgProfile(),
+			env: STRIPE
+		});
+
+	it('refuses a config whose only rail is stock, which no donation form screen offers', () => {
+		const result = renderableConfig(pledgesOnly(['stock']));
+		expect(result.ok).toBe(false);
+		expect(result.ok === false && result.reason).toBe('payments_not_configured');
+	});
+
+	it('passes a config offering IRA (QCD) alone, still serving stock beside it', () => {
+		const answered = pledgesOnly(['stock', 'ira_qcd']);
+		expect(renderableConfig(answered)).toBe(answered);
+		expect(answered.ok && answered.config.paymentMethods).toEqual(['stock', 'ira_qcd']);
+	});
+
 	it.each([
 		{ label: 'both rails', rails: OFFERED_PAYMENT_METHODS },
 		{ label: 'one rail', rails: ['card'] as const }
@@ -768,6 +795,27 @@ describe('publishedConfig — the config it serves', () => {
 		expect(served({ cadences, form: formRecord({ suggestedAmounts: [] }) }).frequencies).toEqual([
 			...cadences
 		]);
+	});
+
+	// a donor picks a cadence before a rail, and the form drops every one-time rail on a repeating
+	// cadence (`pledgeIsOffered` and its neighbours in packages/form/src/checkout.machine.ts).
+	it.each([
+		{ label: 'IRA (QCD) alone', rails: [], pledgeRails: ['ira_qcd'] as const },
+		{
+			label: 'only one-time rails',
+			rails: ['venmo', 'daf', 'crypto'] as const,
+			pledgeRails: ['stock', 'ira_qcd'] as const
+		}
+	])('serves one-time alone on a deployment that can repeat a gift, offering $label', (sources) => {
+		const config = served({ cadences: SERVED_CADENCES, ...sources });
+		expect(config.frequencies).toEqual(['one_time']);
+		expect(config.paymentMethods).toEqual([...sources.rails, ...sources.pledgeRails]);
+	});
+
+	it('serves every cadence beside one rail that repeats a gift', () => {
+		expect(
+			served({ cadences: SERVED_CADENCES, rails: ['paypal'], pledgeRails: ['ira_qcd'] }).frequencies
+		).toEqual([...SERVED_CADENCES]);
 	});
 
 	/**

@@ -1,4 +1,4 @@
-import type { PaymentMethod } from '@better-giving/form/v1';
+import type { ProcessorRail } from '@better-giving/form/embed/rails';
 
 // the ways a donor may pay that this repository has a donation form for at all, and no form
 // chooses.
@@ -39,16 +39,21 @@ import type { PaymentMethod } from '@better-giving/form/v1';
  * rail yet — the rail a wallet is delivered as, so the figure holds for whichever of the three
  * they go on to pick.
  *
- * `readonly PaymentMethod[]` rather than a literal tuple, because nothing may narrow on which
+ * `readonly ProcessorRail[]` rather than a literal tuple, because nothing may narrow on which
  * members are in it: a reader that branched on `card` being here would have to be reopened the day
  * a rail leaves, and the two consumers both take the list whole.
+ *
+ * the two pledge rails are not on it and cannot be (`PLEDGE_RAILS` in
+ * `packages/form/src/embed/rails.ts`): no processor settles them, and a deployment offers each one
+ * when its `pledge_rail` row is on, stock only once a ticker list is held too
+ * (`readPublishedConfig` in `$lib/server/forms/published-config.ts`).
  *
  * more than one processor's rails, and being on this list says nothing about which: `STRIPE_RAILS`,
  * `PAYPAL_RAILS`, `CHARIOT_RAILS` and `NOWPAYMENTS_RAILS` in `packages/form/src/embed/rails.ts` are
  * where that is written, and a deployment holding one processor narrows to that processor's own
  * rails through the read `offeredRails` in `$lib/server/forms/offered-rails.ts` makes.
  */
-export const OFFERED_PAYMENT_METHODS: readonly PaymentMethod[] = [
+export const OFFERED_PAYMENT_METHODS: readonly ProcessorRail[] = [
 	'card',
 	'ach',
 	'apple_pay',

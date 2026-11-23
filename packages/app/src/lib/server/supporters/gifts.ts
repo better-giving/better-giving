@@ -13,7 +13,9 @@ import { supporterPage } from '../db/schema';
 // deposit to a crypto address copy the opening gift's form (../donations/collect.ts,
 // ../donations/settle.ts) and name the page only when it was neither ended nor hidden at the moment
 // the money moved (`supporterPageCountingOf`), so an ended or hidden page stops growing; a late
-// webhook for a charge made before that still counts. a charge that does not count keeps the form
+// webhook for a charge made before that still counts. a received stock or IRA (QCD) pledge
+// (../donations/receive-pledge.ts) names its page by the same rule, on the day staff entered as its
+// arrival. a charge that does not count keeps the form
 // and stays in the organisation's books, and every reader of a page's gifts goes by
 // `supporter_page_id`, never `form_id`, so it shows nowhere on the page. a page shown again counts
 // from then on, and what arrived while it was hidden stays off it. a gift in hand

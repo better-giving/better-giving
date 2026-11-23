@@ -1220,10 +1220,15 @@
 	   around the pair (`beside` in packages/operator/src/components/forms/Field.jsx). placed rather
 	   than left to fall where it lands: auto-placement would put the pair in the hint's row on a
 	   field that draws no hint, which is the row a neighbouring field in a `.adm-pair--side` keeps
-	   for one. */
+	   for one.
+
+	   at the top of the row rather than stretched to it: in a `.adm-pair--side` the row is as tall
+	   as the taller of two boxes, and a single-line box pulled down beside a multi-line one is one
+	   line drawn several lines tall with its text floating in the middle (./box-row-top.spec.ts). */
 	.adm-field
 	> :is(.adm-input, .adm-field__box, .adm-selectwrap, .adm-maskwrap, .adm-leadwrap, .adm-actions) {
 		grid-row: 3;
+		align-self: start;
 	}
 
 	.adm-field > .adm-field__error {
@@ -4789,6 +4794,35 @@
 	.adm-pagestate__title.is-focus {
 		box-shadow: none;
 	}
+
+	/* the press at the trailing end of a row of presses, away from the write at its leading end: a
+	   rail card's Disable beside its Save (packages/app/src/lib/admin/payments/pledge-rails.tsx). */
+	.adm-actions > .adm-actions__end {
+		margin-inline-start: auto;
+	}
+
+	/* the Gifts screen's waiting pledges (packages/app/src/lib/admin/donations/waiting-pledges.tsx):
+	   one row a pledge, a rule between rows and above the first, each row's facts stacked over its
+	   full-width press at the floor and laid abreast in the layer below. */
+	.adm-pledges__row {
+		display: grid;
+		gap: var(--admin-space-4);
+		padding-block: var(--admin-space-5);
+		border-block-start: var(--admin-rule);
+	}
+
+	.adm-pledges__row > .adm-btn {
+		inline-size: 100%;
+	}
+
+	.adm-pledges__lead {
+		font-weight: var(--admin-label-weight);
+	}
+
+	.adm-pledges__ref {
+		font-family: var(--admin-font-mono);
+		font-size: var(--admin-code-size);
+	}
 }
 
 @layer layout {
@@ -5450,6 +5484,19 @@
 		   pair wider than the page. */
 		.adm-cardpair {
 			grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+		}
+	}
+
+	/* a waiting pledge's three facts abreast with its press at the end, from the middle breakpoint. */
+	@media (min-width: 44rem) {
+		.adm-pledges__row {
+			grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+			align-items: center;
+			gap: var(--admin-space-6);
+		}
+
+		.adm-pledges__row > .adm-btn {
+			inline-size: auto;
 		}
 	}
 }

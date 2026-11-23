@@ -7,6 +7,7 @@ import type {
 	PaymentMethod,
 	Program
 } from '@better-giving/form/v1';
+import { PLEDGE_RAILS, type PledgeRail } from '@better-giving/form/embed/rails';
 import { IDENTITY_FOLD } from '@better-giving/operator/setup-folds';
 import { OFFERED_PAYMENT_METHODS } from '../../forms/offered-rails';
 import { challengeKind } from '../api/challenge';
@@ -18,12 +19,15 @@ import { servedDeductibilityStatement } from '../org/deductibility';
 import { readOrgProfile } from '../org/queries';
 import { present } from '../org/receipt-fields';
 import { paypalFeeRules, servedFeeRules } from '../payments/fees';
+import { tickersReplacedAt } from '../donations/tickers';
+import { readPledgeRails } from '../payments/pledge-rails';
 import { servedProcessors } from '../payments/factory';
 import { PROCESSOR_LABELS, processorOf, type ProcessorName } from '../payments/provider';
 import { readActivePrograms, readProgram } from '../programs/queries';
 import { redactPublicId } from '../../redact';
 import type { FormRecord } from './form-input';
 import { fundraiserTakingGifts } from '../supporters/gifts';
+import { ONE_TIME_ONLY } from './offered-cadences';
 import { readForm, readOwningPage, type OwningPage } from './queries';
 
 // one `form` row plus this deployment's own details, as the config `GET /api/v1/forms/:id/config`
@@ -173,6 +177,14 @@ export interface PublishedConfigSources {
 	 * about that is `servedProgram` below, which is the one judgement this half makes over it.
 	 */
 	readonly program: Program | null;
+	/**
+	 * the pledge rails whose `pledge_rail` row is on, already read (`readPledgeRails` in
+	 * ../payments/pledge-rails.ts), and stock only once a ticker list is held. absent is neither.
+	 *
+	 * beside `rails` rather than inside it: no processor settles either, so the account's rail read
+	 * never names one, and a rail turned on under Payments is offered with no processor asked.
+	 */
+	readonly pledgeRails?: readonly PledgeRail[];
 }
 
 /**
@@ -259,16 +271,23 @@ export async function readPublishedConfig(
 		});
 	}
 
-	const [owner, fundraiser, profile, cadences, rails, coins, program] = await Promise.all([
-		readOwningPage(db, stored.id, now),
-		fundraiserTakingGifts(db, stored.id),
-		readOrgProfile(db),
-		readCadences(),
-		readRails(),
-		readCoins(),
-		// the status `asEnded` may change decides nothing in the cause's read.
-		readFormProgram(db, drafted(stored))
-	]);
+	const [owner, fundraiser, profile, cadences, rails, coins, program, pledgeRails, tickersHeldAt] =
+		await Promise.all([
+			readOwningPage(db, stored.id, now),
+			fundraiserTakingGifts(db, stored.id),
+			readOrgProfile(db),
+			readCadences(),
+			readRails(),
+			readCoins(),
+			// the status `asEnded` may change decides nothing in the cause's read.
+			readFormProgram(db, drafted(stored)),
+			readPledgeRails(db),
+			tickersReplacedAt(db)
+		]);
+	// a stock pledge names a ticker on the list (`mintPledge` in ../donations/quote.ts), so with no
+	// list held yet stock has nothing a donor could pick. the Stocks Save starts the first fetch
+	// (`refreshTickersIfNoneHeld` in ../donations/ticker-refresh.ts).
+	const offersStock = pledgeRails.stock.enabled && tickersHeldAt !== null;
 	const form = drafted(asEnded(stored, owner));
 	return publishedConfig({
 		id,
@@ -280,7 +299,10 @@ export async function readPublishedConfig(
 		cadences,
 		rails,
 		coins,
-		program
+		program,
+		pledgeRails: PLEDGE_RAILS.filter((rail) =>
+			rail === 'stock' ? offersStock : pledgeRails[rail].enabled
+		)
 	});
 }
 
@@ -322,23 +344,6 @@ async function readFormProgram(db: Db, form: FormRecord): Promise<Program | null
 		return { mode: 'choice', options: await readActivePrograms(db) };
 	}
 	return null;
-}
-
-/**
- * the sentence and fix for a form id nothing matches.
- *
- * exported because the gift submission answers an unusable `pageProgramId` with exactly these
- * words (`mintQuote` in ../donations/quote.ts), so an archived id, an unknown id and another
- * form's id read alike. an active id on the Donation page's form passes on to the spam check, so a
- * caller can still learn which ids are active.
- */
-export function formNotFound(id: string): { readonly message: string; readonly fix: string } {
-	return {
-		message: `No form with id \`${redactPublicId(id)}\` exists on this deployment.`,
-		fix:
-			'Check the `form` attribute on the donation element against the snippet shown under ' +
-			'Forms in /admin. A form is never deleted here, so an id that once worked still resolves.'
-	};
 }
 
 /**
@@ -578,8 +583,11 @@ export function publishedConfig(sources: PublishedConfigSources): PublishedConfi
 	const challenge = challengeKind(sources.env);
 	const program = servedProgram(sources.program);
 	const coins = sources.coins ?? [];
-	const paymentMethods =
-		coins.length > 0 ? sources.rails : sources.rails.filter((rail) => rail !== 'crypto');
+	// the pledge rails last, which is where `PAYMENT_METHODS` in packages/form/src/v1.ts puts them.
+	const paymentMethods = [
+		...(coins.length > 0 ? sources.rails : sources.rails.filter((rail) => rail !== 'crypto')),
+		...(sources.pledgeRails ?? [])
+	];
 
 	const config = {
 		formId: form.id,
@@ -597,18 +605,25 @@ export function publishedConfig(sources: PublishedConfigSources): PublishedConfi
 		// whether this deployment's processor account can collect a repeating gift, read by
 		// `offeredCadences` in ./offered-cadences.ts.
 		//
-		// narrower than what a gift is accepted on, and `paymentMethods` below is narrower under
-		// the same rule: `parseQuoteRequest` in ../donations/quote-input.ts reads `FREQUENCIES` in
-		// packages/form/src/v1.ts and `OFFERED_PAYMENT_METHODS` in ../../forms/offered-rails.ts
-		// whole, so a cadence or a rail this list has stopped offering is still charged rather than
-		// refused. the served config is cached and reaches pages this deployment cannot recall
-		// (CLAUDE.md), so refusing either would be a donor on a page we published being turned away
-		// at the last step.
-		frequencies: sources.cadences,
+		// narrower than what a gift is accepted on, and the processor rails in `paymentMethods` below
+		// are narrower under the same rule: `parseQuoteRequest` in ../donations/quote-input.ts reads
+		// `FREQUENCIES` in packages/form/src/v1.ts and `OFFERED_PAYMENT_METHODS` in
+		// ../../forms/offered-rails.ts whole, so a cadence or a rail this list has stopped offering is
+		// still charged rather than refused. the served config is cached and reaches pages this
+		// deployment cannot recall (CLAUDE.md), so refusing either would be a donor on a page we
+		// published being turned away at the last step. a pledge rail is not held to it: `mintPledge`
+		// in ../donations/quote.ts refuses one whose `pledge_rail` row is off.
+		//
+		// one-time alone where no rail served repeats a gift, as where the account could not be read:
+		// a repeating cadence takes every one-time rail off the donor's page, which would leave
+		// nothing to pay with.
+		frequencies: paymentMethods.some(repeatsAGift) ? sources.cadences : ONE_TIME_ONLY,
 		// the deployment's own answer and never this row's, the same as `frequencies` above and
 		// under the same rule: which of the rails this repository has a form for the processor
-		// account is approved for, read by `offeredRails` in ./offered-rails.ts.
-		// crypto only beside a coin to pick — see `PublishedConfigSources.coins`.
+		// account is approved for, read by `offeredRails` in ./offered-rails.ts, then the pledge rails
+		// whose `pledge_rail` row is on, stock only beside a ticker list
+		// (`PublishedConfigSources.pledgeRails`). crypto only beside a coin to pick — see
+		// `PublishedConfigSources.coins`.
 		paymentMethods,
 		feeCoverage: SERVED_FEE_COVERAGE,
 		// every rail the vocabulary holds, composed from each processor's own table
@@ -690,8 +705,9 @@ export const SERVED_LOCALE = 'en-US';
  *
  * one rule, and it is the config *route's* rather than the ladder's: `readFormConfig` in
  * packages/form/src/config.ts drops a config offering no rail, so a body served with an empty
- * `paymentMethods` is a donation form that silently does not appear on a site nobody here can see.
- * refusing instead puts a named value and a screen in front of an integrator.
+ * `paymentMethods` is a donation form that silently does not appear on a site nobody here can see,
+ * and one offering stock alone is a form with nothing to press (`isDrawnRail` below). refusing
+ * either instead puts a named value and a screen in front of an integrator.
  *
  * **it is deliberately not part of `publishedConfig` above, and that is the whole point of it being
  * a separate function.** `readPublishedConfig` is the ladder `mintQuote` in ../donations/quote.ts
@@ -710,15 +726,15 @@ export const SERVED_LOCALE = 'en-US';
  * where it could only be read through a `Response`.
  *
  * a rail processor nobody could read never reaches this: that arm answers with its rails whole, so
- * an empty list is an account that answered and said no to every rail — the fix is on the
- * processor's own dashboard, and Payments is where a standing per rail is already drawn. crypto
- * is the exception, because it is withdrawn for want of a coin rather than for a standing
+ * a list with no processor rail is an account that answered and said no to every rail — the fix is
+ * on the processor's own dashboard, and Payments is where a standing per rail is already drawn.
+ * crypto is the exception, because it is withdrawn for want of a coin rather than for a standing
  * (`PublishedConfigSources.coins`): a coin list that could not be read is NOWPayments not
  * answering, and the sentence says to try again rather than sending anyone to fix a value that is
  * set correctly; a list that answered with no coin says so, and names the dashboard it is set in.
  */
 export function renderableConfig(result: PublishedConfigResult): PublishedConfigResult {
-	if (!result.ok || result.config.paymentMethods.length > 0) return result;
+	if (!result.ok || result.config.paymentMethods.some(isDrawnRail)) return result;
 
 	// the processors whose credentials are set, and never the served `providers`: NOWPayments has no
 	// browser half and is on no entry there, so a deployment holding it alone would be named as
@@ -761,6 +777,61 @@ export function renderableConfig(result: PublishedConfigResult): PublishedConfig
 		`This deployment cannot serve a donation form: ${clauses.join(', and ')}.`,
 		fixes.join(' ')
 	);
+}
+
+/**
+ * a rail a donor can pay with on the form as it is drawn. stock is served while Payments has it on
+ * and a ticker list is held, but no screen in packages/form/src sends `PLEDGE_STOCK`
+ * (packages/form/src/element.ts), so a config offering stock alone is a form with nothing to press.
+ */
+function isDrawnRail(rail: PaymentMethod): boolean {
+	return rail !== 'stock';
+}
+
+/**
+ * whether a donor may give on `rail` at a cadence that repeats, as the donation form draws it: it
+ * lists venmo, crypto, DAF and the IRA (QCD) row only on a one-time gift (`venmoIsOffered`,
+ * `cryptoIsOffered`, `fundIsOffered` and `pledgeIsOffered` in packages/form/src/checkout.machine.ts),
+ * and draws no stock row at all. total over `PaymentMethod`, so a rail added there is a compile error
+ * here.
+ */
+const REPEATS_A_GIFT: Readonly<Record<PaymentMethod, boolean>> = {
+	card: true,
+	ach: true,
+	apple_pay: true,
+	google_pay: true,
+	paypal: true,
+	venmo: false,
+	daf: false,
+	crypto: false,
+	stock: false,
+	ira_qcd: false
+};
+
+function repeatsAGift(rail: PaymentMethod): boolean {
+	return REPEATS_A_GIFT[rail];
+}
+
+/**
+ * the 404 body for a form id this deployment never had: the config read and the submission answer
+ * it through `publishedConfig` above, and the ticker search
+ * (src/routes/api.v1.forms.$id.tickers.ts) answers it too.
+ *
+ * the gift submission answers an unusable `pageProgramId` with exactly these words
+ * (`unusablePageProgram` in ../donations/quote.ts), so an archived id, an unknown id and another
+ * form's id read alike. an active id on the Donation page's form passes on to the spam check, so a
+ * caller can still learn which ids are active.
+ */
+export function formNotFound(
+	id: string
+): ApiError & { readonly message: string; readonly fix: string } {
+	return {
+		error: 'form_not_found',
+		message: `No form with id \`${redactPublicId(id)}\` exists on this deployment.`,
+		fix:
+			'Check the `form` attribute on the donation element against the snippet shown under ' +
+			'Forms in /admin. A form is never deleted here, so an id that once worked still resolves.'
+	};
 }
 
 /**

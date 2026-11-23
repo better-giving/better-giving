@@ -155,6 +155,10 @@ export type FeeCoverage = (typeof FEE_COVERAGE_MODES)[number];
  * coin to. `STRIPE_RAILS`, `PAYPAL_RAILS`, `CHARIOT_RAILS` and `NOWPAYMENTS_RAILS` in
  * ./embed/rails.ts are that split written down, and `providers` on `FormConfig` below is the field that lets one
  * config name more than one.
+ *
+ * `stock` and `ira_qcd` are no processor's: a donor pledges a gift their broker or IRA custodian
+ * sends later, and the organisation's staff mark it received (`PLEDGE_RAILS` in ./embed/rails.ts).
+ * a quote on either is a pledge saved — `Quote.pledge` below — and nothing is charged.
  */
 export const PAYMENT_METHODS = [
 	'card',
@@ -164,7 +168,9 @@ export const PAYMENT_METHODS = [
 	'paypal',
 	'venmo',
 	'daf',
-	'crypto'
+	'crypto',
+	'stock',
+	'ira_qcd'
 ] as const;
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 
@@ -185,7 +191,9 @@ export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
 	paypal: 'PayPal',
 	venmo: 'Venmo',
 	daf: 'Donor-advised fund',
-	crypto: 'Crypto'
+	crypto: 'Crypto',
+	stock: 'Stocks',
+	ira_qcd: 'IRA (QCD)'
 };
 
 /**
@@ -384,6 +392,16 @@ export type FormConfig = {
 	readonly minAmountMinor: number;
 	readonly maxAmountMinor: number;
 	readonly frequencies: readonly Frequency[];
+	/**
+	 * the rails a donor may pick here.
+	 *
+	 * `stock` and `ira_qcd` are listed exactly while the organisation has turned each on under
+	 * Payments, `stock` only once a ticker list is held as well (`offersStock` in the app's
+	 * `src/lib/server/forms/published-config.ts`), each priced by a zero rule in `feeRules`, and
+	 * neither takes a gift that repeats. `ira_qcd` is a row in the review step's payment box. `stock`
+	 * is not: the payment box draws no row for it, and no screen in this package sends a stock pledge
+	 * (`steer` in ./element.ts).
+	 */
 	readonly paymentMethods: readonly PaymentMethod[];
 	readonly feeCoverage: FeeCoverage;
 	readonly feeRules: FeeRules;
@@ -520,7 +538,59 @@ export type Quote = {
 	 * `:token` `EmployerRequest` below is posted to.
 	 */
 	readonly giftUrl?: string;
+	/**
+	 * present exactly on a `stock` or `ira_qcd` quote: the pledge as saved, and everything its
+	 * pending screen shows.
+	 *
+	 * the answer is the save, and the pending screen is drawn from it once it arrives. nothing
+	 * is charged: `feeMinor` is 0, `totalMinor` is the pledged amount on `ira_qcd` and 0 on `stock`,
+	 * which has no value until the shares arrive, and `paymentToken` is the pledge's id. a resend
+	 * of the same pledge with the same `pledgeId` answers the pledge already saved, whatever else it
+	 * carries; a `pledgeId` naming anything else is `pledge_id_taken`.
+	 */
+	readonly pledge?: Pledge;
 };
+
+/**
+ * a saved pledge, as `Quote.pledge` carries it.
+ *
+ * `id` is the `pledgeId` the request sent, and the capability the told press is posted with
+ * (`PledgeToldAnswer` below). `reference` is what the donor quotes to their broker or custodian, uppercase:
+ * `CFCP-AAPL-7Q2D`, `CFCP-IRA-4K9M`. `receiptTo` is the donor's address, where the receipt goes once
+ * staff mark the gift received, and `''` where the pledge has none on file or the deployment cannot
+ * send mail (`FormConfig.receipts` not true).
+ *
+ * the rest is the organisation's own transfer details, as saved under Payments, and what the donor
+ * pledged. `shares` is decimal text, at most six places and never a number
+ * (`StockPledgeRequest.shares`).
+ * `mailingAddress` is as the organisation saved it, one line per line, separated by `\n`.
+ * `ein` is `FormConfig.ein`.
+ */
+export type Pledge =
+	| {
+			readonly id: string;
+			readonly method: 'stock';
+			readonly reference: string;
+			readonly receiptTo: string;
+			readonly ticker: string;
+			readonly shares: string;
+			/** the brokerage the shares are delivered to, shown as "Deliver to". */
+			readonly deliverTo: string;
+			readonly dtcNumber: string;
+			readonly accountNumber: string;
+			readonly accountName: string;
+	  }
+	| {
+			readonly id: string;
+			readonly method: 'ira_qcd';
+			readonly reference: string;
+			readonly receiptTo: string;
+			readonly amountMinor: number;
+			readonly custodian: string;
+			readonly payeeName: string;
+			readonly ein: string;
+			readonly mailingAddress: string;
+	  };
 
 /** what the machine sends to mint a `Quote`. */
 export type QuoteRequest = {
@@ -562,6 +632,20 @@ export type QuoteRequest = {
 	 * served list, which may be older, and refuses a coin it no longer takes as `coin_not_accepted`.
 	 */
 	readonly coin?: string;
+	/**
+	 * the id of the pledge a `stock` or `ira_qcd` request saves, minted by the form as a UUID when
+	 * the save of that request starts, before any answer, and sent again on every resend of the same
+	 * request — a resend answers the pledge already saved rather than saving a second, and a changed
+	 * request is minted an id of its own. an id that names a gift or another pledge is refused as
+	 * `pledge_id_taken`. required on both, absent on every other rail.
+	 */
+	readonly pledgeId?: string;
+	/**
+	 * the donor's IRA custodian, on `ira_qcd` and no other rail: required, 1 to `MAX_CUSTODIAN`
+	 * characters once trimmed, folded onto one line. `amountMinor` is held to the form's bounds as
+	 * on every other rail; `frequency` is `one_time`.
+	 */
+	readonly custodian?: string;
 	readonly email: string;
 	readonly firstName: string;
 	readonly lastName: string;
@@ -677,6 +761,38 @@ export type QuoteRequest = {
 	readonly altchaPayload?: string;
 };
 
+/** the most characters `QuoteRequest.custodian` may hold once trimmed. */
+export const MAX_CUSTODIAN = 200;
+
+/**
+ * what the machine sends to save a stock pledge, to the same `POST /api/v1/forms/:id/donations`.
+ *
+ * a `QuoteRequest` with no `amountMinor` and no `coversFee`: the donor states shares rather than an
+ * amount, the gift's value is set when the shares arrive, and a pledge carries no fee.
+ * `amountMinor` sent here is refused. `ticker` is one `symbol` from
+ * `GET /api/v1/forms/:id/tickers`, refused as `ticker_not_listed` where the list does not hold it.
+ * `shares` is decimal text above zero, at most six decimal places and at most 10,000,000: `"50"`,
+ * `"12.5"`.
+ */
+export type StockPledgeRequest = Omit<QuoteRequest, 'amountMinor' | 'coversFee' | 'method'> & {
+	readonly method: 'stock';
+	readonly pledgeId: string;
+	readonly ticker: string;
+	readonly shares: string;
+};
+
+/**
+ * `POST /api/v1/forms/:id/donations/:pledgeId/told` — the donor saying they have asked their broker
+ * or custodian to send the gift ("I’ve contacted my broker", "I’ve asked my custodian"). no body.
+ *
+ * `:pledgeId` is `Pledge.id`. the organisation is emailed the first time, and every press after it
+ * answers the same `PledgeToldAnswer` and emails nobody. an id that names no pledge on this form is
+ * a 404 coded `pledge_not_found`.
+ */
+export type PledgeToldAnswer = {
+	readonly ok: true;
+};
+
 /**
  * where a gift paid to an address stands, as the waiting screen reads it.
  *
@@ -736,6 +852,12 @@ export type ApiError = {
 	 * minor units of `QuoteRequest.amountMinor`, any covered fee left out, rounded up. absent otherwise.
 	 */
 	readonly minAmountMinor?: number;
+	/**
+	 * `pledge_detail_invalid` and `ticker_not_listed` only: the field the donor fills in that was
+	 * refused, as `QuoteRequest` and `StockPledgeRequest` spell it — `ticker`, `shares` or
+	 * `custodian`. absent otherwise.
+	 */
+	readonly field?: string;
 };
 
 /**
@@ -746,17 +868,19 @@ export type ApiError = {
  * switches on, so renaming one breaks an integration that already handles it, and the only way to
  * add or merge a member is to edit the file whose header says that.
  *
- * thirteen, and the count is held down deliberately. a code answers "which screen", the message
+ * seventeen, and the count is held down deliberately. a code answers "which screen", the message
  * answers "which value" — so two codes carrying a byte-identical `fix` were one code all along
  * and are merged rather than kept as synonyms, and a new value worth naming is a new sentence in
- * an existing member's message before it is a fourteenth member.
+ * an existing member's message before it is an eighteenth member.
  *
- * six of the thirteen are decided before anything is charged, from this deployment's own
- * configuration and the form record. the seven that are not are the seven the donation form can do
+ * six of the seventeen are decided before anything is charged, from this deployment's own
+ * configuration and the form record. the eleven that are not are the eleven the donation form can do
  * something about, and that is what earns each of them a member: `payments_unavailable` is the
  * processor answering badly, `challenge_failed` is a token the challenge service would not
- * honour, the two `daf_` members are a donor-advised fund's own answer to a grant, and the three
- * crypto members are the processor refusing the coin or the amount the donor chose. every other
+ * honour, the two `daf_` members are a donor-advised fund's own answer to a grant, the three
+ * crypto members are the processor refusing the coin or the amount the donor chose, and the four
+ * pledge members are a box on a pledge's screen to fill again, a pledge the screen holds that
+ * this deployment does not, or a pledge id the form mints afresh and sends again. every other
  * failure of the payment path is either a hole an operator fills, which the six already say, or a
  * bug of ours, which is a 500 and no code at all: a member for one would ask a donation form to
  * render a screen about our defect.
@@ -846,6 +970,30 @@ export const API_ERROR_CODES = [
 	 *
 	 * `message` names the coin and the amount refused; `fix` is a smaller amount or another coin.
 	 */
-	'above_maximum'
+	'above_maximum',
+	/**
+	 * a stock or IRA (QCD) pledge whose ticker, shares or custodian is missing or malformed, so
+	 * nothing was saved. `field` names which. the form marks the custodian box where that is the
+	 * field named, and draws no box for a ticker or shares.
+	 */
+	'pledge_detail_invalid',
+	/**
+	 * a stock pledge naming a ticker this deployment's list does not hold, so nothing was saved.
+	 * `field` is `ticker`; the donor picks one from `GET /api/v1/forms/:id/tickers`.
+	 */
+	'ticker_not_listed',
+	/**
+	 * the told press's pledge id (`PledgeToldAnswer` above) names no pledge on this form. the donor's
+	 * screen holds a pledge this deployment never saved, and saving it again is the way back.
+	 */
+	'pledge_not_found',
+	/**
+	 * a stock or IRA (QCD) request's `pledgeId` already names a gift, or a pledge that is not this
+	 * one, so nothing was saved. a 409 with no `field`: no box the donor fills in is wrong. a resend
+	 * of the same pledge (the same id, form, `method`, `ticker` and `shares` or `amountMinor` and
+	 * `custodian`, and donor `email`) is not this code and answers the pledge already saved. the
+	 * way back is the form's: mint a fresh `pledgeId` and send the request again once.
+	 */
+	'pledge_id_taken'
 ] as const;
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number];

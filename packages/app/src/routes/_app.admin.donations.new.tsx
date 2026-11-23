@@ -14,6 +14,7 @@ import { type FormEvent, useEffect, useRef, useState } from 'react';
 import { data, Form, href, Link, useFetcher, useNavigation } from 'react-router';
 import { uuidv7 } from 'uuidv7';
 import { type CrumbHandle, ScreenHeading } from '$lib/admin/crumbs';
+import { localDay } from '$lib/admin/local-day';
 import { screenTitle } from '$lib/admin/screen-title';
 import { boxProps, useAdminForm } from '$lib/admin/use-admin-form';
 import { CONTACT_FIELD_LABELS, MAX_DONOR_SEARCH } from '$lib/contacts/input-schema';
@@ -472,12 +473,6 @@ const CREATE_BOXES = [
 	'primary_email',
 	'primary_phone'
 ] as const;
-
-/** the operator's own calendar day, as the browser's clock and zone read it. */
-function localDay(at: Date): string {
-	const pad = (n: number) => String(n).padStart(2, '0');
-	return `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}`;
-}
 
 /**
  * the boxes a gift is, rather than the press that records it: what `boxesOf` compares.

@@ -9,6 +9,7 @@ import { CONFIRMATION_MS } from '@better-giving/operator/save-state';
 import { type RefObject, useEffect, useId, useRef, useState } from 'react';
 import type { Crumb } from '$lib/admin/crumbs';
 import { RouterLink } from '$lib/admin/router-link';
+import { formatInstant } from '$lib/admin/viewer-time';
 import { LocalTime } from '$lib/admin/viewer-time.react';
 
 // Public messages at /admin/donations/messages: the notes donors asked to show on the donate page,
@@ -44,8 +45,29 @@ export type ModeratedMessage = {
 	readonly note: string;
 	/** ISO 8601. */
 	readonly receivedAt: string;
+	/**
+	 * the ISO day, on a gift dated by a day rather than an instant; its `receivedAt` is that day's
+	 * UTC midnight.
+	 */
+	readonly receivedOn?: string;
 	readonly hidden: boolean;
 };
+
+/**
+ * the day a message's gift arrived: a gift dated by a day is that day as is, as the Gifts list
+ * writes it, and never moved by the viewer's zone; one received at an instant is in that zone.
+ */
+function ReceivedDay({
+	message,
+	style
+}: {
+	readonly message: ModeratedMessage;
+	readonly style: 'iso-day' | 'day';
+}) {
+	const day = message.receivedOn;
+	if (day === undefined) return <LocalTime at={message.receivedAt} style={style} />;
+	return <time dateTime={day}>{style === 'iso-day' ? day : formatInstant(day, 'UTC', style)}</time>;
+}
 
 /** the route's answer to the last press: where it landed, or why it was refused. */
 export type PressOutcome =
@@ -246,7 +268,7 @@ export function PublicMessages({
 					cells: {
 						received: (
 							<span id={cellId(m, 'day')}>
-								<LocalTime at={m.receivedAt} style="iso-day" />
+								<ReceivedDay message={m} style="iso-day" />
 							</span>
 						),
 						name: (
@@ -473,7 +495,7 @@ function HideConfirm({
 			<blockquote className="adm-quote">
 				<p>{message.note}</p>
 				<p className="adm-quote__by">
-					Shown as {message.name} · <LocalTime at={message.receivedAt} style="day" />
+					Shown as {message.name} · <ReceivedDay message={message} style="day" />
 				</p>
 			</blockquote>
 			<p className="adm-prose">

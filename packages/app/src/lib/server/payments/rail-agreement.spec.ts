@@ -3,6 +3,7 @@ import {
 	CHARIOT_RAILS,
 	NOWPAYMENTS_RAILS,
 	PAYPAL_RAILS,
+	PLEDGE_RAILS,
 	RAILS,
 	STRIPE_RAILS
 } from '@better-giving/form/embed/rails';
@@ -49,17 +50,25 @@ describe('the rails a confirmation names at both ends', () => {
 	});
 
 	/**
-	 * every rail is settled by exactly one processor, which is what lets each adapter hold a table
-	 * total over its own list rather than over the vocabulary.
+	 * every rail but the two pledge rails is settled by exactly one processor, and those by none,
+	 * which is what lets each adapter hold a table total over its own list rather than over the
+	 * vocabulary.
 	 *
 	 * the runtime half of a claim the types make one way only: `STRIPE_RAILS`, `PAYPAL_RAILS`,
-	 * `CHARIOT_RAILS` and `NOWPAYMENTS_RAILS` are each checked to be a subset of `PAYMENT_METHODS`,
-	 * and nothing there says the four cover it and do not overlap. a rail in none is one no processor
-	 * settles and no table owes a price or an intent method for — a gift offered on it reaches the
-	 * point of charging and finds nothing.
+	 * `CHARIOT_RAILS`, `NOWPAYMENTS_RAILS` and `PLEDGE_RAILS` are each checked to be a subset of
+	 * `PAYMENT_METHODS`, and nothing there says the five cover it and do not overlap. a rail in none
+	 * is one no processor settles and no pledge records — a gift offered on it reaches the point of
+	 * charging and finds nothing. a pledge rail in a processor's list too is a pledge minted at a
+	 * processor that has no method for it.
 	 */
-	it('gives every rail one processor and no more', () => {
-		const owned = [...STRIPE_RAILS, ...PAYPAL_RAILS, ...CHARIOT_RAILS, ...NOWPAYMENTS_RAILS];
+	it('gives every rail one processor, or none as a pledge, and no more', () => {
+		const owned = [
+			...STRIPE_RAILS,
+			...PAYPAL_RAILS,
+			...CHARIOT_RAILS,
+			...NOWPAYMENTS_RAILS,
+			...PLEDGE_RAILS
+		];
 
 		expect([...owned].sort()).toEqual([...PAYMENT_METHODS].sort());
 		expect(new Set(owned).size).toBe(owned.length);

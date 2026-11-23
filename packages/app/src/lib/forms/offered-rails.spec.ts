@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PAYMENT_METHODS, WALLET_METHODS } from '@better-giving/form/v1';
+import { PAYMENT_METHODS, type PaymentMethod, WALLET_METHODS } from '@better-giving/form/v1';
 import { OFFERED_PAYMENT_METHODS } from './offered-rails';
 
 describe('OFFERED_PAYMENT_METHODS', () => {
@@ -47,7 +47,7 @@ describe('OFFERED_PAYMENT_METHODS', () => {
 	 * packages/form/src/checkout.machine.ts reads the first rail on offer, and that is the card.
 	 */
 	it('is in the vocabulary’s own order, opening with the card', () => {
-		const offered = [...OFFERED_PAYMENT_METHODS];
+		const offered: readonly PaymentMethod[] = [...OFFERED_PAYMENT_METHODS];
 		expect(offered).toEqual(PAYMENT_METHODS.filter((method) => offered.includes(method)));
 		expect(offered[0]).toBe('card');
 	});

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "dir": "packages/form/src/registry",
-  "registryVersion": "3.0.0",
+  "registryVersion": "4.7.0",
   "items": {
     "badge-css": {
       "version": "1.2.1",
@@ -29,6 +29,13 @@
       "files": {
         "styles/field-css.css": "ccb5d115dc50a628004ad87391d2ff49d45b55edc72ca04ab2e870a779d43a7c",
         "styles/field-css.usage.md": "e39eab6d54ac65b63e576c94f77d982b211253bd1158b5065b2534b1bdf06b64"
+      }
+    },
+    "notice-card-css": {
+      "version": "1.2.0",
+      "files": {
+        "styles/notice-card-css.css": "1aab50acf85a8b237113c1dd585e1f8b19d88eb85b199bc9a001323dbd029844",
+        "styles/notice-card-css.usage.md": "c688d2c9b29ff134bfe0b973df0e678f25c2d9d639395f732027fa32aa92f4cf"
       }
     },
     "radio-css": {

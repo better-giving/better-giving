@@ -507,7 +507,8 @@ export async function recordAuthorizedGift(
  * and the annotation on `donationRow` makes leaving the spread out an error too.
  *
  * the `notify` pair collapses to two nulls together or two strings together, which is the pairing
- * `Tribute` holds and the columns cannot.
+ * `Tribute` holds and `donation`'s columns cannot; `pledge`'s hold it too, by
+ * `pledge_tribute_notify_check` (../db/schema.ts).
  */
 type TributeColumns = {
 	tributeKind: TributeKind | null;
@@ -516,7 +517,7 @@ type TributeColumns = {
 	tributeNotifyEmail: string | null;
 };
 
-function tributeColumns(tribute: Tribute | null): TributeColumns {
+export function tributeColumns(tribute: Tribute | null): TributeColumns {
 	if (tribute === null) {
 		return {
 			tributeKind: null,
@@ -538,7 +539,7 @@ function tributeColumns(tribute: Tribute | null): TributeColumns {
  * from the names typed on this gift's own submission, or kept private. a donor who opted in and
  * typed no first name is signed "Anonymous", the one name the checks admit beside either box.
  */
-function noteOnPageColumns(
+export function noteOnPageColumns(
 	onPage: NoteOnPage | undefined,
 	typedName: NameParts | undefined
 ): Pick<NewDonation, 'notePublic' | 'noteAnonymous' | 'noteShownName'> {

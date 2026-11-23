@@ -1050,7 +1050,9 @@ describe('failureIsNewsToTheDonor()', () => {
 		{ rail: 'card', news: false, why: 'the decline was on screen in the donor’s browser' },
 		{ rail: 'daf', news: false, why: 'the donor was told the grant request went to their fund' },
 		{ rail: 'cash', news: false, why: 'staff entered it and no donor session existed' },
-		{ rail: 'check', news: false, why: 'staff entered it and no donor session existed' }
+		{ rail: 'check', news: false, why: 'staff entered it and no donor session existed' },
+		{ rail: 'stock', news: false, why: 'staff marked it received and no donor session existed' },
+		{ rail: 'ira_qcd', news: false, why: 'staff marked it received and no donor session existed' }
 	] as const)('is $news for $rail — $why', ({ rail, news }) => {
 		expect(failureIsNewsToTheDonor(rail)).toBe(news);
 	});

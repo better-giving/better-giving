@@ -10,7 +10,7 @@ import {
 } from '../email/alert';
 import { renderTributeNotice } from '../email/tribute';
 import { readOrgProfile } from '../org/queries';
-import { alert, type SettleDeps } from './delivery';
+import { alert, type MailDeps } from './delivery';
 
 // the notice to the person a donor asked us to tell about a gift given in someone's honor or
 // memory, sent once per gift that named one.
@@ -95,7 +95,7 @@ export type TributeTarget = {
  * it is never a signal to act on: every arm that needed an operator has already told one.
  */
 export async function sendTributeNotice(
-	deps: SettleDeps,
+	deps: MailDeps,
 	target: TributeTarget
 ): Promise<TributeOutcome> {
 	const dedication = projectTribute(target.tributeKind, target.tributeHonoree);
@@ -187,7 +187,7 @@ async function release(db: Db, donationId: string): Promise<void> {
  * faulted, and `alert` logs its headline and facts before it reaches that transport
  * (./delivery.ts), so the sentence lands either way.
  */
-async function faulted(deps: SettleDeps, donationId: string, error: unknown): Promise<void> {
+async function faulted(deps: MailDeps, donationId: string, error: unknown): Promise<void> {
 	try {
 		await release(deps.db, donationId);
 	} catch {

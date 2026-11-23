@@ -654,13 +654,23 @@ body {
  * button sheet, which this sheet's link ring would otherwise outrank.
  */
 
-.page-ground :where(h1, h2, h3, p, ul, ol, figure) {
+/* the benefits panel's fine print keeps the form's space above it (`.benefits-fine` in its
+   parts.css), a rule this one ties on specificity and would override by loading later. */
+.page-ground :where(h1, h2, h3, p:not(.benefits-fine), ul, ol, figure) {
 	margin: 0;
 }
 
 .page-ground a {
 	color: var(--page-accent);
 	text-underline-offset: 0.15em; /* raw-length-ok: a text metric, so it follows the words' own size. */
+}
+
+/* a link drawn as the registry's secondary press anywhere under the ground (the entry card's, a
+   pledge's emailed instructions in ./takeover.tsx, the supporter area's) takes back
+   `ds-btn-secondary`'s ink, gray 12, which the form names `--_n12`.
+   level with the rule above and after it, so the registry's disabled and busy gray still outrank it. */
+.page-ground a:where(.ds-btn-secondary) {
+	color: var(--_n12);
 }
 
 .page-ground a:not(.ds-btn):focus-visible,
@@ -1840,11 +1850,6 @@ body {
 
 .page-fundraise-act > .ds-btn {
 	inline-size: 100%;
-}
-
-/* `ds-btn-secondary`'s ink, gray 12, which the form names `--_n12`. */
-.page-ground .page-fundraise-act > a.ds-btn {
-	color: var(--_n12);
 }
 
 .page-fundraise-note {

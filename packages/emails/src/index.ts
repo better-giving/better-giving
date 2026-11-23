@@ -13,6 +13,7 @@ export * as invitation from './templates/invitation';
 export * as matchPack from './templates/match-pack';
 export * as matchReminder from './templates/match-reminder';
 export * as passwordReset from './templates/password-reset';
+export * as pledgeTold from './templates/pledge-told';
 export * as receipt from './templates/receipt';
 export * as refundNotice from './templates/refund-notice';
 export * as supporterSignIn from './templates/supporter-sign-in';

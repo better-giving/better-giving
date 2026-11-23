@@ -93,7 +93,9 @@ const FEE_RULES: FeeRules = {
 	paypal: { percent: 0.0349, fixedMinor: 49 },
 	venmo: { percent: 0.0349, fixedMinor: 49 },
 	daf: { percent: 0.029, fixedMinor: 0, roundUpMinor: 100 },
-	crypto: { percent: 0.01, fixedMinor: 0 }
+	crypto: { percent: 0.01, fixedMinor: 0 },
+	stock: { percent: 0, fixedMinor: 0 },
+	ira_qcd: { percent: 0, fixedMinor: 0 }
 };
 
 const CONFIG: FormConfig = {
@@ -1682,11 +1684,16 @@ it('draws its controls with the registry’s classes, on the elements the elemen
 			);
 			seen.action += 1;
 		}
-		// the employer ask's Skip stands beside its Send at the registry's md press, which the registry
-		// draws (`[part~='action-quiet']` in packages/form/src/styles/parts.css).
+		// the employer ask's Skip stands beside its Send at the registry's md press, and a pledge's
+		// emailed instructions are the registry's secondary at the action's size, both of which the
+		// registry draws (`[part~='action-quiet']` in packages/form/src/styles/parts.css).
 		for (const node of every(root, '[part~="action-quiet"]')) {
 			expect(registryClasses(node), node.outerHTML).toEqual(
-				node.closest('.employer-actions') === null ? [] : ['ds-btn', 'ds-btn-secondary']
+				node.closest('.employer-actions') !== null
+					? ['ds-btn', 'ds-btn-secondary']
+					: node.matches('.foot > a')
+						? ['ds-btn', 'ds-btn-secondary', 'ds-btn-lg']
+						: []
 			);
 		}
 		for (const node of every(root, '[part~="field"]')) {
@@ -3434,3 +3441,569 @@ describe('the thank-you’s employer ask', () => {
 		expect(back(root).hidden).toBe(false);
 	});
 });
+
+describe('an IRA (QCD) gift', () => {
+	const WITH_IRA: FormConfig = {
+		...CONFIG,
+		orgLegalName: 'Cedar Fork Community Pantry Inc.',
+		paymentMethods: ['card', 'ira_qcd']
+	};
+
+	/** what the endpoint says of a save it refused with a code of its own. */
+	const CODED_REFUSAL = 'This gift is above the most this form takes. Give $5,000.00 or less.';
+	/** what the card says of a save that may have landed (`PLEDGE_UNSAVED` in @better-giving/form/machine). */
+	const MAY_BE_SAVED = 'We couldn’t confirm your gift was saved. Try again.';
+
+	/** the pledge the endpoint saves for a request, under the id the request sent. */
+	function saved(request: Record<string, unknown>) {
+		return {
+			paymentToken: request.pledgeId,
+			feeMinor: 0,
+			totalMinor: request.amountMinor,
+			pledge: {
+				id: request.pledgeId,
+				method: 'ira_qcd',
+				reference: 'CFCP-IRA-4K9M',
+				receiptTo: request.email,
+				amountMinor: request.amountMinor,
+				custodian: request.custodian,
+				payeeName: 'Cedar Fork Community Pantry Inc.',
+				ein: '47-3829105',
+				mailingAddress: '412 Alder Lane, Suite 3\nCedar Fork, OR 97330'
+			}
+		};
+	}
+
+	/**
+	 * the deployment: each save answered by `answers` in turn (the last for every save after), and
+	 * each told press by `told` in turn the same way. every save's body and every told url are kept.
+	 */
+	function deployment(
+		answers: readonly (
+			| 'save'
+			| 'blank'
+			| 'unsaved'
+			| 'refused'
+			| 'lost'
+			| 'coded'
+			| 'taken'
+			| 'hang'
+		)[] = ['save'],
+		told: readonly ('ok' | 'down' | 'missing')[] = ['ok']
+	) {
+		const saves: Record<string, unknown>[] = [];
+		const tolds: string[] = [];
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (url: string, init?: RequestInit) => {
+				if (url.endsWith('/told')) {
+					tolds.push(url);
+					const answer = told[Math.min(tolds.length, told.length) - 1];
+					if (answer === 'missing') {
+						return Response.json({ error: 'pledge_not_found' }, { status: 404 });
+					}
+					return answer === 'ok'
+						? Response.json({ ok: true })
+						: Response.json({ error: 'down' }, { status: 503 });
+				}
+				const request = JSON.parse(String(init?.body)) as Record<string, unknown>;
+				saves.push(request);
+				const answer = answers[Math.min(saves.length, answers.length) - 1];
+				if (answer === 'refused') {
+					return Response.json(
+						{ error: 'pledge_detail_invalid', field: 'custodian', message: 'no' },
+						{ status: 422 }
+					);
+				}
+				// a save whose id already names another gift or pledge.
+				if (answer === 'taken') {
+					return Response.json(
+						{ error: 'pledge_id_taken', message: 'This gift reference is already in use.' },
+						{ status: 409 }
+					);
+				}
+				if (answer === 'coded') {
+					return Response.json(
+						{ error: 'above_maximum', message: CODED_REFUSAL, fix: 'Give less.' },
+						{ status: 422 }
+					);
+				}
+				// a save whose answer never came back, which may still have landed.
+				if (answer === 'lost') throw new TypeError('Failed to fetch');
+				// a save still in flight.
+				if (answer === 'hang') return new Promise<Response>(() => {});
+				// a save answered without the pledge it saved, which may still have landed.
+				if (answer === 'unsaved') return Response.json({ ...saved(request), pledge: undefined });
+				// a pledge saved with no address on file, which the endpoint answers as a blank `receiptTo`.
+				if (answer === 'blank') {
+					const answered = saved(request);
+					return Response.json({ ...answered, pledge: { ...answered.pledge, receiptTo: '' } });
+				}
+				return Response.json(saved(request));
+			})
+		);
+		return { saves, tolds };
+	}
+
+	/** the head of the payment row named `name`, or null where the box lists none. */
+	function row(root: HTMLElement, name: string): HTMLElement | null {
+		for (const node of every(root, '[part~="payment"] *')) {
+			const head = node.shadowRoot?.querySelector<HTMLElement>('.head');
+			if (head?.querySelector('.name')?.textContent === name) return head;
+		}
+		return null;
+	}
+
+	const submit = (root: HTMLElement) => one(root, 'button[part~="submit"]');
+	const custodian = (root: HTMLElement) => input(root, '#custodian');
+
+	/** the promise chains behind a press let run. */
+	async function drain(): Promise<void> {
+		await act(async () => {
+			for (let at = 0; at < 30; at += 1) await Promise.resolve();
+		});
+	}
+
+	/** a control pressed from the keyboard, with the promise chains behind it let run. */
+	async function pressHeld(node: HTMLElement): Promise<void> {
+		await act(async () => {
+			node.focus();
+			node.click();
+			for (let at = 0; at < 30; at += 1) await Promise.resolve();
+		});
+	}
+
+	/**
+	 * the review step of a one-time gift with the IRA (QCD) option open. `mints` is whether the
+	 * challenge widget mints a token on its own (`challengeSeams`).
+	 */
+	async function onIra(config: FormConfig = WITH_IRA, mints = true) {
+		const { root } = await card(config, {}, { mints });
+		await walkToGive(root);
+		const head = row(root, 'IRA (QCD)');
+		if (head === null) throw new Error('no IRA (QCD) option on the review step');
+		press(head);
+		return root;
+	}
+
+	/** the IRA (QCD) pending screen, the custodian named and Continue pressed. */
+	async function pending(server = deployment()) {
+		const root = await onIra();
+		type(custodian(root), 'Fidelity Investments');
+		await pressHeld(submit(root));
+		return { root, server };
+	}
+
+	const takeoverHeading = (root: HTMLElement) => one(screen(root), ':scope > h2');
+	const takeoverPrimary = (root: HTMLElement) =>
+		one(screen(root), ':scope > button[part~="action"]');
+
+	it('lists the option after the card’s rail where the form offers it, on a one-time gift alone', async () => {
+		deployment();
+		const offered = await card(WITH_IRA);
+		await walkToGive(offered.root);
+		expect(row(offered.root, 'IRA (QCD)')).not.toBeNull();
+
+		const notOffered = await card(CONFIG);
+		await walkToGive(notOffered.root);
+		expect(row(notOffered.root, 'IRA (QCD)')).toBeNull();
+
+		const monthly = await card(WITH_IRA);
+		press(one(monthly.root, '.segment > label:nth-of-type(2)'));
+		await walkToGive(monthly.root);
+		expect(row(monthly.root, 'IRA (QCD)')).toBeNull();
+	});
+
+	it('states the gift alone, with no fee switch and no total, and presses Continue', async () => {
+		deployment();
+		const root = await onIra();
+
+		expect(one(root, '.row.fee').hidden).toBe(true);
+		expect(one(root, '.row.total').hidden).toBe(true);
+		expect(one(root, '[part~="summary"] .row .figure').textContent).toBe('$25.00');
+		expect(submit(root).textContent).toBe('Continue');
+		expect(custodian(root).labels?.[0]?.textContent).toBe('Custodian');
+		expect(shownText(root, '.benefits-title')).toBe('Benefits of giving from an IRA');
+		expect(shownText(root, '.benefits-body')).toBe(
+			'If you are 70½ or older, you can give up to the IRS yearly limit from your traditional IRA. Your IRA custodian must pay us directly, not you and not a donor-advised fund. It can count toward any required minimum distribution and isn’t added to your taxable income (you can’t also deduct it).'
+		);
+		expect(shownText(root, '.benefits-fine')).toBe(
+			'This is general information, not tax advice. Talk to your tax adviser or IRA custodian about your own situation.'
+		);
+		expect(root.querySelector('[disabled]')).toBeNull();
+	});
+
+	it('keeps Continue, with no total and no receipt line, while the IRA (QCD) save is in flight', async () => {
+		deployment(['hang']);
+		const root = await onIra({ ...WITH_IRA, receipts: true });
+		type(custodian(root), 'Fidelity Investments');
+		await pressHeld(submit(root));
+
+		expect(submit(root).getAttribute('aria-busy')).toBe('true');
+		expect(one(submit(root), '.action-label').textContent).toBe('Continue');
+		expect(one(root, '.row.fee').hidden).toBe(true);
+		expect(one(root, '.row.total').hidden).toBe(true);
+		expect(shownText(root, '.step-give > .aside')).toBe('');
+	});
+
+	it('saves nothing on a Continue with no custodian, and flags the box with the caret in it', async () => {
+		const server = deployment();
+		const root = await onIra();
+
+		await pressHeld(submit(root));
+
+		expect(server.saves).toEqual([]);
+		expect(custodian(root).getAttribute('aria-invalid')).toBe('true');
+		const problem = one(root, `#${custodian(root).getAttribute('aria-describedby')}`);
+		expect(problem.textContent).toBe('Enter your IRA custodian’s name');
+		expect(problem.hidden).toBe(false);
+		expect(document.activeElement).toBe(custodian(root));
+		// the payment box says nothing about it: the rail is chosen.
+		expect(one(root, '#payment-problem').hidden).toBe(true);
+
+		type(custodian(root), 'Fidelity Investments');
+		expect(custodian(root).hasAttribute('aria-invalid')).toBe(false);
+	});
+
+	it('saves once under the id it minted, and sends the same id on the retry', async () => {
+		const server = deployment(['unsaved', 'save']);
+		const { root } = await pending(server);
+
+		expect(server.saves).toHaveLength(1);
+		const [first] = server.saves;
+		expect(first).toMatchObject({
+			method: 'ira_qcd',
+			custodian: 'Fidelity Investments',
+			coversFee: false,
+			amountMinor: 2500
+		});
+		expect(first?.pledgeId).toMatch(/^[0-9a-f-]{36}$/);
+		expect(takeoverHeading(root).textContent).toBe(copy.FAILED_HEADING);
+		expect(one(screen(root), ':scope > .message').textContent).toBe(MAY_BE_SAVED);
+
+		await pressHeld(takeoverPrimary(root));
+		await pressHeld(submit(root));
+
+		expect(server.saves).toHaveLength(2);
+		expect(server.saves[1]?.pledgeId).toBe(first?.pledgeId);
+		expect(takeoverHeading(root).textContent).toBe('Your IRA (QCD) gift is pending');
+	});
+
+	it('sends a changed request under an id of its own, and the earlier request under its own again', async () => {
+		const server = deployment(['unsaved', 'unsaved', 'save']);
+		const { root } = await pending(server);
+		await pressHeld(takeoverPrimary(root));
+		type(custodian(root), 'Vanguard');
+		await pressHeld(submit(root));
+		await pressHeld(takeoverPrimary(root));
+		type(custodian(root), 'Fidelity Investments');
+		await pressHeld(submit(root));
+
+		const ids = server.saves.map((save) => save.pledgeId);
+		expect(server.saves.map((save) => save.custodian)).toEqual([
+			'Fidelity Investments',
+			'Vanguard',
+			'Fidelity Investments'
+		]);
+		expect(ids[1]).not.toBe(ids[0]);
+		expect(ids[2]).toBe(ids[0]);
+		expect(takeoverHeading(root).textContent).toBe('Your IRA (QCD) gift is pending');
+	});
+
+	it('says the gift may be saved where the save’s answer was lost', async () => {
+		const { root } = await pending(deployment(['lost']));
+
+		expect(takeoverHeading(root).textContent).toBe(copy.FAILED_HEADING);
+		expect(one(screen(root), ':scope > .message').textContent).toBe(MAY_BE_SAVED);
+		expect(said(root)).toBe(MAY_BE_SAVED);
+	});
+
+	it('states the endpoint’s own words where it refused the save with a code', async () => {
+		const { root } = await pending(deployment(['coded']));
+
+		expect(takeoverHeading(root).textContent).toBe(copy.FAILED_HEADING);
+		expect(one(screen(root), ':scope > .message').textContent).toBe(CODED_REFUSAL);
+	});
+
+	it('sends a save refused pledge_id_taken once more under a fresh id, and shows the pledge', async () => {
+		const server = deployment(['taken', 'save']);
+		const { root } = await pending(server);
+
+		const [first, second] = server.saves;
+		expect(server.saves).toHaveLength(2);
+		expect(second?.pledgeId).toMatch(/^[0-9a-f-]{36}$/);
+		expect(second?.pledgeId).not.toBe(first?.pledgeId);
+		// on the token the widget's reset minted, since the refused send spent the first.
+		expect(second?.turnstileToken).not.toBe(first?.turnstileToken);
+		expect(takeoverHeading(root).textContent).toBe('Your IRA (QCD) gift is pending');
+	});
+
+	it('shows the generic failure where the fresh id is refused pledge_id_taken too', async () => {
+		const server = deployment(['taken', 'taken']);
+		const { root } = await pending(server);
+
+		expect(server.saves).toHaveLength(2);
+		expect(takeoverHeading(root).textContent).toBe(copy.FAILED_HEADING);
+		expect(one(screen(root), ':scope > .message').textContent).toBe(
+			'This gift was not started, and nothing was charged. Try again.'
+		);
+	});
+
+	it('puts the caret back in the box where the endpoint refused the custodian', async () => {
+		const server = deployment(['refused']);
+		const { root } = await pending(server);
+
+		expect(server.saves).toHaveLength(1);
+		expect(screen(root).classList.contains('step-give')).toBe(true);
+		expect(document.activeElement).toBe(custodian(root));
+		expect(custodian(root).getAttribute('aria-invalid')).toBe('true');
+	});
+
+	it('shows the pledge on arrival with the caret on its heading', async () => {
+		const { root } = await pending();
+
+		expect(takeoverHeading(root).textContent).toBe('Your IRA (QCD) gift is pending');
+		expect(document.activeElement).toBe(takeoverHeading(root));
+		expect(takeoverPrimary(root).textContent).toBe('I’ve asked my custodian');
+		expect(one(screen(root), '.foot > a').textContent).toBe('Email these instructions');
+		expect(root.querySelector('[disabled]')).toBeNull();
+	});
+
+	it('thanks the donor once the told press lands, the caret on the thank-you’s heading', async () => {
+		const { root, server } = await pending();
+
+		await pressHeld(takeoverPrimary(root));
+
+		expect(server.tolds).toHaveLength(1);
+		expect(server.tolds[0]).toMatch(/\/api\/v1\/forms\/[^/]+\/donations\/[0-9a-f-]{36}\/told$/);
+		expect(server.tolds[0]).toContain(String(server.saves[0]?.pledgeId));
+		expect(takeoverHeading(root).textContent).toBe('Thank you');
+		expect(document.activeElement).toBe(takeoverHeading(root));
+		const notice = one(screen(root), '.ds-notice-card-info');
+		// no region of its own: one created and filled in one commit is dropped, so the card's says it.
+		expect(notice.hasAttribute('role')).toBe(false);
+		expect(notice.textContent).toContain(
+			'Your gift counts when it arrives. We’ll email a receipt to donor@example.org then.'
+		);
+		expect(said(root)).toBe(
+			'We’ve told the organization. Your gift counts when it arrives. We’ll email a receipt to donor@example.org then.'
+		);
+		expect(root.querySelector('[disabled]')).toBeNull();
+	});
+
+	it('shows the transfer instructions for a pledge saved with no address, and thanks without a receipt', async () => {
+		const { root, server } = await pending(deployment(['blank']));
+
+		expect(server.saves).toHaveLength(1);
+		expect(takeoverHeading(root).textContent).toBe('Your IRA (QCD) gift is pending');
+		expect(takeoverPrimary(root).textContent).toBe('I’ve asked my custodian');
+		expect(one(screen(root), '.pledge-details').textContent).toContain('CFCP-IRA-4K9M');
+
+		await pressHeld(takeoverPrimary(root));
+
+		expect(takeoverHeading(root).textContent).toBe('Thank you');
+		expect(one(screen(root), '.ds-notice-card-info .ds-notice-card-body').textContent).toBe(
+			'Your gift counts when it arrives.'
+		);
+		expect(said(root)).toBe('We’ve told the organization. Your gift counts when it arrives.');
+	});
+
+	it('shows the error notice and Try again where the told press failed, and thanks on the retry', async () => {
+		const { root, server } = await pending(deployment(['save'], ['down', 'down', 'ok']));
+		const refused =
+			'We couldn’t tell the organization. Your gift is saved. Check your connection and try again.';
+
+		await pressHeld(takeoverPrimary(root));
+
+		expect(server.tolds).toHaveLength(1);
+		expect(takeoverHeading(root).textContent).toBe('Your IRA (QCD) gift is pending');
+		const notice = one(screen(root), '.ds-notice-card-destructive');
+		expect(notice.hidden).toBe(false);
+		expect(notice.hasAttribute('role')).toBe(false);
+		expect(said(root)).toBe(refused);
+		expect(takeoverPrimary(root).textContent).toBe('Try again');
+		expect(root.querySelector('[disabled]')).toBeNull();
+
+		// a second press refused the same way is said again: the region is cleared while it is in flight.
+		press(takeoverPrimary(root));
+		expect(said(root)).toBe('');
+		await drain();
+		expect(server.tolds).toHaveLength(2);
+		expect(said(root)).toBe(refused);
+
+		await pressHeld(takeoverPrimary(root));
+
+		expect(server.tolds).toHaveLength(3);
+		expect(takeoverHeading(root).textContent).toBe('Thank you');
+	});
+
+	it('saves a pledge the told press could not find again under a new reference, and tells on the press after', async () => {
+		const { root, server } = await pending(deployment(['save'], ['missing', 'ok']));
+		const lost =
+			'We couldn’t tell the organization. We couldn’t find your gift. Press Try again to save it again under a new reference.';
+
+		await pressHeld(takeoverPrimary(root));
+
+		expect(one(screen(root), '.ds-notice-card-destructive').textContent).toBe(
+			'We couldn’t tell the organizationWe couldn’t find your gift. Press Try again to save it again under a new reference.'
+		);
+		expect(said(root)).toBe(lost);
+		expect(takeoverPrimary(root).textContent).toBe('Try again');
+
+		press(takeoverPrimary(root));
+		expect(said(root)).toBe('');
+		await drain();
+
+		const [first, second] = server.saves;
+		expect(server.saves).toHaveLength(2);
+		expect(second?.pledgeId).not.toBe(first?.pledgeId);
+		expect(server.tolds).toHaveLength(1);
+		expect(takeoverHeading(root).textContent).toBe('Your IRA (QCD) gift is pending');
+		const resaved =
+			'We saved your gift again. Your new reference is CFCP-IRA-4K9M. Use it for your transfer.';
+		expect(one(screen(root), '.ds-notice-card-info').textContent).toBe(
+			'We saved your gift againYour new reference is CFCP-IRA-4K9M. Use it for your transfer.'
+		);
+		expect(said(root)).toBe(resaved);
+		expect(takeoverPrimary(root).textContent).toBe('I’ve asked my custodian');
+		expect(document.activeElement).toBe(takeoverPrimary(root));
+
+		await pressHeld(takeoverPrimary(root));
+
+		expect(server.tolds).toHaveLength(2);
+		expect(server.tolds[1]).toContain(String(second?.pledgeId));
+		expect(takeoverHeading(root).textContent).toBe('Thank you');
+	});
+
+	// the widget sits in a step this screen hides, so one asking the donor to solve something for the
+	// save made again is drawn beside the Try again they pressed, where they can.
+	it('draws a widget asking for the donor beside Try again, and saves on the token it mints', async () => {
+		const server = deployment(['save'], ['missing', 'ok']);
+		const root = await onIra(WITH_IRA, false);
+		type(custodian(root), 'Fidelity Investments');
+		token('tok_first');
+		await pressHeld(submit(root));
+		await pressHeld(takeoverPrimary(root));
+		expect(widget.drawn).toHaveLength(1);
+
+		await pressHeld(takeoverPrimary(root));
+		act(() => {
+			widget.asks();
+		});
+		await drain();
+
+		expect(widget.drawn).toHaveLength(2);
+		const beside = widget.drawn[1];
+		expect(screen(root).contains(beside ?? null)).toBe(true);
+		expect(beside?.closest('[hidden]')).toBeNull();
+		expect(beside?.previousElementSibling).toBe(takeoverPrimary(root));
+
+		token('tok_solved');
+		await drain();
+		const [first, second] = server.saves;
+		expect(server.saves.map((save) => save.turnstileToken)).toEqual(['tok_first', 'tok_solved']);
+		expect(second?.pledgeId).not.toBe(first?.pledgeId);
+		expect(takeoverHeading(root).textContent).toBe('Your IRA (QCD) gift is pending');
+	});
+
+	// the puzzle drawn under it is what the donor must act on, and no press is out while it asks.
+	it('leaves Try again unbusy while the widget for the save made again asks the donor', async () => {
+		deployment(['save'], ['missing', 'ok']);
+		const root = await onIra(WITH_IRA, false);
+		type(custodian(root), 'Fidelity Investments');
+		token('tok_first');
+		await pressHeld(submit(root));
+		await pressHeld(takeoverPrimary(root));
+
+		await pressHeld(takeoverPrimary(root));
+		expect(takeoverPrimary(root).getAttribute('aria-busy')).toBe('true');
+		act(() => {
+			widget.asks();
+		});
+		await drain();
+
+		expect(takeoverPrimary(root).getAttribute('aria-busy')).toBe('false');
+	});
+
+	describe('a Copy over a notice', () => {
+		const stubClipboard = () => {
+			const clipboard = { writeText: vi.fn(async () => {}) };
+			vi.stubGlobal('navigator', { ...navigator, clipboard });
+			return clipboard;
+		};
+		async function copyOf(root: HTMLElement, noun: string): Promise<void> {
+			await act(async () => {
+				one(screen(root), `[aria-label="Copy ${noun}"]`).click();
+				for (let at = 0; at < 4; at += 1) await Promise.resolve();
+			});
+		}
+
+		it('says each Copy pressed under the notice of a save made again, and not the notice again', async () => {
+			const clipboard = stubClipboard();
+			const { root } = await pending(deployment(['save'], ['missing', 'ok']));
+			await pressHeld(takeoverPrimary(root));
+			await pressHeld(takeoverPrimary(root));
+			expect(said(root)).toBe(
+				'We saved your gift again. Your new reference is CFCP-IRA-4K9M. Use it for your transfer.'
+			);
+
+			await copyOf(root, 'reference');
+			expect(said(root)).toBe('Reference copied.');
+
+			clipboard.writeText.mockRejectedValueOnce(new Error('denied'));
+			await copyOf(root, 'EIN');
+			expect(said(root)).toBe('EIN not copied. It is selected so you can copy it.');
+			await drain();
+			expect(said(root)).toBe('EIN not copied. It is selected so you can copy it.');
+		});
+
+		it('says a Copy under a refused told press’s notice, and the next refusal over it', async () => {
+			stubClipboard();
+			const { root } = await pending(deployment(['save'], ['down', 'down', 'ok']));
+			const refused =
+				'We couldn’t tell the organization. Your gift is saved. Check your connection and try again.';
+			await pressHeld(takeoverPrimary(root));
+			expect(said(root)).toBe(refused);
+
+			await copyOf(root, 'reference');
+			expect(said(root)).toBe('Reference copied.');
+
+			await pressHeld(takeoverPrimary(root));
+			expect(said(root)).toBe(refused);
+		});
+	});
+
+	// the press relabelled to Try again is the same control on the same screen, so every refusal is
+	// the region's to say and the caret stays on the press; the thank-you's new heading still takes it.
+	it('leaves the caret on the press through every refused told press', async () => {
+		const { root } = await pending(deployment(['save'], ['down', 'down', 'ok']));
+		const carets: string[] = [];
+
+		for (const _ of [1, 2]) {
+			await pressHeld(takeoverPrimary(root));
+			carets.push(document.activeElement === takeoverPrimary(root) ? 'press' : 'moved');
+		}
+		await pressHeld(takeoverPrimary(root));
+
+		expect(carets).toEqual(['press', 'press']);
+		expect(takeoverHeading(root).textContent).toBe('Thank you');
+		expect(document.activeElement).toBe(takeoverHeading(root));
+	});
+
+	it('starts a fresh card from Done', async () => {
+		const { root } = await pending();
+		await pressHeld(takeoverPrimary(root));
+
+		await pressHeld(one(screen(root), '.foot > button'));
+
+		expect(screen(root).querySelector('h2')?.textContent).toBe(copy.STEP_HEADINGS[0]);
+	});
+});
+
+/** the words of the nodes `selector` matches that are not hidden themselves, joined. */
+function shownText(root: HTMLElement, selector: string): string {
+	return every(root, selector)
+		.filter((node) => !node.hidden)
+		.map((node) => node.textContent ?? '')
+		.join('|');
+}

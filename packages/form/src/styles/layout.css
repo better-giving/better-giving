@@ -224,7 +224,7 @@ form {
  *
  * the pair rather than the line by name, because `.aside` is the role every quiet line on a
  * takeover takes as well (../views.ts) and only this one stands against the press: `submit` is on
- * the one control that spends the money and on no other (../../custom-elements.json).
+ * the review step's own press and on no other (../../custom-elements.json).
  */
 .aside:has(+ [part~='submit']) {
 	margin-block-end: calc(var(--_sp2) - var(--_step-gap));
@@ -346,7 +346,9 @@ form {
  * the group is drawn on every takeover and holds the control alone on all but one of them, so a
  * screen that does write the line puts it a step under the control rather than a screen's step away
  * from it. the control keeps its own `align-self: start` (`[part~='action-quiet']` in ./parts.css),
- * which is what leaves both on the card's start edge.
+ * which is what leaves both on the card's start edge, except where it is drawn as a button: the
+ * pledge screens' way out and emailed instructions take the column's width (`.foot > .ds-btn`
+ * below).
  */
 .foot {
 	display: flex;
@@ -1029,6 +1031,147 @@ form {
 .alert {
 	display: grid;
 	gap: var(--_sp2);
+}
+
+/*
+ * a saved pledge's block (../pledge-screen.ts): the notice, the two lists and the benefits panel,
+ * `--_sp4` apart, a step inside the takeover's own gap. the block takes the column's whole width,
+ * as the receipt does: two lists of values cut against a measure read as a defect rather than as
+ * prose.
+ */
+.pledge {
+	display: flex;
+	flex-direction: column;
+	gap: var(--_sp4);
+}
+
+/* the IRA (QCD) option's box and its benefits panel, a step apart inside the row (../ira-panel.ts). */
+.ira-panel {
+	display: flex;
+	flex-direction: column;
+	gap: var(--_sp4);
+}
+
+/*
+ * one list, one bordered box, one row per value with a hairline between rows. a row is its label and
+ * its value, and the control that copies the value at the row's end where it has one.
+ *
+ * the summary reads across — the label at the start and the value at the end of one line — and the
+ * details read down, the label over the value it names, because a details value is what a donor
+ * copies and an address or an account name wants the whole width the row has.
+ */
+.pledge-list {
+	display: flex;
+	flex-direction: column;
+	margin: 0;
+	padding: 0 var(--_sp4);
+}
+
+.pledge-row {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	align-items: center;
+	column-gap: var(--_sp3);
+	padding-block: var(--_sp3);
+}
+
+.pledge-row + .pledge-row {
+	border-block-start: var(--_border) solid var(--_n6);
+}
+
+/*
+ * on the pending screen, the takeover whose shown pledge block draws its details list, the
+ * lists are long and read down, so a row stands tighter than the thank-you's: the registry's
+ * spacing step (`--ds-spacing`, a quarter of `--ds-rem`) two and a half times over, which it
+ * declares on its classes alone and ./tokens.css lists as a registry gap.
+ */
+.takeover:has(> .pledge:not([hidden])):has(.pledge-details:not([hidden])) .pledge-row {
+	padding-block: calc(var(--ds-rem) * 0.25 * 2.5);
+}
+
+/*
+ * a summary label is the form's own short words and its value can be a custodian the donor typed:
+ * an `auto` track grows to its max-content before an `fr` track gets any space, so the label takes
+ * the `auto` track and the value the `fr` one, and the value wraps rather than squeezing the label.
+ */
+.pledge-summary .pledge-row {
+	grid-template-columns: auto minmax(0, 1fr);
+	align-items: baseline;
+}
+
+/* a detail's label stands half a registry spacing step over its value (the step as above). */
+.pledge-details .pledge-row {
+	row-gap: calc(var(--ds-rem) * 0.25 * 0.5);
+}
+
+.pledge-details .pledge-label {
+	grid-column: 1;
+	grid-row: 1;
+}
+
+.pledge-details .pledge-value {
+	grid-column: 1;
+}
+
+/*
+ * a value with its Copy: the Copy stands in the `<dd>` (../pledge-screen.ts), so the `<dd>` takes the
+ * whole row on the row's own tracks and the Copy spans the label and the value as a row child would.
+ * keyed on the Copy, so a row without one keeps the rule above. the deployment's own donation
+ * page's rows (packages/app/src/lib/donate/pledge-block.tsx) carry theirs in the `<dd>` too.
+ */
+.pledge-details .pledge-value:has(> .copy) {
+	grid-column: 1 / -1;
+	grid-row: 1 / span 2;
+	display: grid;
+	grid-template-columns: subgrid;
+	grid-template-rows: subgrid;
+	align-items: center;
+}
+
+.pledge-details .pledge-value > .pledge-text {
+	grid-column: 1;
+	grid-row: 2;
+	min-inline-size: 0;
+}
+
+.pledge-details .copy {
+	grid-column: 2;
+	grid-row: 1 / span 2;
+}
+
+.pledge-value {
+	margin: 0;
+	min-inline-size: 0;
+	overflow-wrap: anywhere;
+}
+
+.pledge-summary .pledge-value {
+	text-align: end;
+}
+
+/* the takeover's measure is for prose, and a list of values reads as a defect cut against it. */
+.takeover:has(> .pledge:not([hidden])) {
+	max-inline-size: none;
+}
+
+/* the pledge screens' way out and emailed instructions are buttons, and take the column's width. */
+.foot > .ds-btn {
+	align-self: stretch;
+}
+
+/*
+ * the pending screen stands its block `--_sp4` from the lead over it and the press under it, a step
+ * inside the step's own gap, and its two buttons a step closer than that (`--_sp3`), as one pair:
+ * the step's gap negated and the nearer step put back, as `.disclosure + .disclosure` does, so the
+ * heading keeps the step's own gap to the lead. the foot's length is spent past the empty challenge
+ * box (`.challenge` above), which cancels its own gap.
+ */
+.takeover:has(> .pledge:not([hidden])):has(.pledge-details:not([hidden])) .pledge {
+	margin-block: calc(var(--_sp4) - var(--_step-gap));
+}
+
+.takeover:has(> .pledge:not([hidden])):has(.pledge-details:not([hidden])) .foot {
+	margin-block-start: calc(var(--_sp3) - var(--_step-gap));
 }
 
 /* raw-length-ok: a breakpoint, and `em` is the whole of why — the header argues it. */
