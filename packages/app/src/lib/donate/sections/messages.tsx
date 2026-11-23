@@ -117,8 +117,11 @@ export function DonorMessages({
 						>
 							<div className="page-messages-by">
 								<span className="page-messages-name">{message.name}</span>
-								<time className="page-messages-time" dateTime={message.receivedAt}>
-									{messageAge(message.receivedAt, now, locale)}
+								<time
+									className="page-messages-time"
+									dateTime={message.receivedOn ?? message.receivedAt}
+								>
+									{messageAge(message.receivedAt, now, locale, message.receivedOn)}
 								</time>
 							</div>
 							<p className="page-messages-note">{message.note}</p>
