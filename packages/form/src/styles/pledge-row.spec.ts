@@ -8,7 +8,8 @@ import { REGISTRY_CLASS } from '../parts';
 // `auto` track to its max-content before an `fr` track gets any space, so the value's track is the
 // `fr` one floored at 0 and the label's is `auto`: the label keeps its own words' width and the value
 // wraps in what is left, `overflow-wrap: anywhere` breaking a name with no space in it. the same
-// classes draw the gift page's summary (packages/app/src/lib/donate/pledge-block.tsx).
+// classes draw the deployment's own donation page's summary
+// (packages/app/src/lib/donate/pledge-block.tsx).
 
 type Rule = { readonly selectors: readonly string[]; readonly stated: ReadonlyMap<string, string> };
 
@@ -96,8 +97,8 @@ describe('a pledge’s pending screen', () => {
 		);
 	});
 
-	// the registry's small and extra-small leadings (`--ds-text-sm-lh`, `--ds-text-xs-lh` in
-	// ../registry/styles/button-css.css), and the drawn value's 1.4, which no scale here has.
+	// the registry's extra-small leading (`--ds-text-xs-lh` in ../registry/styles/button-css.css),
+	// and the drawn value's 1.4, which no scale here has.
 	it('sets each row’s words at the leading drawn for them', () => {
 		expect({
 			summaryLabel: stated(`${PENDING} .pledge-summary .pledge-label`, 'line-height'),
@@ -153,7 +154,8 @@ describe('a pledge’s pending screen', () => {
 	});
 
 	// the takeover stands its blocks the step's gap apart (`--_step-gap` in ./layout.css); the design
-	// stands the lists 16px from the lead and the press, and the second button 12px under the first.
+	// stands the pledge block 16px from the lead and the press, and the second button 12px under the
+	// first.
 	it('pays the step’s gap back to the blocks the design spaces tighter', () => {
 		expect({
 			block: stated(`${PENDING} .pledge`, 'margin-block'),

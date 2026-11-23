@@ -224,7 +224,7 @@ form {
  *
  * the pair rather than the line by name, because `.aside` is the role every quiet line on a
  * takeover takes as well (../views.ts) and only this one stands against the press: `submit` is on
- * the one control that spends the money and on no other (../../custom-elements.json).
+ * the review step's own press and on no other (../../custom-elements.json).
  */
 .aside:has(+ [part~='submit']) {
 	margin-block-end: calc(var(--_sp2) - var(--_step-gap));
@@ -346,7 +346,9 @@ form {
  * the group is drawn on every takeover and holds the control alone on all but one of them, so a
  * screen that does write the line puts it a step under the control rather than a screen's step away
  * from it. the control keeps its own `align-self: start` (`[part~='action-quiet']` in ./parts.css),
- * which is what leaves both on the card's start edge.
+ * which is what leaves both on the card's start edge, except where it is drawn as a button: the
+ * pledge screens' way out and emailed instructions take the column's width (`.foot > .ds-btn`
+ * below).
  */
 .foot {
 	display: flex;
@@ -1032,9 +1034,10 @@ form {
 }
 
 /*
- * a saved pledge's block (../pledge-screen.ts): the notice, the two lists and the benefits panel, at
- * the takeover's own step. the block takes the column's whole width, as the receipt does: two lists
- * of values cut against a measure read as a defect rather than as prose.
+ * a saved pledge's block (../pledge-screen.ts): the notice, the two lists and the benefits panel,
+ * `--_sp4` apart, a step inside the takeover's own gap. the block takes the column's whole width,
+ * as the receipt does: two lists of values cut against a measure read as a defect rather than as
+ * prose.
  */
 .pledge {
 	display: flex;
@@ -1113,8 +1116,8 @@ form {
 /*
  * a value with its Copy: the Copy stands in the `<dd>` (../pledge-screen.ts), so the `<dd>` takes the
  * whole row on the row's own tracks and the Copy spans the label and the value as a row child would.
- * keyed on the Copy, so a row without one keeps the rule above. the gift page's rows
- * (packages/app/src/lib/donate/pledge-block.tsx) carry theirs in the `<dd>` too.
+ * keyed on the Copy, so a row without one keeps the rule above. the deployment's own donation
+ * page's rows (packages/app/src/lib/donate/pledge-block.tsx) carry theirs in the `<dd>` too.
  */
 .pledge-details .pledge-value:has(> .copy) {
 	grid-column: 1 / -1;
@@ -1157,11 +1160,11 @@ form {
 }
 
 /*
- * the pending screen stands its lists a grouping step from the lead over them and the press under
- * them, and its two buttons a step closer than that, as one pair: the step's gap negated and the
- * nearer step put back, as `.disclosure + .disclosure` does, so the heading keeps the step's own gap
- * to the lead. the foot's length is spent past the empty challenge box (`.challenge` above), which
- * cancels its own gap.
+ * the pending screen stands its block `--_sp4` from the lead over it and the press under it, a step
+ * inside the step's own gap, and its two buttons a step closer than that (`--_sp3`), as one pair:
+ * the step's gap negated and the nearer step put back, as `.disclosure + .disclosure` does, so the
+ * heading keeps the step's own gap to the lead. the foot's length is spent past the empty challenge
+ * box (`.challenge` above), which cancels its own gap.
  */
 .takeover:has(> .pledge:not([hidden])):has(.pledge-details:not([hidden])) .pledge {
 	margin-block: calc(var(--_sp4) - var(--_step-gap));

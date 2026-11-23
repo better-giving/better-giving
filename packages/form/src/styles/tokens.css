@@ -36,11 +36,11 @@
  * a control whose ground is transparent at rest takes 3 under the pointer and 4 under the press,
  * which is the one variation the radix page the registry's scales come from states.
  *
- * the button, the text box, the box a donor ticks, the network badge and the busy ring are the
- * registry's own controls (`ds-btn`, `ds-field-input`, `ds-checkbox`, `ds-badge`, `ds-spinner`),
- * drawn by its copied component sheets; ./parts.css draws the controls the registry has none of —
- * the amount tiles and chips, the cadence tray, the floating-label name boxes, the fee switch, the
- * step marks — from the aliases below.
+ * the button, the text box, the box a donor ticks, the network badge, the busy ring and a saved
+ * pledge's notice card are the registry's own controls (`ds-btn`, `ds-field-input`, `ds-checkbox`,
+ * `ds-badge`, `ds-spinner`, `ds-notice-card`), drawn by its copied component sheets; ./parts.css
+ * draws the controls the registry has none of — the amount tiles and chips, the cadence tray, the
+ * floating-label name boxes, the fee switch, the step marks — from the aliases below.
  *
  * two public seeds are what a host page sets, and there is no third. `--donate-primary` takes a
  * value — the brand colour — and `--donate-corner` takes a preset: one of three corner pairs, so a
@@ -136,8 +136,9 @@
  * the registry states its spacing step and its small and extra-small leadings on its classes alone
  * (`--ds-spacing`, `--ds-text-sm-lh` and `--ds-text-xs-lh` in ../registry/styles/button-css.css), as
  * no variable a rule outside them can read, so a saved pledge's pending screen restates them off
- * `--ds-rem` and as the registry's own ratios (`.pledge-row`'s padding in ./layout.css, the lead
- * and the details' labels in ./parts.css) — a tenth.
+ * `--ds-rem` and as the registry's own ratios (`.pledge-row`'s padding and the details' row gap in
+ * ./layout.css; the lead, the details' labels and the benefits panel's gaps and leadings in
+ * ./parts.css) — a tenth.
  *
  * no shade is ever made with alpha. a translucent fill takes on whatever the host's page put behind
  * it, and this component is painted onto a page it cannot see; the registry's alpha steps
@@ -265,8 +266,8 @@
 	/*
 	 * the registry's base size for its plain-CSS controls (../registry/styles/variables.usage.md →
 	 * Sizes in rem): every `*-css` sheet reads its `rem` figures as `calc(N * var(--ds-rem, 1rem))`, so
-	 * the button, the text box, the tick box, the badge and the busy ring draw off the card's clamped
-	 * root rather than the host's. here rather than on the colour layer below, so the
+	 * the button, the text box, the tick box, the badge, the busy ring and the notice card draw off
+	 * the card's clamped root rather than the host's. here rather than on the colour layer below, so the
 	 * `[data-theme]` node under it — and the deployment's own `[data-donate-root]`, which is one —
 	 * resolves the registry's `--ds-hit-target` against it too. "draws the registry’s controls off
 	 * the card’s clamped root" in ./parts.browser.spec.ts holds it.
@@ -291,11 +292,10 @@
 	/*
 	 * every size is `em` off the clamped root above, and `--_t-xs` is the one step this scale does
 	 * not protect. nothing at this level floors it: a consumer that needs one states its own
-	 * `max(12px, …)` at its own site, which four of the six do — `.optional`, `.fee-note`,
-	 * `.mandate` and the tribute's notify press in ./parts.css, each arguing what it is protecting.
-	 * `.message` and `.receipt-note` carry none, so they draw at 11.25px at the bottom of the clamp
-	 * band, and a consumer added under a parent already at `--_t-sm` compounds to 10.5px before the
-	 * band is counted at all.
+	 * `max(12px, …)` at its own site, as the eight ./parts.css's header lists do, each arguing what
+	 * it is protecting. every other consumer, `.receipt-note` among them, carries none and draws at
+	 * 11.25px at the bottom of the clamp band, and a consumer added under a parent already at
+	 * `--_t-sm` compounds to 10.5px before the band is counted at all.
 	 *
 	 * `--_t-md` is the base and it is the card's whole rule: only a heading goes above it, and only
 	 * an error and fine print go below it. every figure a donor reads — the presets, the amount they
@@ -365,6 +365,10 @@
 	 * types in a field the surface's own floor holds open, and the drawn code, which takes `0`
 	 * because it has no line to set at all. a reading rhythm is the room between two lines, and
 	 * none of the three has a second one.
+	 *
+	 * a saved pledge's pending screen is the one exception: it draws the registry's own leadings
+	 * for its small and extra-small sizes, `calc(1.25 / 0.875)` and `calc(1 / 0.75)` (the tenth gap
+	 * above), and the design's `1.4` on its summary's values, in ./parts.css.
 	 */
 	--_lh-tight: 1.25;
 	--_lh-body: 1.5;
