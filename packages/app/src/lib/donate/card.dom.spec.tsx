@@ -3479,9 +3479,16 @@ describe('an IRA (QCD) gift', () => {
 	 * each told press by `told` in turn the same way. every save's body and every told url are kept.
 	 */
 	function deployment(
-		answers: readonly ('save' | 'blank' | 'unsaved' | 'refused' | 'lost' | 'coded' | 'taken')[] = [
-			'save'
-		],
+		answers: readonly (
+			| 'save'
+			| 'blank'
+			| 'unsaved'
+			| 'refused'
+			| 'lost'
+			| 'coded'
+			| 'taken'
+			| 'hang'
+		)[] = ['save'],
 		told: readonly ('ok' | 'down' | 'missing')[] = ['ok']
 	) {
 		const saves: Record<string, unknown>[] = [];
@@ -3523,6 +3530,8 @@ describe('an IRA (QCD) gift', () => {
 				}
 				// a save whose answer never came back, which may still have landed.
 				if (answer === 'lost') throw new TypeError('Failed to fetch');
+				// a save still in flight.
+				if (answer === 'hang') return new Promise<Response>(() => {});
 				// a save answered without the pledge it saved, which may still have landed.
 				if (answer === 'unsaved') return Response.json({ ...saved(request), pledge: undefined });
 				// a pledge saved with no address on file, which the endpoint answers as a blank `receiptTo`.
@@ -3622,6 +3631,19 @@ describe('an IRA (QCD) gift', () => {
 			'This is general information, not tax advice. Talk to your tax adviser or IRA custodian about your own situation.'
 		);
 		expect(root.querySelector('[disabled]')).toBeNull();
+	});
+
+	it('keeps Continue, with no total and no receipt line, while the IRA (QCD) save is in flight', async () => {
+		deployment(['hang']);
+		const root = await onIra({ ...WITH_IRA, receipts: true });
+		type(custodian(root), 'Fidelity Investments');
+		await pressHeld(submit(root));
+
+		expect(submit(root).getAttribute('aria-busy')).toBe('true');
+		expect(one(submit(root), '.action-label').textContent).toBe('Continue');
+		expect(one(root, '.row.fee').hidden).toBe(true);
+		expect(one(root, '.row.total').hidden).toBe(true);
+		expect(shownText(root, '.step-give > .aside')).toBe('');
 	});
 
 	it('saves nothing on a Continue with no custodian, and flags the box with the caret in it', async () => {

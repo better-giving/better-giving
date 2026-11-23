@@ -109,8 +109,10 @@ export function readReceipt(
 	// an IRA (QCD) gift is pledged rather than charged: no processor, a fee of nothing, and nothing
 	// totalled today. the receipt states the gift alone, the fee decision is not offered, the press
 	// saves the pledge and says Continue, and the line promising a receipt now is not drawn — the
-	// pending screen says when one is sent.
-	const pledging = state.step === 'give' && state.method === 'ira_qcd';
+	// pending screen says when one is sent. the save in flight is `working` on the same rail, with
+	// the review step still on screen.
+	const pledging =
+		(state.step === 'give' || state.step === 'working') && state.method === 'ira_qcd';
 	const changeable = state.step === 'give' && !pledging;
 	const covering = api.feeToggle.pressed === true;
 	const declined = api.feeToggle.declinedFee ?? null;
