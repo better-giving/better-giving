@@ -8,9 +8,9 @@ import { rejectionCode } from './rejection.testing';
 
 // 0042 rebuilds `payment`, create-copy-drop-rename, to add 'stock' and 'ira_qcd' to
 // `payment_method_check`. an empty table copies clean, so this file stops the chain in front of
-// 0042 on a database of its own, writes a payment on every method the old check names with every
-// column it has filled, hangs a refund, a dispute, two Zapier deliveries and a ledger entry off
-// them, applies 0042 alone, and reads every row back whole.
+// 0042 on a database of its own, writes a payment on every method the old check names, between
+// them holding a value in every column the table has, hangs a refund, a dispute, two Zapier
+// deliveries and a ledger entry off them, applies 0042 alone, and reads every row back whole.
 
 const REBUILT_BY = '0042_stock_and_ira_qcd_pledges.sql';
 const REBUILD = MIGRATIONS.findIndex((m) => m.name === REBUILT_BY);
@@ -50,7 +50,7 @@ type Payment = Record<(typeof PAYMENT_COLUMNS)[number], string | number | null>;
 const base = { currency: 'USD', direction: 'inbound', parent_payment_id: null } as const;
 const noCoin = { coin: null, coin_network: null, coin_amount: null, valid_until: null } as const;
 
-/** one row per method the old check names, each with every column its shape may fill, filled. */
+/** one row per method the old check names, and a refund: each column holds a value on one. */
 const PAYMENTS: readonly Payment[] = [
 	{
 		...base,

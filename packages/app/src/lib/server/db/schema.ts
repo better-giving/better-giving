@@ -67,12 +67,16 @@ import type { PostableAccountId } from './postable';
 //   time   -> integer unix milliseconds UTC on every `_at` column. `created_at` is
 //             system time; ledger/settlement rows additionally carry `occurred_at`
 //             (business time). never text ISO-8601.
-//   ids    -> text uuidv7 generated app-side by the `id()` helper below, with two
+//   ids    -> text uuidv7 generated app-side by the `id()` helper below, with these
 //             exceptions: `form.id` is a prefixed random string, for the reasons on the
-//             `formId` helper, and `pledge.id` is the uuid the donor's form minted, which
-//             the gift a received pledge becomes takes as its `donation.id`
-//             (../donations/receive-pledge.ts). sqlite has
-//             no gen_random_uuid(), so generation is ours either way; v7 is
+//             `formId` helper; `pledge.id` is the uuid the donor's form minted, which the
+//             gift a received pledge becomes takes as its `donation.id`
+//             (../donations/receive-pledge.ts); `org_profile` and `quickbooks_connection`
+//             are singletons with a fixed id; `dispute`, `quickbooks_sync` and
+//             `image_bytes` are keyed by their parent row's id; and `webhook_delivery`,
+//             `supporter_link`, `supporter_session`, `pledge_rail` and `ticker` are keyed
+//             by a value of their own (a `msg_` id, a token hash, a method, a symbol).
+//             sqlite has no gen_random_uuid(), so generation is ours either way; v7 is
 //             time-ordered, which keeps index locality on the append-only tables.
 //             text(36), not blob(16) — legibility beats index size at nonprofit scale.
 //   enums  -> check constraints derived from the TS const array (see `enumCheck`),
@@ -98,8 +102,9 @@ import type { PostableAccountId } from './postable';
 //             release writes.
 //             this list is every vocabulary that has left, and a move not added to it makes
 //             it read as complete while under-reporting.
-//             one vocabulary is not derived into a check at all: `donation.tribute_kind`,
-//             which arrived by `ADD COLUMN` on a table with children, where drizzle-kit
+//             one vocabulary is not derived into a check at all: the tribute kind, on
+//             `donation.tribute_kind` and `pledge.tribute_kind`. the donation column
+//             arrived by `ADD COLUMN` on a table with children, where drizzle-kit
 //             generates a check as the rebuild rule 2 below describes. a hand-written
 //             `ADD COLUMN ... CHECK` adds one in place, as migrations/0025 does.
 //             `TRIBUTE_KINDS` is the donation form's
@@ -236,7 +241,7 @@ import type { PostableAccountId } from './postable';
 //    check resolves against whatever the table is called, so it survives the rename on both.
 // ---------------------------------------------------------------------------
 
-/** primary-key column shared by every table: text uuidv7, generated app-side. */
+/** the default primary-key column: text uuidv7, generated app-side. */
 const id = () =>
 	text('id')
 		.primaryKey()
@@ -250,9 +255,8 @@ const id = () =>
 const FORM_ID_ALPHABET = '0123456789abcdefghjkmnpqrstvwxyz';
 
 /**
- * `form.id` — the one primary key in this schema that is not a uuidv7, because it is
- * the one that is public: it sits in the org's own HTML, inside the embed snippet, and
- * is quoted back by an unauthenticated `/api/v1` request.
+ * `form.id` — not a uuidv7, because it is public: it sits in the org's own HTML, inside
+ * the embed snippet, and is quoted back by an unauthenticated `/api/v1` request.
  *
  * a uuidv7 would leak its creation time and, worse, place every form a deployment ever
  * made in one narrow, ordered keyspace — the property that makes v7 good for index
@@ -260,9 +264,8 @@ const FORM_ID_ALPHABET = '0123456789abcdefghjkmnpqrstvwxyz';
  * bits, unenumerable by construction.
  *
  * `crypto.getRandomValues` and not `Math.random`: both workerd and node 22 have it, and
- * this is the only id in the schema whose unguessability is a security property rather
- * than a convenience. the prefix is not constrained in the database — see
- * `form_id_length_check` below for why.
+ * this id's unguessability is a security property rather than a convenience. the prefix
+ * is not constrained in the database — see `form_id_length_check` below for why.
  */
 const formId = () => text('id').primaryKey().$defaultFn(mintFormId);
 
@@ -3893,10 +3896,9 @@ export type NewGiftMatch = typeof giftMatch.$inferInsert;
 
 /**
  * where a donor sends a stock or IRA (QCD) gift: the organisation's own transfer details, one row
- * per `PLEDGE_METHODS` member. a carve-out from "every configuration value is an environment
- * variable" (AGENTS.md -> Secrets) of the `quickbooks_connection` kind — the deployer saves these on
- * /admin/payments — and none of them is a secret: every one is printed to any donor who picks the
- * rail.
+ * per `PLEDGE_METHODS` member. configuration held as rows rather than environment variables — the
+ * deployer saves these on /admin/payments — and not one of AGENTS.md -> Secrets' carve-outs, which
+ * are secrets: none of these is one, since every one is printed to any donor who picks the rail.
  *
  * a rail turned off keeps its details, so turning it back on asks for nothing again. what the row
  * refuses is a rail turned on with a detail missing, and a detail stated on the other rail's row.
@@ -3973,8 +3975,10 @@ export type NewPledgeRail = typeof pledgeRail.$inferInsert;
  *
  * what the donor said on the form about the gift — the cause, the note and whether it is public, the
  * dedication, where it came from — waits here in the columns `donation` names the same way, and
- * Mark received copies them across. the checks that hold those columns together on `donation` are
- * repeated here, so a pledge cannot hold a pair `donation` would refuse at the moment it arrives.
+ * Mark received copies them across, all but `supporter_page_id`: the gift's page is read again as
+ * of the day staff entered (../donations/receive-pledge.ts). the checks that hold those columns
+ * together on `donation` are repeated here, so a pledge cannot hold a pair `donation` would refuse
+ * at the moment it arrives.
  *
  * one-time only: no `recurring_id`, since no commitment is ever opened on either rail.
  */
@@ -4015,9 +4019,10 @@ export const pledge = sqliteTable(
 		 */
 		amountMinor: integer('amount_minor'),
 		/**
-		 * when the donor pressed "I've contacted my broker" or "I've asked my custodian" and the
-		 * organisation was told. null while the donor has only been shown the instructions. a stamp
-		 * rather than a flag, set by a guarded update so a second press tells nobody twice.
+		 * when the donor pressed "I've contacted my broker" or "I've asked my custodian". null while
+		 * the donor has only been shown the instructions. a stamp rather than a flag, set by a guarded
+		 * update before the organisation's message is sent, so a second press tells nobody twice
+		 * (`markPledgeTold` in ../donations/pledges.ts).
 		 */
 		toldAt: at('told_at'),
 		/** the gift this pledge became at Mark received, and null while it is waiting. */
@@ -4053,7 +4058,9 @@ export const pledge = sqliteTable(
 		/**
 		 * what each rail pledges, and only that: shares of a ticker, or an amount from a custodian.
 		 * an equality per rail rather than `or`-ed cases, the shape `form_program_pinned_check` uses,
-		 * so a stock pledge carrying a dollar figure is refused as firmly as one missing its ticker.
+		 * refuses a pledge missing its own rail's figures; the two `_has_no_` checks refuse the other
+		 * rail's, so a stock pledge carrying a dollar figure is refused as firmly as one missing its
+		 * ticker.
 		 */
 		check(
 			'pledge_stock_check',
@@ -4096,7 +4103,7 @@ export const pledge = sqliteTable(
 			sql`(${t.tributeNotifyName} is null) = (${t.tributeNotifyEmail} is null) and (${t.tributeNotifyName} is null or ${t.tributeKind} is not null)`
 		),
 		uniqueIndex('pledge_reference_idx').on(t.reference),
-		// one pledge becomes one gift; also the index `donation_id`'s foreign key is checked by, and
+		// a gift is at most one pledge's; also the index `donation_id`'s foreign key is checked by, and
 		// the one the waiting read's `donation_id is null` walks.
 		uniqueIndex('pledge_donation_id_idx').on(t.donationId)
 	]

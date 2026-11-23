@@ -46,8 +46,9 @@ type SeededAccount<TId extends string = string> = {
  */
 export const POSTING_ACCOUNTS = {
 	/**
-	 * a gift received in hand — cash or a check at an event, hand-posted — and what ties to
-	 * the bank statement. nothing on the card path reaches it.
+	 * a gift received in hand — cash or a check at an event, hand-posted, or a stock or IRA
+	 * (QCD) pledge marked received — and what ties to the bank statement. nothing on the card
+	 * path reaches it.
 	 */
 	bankCash: {
 		id: '019fb0b4-ec6c-7fbb-aa36-4ff01f1781b9',
