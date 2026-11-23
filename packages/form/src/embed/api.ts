@@ -15,7 +15,7 @@
 // nor is this reachable through ./runtime.ts, which is why the split is a module and not an
 // export. that file imports `defineDonateForm` and reads its own script tag, so importing it from a
 // page that renders no custom element would register the tag and install the embed's boot. this
-// module imports no element, no payment SDK and no DOM global — `fetch`, `Response` and the four
+// module imports no element, no payment SDK and no DOM global — `fetch`, `Response` and the
 // helpers below are the whole of it.
 //
 // `../../package.json` exports it as `./embed/api` for that second surface, and for nothing else:
@@ -239,8 +239,8 @@ export function toldUrl(origin: string, formId: string, pledgeId: string): strin
 /**
  * the port a pending pledge's primary presses: `POST /api/v1/forms/:id/donations/:pledgeId/told`.
  *
- * no body, and none is worded: the flow answers every failure with the same notice over the pending
- * screen (`pledged` in ../checkout.machine.ts), so a sentence here would be one no donor is shown.
+ * no body, and none is worded: the flow answers a failure with one of two notices of its own on the
+ * pending screen (`pendingNotice` in ../views.ts), so a sentence here would be one no donor is shown.
  * a refusal still carries the endpoint's code, as `createQuote`'s does: `pledge_not_found` is what
  * makes the next press save the pledge again before it tells (`pledgeIsLost` in ../checkout.machine.ts).
  * `credentials: 'omit'` for `createQuote`'s reason.

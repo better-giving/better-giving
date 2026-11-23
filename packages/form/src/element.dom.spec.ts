@@ -8503,7 +8503,7 @@ describe('a stock or IRA (QCD) pledge', () => {
 		await settle();
 		return card;
 	};
-	/** the stock pending screen, saved from the details step through `steer`, as no screen sends it until the first step's unit panel draws a ticker. */
+	/** the stock pending screen, saved from the details step through `steer`, as no screen sends it. */
 	const stockPending = async (options: PledgeOptions = {}) => {
 		const card = await atDetailsStep(pledging({ saved: STOCK_PLEDGE, ...options }));
 		type(card.find('#email'), 'maya.okafor@example.org');

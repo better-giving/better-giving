@@ -9,8 +9,8 @@
 // the benefits panel the card built (`ira` on `CardView` in ../views.ts).
 //
 // opening the row is choosing the rail, as the crypto option's is (./nowpayments.ts): the box inside
-// is the rest of the choice. `stock`, the other pledge rail, has no row: its ticker is picked on the
-// first step.
+// is the rest of the choice. `stock`, the other pledge rail, has no row, and no screen in this
+// package sends a stock pledge (`steer` in ../element.ts).
 
 import type { CheckoutPorts } from '../ports';
 import { PAYMENT_METHOD_LABELS, type PaymentMethod } from '../v1';

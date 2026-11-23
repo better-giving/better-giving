@@ -64,9 +64,9 @@ describe('the shipped bytes', () => {
 // declares, so ../embed-faces.browser.spec.ts cannot go red on one.
 describe('the shipped bytes carry no face', () => {
 	/**
-	 * the gzip size the runtime stays under, in bytes: its own code, with room to grow. the runtime
-	 * measures about 130.2 KB gzipped inside vitest with the pledge screens and the registry's notice
-	 * card in it. a face inlined as a data URL adds tens of KB, so the ceiling still trips on one.
+	 * the gzip size the runtime stays under, in bytes: its own code, with room to grow. the ceiling
+	 * sits a few KB over the runtime as measured inside vitest, and a face inlined as a data URL adds
+	 * tens of KB, so it trips on one.
 	 */
 	const RUNTIME_GZIP_CEILING = 135_000;
 

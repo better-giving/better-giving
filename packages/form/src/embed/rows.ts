@@ -4,14 +4,16 @@
 // the provider paints its own rails as rows inside its frame (`layout` in ./stripe.ts), and a donor
 // reads the box as one list, so the options the other adapters draw are rows of the same shape: the
 // rail's mark at the start, its name after it, no line between one row and the next, and the rail's
-// own branded button behind a press on the name. the row reports nothing to the flow. opening one is
-// looking rather than choosing — the button inside it is still the press that chooses, exactly as it
-// was with no row around it.
+// own branded button behind a press on the name. a row holding a processor's button reports nothing
+// to the flow: opening one is looking rather than choosing — the button inside it is still the press
+// that chooses, exactly as it was with no row around it. the IRA (QCD) and crypto rows hold the
+// card's own controls instead, and opening either chooses its rail (./pledge.ts, ./nowpayments.ts).
 //
-// each row is a light-DOM node with a shadow root of its own. light DOM because what it holds is a
-// processor's own element, which has to stay reachable by that processor's script (Chariot's finds
-// its element by a document query, ./chariot.ts); a shadow root because a host page's stylesheet
-// reaches light DOM, and a `button { … }` rule on their page would otherwise redraw the row's name.
+// each row is a light-DOM node with a shadow root of its own. light DOM because what a processor's
+// row holds is that processor's own element, which has to stay reachable by its script (Chariot's
+// finds its element by a document query, ./chariot.ts); a shadow root because a host page's
+// stylesheet reaches light DOM, and a `button { … }` rule on their page would otherwise redraw the
+// row's name.
 // the branded button is slotted, so it stays in the document tree while the name, the mark and the
 // panel it is drawn in stay out of a host's reach.
 //
@@ -89,7 +91,8 @@ type Glyph = {
 };
 
 /**
- * each row's mark as the company behind the rail publishes it,
+ * each row's mark as the company behind the rail publishes it, but the IRA (QCD) row's, which no
+ * company stands behind (its entry below),
  * https://www.paypalobjects.com/paypal-ui/logos/svg/paypal-mark-color.svg,
  * https://www.paypalobjects.com/paypal-ui/logos/svg/venmo-mark-color.svg and Chariot's icon glyph
  * from https://www.givechariot.com, paths and fills verbatim — including Chariot's third path, which

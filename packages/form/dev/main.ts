@@ -143,9 +143,10 @@ picker.addEventListener('change', () => {
 	show(picker.value);
 });
 
-// the stock pledge's one sender until the first step's unit panel draws a ticker: on the `pledges`
-// fixture's details step, with the three boxes filled in, it saves 50 shares of AAPL and the card
-// turns to the stock pending screen. anywhere else the flow takes no such press and nothing moves.
+// the stock pledge's one sender, since no screen sends it (`steer` in ../src/element.ts): on the
+// `pledges` fixture's details step, with the three boxes filled in, it saves 50 shares of AAPL and
+// the card turns to the stock pending screen. anywhere else the flow takes no such press and
+// nothing moves.
 need('pledge-stock', HTMLButtonElement).addEventListener('click', pledgeStock);
 
 need('reboot', HTMLButtonElement).addEventListener('click', () => {

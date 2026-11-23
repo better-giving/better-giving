@@ -8,15 +8,17 @@
 //
 // what it owns is therefore five decisions and no more. **when the surface is told of a quote** —
 // on the press and again once it lands, which `quoteThrough` below is the one copy of. **which
-// adapters exist at all**, off the rails the config offers rather than off the processors it names — `STRIPE_RAILS`, `PAYPAL_RAILS`,
-// `CHARIOT_RAILS` and `NOWPAYMENTS_RAILS` in ./rails.ts cover the vocabulary exactly once, so a config
-// offering a rail is a config needing that rail's adapter, and an adapter whose own processor the
-// config does not name reports that for itself. **which adapter a reading belongs to** — a confirmation by the rail its
-// order was minted on, a rail report by the box the donor pressed in, a re-read by whichever
-// processor can answer for the token. **which option in the box is open**, because the provider's
-// rails and the rows the other adapters draw (./rows.ts) are one list to a donor and no adapter sees
-// the others' options. and **stopping all of them**, which is the one thing a caller holding a
-// single surface could not do for itself.
+// adapters exist at all**, off the rails the config offers rather than off the processors it names —
+// `STRIPE_RAILS`, `PAYPAL_RAILS`, `CHARIOT_RAILS`, `NOWPAYMENTS_RAILS` and `PLEDGE_RAILS` in
+// ./rails.ts cover the vocabulary exactly once, so a config offering a rail is a config needing that
+// rail's adapter (an IRA (QCD) row for `ira_qcd`, and none for `stock`, which the box does not
+// list), and an adapter whose own processor the config does not name reports that for itself.
+// **which adapter a reading belongs to** — a confirmation by the rail its order was minted on, a
+// rail report by the box the donor pressed in, a re-read by whichever processor can answer for the
+// token. **which option in the box is open**, because the provider's rails and the rows the other
+// adapters draw (./rows.ts) are one list to a donor and no adapter sees the others' options. and
+// **stopping all of them**, which is the one thing a caller holding a single surface could not do
+// for itself.
 //
 // what it deliberately does not own is any donor-facing sentence. each adapter writes its own,
 // naming its own processor where that is the honest noun, and the only thing decided here is
@@ -165,7 +167,8 @@ const PINNED =
  * every processor this form can take a gift through, behind one surface.
  *
  * the adapters are built in the order they are read here and that order is what a donor sees: the
- * inline fields, then the hosted window's buttons under them.
+ * inline fields, then the hosted window's buttons under them, the fund, the IRA (QCD) option and the
+ * crypto option.
  */
 export function createPaymentSurface(
 	config: FormConfig,
