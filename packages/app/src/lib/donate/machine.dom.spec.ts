@@ -982,35 +982,6 @@ afterEach(() => {
 	vi.useRealTimers();
 });
 
-// a coin is picked on the first step, so the payment box a deployment taking crypto draws holds the
-// card processor's node alone, on a one-time gift as on a repeating one.
-it('stands no coin list in the payment box', async () => {
-	const { paymentMount, challengeMount, heldChallengeMount, toldChallengeMount } = boxes();
-	const payment = paymentProvider();
-	const timer = clock();
-
-	const checkout = startCheckout(WITH_CRYPTO, {
-		paymentMount,
-		challengeMount,
-		heldChallengeMount,
-		toldChallengeMount,
-		resumeToken: null,
-		seams: { payment: { stripe: { load: payment.load, delay: timer.delay } } }
-	});
-	onTestFinished(() => checkout.stop());
-	await settle();
-	const lists = () =>
-		[...paymentMount.querySelectorAll('*')].filter((node) =>
-			node.shadowRoot?.querySelector('[role="combobox"]')
-		);
-
-	expect(lists()).toEqual([]);
-	expect(paymentMount.children).toHaveLength(1);
-
-	checkout.actor.send({ type: 'SET_FREQUENCY', frequency: 'monthly' });
-	expect(lists()).toEqual([]);
-});
-
 // the server render and the client's first render are one tree only where both offer the same units
 // on the first step, and what offers a coin or a stock is the ports the flow was started with.
 it('offers on its first paint the units the live flow offers', async () => {
@@ -1083,8 +1054,10 @@ it('reads a crypto gift at this deployment until it arrives', async () => {
 	actor.send({ type: 'SET_CONTACT', firstName: 'Ada' });
 	actor.send({ type: 'SET_CONTACT', lastName: 'Lovelace' });
 	actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'token-1' });
-	// a coin picked on the first step has no review step: the details step's press is the gift's.
+	// a coin gift's press is its review step's, which stands after the details.
 	actor.send({ type: 'CONTINUE' });
+	expect(toState(actor.getSnapshot())).toMatchObject({ step: 'give', method: 'crypto' });
+	actor.send({ type: 'SUBMIT' });
 	for (let turn = 0; turn < 20; turn += 1) await settle();
 	expect(toState(actor.getSnapshot()).step).toBe('awaitingDeposit');
 

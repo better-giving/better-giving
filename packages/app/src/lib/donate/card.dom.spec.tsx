@@ -32,6 +32,7 @@ import {
 	APPLE_SRC,
 	CHANGE_WHAT_YOU_GIVE,
 	coinRefusalSentence,
+	coinReview,
 	CONTINUE_TO_PAYMENT,
 	FLAG_SRC,
 	NEXT_PAYMENT,
@@ -100,7 +101,7 @@ vi.mock('./announce', async (importOriginal) => {
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 // happy-dom has no top layer and no popover methods, and the open lists — the closed choices'
-// (./choice.tsx) and the coin list's — are shown as popovers; here the methods only have to exist.
+// (./choice.tsx) and the unit panel's — are shown as popovers; here the methods only have to exist.
 if (!('showPopover' in HTMLElement.prototype)) {
 	Object.assign(HTMLElement.prototype, { showPopover() {}, hidePopover() {} });
 }
@@ -2694,6 +2695,29 @@ async function throughDetails(root: HTMLElement): Promise<void> {
 	});
 }
 
+/** the review step's one press, which a coin gift's address is minted from. */
+async function throughReview(root: HTMLElement): Promise<void> {
+	await act(async () => {
+		one(root, CONTINUE).click();
+		for (let at = 0; at < 20; at += 1) await Promise.resolve();
+	});
+}
+
+/** every section the card shows from here on, in the order it shows them. */
+function watchScreens(root: HTMLElement): string[] {
+	const shown: string[] = [];
+	const watch = new MutationObserver(() => {
+		const name = every(root, 'section.step')
+			.filter((section) => !section.hidden)
+			.map((section) => section.className)
+			.join(' ');
+		if (shown.at(-1) !== name) shown.push(name);
+	});
+	watch.observe(root, { attributes: true, subtree: true, attributeFilter: ['hidden'] });
+	onTestFinished(() => watch.disconnect());
+	return shown;
+}
+
 describe('what the donor gives, on the first step', () => {
 	const COINS: NonNullable<FormConfig['coins']> = [
 		{
@@ -2980,7 +3004,7 @@ describe('what the donor gives, on the first step', () => {
 		expect(described(root)).toBe('Payment methods on the next step: Card');
 	});
 
-	it('is a plain Continue once a coin is picked, which skips the payment step', async () => {
+	it('is a plain Continue once a coin is picked, which chooses no payment method', async () => {
 		deployment();
 		const { root } = await card(WITH_CRYPTO);
 		await give(root, 'coin:btc');
@@ -3020,6 +3044,28 @@ describe('what the donor gives, on the first step', () => {
 		await throughDetails(root);
 
 		expect(one(screen(root), 'h2').textContent).toBe('Your stock gift is pending');
+		expect(asked.saves).toHaveLength(1);
+	});
+
+	// a coin gift's review step is the fee choice; a stock pledge has no fee and nothing to review.
+	it('skips the review step for a stock gift', async () => {
+		const { root, asked } = await giveStock({
+			method: 'stock',
+			reference: 'ACME-AAPL-7Q2D',
+			receiptTo: 'donor@example.org',
+			ticker: 'AAPL',
+			shares: '50',
+			deliverTo: 'Harbor Street Securities',
+			dtcNumber: '0164',
+			accountNumber: 'Z12-345678',
+			accountName: 'Helping Hands'
+		});
+		type(quantity(root), '50');
+		const shown = watchScreens(root);
+
+		await throughDetails(root);
+
+		expect(shown.some((name) => name.includes('step-give'))).toBe(false);
 		expect(asked.saves).toHaveLength(1);
 	});
 
@@ -3141,12 +3187,38 @@ describe('a crypto gift', () => {
 		return { root, server };
 	}
 
-	/** the address screen, for a USDT gift: the coin picked on the first step and the details given. */
-	async function atAddress(drawn: Parameters<typeof card>[2] = {}, config: FormConfig = CRYPTO) {
+	/** the review step, for a USDT gift: the coin picked on the first step and the details given. */
+	async function atReview(drawn: Parameters<typeof card>[2] = {}, config: FormConfig = CRYPTO) {
 		const reached = await onCoin(undefined, drawn, config);
 		await throughDetails(reached.root);
 		return reached;
 	}
+
+	/** the address screen, for the same gift, its review step pressed on as it stands. */
+	async function atAddress(drawn: Parameters<typeof card>[2] = {}, config: FormConfig = CRYPTO) {
+		const reached = await atReview(drawn, config);
+		await throughReview(reached.root);
+		return reached;
+	}
+
+	/** the review step's words for the USDT gift at $25.00, by whether the fee is covered. */
+	const reviewOf = (covers: boolean) =>
+		coinReview(CRYPTO, {
+			giftMinor: 2500,
+			covers,
+			// the crypto rule's 1% (`FEE_RULES` above), grossed up so the gift arrives whole.
+			feeMinor: covers ? 26 : null,
+			totalMinor: covers ? 2526 : 2500
+		});
+
+	/** the receipt's rows as a donor reads them, the hidden ones left out. */
+	const receiptText = (root: HTMLElement) => ({
+		gift: shownText(root, '.step-give [part~="summary"] > .row:first-child > *'),
+		fee: shownText(root, '.step-give .row.fee > .fee-decision > .row-label'),
+		feeFigure: shownText(root, '.step-give .row.fee > .figure'),
+		feeLine: shownText(root, '.step-give .row.fee > .fee-note'),
+		total: shownText(root, '.step-give .row.total > *')
+	});
 
 	async function tick(ms: number): Promise<void> {
 		await act(async () => {
@@ -3168,25 +3240,9 @@ describe('a crypto gift', () => {
 		);
 	});
 
-	// a coin is picked on the first step, so the review step a currency gift reaches lists no crypto.
-	it('draws no crypto option on the money step', async () => {
-		deployment(() => json(USDT));
-		const { root } = await card(CRYPTO);
-		await walkToGive(root);
-
-		expect(screen(root).className).toContain('step-give');
-		const names = every(root, '[part~="payment"] *').map(
-			(node) => node.shadowRoot?.querySelector('.head .name')?.textContent ?? null
-		);
-		expect(names).not.toContain('Crypto');
-		expect(
-			every(root, '[part~="payment"] *').some((node) =>
-				node.shadowRoot?.querySelector('[role="combobox"]')
-			)
-		).toBe(false);
-	});
-
-	it('asks for an amount on a Continue with none typed, and puts the caret in the box', async () => {
+	// the bounds are the currency's, so an empty coin box is marked and caret-led with no sentence:
+	// no copy names a quantity that is missing (`AmountDecision` in @better-giving/form/value).
+	it('marks an empty coin box on a Continue, with the caret in it and no sentence', async () => {
 		const server = deployment(() => json(USDT));
 		const { root } = await card(CRYPTO);
 		await give(root, 'coin:usdttrc20');
@@ -3194,30 +3250,108 @@ describe('a crypto gift', () => {
 		press(one(root, CONTINUE));
 
 		expect(onFirstStep(root)).toBe(true);
+		expect(document.activeElement).toBe(quantity(root));
+		expect(quantity(root).getAttribute('aria-invalid')).toBe('true');
+		expect(quantity(root).closest('[part~="amount-input"]')?.getAttribute('part')).toContain(
+			'invalid'
+		);
+		expect(one(root, '#amount-problem').hidden).toBe(true);
+		expect(quantity(root).hasAttribute('aria-describedby')).toBe(false);
+		expect(said(root)).toBe('');
+		expect(server.quotes).toEqual([]);
+
+		// a coin amount is a gift once it is priced, which is when the box stops being missing.
+		type(quantity(root), '25');
+		await priced();
+		expect(quantity(root).hasAttribute('aria-invalid')).toBe(false);
+	});
+
+	it('keeps the amount sentence for a gift in the currency', async () => {
+		deployment(() => json(USDT));
+		const { root } = await card(CRYPTO);
+		press(one(root, '.tiles > label.other'));
+
+		press(one(root, CONTINUE));
+
 		expect(one(root, '#amount-problem').textContent).toBe(
 			copy.amountProblem((minor) => formatOffer(minor, 'en-US', 'usd'), 500, 500000)
 		);
-		expect(document.activeElement).toBe(quantity(root));
-		expect(quantity(root).getAttribute('aria-describedby')).toBe('amount-problem');
-		expect(server.quotes).toEqual([]);
+		expect(input(root, '#amount-entry').getAttribute('aria-invalid')).toBe('true');
 	});
 
-	it('goes from a coin picked on step 1 through the details straight to its address', async () => {
+	it('goes from a coin picked on step 1 through the details to the review step', async () => {
 		const { root, server } = await onCoin();
-		const shown: string[] = [];
-		const watch = new MutationObserver(() => {
-			const name = every(root, 'section.step')
-				.filter((section) => !section.hidden)
-				.map((section) => section.className)
-				.join(' ');
-			if (shown.at(-1) !== name) shown.push(name);
-		});
-		watch.observe(root, { attributes: true, subtree: true, attributeFilter: ['hidden'] });
-		onTestFinished(() => watch.disconnect());
 
 		await throughDetails(root);
 
-		expect(shown.some((name) => name.includes('step-give'))).toBe(false);
+		expect(screen(root).className).toContain('step-give');
+		expect(document.activeElement).toBe(one(screen(root), 'h2'));
+		expect(server.quotes).toEqual([]);
+	});
+
+	it('reviews a coin gift as the receipt and the fee switch, with one Continue and no method', async () => {
+		const { root } = await atReview();
+		const words = reviewOf(true);
+		const step = screen(root);
+
+		expect(one(step, 'h2').textContent).toBe(words.heading);
+		expect(receiptText(root)).toEqual({
+			gift: `${words.giftLabel}|${words.gift}`,
+			fee: words.feeSwitch,
+			feeFigure: words.fee,
+			feeLine: words.feeLine,
+			total: `${words.totalLabel}|${words.total}`
+		});
+		expect(input(step, '.fee-decision input[type="checkbox"]').checked).toBe(true);
+		// the payment box, its heading, its refusal and the one-time offer all stand aside.
+		expect(one(step, '[part~="payment"]').closest('[hidden]')).not.toBeNull();
+		expect(one(step, '#payment-heading').closest('[hidden]')).not.toBeNull();
+		expect(step.querySelector(CHARIOT_TAG)).toBeNull();
+		// a coin gift's receipt is sent once the coin arrives, so nothing here promises one now.
+		expect(shownText(step, ':scope > .aside')).toBe('');
+		expect(
+			every(step, 'button').filter(
+				(node) => node.closest('[hidden]') === null && !node.matches('.step-dot')
+			)
+		).toEqual([one(step, 'button[part~="submit"]')]);
+		expect(one(step, 'button[part~="submit"] .action-label').textContent).toBe(words.action);
+	});
+
+	it('words the fee line for the switch turned off, and states no fee', async () => {
+		const { root } = await atReview();
+
+		press(input(root, '.step-give .fee-decision input[type="checkbox"]'));
+
+		const words = reviewOf(false);
+		expect(receiptText(root)).toEqual({
+			gift: `${words.giftLabel}|${words.gift}`,
+			fee: words.feeSwitch,
+			feeFigure: '',
+			feeLine: words.feeLine,
+			total: `${words.totalLabel}|${words.total}`
+		});
+	});
+
+	it.each([true, false])('sends the switch on the quote, covering the fee: %s', async (covers) => {
+		const { root, server } = await atReview();
+		if (!covers) press(input(root, '.step-give .fee-decision input[type="checkbox"]'));
+
+		await throughReview(root);
+
+		expect(one(screen(root), 'h2').textContent).toBe(copy.SEND_HEADING);
+		expect(server.quotes).toMatchObject([
+			{ method: 'crypto', coin: 'usdttrc20', coversFee: covers }
+		]);
+	});
+
+	it('goes from a coin picked on step 1 through the details and the review to its address', async () => {
+		const { root, server } = await onCoin();
+		const shown = watchScreens(root);
+
+		await throughDetails(root);
+		await throughReview(root);
+
+		expect(shown.some((name) => name.includes('step-give'))).toBe(true);
 		expect(one(screen(root), 'h2').textContent).toBe(copy.SEND_HEADING);
 		expect(server.quotes).toMatchObject([{ method: 'crypto', coin: 'usdttrc20' }]);
 	});
@@ -3297,6 +3431,7 @@ describe('a crypto gift', () => {
 		expect(said(root)).toBe(copy.ARRIVED_ANNOUNCE);
 	});
 
+	// a Try again lands on the review step, whose Continue mints a fresh address for the same coin.
 	it('offers a new address once the server says this one expired, and keeps the coin', async () => {
 		vi.useFakeTimers({ shouldAdvanceTime: true });
 		const { root, server } = await atAddress();
@@ -3311,6 +3446,12 @@ describe('a crypto gift', () => {
 			one(root, '.takeover > button[part~="action"]').click();
 			for (let at = 0; at < 20; at += 1) await Promise.resolve();
 		});
+
+		expect(screen(root).className).toContain('step-give');
+		expect(document.activeElement).toBe(one(screen(root), 'h2'));
+		expect(server.quotes).toHaveLength(1);
+
+		await throughReview(root);
 
 		expect(one(screen(root), 'h2').textContent).toBe(copy.SEND_HEADING);
 		expect(server.quotes).toMatchObject([{ coin: 'usdttrc20' }, { coin: 'usdttrc20' }]);
@@ -3482,12 +3623,12 @@ describe('a crypto gift', () => {
 		expect(onFirstStep(root)).toBe(true);
 		expect(said(root)).toBe('');
 
+		press(one(root, CONTINUE));
+		await throughReview(root);
+		expect(screen(root).className).toContain('step-give');
+
 		await held(async () => {
-			press(one(root, CONTINUE));
-			await act(async () => {
-				one(root, CONTINUE).click();
-				for (let at = 0; at < 20; at += 1) await Promise.resolve();
-			});
+			await throughReview(root);
 		});
 
 		expect(one(screen(root), 'h2').textContent).toBe(copy.SEND_HEADING);
@@ -3527,6 +3668,7 @@ describe('a crypto gift', () => {
 		);
 
 		await throughDetails(root);
+		await throughReview(root);
 
 		expect(onFirstStep(root)).toBe(true);
 		expect(one(root, '#amount-problem').hidden).toBe(false);
@@ -3551,6 +3693,7 @@ describe('a crypto gift', () => {
 			const { root } = await onCoin(() => json({ error: code, message: 'refused' }, 422));
 
 			await throughDetails(root);
+			await throughReview(root);
 
 			expect(one(root, '#amount-problem').textContent).toBe(
 				coinRefusalSentence({ code, coin: 'usdttrc20' }, CRYPTO)
@@ -3564,6 +3707,7 @@ describe('a crypto gift', () => {
 		);
 
 		await throughDetails(root);
+		await throughReview(root);
 
 		expect(onFirstStep(root)).toBe(true);
 		expect(one(root, '#amount-problem').textContent).toBe(
@@ -3575,6 +3719,48 @@ describe('a crypto gift', () => {
 				.querySelector('[role="option"][data-value="coin:usdttrc20"]')
 				?.getAttribute('aria-disabled')
 		).toBe('true');
+	});
+
+	// the payment box carries money alone, so on a form whose first step offers a coin its failure is
+	// held (`paymentUnavailable` in @better-giving/form/machine) rather than ending the card.
+	describe('with a payment box that never comes up', () => {
+		it('keeps the first step, and still takes a coin gift to its address', async () => {
+			const server = deployment(() => json(USDT));
+			const { root, payment } = await card(CRYPTO);
+
+			payment.fail();
+
+			expect(onFirstStep(root)).toBe(true);
+			await give(root, 'coin:usdttrc20');
+			type(quantity(root), '25');
+			await priced();
+			await throughDetails(root);
+			await throughReview(root);
+
+			expect(one(screen(root), 'h2').textContent).toBe(copy.SEND_HEADING);
+			expect(server.quotes).toHaveLength(1);
+		});
+
+		it('refuses a gift of money on reaching the review step, and goes back to step 1 on Try again', async () => {
+			const server = deployment(() => json(USDT));
+			const { root, payment } = await card(CRYPTO);
+			payment.fail();
+
+			await walkToGive(root);
+
+			const failed = screen(root);
+			expect(failed.className).toContain('takeover');
+			expect(one(failed, 'h2').textContent).toBe(copy.FAILED_HEADING);
+			expect(document.activeElement).toBe(one(failed, 'h2'));
+			const primary = one(failed, ':scope > button[part~="action"]');
+			expect(primary.textContent).toBe(copy.TRY_AGAIN);
+
+			press(primary);
+
+			expect(onFirstStep(root)).toBe(true);
+			expect(document.activeElement).toBe(one(screen(root), 'h2'));
+			expect(server.quotes).toEqual([]);
+		});
 	});
 });
 

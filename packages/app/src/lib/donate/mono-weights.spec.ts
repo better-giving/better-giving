@@ -169,7 +169,7 @@ function monoAsks(sheets: readonly Block[][], scope: Scope, pageSheet: readonly 
 const tokens = blocks(operator('tokens.css'));
 const formTokens = blocks(form('tokens.css'));
 const pageSheet = blocks(read('./page.css'));
-const formSheets = [blocks(form('parts.css')), blocks(form('coins.css'))];
+const formSheets = [blocks(form('parts.css'))];
 const operatorSheets = [blocks(operator('base.css')), blocks(operator('adm.css'))];
 
 // custom properties only, in source order: the operator's weight ladder, the form's, and the weight

@@ -1200,8 +1200,15 @@ function CheckoutCard({
 
 	// ── the card ─────────────────────────────────────────────────────────────────────────────────
 
+	// a coin gift's review step is headed in the projection's words, as the rest of it is worded.
+	const coinHeading = api.state.step === 'give' ? api.state.coinReview?.heading : undefined;
 	const head = (at: 1 | 2 | 3, into: Screen): ReactNode => (
-		<StepHead at={at} api={api} headingRef={headings[into]} />
+		<StepHead
+			at={at}
+			api={api}
+			headingRef={headings[into]}
+			{...(at === 3 && coinHeading !== undefined ? { heading: coinHeading } : {})}
+		/>
 	);
 
 	return (
@@ -1354,11 +1361,14 @@ function CheckoutCard({
 function StepHead({
 	at,
 	api,
-	headingRef
+	headingRef,
+	heading
 }: {
 	readonly at: 1 | 2 | 3;
 	readonly api: ReactApi;
 	readonly headingRef: RefObject<HTMLHeadingElement | null>;
+	/** the heading's words where the projection words the step, the step's own otherwise. */
+	readonly heading?: string;
 }) {
 	const countId = `step-${at}-count`;
 	return (
@@ -1367,7 +1377,7 @@ function StepHead({
 				{copy.stepCount(at)}
 			</span>
 			<h2 part={part('heading')} tabIndex={-1} aria-describedby={countId} ref={headingRef}>
-				{copy.STEP_HEADINGS[at - 1]}
+				{heading ?? copy.STEP_HEADINGS[at - 1]}
 			</h2>
 			<div className="step-dots">
 				{copy.STEP_HEADINGS.map((heading, index) =>

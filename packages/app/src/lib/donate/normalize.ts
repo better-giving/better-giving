@@ -79,9 +79,9 @@ export type FieldProps = {
 export type SelectOption = {
 	readonly value: string;
 	readonly label: string;
-	/** the coin's name, on the coin choice alone, shown after its ticker. */
+	/** the coin's name, on a coin of the unit choice alone, shown after its ticker. */
 	readonly name?: string;
-	/** whether the account refused this coin on this card, on the coin choice alone. */
+	/** whether the account refused this coin on this card, on a coin of the unit choice alone. */
 	readonly refused?: boolean;
 };
 
