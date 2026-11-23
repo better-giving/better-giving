@@ -26,7 +26,8 @@ import type { Route } from './+types/api.v1.forms.$id.donations.$pledgeId.told';
 //                   runs. no bucket of its own: the write is one guarded update, and the most it can
 //                   send is one message per pledge, ever.
 //   CORS          — from the form's own `allowed_origins` and this deployment's own donation page,
-//                   on every answer including the refusals, so the pending screen can read them.
+//                   on every answer to a `POST`, the 404 and the 500 included, so the pending
+//                   screen can read them. the 405 for any other method carries none.
 //   spam check    — not owed. the donor spent their challenge saving the pledge, and no press here
 //                   can mail anyone but the organisation, once per pledge.
 //   amount bounds — not owed. no amount is submitted.

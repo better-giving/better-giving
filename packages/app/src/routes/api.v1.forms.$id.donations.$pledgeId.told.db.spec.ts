@@ -23,7 +23,8 @@ const mail = vi.hoisted(() => ({
 	throws: 0
 }));
 
-// the mailer is the one thing stubbed, so what the organisation was told is read off what it sent.
+// the mailer is stubbed, so what the organisation was told is read off what it sent; the donor read
+// below is the one other stub.
 vi.mock('$lib/server/email/factory', () => ({
 	createEmailProvider: () => ({
 		async send(message: Message) {

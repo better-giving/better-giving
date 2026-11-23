@@ -335,7 +335,8 @@ describe('POST /api/v1/forms/:id/donations — this deployment’s own origin', 
 });
 
 describe('POST /api/v1/forms/:id/donations — the status each refusal carries', () => {
-	// both stop before the challenge, so nothing here reaches the network.
+	// the first two stop before the challenge, and the third clears it on a solved ALTCHA payload:
+	// nothing here reaches the network.
 	describe('a stock pledge', () => {
 		beforeEach(async () => {
 			await run(stmt('delete from pledge_rail'));

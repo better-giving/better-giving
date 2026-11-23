@@ -13,8 +13,9 @@ import { database, platform } from '../context';
 import type { Route } from './+types/api.v1.forms.$id.donations';
 
 // the endpoint that takes money: a donor's submission in, an authoritative fee and a payment token
-// out. it is the second route under `/api/v1` and the only one that writes anything. a `stock` or
-// `ira_qcd` body saves a pledge instead and charges nothing (`Quote.pledge` in
+// out. it is the one route under `/api/v1` that mints a payment; others there write too, such as
+// the employer write and the pledge told press, and none charges (AGENTS.md -> Routes). a `stock`
+// or `ira_qcd` body saves a pledge instead and charges nothing (`Quote.pledge` in
 // packages/form/src/v1.ts), under the same four controls below.
 //
 // a resource route: no component export, so react router answers with what the handlers return
