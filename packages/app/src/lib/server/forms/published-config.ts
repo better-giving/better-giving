@@ -605,13 +605,14 @@ export function publishedConfig(sources: PublishedConfigSources): PublishedConfi
 		// whether this deployment's processor account can collect a repeating gift, read by
 		// `offeredCadences` in ./offered-cadences.ts.
 		//
-		// narrower than what a gift is accepted on, and `paymentMethods` below is narrower under
-		// the same rule: `parseQuoteRequest` in ../donations/quote-input.ts reads `FREQUENCIES` in
-		// packages/form/src/v1.ts and `OFFERED_PAYMENT_METHODS` in ../../forms/offered-rails.ts
-		// whole, so a cadence or a rail this list has stopped offering is still charged rather than
-		// refused. the served config is cached and reaches pages this deployment cannot recall
-		// (CLAUDE.md), so refusing either would be a donor on a page we published being turned away
-		// at the last step.
+		// narrower than what a gift is accepted on, and the processor rails in `paymentMethods` below
+		// are narrower under the same rule: `parseQuoteRequest` in ../donations/quote-input.ts reads
+		// `FREQUENCIES` in packages/form/src/v1.ts and `OFFERED_PAYMENT_METHODS` in
+		// ../../forms/offered-rails.ts whole, so a cadence or a rail this list has stopped offering is
+		// still charged rather than refused. the served config is cached and reaches pages this
+		// deployment cannot recall (CLAUDE.md), so refusing either would be a donor on a page we
+		// published being turned away at the last step. a pledge rail is not held to it: `mintPledge`
+		// in ../donations/quote.ts refuses one whose `pledge_rail` row is off.
 		//
 		// one-time alone where no rail served repeats a gift, as where the account could not be read:
 		// a repeating cadence takes every one-time rail off the donor's page, which would leave
@@ -619,8 +620,10 @@ export function publishedConfig(sources: PublishedConfigSources): PublishedConfi
 		frequencies: paymentMethods.some(repeatsAGift) ? sources.cadences : ONE_TIME_ONLY,
 		// the deployment's own answer and never this row's, the same as `frequencies` above and
 		// under the same rule: which of the rails this repository has a form for the processor
-		// account is approved for, read by `offeredRails` in ./offered-rails.ts.
-		// crypto only beside a coin to pick — see `PublishedConfigSources.coins`.
+		// account is approved for, read by `offeredRails` in ./offered-rails.ts, then the pledge rails
+		// whose `pledge_rail` row is on, stock only beside a ticker list
+		// (`PublishedConfigSources.pledgeRails`). crypto only beside a coin to pick — see
+		// `PublishedConfigSources.coins`.
 		paymentMethods,
 		feeCoverage: SERVED_FEE_COVERAGE,
 		// every rail the vocabulary holds, composed from each processor's own table
@@ -702,8 +705,9 @@ export const SERVED_LOCALE = 'en-US';
  *
  * one rule, and it is the config *route's* rather than the ladder's: `readFormConfig` in
  * packages/form/src/config.ts drops a config offering no rail, so a body served with an empty
- * `paymentMethods` is a donation form that silently does not appear on a site nobody here can see.
- * refusing instead puts a named value and a screen in front of an integrator.
+ * `paymentMethods` is a donation form that silently does not appear on a site nobody here can see,
+ * and one offering stock alone is a form with nothing to press (`isDrawnRail` below). refusing
+ * either instead puts a named value and a screen in front of an integrator.
  *
  * **it is deliberately not part of `publishedConfig` above, and that is the whole point of it being
  * a separate function.** `readPublishedConfig` is the ladder `mintQuote` in ../donations/quote.ts
@@ -722,9 +726,9 @@ export const SERVED_LOCALE = 'en-US';
  * where it could only be read through a `Response`.
  *
  * a rail processor nobody could read never reaches this: that arm answers with its rails whole, so
- * an empty list is an account that answered and said no to every rail — the fix is on the
- * processor's own dashboard, and Payments is where a standing per rail is already drawn. crypto
- * is the exception, because it is withdrawn for want of a coin rather than for a standing
+ * a list with no processor rail is an account that answered and said no to every rail — the fix is
+ * on the processor's own dashboard, and Payments is where a standing per rail is already drawn.
+ * crypto is the exception, because it is withdrawn for want of a coin rather than for a standing
  * (`PublishedConfigSources.coins`): a coin list that could not be read is NOWPayments not
  * answering, and the sentence says to try again rather than sending anyone to fix a value that is
  * set correctly; a list that answered with no coin says so, and names the dashboard it is set in.
@@ -809,8 +813,9 @@ function repeatsAGift(rail: PaymentMethod): boolean {
 }
 
 /**
- * the 404 body for a form id this deployment never had, which every form-scoped read under
- * `/api/v1` answers alike.
+ * the 404 body for a form id this deployment never had: the config read and the submission answer
+ * it through `publishedConfig` above, and the ticker search
+ * (src/routes/api.v1.forms.$id.tickers.ts) answers it too.
  *
  * the gift submission answers an unusable `pageProgramId` with exactly these words
  * (`unusablePageProgram` in ../donations/quote.ts), so an archived id, an unknown id and another

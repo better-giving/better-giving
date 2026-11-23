@@ -1,9 +1,11 @@
 import { formatMinor } from './money';
 import { sharesText } from './shares';
 
-// what a donor pledged on the stock or IRA (QCD) rail, in the words the Gifts screen and the
-// donor's receipt both print — `50 shares of AAPL`, `$5,000.00 from Fidelity Investments` — in the
-// one place a loader, a component and the mail may import from.
+// what a donor pledged on the stock or IRA (QCD) rail, in words: `pledgedPhrase` is what the Gifts
+// screen's loader (src/routes/_app.admin.donations._index.tsx) hands its waiting card —
+// `50 shares of AAPL`, `$5,000.00 from Fidelity Investments` — and `sharesPhrase` is the shares a
+// received stock gift's receipt prints (../server/donations/receive-pledge.ts). outside
+// `$lib/server/**`, so a component may import it too.
 
 /** shares of a ticker, as `pledge.shares_millionths` holds them. */
 export type PledgedShares = { readonly ticker: string; readonly sharesMillionths: number };
