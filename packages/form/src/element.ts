@@ -136,9 +136,9 @@ export type FormCheckout = {
 	 * the flow's own `send`, handed to a runtime that drives it from a control outside the card;
 	 * absent on every runtime a deployment serves.
 	 *
-	 * the dev page's stock pledge is the one such control (packages/form/dev): `PLEDGE_STOCK` is sent by
-	 * no screen until the first step's unit panel draws a ticker, and the stock screens are drawn from
-	 * the element itself rather than from a copy of it.
+	 * the dev page's stock pledge is the one such control (packages/form/dev): no screen sends
+	 * `PLEDGE_STOCK`, and the stock screens are drawn from the element itself rather than from a copy
+	 * of it.
 	 */
 	readonly steer?: (send: (event: CheckoutEvent) => void) => void;
 	/**

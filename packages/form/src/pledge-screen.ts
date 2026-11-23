@@ -7,8 +7,9 @@
 // controls, which are the address screen's controls in a list rather than in a sentence
 // (`run` in ./deposit.ts).
 //
-// the order is the screen's: the info notice heads the thank-you, the error notice stands under the
-// panel it follows on the pending screen, directly over the press it asks the donor to make again.
+// the order is the screen's: the info notice heads the block, on the thank-you and on a pending
+// screen whose pledge was saved again, and the error notice stands under the panel it follows on the
+// pending screen, directly over the press it asks the donor to make again.
 
 import { type GlyphName, glyph } from './glyph';
 import type { PledgeRail } from './embed/rails';
