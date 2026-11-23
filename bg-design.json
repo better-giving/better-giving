@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "dir": "packages/operator/src/registry",
-  "registryVersion": "4.7.0",
+  "registryVersion": "4.9.0",
   "items": {
     "app-shell-css": {
       "version": "2.0.0",
@@ -25,10 +25,10 @@
       }
     },
     "bare-icon-button-css": {
-      "version": "1.0.1",
+      "version": "1.1.0",
       "files": {
-        "styles/bare-icon-button-css.css": "95c2fc976d21e3409638d55088d23acf9549e7032f1e23bc35f614259faa8019",
-        "styles/bare-icon-button-css.usage.md": "76d4bddcb05bb690a9ea0e249f30555ccdf27743db0f68cce1efb41989d2aa99"
+        "styles/bare-icon-button-css.css": "1e60df0373e5d4b90359e2ae7aa156af54a6dbf1bedf51416a8936c3869b4e8d",
+        "styles/bare-icon-button-css.usage.md": "de3563579178c97e240d9c33e81c8178703a869c22bba871d26c662801a65736"
       }
     },
     "button-css": {
@@ -43,6 +43,13 @@
       "files": {
         "styles/card-css.css": "ac06cdb52b106e2a991e7f288a5ba6b037434c8b99f0d6399e197f3104d4efea",
         "styles/card-css.usage.md": "b94b45ed6ff72e8991a29521d29df7db4be5e4690bc6283ee764f3b5211269d9"
+      }
+    },
+    "checkbox-css": {
+      "version": "1.2.1",
+      "files": {
+        "styles/checkbox-css.css": "bee8e2b19baa589fb9b42aebb1d3bfc12cf43a1c30b43fcc3499fe595e84dd52",
+        "styles/checkbox-css.usage.md": "034d2e293fb6efe1944d1e48b08eb70812594eb85d77297fa6b8b790064270f5"
       }
     },
     "dialog-css": {
@@ -74,10 +81,10 @@
       }
     },
     "menu-css": {
-      "version": "1.0.1",
+      "version": "1.1.0",
       "files": {
-        "styles/menu-css.css": "1ccaeadfb1adb83ef48e7e822d0130699eb3ce1f9e26eaea215ca85f355e2f8f",
-        "styles/menu-css.usage.md": "e6e9cd8d02a170bd8cf06950f310104f1f6ca6fc58f3fa4dbab582d54da5f647"
+        "styles/menu-css.css": "3143aedc955e431c9e778ffd5ee37cf83b965f977b4a4bfb73329e684b32385d",
+        "styles/menu-css.usage.md": "e49de0be0c2d7c5992a3ff983d9b86f2d100db6b2c4c923411c824650898c18e"
       }
     },
     "nav-list-css": {
@@ -172,10 +179,10 @@
       }
     },
     "table-css": {
-      "version": "1.1.1",
+      "version": "1.2.0",
       "files": {
-        "styles/table-css.css": "3deb69588aca2496dc59aeccf109ce9547cac4e7f330791ead48e398fd2ca5e6",
-        "styles/table-css.usage.md": "4037054f845934c728b28e316ebe9bcc4550be4abf5f779fbebaf3944b248a3f"
+        "styles/table-css.css": "045208f0f4cc83707168443173fd78aa04cdf4ff08b89c92c1970afab6cf35b5",
+        "styles/table-css.usage.md": "da45e43042134bc0f924534e7cdcb38ee327b2c06ca063e7bfec32508e1387c2"
       }
     },
     "text-button-css": {

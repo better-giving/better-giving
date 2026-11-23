@@ -14,14 +14,15 @@ Import `styles/variables.css` and `styles/bare-icon-button-css.css`. A bare icon
         aria-haspopup="menu" aria-expanded="false">…</button>
 ```
 
-- Sizes: bare `ds-icon-bare` draws the glyph at 20px; `ds-icon-bare-sm` at 16px. The glyph fills the button whatever size it sets. No fill, edge or padding.
-- Copy each glyph's paths from lucide (`ellipsis`, `x`, `copy`, `star`, `check`, `loader-circle`, `panel-left`); never draw one by hand.
+- Sizes: bare `ds-icon-bare` draws the glyph at 20px; `ds-icon-bare-sm` at 16px; `ds-icon-bare-xs` at 12px, for a control inside a small part such as a removable chip's x. The hit area is the same at every size. The glyph fills the button whatever size it sets. No fill, edge or padding.
+- Copy each glyph's paths from lucide (`ellipsis`, `x`, `copy`, `star`, `check`, `funnel`, `loader-circle`, `panel-left`); never draw one by hand.
 
 ## States
 
 - Rest `--gray-11`; hovered (where the pointer can hover) and pressed `--gray-12`; pressed also nudges 1px down.
 - Held open, `aria-expanded="true"`: `--accent-11`, hovered too. Under forced colors, which drop the ink, a 2px `Highlight` outline 2px out marks it.
 - Toggle on, `aria-pressed="true"`: `--accent-11`, and the glyph is filled with it.
+- Active, `data-active="true"`: a setting off its default, such as a column filter with values applied. `--accent-11` and a filled glyph, hovered and pressed too. It is not `aria-pressed`: the button opens something rather than toggling, so say the state in `aria-label`. Held open without it stays hollow.
 - `disabled`, or `aria-disabled="true"` on a button that must keep focus: opacity .6, `not-allowed`, no hover ink. Stop an `aria-disabled` button's click in script.
 - In flight, `aria-busy="true"` (with `aria-disabled="true"`, so focus stays): swap the glyph for lucide's `loader-circle` as `<svg class="ds-icon-bare-spin" aria-hidden="true">`. The button takes no pointer; the glyph turns on `ds-spin` once a second and stands still under `prefers-reduced-motion: reduce`.
 - Done, `data-done="true"`: swap the glyph for lucide's `check`; `--success-subtle-fg`, no pointer. Ignore the click in script while it shows, say the outcome in a `role="status"` region, and after 2000ms put the glyph back and `data-done="false"`.
