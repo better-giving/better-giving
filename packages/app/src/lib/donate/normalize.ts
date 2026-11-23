@@ -40,6 +40,8 @@ export type Option = {
 	readonly value: string | number;
 	readonly label?: string;
 	readonly checked: boolean;
+	/** a cadence the flow does not take now, on the cadence group alone; its press is refused. */
+	readonly unavailable?: boolean;
 	readonly onChange: () => void;
 };
 
@@ -87,6 +89,10 @@ export type SelectProps = {
 	/** the option the flow holds, `''` where it holds none. */
 	readonly value: string;
 	readonly options: readonly SelectOption[];
+	/** the search box's placeholder and hidden label, on the unit choice alone. */
+	readonly search?: string;
+	/** whether a ticker search stands under the list, on the unit choice alone. */
+	readonly stocks?: boolean;
 	/** what `Select.Root` takes, legal to spread onto it whole. */
 	readonly root: {
 		readonly collection: ListCollection<SelectOption>;
@@ -139,15 +145,19 @@ function propTypesWith(collectionOf: CollectionOf): PropTypes<Shapes> {
 			};
 		},
 		select: (props) => {
-			const { name, value, options, onChange } = props as unknown as {
+			const { name, value, options, onChange, search, stocks } = props as unknown as {
 				name: string;
 				value: string;
 				options: readonly SelectOption[];
 				onChange: (value: string) => void;
+				search?: string;
+				stocks?: boolean;
 			};
 			return {
 				value,
 				options,
+				...(search === undefined ? {} : { search }),
+				...(stocks === undefined ? {} : { stocks }),
 				root: {
 					collection: collectionOf(name, options),
 					value: [value],

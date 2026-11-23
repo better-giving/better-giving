@@ -1,7 +1,5 @@
-import { createCoinPicker, type CoinPicker } from '@better-giving/form/coin-picker';
 import {
 	checkoutMachine,
-	cryptoIsOffered,
 	fundIsOffered,
 	openFund,
 	pledgeIsOffered,
@@ -57,7 +55,10 @@ export type Opening = NonNullable<CheckoutInput['opening']>;
  * starting an actor on inert ports and reading one snapshot off it is a value rather than an effect.
  *
  * the ports never settle rather than rejecting. nothing reaches them on the way to `amount`, and a
- * rejection would be an outcome this snapshot could be built holding.
+ * rejection would be an outcome this snapshot could be built holding. `estimate` and `pledges` are
+ * held as the live ports are (./ports.ts), because their presence is what offers a coin and a stock
+ * on the first step (`unitsOffered` in @better-giving/form/machine): left out, the server would draw
+ * the currency as plain text where the client draws the unit pill.
  */
 export function initialSnapshot(config: FormConfig, opening?: Opening): CheckoutSnapshot {
 	const inert = (): Promise<never> => new Promise<never>(() => {});
@@ -66,7 +67,9 @@ export function initialSnapshot(config: FormConfig, opening?: Opening): Checkout
 		confirm: inert,
 		resume: inert,
 		status: inert,
-		now: () => 0
+		estimate: inert,
+		now: () => 0,
+		pledges: { id: () => '', save: inert, told: inert }
 	};
 	const actor = createActor(checkoutMachine, {
 		input: { config, ports, ...(opening === undefined ? {} : { opening }) }
@@ -108,15 +111,9 @@ export type CheckoutMounts = {
 export type Checkout = {
 	readonly actor: Actor<typeof checkoutMachine>;
 	/**
-	 * the coin list a `crypto` gift is chosen in, which the crypto option stands in its row in the
-	 * payment box. built here because the surface takes it before the actor exists; what it lists and
-	 * says, and when the caret goes into it, are the card's.
-	 */
-	readonly coins: CoinPicker;
-	/**
 	 * the node the IRA (QCD) option stands in its row in the payment box, for the card to draw the
-	 * custodian box and the benefits panel into. built here for `coins`' reason; a plain node, since
-	 * this page's own sheets are the only ones in its document.
+	 * custodian box and the benefits panel into. built here because the surface takes it before the
+	 * actor exists; a plain node, since this page's own sheets are the only ones in its document.
 	 */
 	readonly ira: HTMLElement;
 	/**
@@ -187,9 +184,9 @@ export function startCheckout(
 	let fundSays: (event: CheckoutEvent) => void = () => {};
 	let opened: FundReports['opened'] = () => null;
 
-	const coins = createCoinPicker(paymentMount.ownerDocument);
 	const ira = paymentMount.ownerDocument.createElement('div');
 
+	// no coin list: a coin is picked on the first step, so the payment box lists no crypto option.
 	const surface = createPaymentSurface(
 		config,
 		paymentMount,
@@ -200,7 +197,7 @@ export function startCheckout(
 			approved: (authorization) => fundSays({ type: 'FUND_APPROVED', ...authorization }),
 			closed: () => fundSays({ type: 'FUND_CLOSED' })
 		},
-		coins.host,
+		undefined,
 		seams?.payment,
 		ira
 	);
@@ -236,7 +233,6 @@ export function startCheckout(
 		// said, and the surface is where a reading that changes nothing stops.
 		surface.cadence('fv' in state ? state.fv?.frequency : undefined);
 		surface.offerFund(fundIsOffered(snapshot));
-		surface.offerCrypto(cryptoIsOffered(snapshot));
 		surface.offerVenmo(venmoIsOffered(snapshot));
 		surface.offerIra(pledgeIsOffered(snapshot, 'ira_qcd'));
 
@@ -291,7 +287,6 @@ export function startCheckout(
 
 	return {
 		actor,
-		coins,
 		ira,
 		rows: (listener) => surface.rows(listener),
 		stop() {

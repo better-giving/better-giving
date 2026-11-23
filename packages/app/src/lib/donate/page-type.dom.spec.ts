@@ -7,8 +7,9 @@ import { afterEach, describe, expect, it } from 'vitest';
 // the hosted page computes the self-hosted faces.
 //
 // /donate and a campaign link this sheet after the form's, and the card is in the document, so
-// the re-point in ./page.css reaches it. the coin list adopts the picker's own sheets (parts and
-// coins, not the token sheet) and inherits the re-point from its host. what the embed computes,
+// the re-point in ./page.css reaches it. the unit panel adopts its own sheets (the registry's field,
+// select and combobox, and the form's units, not the token sheet) and inherits the re-point from
+// its host, which the card places in its How much line. what the embed computes,
 // and that it requests none of these files, is packages/form/src/embed-faces.browser.spec.ts —
 // a stand-in shadow in this document would stay green if the element started asking for a face.
 
@@ -16,9 +17,15 @@ const require = createRequire(import.meta.url);
 const formStyles = dirname(require.resolve('@better-giving/form/styles/tokens.css'));
 const tokens = readFileSync(join(formStyles, 'tokens.css'), 'utf8');
 const parts = readFileSync(join(formStyles, 'parts.css'), 'utf8');
-// the coin list's sheet is not on the form package's export map. the picker adopts it from
-// beside the tokens, and the test reads that same file.
-const coins = readFileSync(join(formStyles, 'coins.css'), 'utf8');
+// the unit panel's sheets are not on the form package's export map. the panel adopts them, in this
+// order, from beside the tokens and from the registry's copies (`sheetsFor` in
+// packages/form/src/unit-panel.ts), and the test reads those same files.
+const panelSheets = [
+	join(formStyles, '..', 'registry', 'styles', 'field-css.css'),
+	join(formStyles, '..', 'registry', 'styles', 'select-css.css'),
+	join(formStyles, '..', 'registry', 'styles', 'combobox-css.css'),
+	join(formStyles, 'units.css')
+].map((path) => readFileSync(path, 'utf8'));
 const page = readFileSync(join(import.meta.dirname, 'page.css'), 'utf8');
 // the face roles ./page.css reads, from packages/operator/src/styles/fonts.css: its `:root` block
 // alone, without the `@layer` around it or the `@font-face` blocks beside it, so what this computes
@@ -72,15 +79,13 @@ describe('the hosted page is set in Red Hat', () => {
 			</div>`;
 		document.body.appendChild(hosted);
 
-		const pickerHost = document.createElement('div');
-		hosted.querySelector('.page-ground')?.appendChild(pickerHost);
-		const picker = pickerHost.attachShadow({ mode: 'open' });
-		adopt(picker, parts);
-		adopt(picker, coins);
-		const ticker = document.createElement('span');
-		ticker.className = 'coin-ticker';
-		ticker.textContent = 'BTC';
-		picker.appendChild(ticker);
+		const panelHost = document.createElement('div');
+		document.getElementById('card')?.appendChild(panelHost);
+		const panel = panelHost.attachShadow({ mode: 'open' });
+		for (const sheet of panelSheets) adopt(panel, sheet);
+		const search = document.createElement('input');
+		search.className = 'ds-combobox-input';
+		panel.appendChild(search);
 
 		expect(face(document.getElementById('prose') as Element)).toMatch(/^["']Red Hat Text["']/);
 		expect(face(document.getElementById('title') as Element)).toMatch(/^["']Red Hat Display["']/);
@@ -89,7 +94,11 @@ describe('the hosted page is set in Red Hat', () => {
 		expect(face(document.getElementById('ask') as Element)).toMatch(/^["']Red Hat Text["']/);
 		const address = document.getElementById('address') as Element;
 		expect(face(address)).toMatch(/^["']Red Hat Mono["']/);
-		expect(face(ticker)).toMatch(/^["']Red Hat Mono["']/);
+		// the panel's search box takes its family from the host (`font-family: inherit` on
+		// `.ds-combobox-input` in the registry's combobox-css), which happy-dom reports unresolved; the
+		// host it inherits from is the card's own face.
+		expect(face(panelHost)).toMatch(/^["']Red Hat Text["']/);
+		expect(face(search)).toBe('inherit');
 	});
 
 	// the figure inside the send sentence. its weight is read off the element, because

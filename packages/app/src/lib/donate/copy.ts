@@ -53,7 +53,8 @@ export const AMOUNT = 'Amount';
 /** the way past the presets, drawn as one of them. */
 export const OTHER = 'Other';
 export const PROGRAM = 'Program';
-export const CONTINUE = 'Continue';
+/** every step's Continue, in the word the first step's own copy holds (@better-giving/form/unit). */
+export { CONTINUE } from '@better-giving/form/unit';
 
 /** the mark the one optional decision on this card carries, so the convention is learnt once. */
 export const OPTIONAL = '(optional)';
@@ -221,44 +222,6 @@ export function feeDeclinedUnpriced(org: string, gift: string): string {
 
 export function feeDeclined(org: string, fee: string, net: string): string {
 	return `${org} pays ${fee} out of your gift and receives ${net}.`;
-}
-
-/**
- * the fee sentences on a crypto gift, which is valued on arrival: no figure the card holds is what
- * the organisation receives, so covering names its addition as approximate and declining names no
- * net figure.
- */
-export function feeCoveredCrypto(added: string): string {
-	return `You add about ${added} toward the processing fee.`;
-}
-
-export function feeDeclinedCrypto(org: string): string {
-	return `${org} pays the processing fee out of your gift.`;
-}
-
-// ── the coin a crypto gift is sent in ────────────────────────────────────────────────────────
-
-/** the coin list's predicates. its own words — the label, the search, a refused row — are the list's. */
-export const COIN_REQUIRED = 'Choose a coin';
-export const COIN_REFUSED = 'Choose another coin';
-export const EVERY_COIN_REFUSED = 'Choose another payment method';
-
-/**
- * a coin's refusal of the amount, as the predicate under `How much`.
- *
- * the minimum is offered the way a tile offers a figure, and is absent where the processor named
- * none; a coin's upper bound is never a figure.
- */
-export function coinRefusal(
-	code: 'below_minimum' | 'above_maximum',
-	coinName: string,
-	minimum: string | null
-): string {
-	if (code === 'above_maximum')
-		return `Enter a smaller amount for ${coinName}, or choose another coin`;
-	return minimum === null
-		? `Enter a larger amount for ${coinName}, or choose another coin`
-		: `Enter at least ${minimum} in ${coinName}, or choose another coin`;
 }
 
 /**
@@ -482,7 +445,6 @@ export const START_AGAIN = 'Start again';
 
 /** the address screen, where a crypto gift is sent from the donor's own wallet. */
 export const SEND_HEADING = 'Send your gift';
-export const USE_DIFFERENT_COIN = 'Use a different coin';
 /**
  * both dangers of a crypto send, in the one caution the network row holds: the chain the gift goes
  * out on, and — where the payment carries a memo — the string that is the whole of how it is matched

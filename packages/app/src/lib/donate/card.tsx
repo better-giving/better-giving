@@ -1,10 +1,10 @@
-import type { CoinOption } from '@better-giving/form/coin-picker';
 import { connect, type CheckoutSnapshot, type State } from '@better-giving/form/connect';
 import { createDepositBlock, type DepositView } from '@better-giving/form/deposit';
 import { takeResumeToken } from '@better-giving/form/embed/resume';
 import { checkoutMachine, type CheckoutEvent } from '@better-giving/form/machine';
 import { formatFigure, formatMinor, formatOffer, parseMinor } from '@better-giving/form/money';
 import { CARD_THEME, part } from '@better-giving/form/parts';
+import { coinRefusalSentence } from '@better-giving/form/unit';
 import type { AmountDecision, PayerField } from '@better-giving/form/value';
 import type { FormConfig } from '@better-giving/form/v1';
 import {
@@ -35,6 +35,7 @@ import { AmountStep, type AmountRefs } from './steps/amount';
 import { DetailsStep, fieldProblem, type DetailsRefs } from './steps/details';
 import { GiveStep, readReceipt, Receipt, type ReceiptReading } from './steps/give';
 import { BLANK, EmployerAskBlock, takeoverFor, TakeoverScreen } from './takeover';
+import { useUnitPanel } from './unit-panel';
 
 // the donation card, drawn in the document tree.
 //
@@ -77,12 +78,11 @@ import { BLANK, EmployerAskBlock, takeoverFor, TakeoverScreen } from './takeover
 // takes a node per processor the served config offers, placed and ordered by the composer in
 // @better-giving/form/embed/surface — so this file draws one box however many a deployment holds.
 //
-// a crypto gift adds two imperative blocks the form package builds and this card patches from the
-// projection, the way @better-giving/form's views.ts patches them for the element: the coin list,
-// which the crypto option stands in its row in the payment box, and the address block, which stands
-// in the takeover. neither is react's to render — one carries its own shadow root and the other its
-// own Copy controls — so what is here is the words each is handed and when the caret goes into the
-// coin list.
+// two imperative blocks the form package builds are patched here from the projection, the way
+// @better-giving/form's views.ts patches them for the element: the unit panel the first step's pill
+// opens (./unit-panel.ts), and a crypto gift's address block, which stands in the takeover. neither
+// is react's to render — one carries its own shadow root and the other its own Copy controls — so
+// what is here is what each is handed and when the caret goes back to the pill.
 
 /**
  * the snapshot the first paint draws, server and hydration alike.
@@ -440,17 +440,14 @@ function CheckoutCard({
 	// read off the flow's own guard rather than off `payable`, which is the rail alone: the two
 	// disagree wherever a press is refused for anything but the rail, and there the caret would land
 	// on a group with nothing said about why.
-	// a crypto gift's press is refused for its coin rather than its rail, and that is said in the coin
-	// list rather than on the box it stands in. and an offer of a one-time gift hides the box, so a
-	// refusal naming it is about nothing on screen: the offer is what the step is asking.
-	// an IRA (QCD) gift's press is refused for its custodian the same way, said under the box.
-	const onCrypto = api.state.step === 'give' && api.state.method === 'crypto';
+	// an IRA (QCD) gift's press is refused for its custodian rather than its rail, and that is said
+	// under the custodian's box. and an offer of a one-time gift hides the box, so a refusal naming it
+	// is about nothing on screen: the offer is what the step is asking.
 	const onIra = api.state.step === 'give' && api.state.method === 'ira_qcd';
 	const refusedPayment =
 		pressed &&
 		api.state.step === 'give' &&
 		!api.state.payerComplete &&
-		!onCrypto &&
 		!onIra &&
 		!api.state.oneTimeInstead;
 
@@ -558,35 +555,6 @@ function CheckoutCard({
 	 */
 	const offerArrived = oneTimeOffer !== '' && kept.current.offer === '';
 
-	// ── the coin a crypto gift is sent in ────────────────────────────────────────────────────────
-
-	const coinChoice = api.coinSelect;
-	// `connect` states the whole of a coin — the network, the logo and the two flags the picker's chips
-	// read — where ./normalize.ts's `SelectProps` describes only what a select needs of an option.
-	const coinOptions = coinChoice.options as readonly CoinOption[];
-	const pickedCoin = coinOptions.find((option) => option.value === coinChoice.value);
-	// a coin the account refused is said whenever it is the one picked — the quote that refused it was
-	// the press — and every coin refused is said as the way on being another rail. a coin never picked
-	// is said only once a press asked for one.
-	const coinRefused = pickedCoin?.refused === true;
-	const coinWords = coinRefused
-		? coinOptions.every((option) => option.refused === true)
-			? copy.EVERY_COIN_REFUSED
-			: copy.COIN_REFUSED
-		: pressed && onCrypto && api.state.step === 'give' && !api.state.payerComplete
-			? copy.COIN_REQUIRED
-			: '';
-	useEffect(() => {
-		live?.coins.update(
-			{
-				value: coinChoice.value,
-				options: coinOptions,
-				onChange: (value) => coinChoice.set(value)
-			},
-			coinWords
-		);
-	});
-
 	// ── the custodian an IRA (QCD) gift is sent by ───────────────────────────────────────────────
 
 	const custodianBox = useRef<HTMLInputElement | null>(null);
@@ -602,20 +570,11 @@ function CheckoutCard({
 			? copy.CUSTODIAN_PROBLEM
 			: '';
 
-	// a coin's refusal of the amount, stated under `How much`. the coin is named as the served list
-	// names it, and by its own code where the list no longer carries it.
-	const amountRefusal = api.state.step === 'amount' ? api.state.refusal : undefined;
-	const refusalWords =
-		amountRefusal === undefined
-			? ''
-			: copy.coinRefusal(
-					amountRefusal.code,
-					config.coins?.find((coin) => coin.coin === amountRefusal.coin)?.name ??
-						amountRefusal.coin.toUpperCase(),
-					amountRefusal.code === 'below_minimum' && amountRefusal.minAmountMinor !== undefined
-						? offer(amountRefusal.minAmountMinor)
-						: null
-				);
+	// a coin gift's refusal, stated under `How much` where the gift is fixed: of its amount, which marks
+	// the box it was typed in, or of the coin itself, which marks none.
+	const coinRefusal = api.state.step === 'amount' ? api.state.coinRefusal : undefined;
+	const refusalWords = coinRefusal === undefined ? '' : coinRefusalSentence(coinRefusal, config);
+	const refusedAmount = api.state.step === 'amount' && api.state.refusal !== undefined;
 
 	// ── which screen, and where the caret goes ───────────────────────────────────────────────────
 
@@ -759,21 +718,24 @@ function CheckoutCard({
 			withinTakeover &&
 			caretInTakeover &&
 			(takeover.heading !== before.heading || (!relabelledInPlace && primary !== before.primary));
-		// three arrivals put the caret on the control that fixes what the donor arrived about rather
-		// than on the heading: a coin's refusal of the amount on the control holding the figure, and a
-		// refusal of the coin — or a way back from the address screen — on the coin list.
-		const backToCoins =
-			state.step === 'give' &&
-			state.method === 'crypto' &&
-			((advanced && before.shown === 'takeover') || (coinRefused && before.step === 'working'));
+		// four arrivals put the caret on the control that fixes what the donor arrived about rather
+		// than on the heading: a coin's refusal of the amount on the control holding the figure, a coin
+		// the account no longer takes — or a way back from the address screen — on the unit pill, and a
+		// custodian the endpoint refused on its box. the pill takes it once per arrival: `returned`
+		// stands until the donor picks or leaves the step, and only the arrival is a move.
+		const backToPill =
+			advanced &&
+			state.step === 'amount' &&
+			(api.unit.returned || state.coinRefusal?.code === 'coin_not_accepted');
 		// the custodian a save named, refused by the endpoint: the donor is back on this step from the
-		// wait, and the box that fixes it is where the caret goes, as the coin list is for a coin.
+		// wait, and the box that fixes it is where the caret goes.
 		const backToCustodian =
 			state.step === 'give' && state.custodianRefused && before.step === 'working';
-		if (backToCoins) live?.coins.focus();
+		if (backToPill) amountRefs.pill.current?.focus();
 		else if (backToCustodian) custodianBox.current?.focus();
+		// a coin's refusal is a coin gift's, whose figure is the one box its amount was typed in.
 		else if (advanced && state.step === 'amount' && state.refusal !== undefined) {
-			figureControl()?.focus();
+			amountRefs.quantity.current?.focus();
 		} else if (advanced || replaced) headings[shown].current?.focus();
 	});
 
@@ -805,11 +767,25 @@ function CheckoutCard({
 	const feeBox = useRef<HTMLInputElement | null>(null);
 	const amountRefs: AmountRefs = {
 		entry: useRef<HTMLInputElement | null>(null),
+		quantity: useRef<HTMLInputElement | null>(null),
+		pill: useRef<HTMLButtonElement | null>(null),
+		line: useRef<HTMLDivElement | null>(null),
+		group: useRef<HTMLFieldSetElement | null>(null),
 		note: useRef<HTMLTextAreaElement | null>(null),
 		honoree: useRef<HTMLInputElement | null>(null),
 		notifyName: useRef<HTMLInputElement | null>(null),
 		notifyEmail: useRef<HTMLInputElement | null>(null)
 	};
+	// mounted once the flow is live, so a pick has an actor to go to: the pill the server drew is
+	// pressed into nothing before then.
+	const unitPanel = useUnitPanel({
+		mounted: live !== null && api.unit.pill.state !== 'text',
+		formId: config.formId,
+		line: amountRefs.line,
+		pill: amountRefs.pill,
+		field: amountRefs.group,
+		choice: api.unitSelect
+	});
 	const detailsRefs: DetailsRefs = {
 		email: useRef<HTMLInputElement | null>(null),
 		firstName: useRef<HTMLInputElement | null>(null),
@@ -829,22 +805,10 @@ function CheckoutCard({
 		if (first === 'tribute-honoree') return amountRefs.honoree.current;
 		if (first === 'tribute-notify-name') return amountRefs.notifyName.current;
 		if (first === 'tribute-notify-email') return amountRefs.notifyEmail.current;
-		// a missing amount is always the entry and never a tile: on a tray with tiles the amount can
-		// only go missing through the other tile, which opens the box in the tiles' place, and on a
-		// bare tray the box is the whole amount block.
-		return amountRefs.entry.current;
-	}
-
-	/**
-	 * the control holding the figure a coin's refusal is about: the free entry where it holds the
-	 * amount, and otherwise the tile that does.
-	 */
-	function figureControl(): HTMLElement | null {
-		const entry = amountRefs.entry.current;
-		if (entry?.closest<HTMLElement>('.tile.entry')?.hidden !== true) return entry;
-		return (
-			entry.closest('.tiles')?.querySelector<HTMLElement>('input[type="radio"]:checked') ?? entry
-		);
+		// a missing amount is always a box and never a tile: a coin amount or a share count has the one
+		// box, and on a tray with tiles the amount can only go missing through the other tile, which
+		// opens the box in the tiles' place, and on a bare tray the box is the whole amount block.
+		return amountRefs.quantity.current ?? amountRefs.entry.current;
 	}
 
 	function firstDetailsProblem(missing: readonly PayerField[]): HTMLElement | null {
@@ -912,9 +876,9 @@ function CheckoutCard({
 		// off the screen here, but Safari on macOS still focuses no button on a click, so a mouse
 		// donor's second press re-focuses a box the caret is already on.
 		setNonce((at) => at + 1);
-		// on crypto the rail is chosen and the coin is what is missing, and its list is ours to send the
-		// caret to; on IRA (QCD) the custodian, whose box is. a caret already in that box — Enter in it —
-		// moves nowhere and reads nothing, so the region says the refusal instead.
+		// on IRA (QCD) the rail is chosen and the custodian is what is missing, and its box is ours to
+		// send the caret to. a caret already in that box — Enter in it — moves nowhere and reads
+		// nothing, so the region says the refusal instead.
 		if (state.method === 'ira_qcd') {
 			if (document.activeElement === custodianBox.current) {
 				setShot({ at: read(), kind: 'custodian' });
@@ -922,7 +886,7 @@ function CheckoutCard({
 			focusOn(custodianBox.current);
 			return;
 		}
-		focusOn(state.method === 'crypto' ? (live?.coins ?? null) : paymentMount.current);
+		focusOn(paymentMount.current);
 	}
 
 	/**
@@ -1284,6 +1248,9 @@ function CheckoutCard({
 						missing={missingDecisions}
 						amountProblem={bounds}
 						refusal={refusalWords}
+						refusedAmount={refusedAmount}
+						unitOpen={unitPanel.open}
+						onPill={unitPanel.toggle}
 						entry={entry}
 						onEntry={onEntry}
 						onPreset={onPreset}

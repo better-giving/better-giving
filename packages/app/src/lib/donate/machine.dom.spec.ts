@@ -15,7 +15,7 @@ import type {
 	StripeLike
 } from '@better-giving/form/embed/stripe';
 import { CHARIOT_TAG } from '@better-giving/form/embed/chariot';
-import { DEPOSIT_POLL_MS } from '@better-giving/form/machine';
+import { DEPOSIT_POLL_MS, ESTIMATE_DEBOUNCE_MS, unitsOffered } from '@better-giving/form/machine';
 import type { TurnstileLike } from '@better-giving/form/embed/turnstile';
 import type { FeeRules, FormConfig, Quote } from '@better-giving/form/v1';
 import { afterEach, expect, it, onTestFinished, vi } from 'vitest';
@@ -982,7 +982,9 @@ afterEach(() => {
 	vi.useRealTimers();
 });
 
-it('stands the coin list in the crypto option on a one-time gift, and takes it away on a repeating one', async () => {
+// a coin is picked on the first step, so the payment box a deployment taking crypto draws holds the
+// card processor's node alone, on a one-time gift as on a repeating one.
+it('stands no coin list in the payment box', async () => {
 	const { paymentMount, challengeMount, heldChallengeMount, toldChallengeMount } = boxes();
 	const payment = paymentProvider();
 	const timer = clock();
@@ -997,14 +999,37 @@ it('stands the coin list in the crypto option on a one-time gift, and takes it a
 	});
 	onTestFinished(() => checkout.stop());
 	await settle();
+	const lists = () =>
+		[...paymentMount.querySelectorAll('*')].filter((node) =>
+			node.shadowRoot?.querySelector('[role="combobox"]')
+		);
 
-	expect(paymentMount.contains(checkout.coins.host)).toBe(true);
+	expect(lists()).toEqual([]);
+	expect(paymentMount.children).toHaveLength(1);
 
 	checkout.actor.send({ type: 'SET_FREQUENCY', frequency: 'monthly' });
-	expect(paymentMount.contains(checkout.coins.host)).toBe(false);
+	expect(lists()).toEqual([]);
+});
 
-	checkout.actor.send({ type: 'SET_FREQUENCY', frequency: 'one_time' });
-	expect(paymentMount.contains(checkout.coins.host)).toBe(true);
+// the server render and the client's first render are one tree only where both offer the same units
+// on the first step, and what offers a coin or a stock is the ports the flow was started with.
+it('offers on its first paint the units the live flow offers', async () => {
+	const { paymentMount, challengeMount, heldChallengeMount, toldChallengeMount } = boxes();
+	const everything: FormConfig = { ...WITH_CRYPTO, paymentMethods: ['card', 'crypto', 'stock'] };
+	const checkout = startCheckout(everything, {
+		paymentMount,
+		challengeMount,
+		heldChallengeMount,
+		toldChallengeMount,
+		resumeToken: null,
+		seams: { payment: { stripe: { load: paymentProvider().load, delay: clock().delay } } }
+	});
+	onTestFinished(() => checkout.stop());
+
+	const served = unitsOffered(initialSnapshot(everything).context);
+
+	expect(served).toEqual({ coin: true, stock: true });
+	expect(unitsOffered(checkout.actor.getSnapshot().context)).toEqual(served);
 });
 
 it('reads a crypto gift at this deployment until it arrives', async () => {
@@ -1024,6 +1049,8 @@ it('reads a crypto gift at this deployment until it arrives', async () => {
 					headers: { 'content-type': 'application/json' }
 				});
 			}
+			// the first step's estimate of the coin amount, at the gift's $25.00.
+			if (url.includes('/estimate?')) return Response.json({ estimateMinor: 2500 });
 			reads.push(url);
 			return new Response(JSON.stringify({ state: arrived ? 'received' : 'waiting' }), {
 				status: 200,
@@ -1047,15 +1074,17 @@ it('reads a crypto gift at this deployment until it arrives', async () => {
 	await settle();
 
 	const { actor } = checkout;
+	actor.send({ type: 'SET_UNIT', unit: { kind: 'coin', coin: 'usdttrc20' } });
+	actor.send({ type: 'SET_QUANTITY', quantity: '25' });
+	await vi.advanceTimersByTimeAsync(ESTIMATE_DEBOUNCE_MS);
+	for (let turn = 0; turn < 20; turn += 1) await settle();
 	actor.send({ type: 'CONTINUE' });
 	actor.send({ type: 'SET_CONTACT', email: 'donor@example.org' });
 	actor.send({ type: 'SET_CONTACT', firstName: 'Ada' });
 	actor.send({ type: 'SET_CONTACT', lastName: 'Lovelace' });
-	actor.send({ type: 'CONTINUE' });
-	actor.send({ type: 'SET_METHOD', method: 'crypto' });
-	actor.send({ type: 'SET_COIN', coin: 'usdttrc20' });
 	actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'token-1' });
-	actor.send({ type: 'SUBMIT' });
+	// a coin picked on the first step has no review step: the details step's press is the gift's.
+	actor.send({ type: 'CONTINUE' });
 	for (let turn = 0; turn < 20; turn += 1) await settle();
 	expect(toState(actor.getSnapshot()).step).toBe('awaitingDeposit');
 

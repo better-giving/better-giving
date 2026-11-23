@@ -222,9 +222,9 @@ body {
    choices' boxes are the registry's and draw it themselves; the amount tray's tiles and its free
    entry are the form's own (packages/form/src/styles/parts.css), drawn at the form's 44px row
    floor, and take the registry's height here as a floor over that one. the exceptions are the
-   frequency options, which stay at that floor, and the coin search, whose box is in its own shadow
-   root (packages/form/src/coin-picker.ts) and which no sheet here reaches. the embed links no page
-   sheet and keeps the form's. */
+   frequency options, which stay at that floor, and the unit panel's search, whose box is in its own
+   shadow root (packages/form/src/unit-panel.ts) and which no sheet here reaches. the embed links no
+   page sheet and keeps the form's. */
 .page :is([part~='amount-option'], [part~='amount-input']) {
 	min-block-size: var(--page-field-block);
 }

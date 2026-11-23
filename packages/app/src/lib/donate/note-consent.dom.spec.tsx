@@ -284,7 +284,9 @@ describe('the gift it posts', () => {
 		return bodies;
 	}
 
-	const CONTINUE = 'section.step:not([hidden]) > button[part~="action"]';
+	// the first step's Continue stands in `.next` under its eyebrow, the other steps' on the step.
+	const CONTINUE =
+		'section.step:not([hidden]) > button[part~="action"], section.step:not([hidden]) > .next > button[part~="action"]';
 
 	/** a note written and the ticks pressed, then the gift given by card. */
 	async function give(ticks: readonly string[]): Promise<Record<string, unknown>> {
@@ -373,10 +375,7 @@ describe('the refusal sentences the card shares with the element', () => {
 		['LAST_NAME_PROBLEM', copy.LAST_NAME_PROBLEM, 'Enter your last name'],
 		['EMAIL_MISSING', copy.EMAIL_MISSING, 'Enter your email address'],
 		['EMAIL_MALFORMED', copy.EMAIL_MALFORMED, 'Enter an email address like name@example.org'],
-		['PAYMENT_PROBLEM', copy.PAYMENT_PROBLEM, 'Choose a payment method'],
-		['COIN_REQUIRED', copy.COIN_REQUIRED, 'Choose a coin'],
-		['COIN_REFUSED', copy.COIN_REFUSED, 'Choose another coin'],
-		['EVERY_COIN_REFUSED', copy.EVERY_COIN_REFUSED, 'Choose another payment method']
+		['PAYMENT_PROBLEM', copy.PAYMENT_PROBLEM, 'Choose a payment method']
 	])('says %s as the element does', (_name, ours, elements) => {
 		expect(ours).toBe(elements);
 	});

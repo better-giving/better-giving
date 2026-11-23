@@ -1,6 +1,7 @@
 import type { EmployerAsk, State } from '@better-giving/form/connect';
 import { coinDifference, type DepositScreen, isFigure } from '@better-giving/form/deposit';
 import { RECONCILIATION_LABELS } from '@better-giving/form/fee';
+import { CHANGE_WHAT_YOU_GIVE } from '@better-giving/form/unit';
 import { PAYMENT_METHOD_LABELS, type FormConfig } from '@better-giving/form/v1';
 import { part, partWhen, REGISTRY_CLASS } from '@better-giving/form/parts';
 import { useEffect, useRef, type ReactNode, type RefObject } from 'react';
@@ -341,7 +342,7 @@ export function takeoverFor(
 				...BLANK,
 				heading: copy.SEND_HEADING,
 				deposit: depositScreen(state, config, money),
-				secondary: { label: copy.USE_DIFFERENT_COIN },
+				secondary: { label: CHANGE_WHAT_YOU_GIVE },
 				secondaryNote: copy.detailsSentTo(state.email)
 			};
 
