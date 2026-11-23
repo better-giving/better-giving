@@ -654,7 +654,9 @@ body {
  * button sheet, which this sheet's link ring would otherwise outrank.
  */
 
-.page-ground :where(h1, h2, h3, p, ul, ol, figure) {
+/* the benefits panel's fine print keeps the form's space above it (`.benefits-fine` in its
+   parts.css), a rule this one ties on specificity and would override by loading later. */
+.page-ground :where(h1, h2, h3, p:not(.benefits-fine), ul, ol, figure) {
 	margin: 0;
 }
 

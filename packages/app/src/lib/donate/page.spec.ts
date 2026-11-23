@@ -780,6 +780,29 @@ describe('a link drawn as the registry’s secondary press', () => {
 	});
 });
 
+// the form draws the benefits panel's fine print a step under the claim, and the page's paragraph
+// reset is level with that rule on specificity and loads after it.
+describe('the benefits panel’s fine print', () => {
+	it('keeps the form’s space above it: the page’s paragraph reset reaches every paragraph but it', () => {
+		const parts = blocks(
+			readFileSync(require.resolve('@better-giving/form/styles/parts.css'), 'utf8')
+		);
+		expect(declared(parts, '.benefits-fine').margin).toBe('var(--_sp2) 0 0');
+
+		const resets = page.filter(
+			({ at, decls }) =>
+				decls.margin === '0' && (at.at(-1) ?? '').startsWith('.page-ground :where(')
+		);
+		expect(resets).toHaveLength(1);
+		const listed = (resets[0]?.at.at(-1) ?? '')
+			.slice('.page-ground :where('.length, -1)
+			.split(',')
+			.map((selector) => selector.trim());
+		const paragraphs = listed.filter((selector) => /^p(?![\w-])/.test(selector));
+		expect(paragraphs).toEqual(['p:not(.benefits-fine)']);
+	});
+});
+
 describe('a long title', () => {
 	// happy-dom does no layout, so the step is read off the sheet: smaller below 60rem, where the box
 	// stands under the title, and the display size from 60rem.
