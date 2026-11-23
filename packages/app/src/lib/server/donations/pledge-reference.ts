@@ -2,7 +2,8 @@ import type { PledgeMethod } from '../db/schema';
 
 // what a donor quotes to their broker or custodian, and what staff match an arrival by:
 // `CFCP-AAPL-7Q2D`, `CFCP-IRA-4K9M`. read aloud over the phone and typed into a transfer form, so
-// it is short, uppercase, and drawn from characters that cannot be misread for one another.
+// it is short and uppercase, and its random suffix is drawn from characters that cannot be misread
+// for one another; the initials and the ticker are spelled as they are.
 //
 // unique is the database's to hold (`pledge_reference_idx` in ../db/schema.ts): four characters
 // from this alphabet are 923,521 references per ticker, and a collision is the saver's retry
@@ -61,7 +62,7 @@ export function mintPledgeReference(initials: string, subject: ReferenceSubject)
 
 /**
  * four characters, each uniform over the alphabet: a byte at or past the largest multiple of its
- * length is drawn again, since `byte % 31` would favour the first nine characters.
+ * length is drawn again, since `byte % 31` would favour the first eight characters.
  */
 function randomSuffix(): string {
 	const size = REFERENCE_ALPHABET.length;

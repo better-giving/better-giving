@@ -69,8 +69,12 @@ import {
 import { recordAuthorizedGift, recordDonation } from './record';
 import { tickerListed } from './tickers';
 
-// one donation attempt, from a posted body to a payment token — the server half of
-// `POST /api/v1/forms/:id/donations`.
+// one donation attempt, from a posted body to a payment token, or to a saved stock or IRA (QCD)
+// pledge — the server half of `POST /api/v1/forms/:id/donations`.
+//
+// a pledge (`mintPledge` below) runs the same config ladder and the same challenge, then saves the
+// pledge and its donor: no processor is asked and no gift is written, so the intent, the write
+// order and the two cadence branches below are the processor rails' alone.
 //
 // it is a module rather than the route's body for the reason ../forms/published-config.ts is one:
 // every refusal below is a decision, and a decision made inside a `RequestHandler` can only be
@@ -331,7 +335,8 @@ export type QuoteAttempt = {
 const LINE_LABEL = 'Donation';
 
 /**
- * mints one quote: checks everything, opens an intent, writes the gift.
+ * mints one quote: checks everything, then opens an intent and writes the gift, or, on a pledge
+ * rail, saves the pledge (`mintPledge`).
  *
  * never throws for a refusal. the payment port is sealed and `recordDonation` returns a result, so
  * the only way out of here is a `QuoteResult` — which is what keeps a public endpoint from
@@ -347,12 +352,13 @@ export async function mintQuote(deps: QuoteDeps, attempt: QuoteAttempt): Promise
 	//
 	// what comes back narrows what this path *offers* and never what it *accepts*, and two things
 	// hold that. `parseQuoteRequest` below reads both vocabularies whole rather than the served
-	// lists — `FREQUENCIES` in packages/form/src/v1.ts for the cadence and `OFFERED_PAYMENT_METHODS`
-	// for the rail; and `readPublishedConfig` mints no refusal over an empty rail list at all — the
-	// one that exists is `renderableConfig` in ../forms/published-config.ts, which only the config
-	// route composes. so a donor on a cached page holding a rail this deployment has since stopped
-	// offering is charged rather than turned away (CLAUDE.md), and so is every donor mid-checkout on
-	// an account whose last capability just went to `pending`.
+	// lists — `FREQUENCIES` in packages/form/src/v1.ts for the cadence and `OFFERED_PAYMENT_METHODS`,
+	// the processor rails alone, for the rail; and `readPublishedConfig` mints no refusal over an
+	// empty rail list at all — the one that exists is `renderableConfig` in
+	// ../forms/published-config.ts, which only the config route composes. so a donor on a cached
+	// page holding a rail this deployment has since stopped offering is charged rather than turned
+	// away (CLAUDE.md), and so is every donor mid-checkout on an account whose last capability just
+	// went to `pending`.
 	//
 	// a pledge reads neither: `mintPledge` below takes nothing from the config's cadences or
 	// processor rails, so a slow processor is no pledging donor's wait.
@@ -642,10 +648,12 @@ async function challengeRefusal(
  * (`pledge` in ../db/schema.ts). the answer is the pending screen's whole content
  * (`Quote.pledge` in packages/form/src/v1.ts).
  *
- * every refusal a donor can meet without a read runs first, then the two that need one — the rail
- * being on and the ticker being listed — and only then the challenge, so a token is never spent on
- * a pledge that was always going to be refused. a database fault in any of it throws, and
- * `mintQuote` answers that as `pledgeNotSaved` below.
+ * every refusal a donor can meet without a read runs first, then the three that need one — the rail
+ * being on, the ticker being listed and the page's cause being usable — and only then the
+ * challenge, so a token is never spent on a refusal those could make. a save refused after it
+ * (`pledge_id_taken`, or a write that failed) has spent the token. a database fault in those reads
+ * throws, and `mintQuote` answers that as `pledgeNotSaved` below; `savePledge` never throws, and a
+ * save that failed is answered the same way here.
  */
 async function mintPledge(
 	deps: QuoteDeps,

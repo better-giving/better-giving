@@ -159,9 +159,10 @@ export const REFERENCE_DRAWS = 5;
  * resend names the pledge saved before, and the first save is the answer. it answers only the same
  * pledge again (`samePledge`): an id naming a gift, or a pledge with another form, rail, figure or
  * donor, is `id_taken`, since that row is not this request's to show and Mark received writes the
- * gift under the pledge's id (./receive-pledge.ts). gift ids are minted by this server, never sent,
- * so the read before the write is what finds one. two presses at once both pass that read, and the
- * second's batch, donor statements included, meets the first's primary key and writes nothing.
+ * gift under the pledge's id (./receive-pledge.ts). a caller can post any id, a gift's included,
+ * and the `pledge` insert would not meet a `donation` key, so the read before the write is what
+ * finds one. two presses at once both pass that read, and the second's batch, donor statements
+ * included, meets the first's primary key and writes nothing.
  *
  * the reference is drawn here, and a draw another pledge already holds (`pledge_reference_idx`) is
  * drawn again, the donor resolved afresh each time. it never throws.

@@ -161,8 +161,8 @@ describe('parseQuoteRequest() — the choices the form offers', () => {
 	});
 
 	/**
-	 * every rail the vocabulary holds is one this deployment offers, which is why the case above is
-	 * the only refusal a rail can draw here.
+	 * every processor rail the vocabulary holds is one this deployment offers, which is why the case
+	 * above, and a pledge rail sent here, are the only refusals a rail can draw.
 	 *
 	 * asserted rather than assumed, because the gate reads `OFFERED_PAYMENT_METHODS` in
 	 * `$lib/forms/offered-rails.ts` and that list is free to shrink. the day it does, this turns red

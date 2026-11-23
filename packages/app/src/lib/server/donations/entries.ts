@@ -5,10 +5,11 @@ import type { Settlement } from '../payments/provider';
 
 // the entry groups a gift that reached the organisation makes: the two a charge that succeeded makes,
 // stated once for both halves of the webhook, and the one a gift received in hand makes
-// (`receivedInHandEntry`, for ./record-in-hand.ts). and the three a refund or a dispute of such a
-// gift makes, for ./reverse.ts: the money leaving (`reversalEntry`); where the refund did not stand
-// or the dispute was won, the money coming back (`reinstatementEntry`); and where a dispute closes
-// with figures the books do not hold, the close's settle-up (`settleUpEntry`).
+// (`receivedInHandEntry`, for ./record-in-hand.ts and ./receive-pledge.ts). and the three a refund
+// or a dispute of such a gift makes, for ./reverse.ts: the money leaving (`reversalEntry`); where
+// the refund did not stand or the dispute was won, the money coming back (`reinstatementEntry`);
+// and where a dispute closes with figures the books do not hold, the close's settle-up
+// (`settleUpEntry`).
 //
 // ./settle.ts posts a one-off gift against the payment row a quote minted, and ./collect.ts posts
 // a collection under a standing commitment. the accounting is the same accounting — a gift
@@ -508,7 +509,7 @@ export function missingFeeCorrection(processor: string): string {
 	);
 }
 
-/** a gift an operator entered by hand, as its one entry group needs it. */
+/** a gift an operator entered by hand or marked received, as its one entry group needs it. */
 export type GiftReceivedInHand = {
 	/** the payment the operator recorded — `entry_group.source_id`, the card path's grain. */
 	readonly paymentId: string;
@@ -523,7 +524,8 @@ export type GiftReceivedInHand = {
 };
 
 /**
- * the gift recognised, for cash or a cheque received in hand.
+ * the gift recognised, for cash or a cheque received in hand, or a stock or IRA (QCD) pledge marked
+ * received.
  *
  * the debit is `1010 Bank / Cash` rather than `1020`, because no processor stands between the donor
  * and the organisation: the money is in hand, and it is what ties to the bank statement. no fee

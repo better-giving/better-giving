@@ -401,7 +401,8 @@ describe('mintQuote() — a pledge the database fails', () => {
 	it('answers `internal_error` rather than throwing, so the route still sends its CORS', async () => {
 		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
 		// `ticker.symbol` is the one column of the real file only `tickerListed` (./tickers.ts) reads:
-		// the config read before it counts the list and reads its date, and so still succeeds.
+		// the config read before it reads one row's `replaced_at` (`tickersReplacedAt`), and so still
+		// succeeds.
 		await run(stmt('alter table ticker rename column symbol to symbol_gone'));
 		let result: Awaited<ReturnType<typeof save>>;
 		try {

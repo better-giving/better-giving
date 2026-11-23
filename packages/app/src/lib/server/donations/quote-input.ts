@@ -267,7 +267,9 @@ const OFFERED_FREQUENCY = z.enum(FREQUENCIES, {
  * read off `OFFERED_PAYMENT_METHODS` in ../../forms/offered-rails.ts rather than off the config this
  * request was handed, and the two do not have to agree: `readPublishedConfig` in
  * ../forms/published-config.ts narrows that constant to the rails this deployment's processor
- * account is approved for, so a served config offers a subset of what this accepts.
+ * account is approved for, so a served config's processor rails are a subset of what this accepts.
+ * the pledge rails a config may serve beside them are never accepted here: they are
+ * `parsePledgeRequest`'s.
  *
  * the wider list is deliberate and is the rule CLAUDE.md states for the recurring capability, held
  * here for the same reason. the served config is cached and reaches pages this deployment cannot

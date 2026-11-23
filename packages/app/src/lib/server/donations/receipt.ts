@@ -54,10 +54,11 @@ import { alert, type MailDeps } from './delivery';
 // ---------------------------------------------------------------------------
 // what it takes, and what it never raises.
 //
-// the gift's own figures rather than a row or a query, because the two callers hold them
-// differently — ./settle.ts reads the donation it corrected, ./collect.ts holds the row it just
-// minted — and because a receipt is reproducible from what is on it. the caller reads; this decides
-// what is said and records that it went.
+// the gift's own figures rather than a row or a query, because the callers hold them differently —
+// ./settle.ts reads the donation it corrected, ./collect.ts holds the row it just minted, and
+// ./receive-pledge.ts and the in-hand action in src/routes/_app.admin.donations.new.tsx hold the
+// figures staff entered — and because a receipt is reproducible from what is on it. the caller
+// reads; this decides what is said and records that it went.
 //
 // every failure here is reported and none of them changes the answer to the delivery, an outright
 // throw from the database or the transport included. the batch is the commit and this runs after
