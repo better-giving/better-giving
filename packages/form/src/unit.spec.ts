@@ -122,7 +122,7 @@ describe('the unit pill', () => {
 		expect(apple).toBe(APPLE_SRC);
 	});
 
-	// held for a decision: a 14px disc with no flag or logo draws no letter, so the pill carries no mark.
+	// a 14px disc with no flag or logo draws no letter, so the pill carries no mark.
 	it('carries no mark for a coin with no logo or a ticker other than AAPL', () => {
 		expect(unitPill(CONFIG, BOTH, { kind: 'coin', coin: 'eth' }).marks).toEqual([]);
 		expect(unitPill(CONFIG, BOTH, { kind: 'stock', ticker: 'AAL' }).marks).toEqual([]);
