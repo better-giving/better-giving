@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "dir": "packages/operator/src/registry",
-  "registryVersion": "4.6.0",
+  "registryVersion": "4.9.0",
   "items": {
     "app-shell-css": {
       "version": "2.0.0",
@@ -25,10 +25,10 @@
       }
     },
     "bare-icon-button-css": {
-      "version": "1.0.1",
+      "version": "1.1.0",
       "files": {
-        "styles/bare-icon-button-css.css": "95c2fc976d21e3409638d55088d23acf9549e7032f1e23bc35f614259faa8019",
-        "styles/bare-icon-button-css.usage.md": "76d4bddcb05bb690a9ea0e249f30555ccdf27743db0f68cce1efb41989d2aa99"
+        "styles/bare-icon-button-css.css": "1e60df0373e5d4b90359e2ae7aa156af54a6dbf1bedf51416a8936c3869b4e8d",
+        "styles/bare-icon-button-css.usage.md": "de3563579178c97e240d9c33e81c8178703a869c22bba871d26c662801a65736"
       }
     },
     "button-css": {
@@ -45,11 +45,18 @@
         "styles/card-css.usage.md": "b94b45ed6ff72e8991a29521d29df7db4be5e4690bc6283ee764f3b5211269d9"
       }
     },
-    "dialog-css": {
-      "version": "1.1.1",
+    "checkbox-css": {
+      "version": "1.2.1",
       "files": {
-        "styles/dialog-css.css": "18d6090e83a28a14a6fbad1ff4f1a5ed63d006e2a242e0fbdee254c99268d682",
-        "styles/dialog-css.usage.md": "4043e17d4d64edcc68821b161c06d38ce05a4947c1a8ad0281a3fb4c32147ce0"
+        "styles/checkbox-css.css": "bee8e2b19baa589fb9b42aebb1d3bfc12cf43a1c30b43fcc3499fe595e84dd52",
+        "styles/checkbox-css.usage.md": "034d2e293fb6efe1944d1e48b08eb70812594eb85d77297fa6b8b790064270f5"
+      }
+    },
+    "dialog-css": {
+      "version": "1.2.0",
+      "files": {
+        "styles/dialog-css.css": "03c6df645de52daf3724a66e81033e9e67886e3b96c31a28eb53b9113a2dfc64",
+        "styles/dialog-css.usage.md": "bfc9e8ed1b7e692d764b06b707d0426d1f4b65b13de6d90d659d4ba69eacec56"
       }
     },
     "field-css": {
@@ -60,10 +67,10 @@
       }
     },
     "file-dropzone-css": {
-      "version": "1.0.1",
+      "version": "1.1.0",
       "files": {
         "styles/file-dropzone-css.css": "7d634fc8476de8dfff3e0437c009cfee6a5ff753904bb206466169e1472fb555",
-        "styles/file-dropzone-css.usage.md": "b187dfe356f7a023750531e33212f06a9cc10fcdef78fec3454641fd32bb5a19"
+        "styles/file-dropzone-css.usage.md": "c77dc792d628cc3c695da34c5eb4138fddadcb76a4adc6f4919117dd85abc528"
       }
     },
     "lead-css": {
@@ -74,24 +81,24 @@
       }
     },
     "menu-css": {
-      "version": "1.0.1",
+      "version": "1.1.0",
       "files": {
-        "styles/menu-css.css": "1ccaeadfb1adb83ef48e7e822d0130699eb3ce1f9e26eaea215ca85f355e2f8f",
-        "styles/menu-css.usage.md": "e6e9cd8d02a170bd8cf06950f310104f1f6ca6fc58f3fa4dbab582d54da5f647"
+        "styles/menu-css.css": "3143aedc955e431c9e778ffd5ee37cf83b965f977b4a4bfb73329e684b32385d",
+        "styles/menu-css.usage.md": "e49de0be0c2d7c5992a3ff983d9b86f2d100db6b2c4c923411c824650898c18e"
       }
     },
     "nav-list-css": {
-      "version": "1.1.0",
+      "version": "1.2.0",
       "files": {
-        "styles/nav-list-css.css": "284ee8e26251e9e97c42458fdd164ffc281bf01e8845a57f1b6bd75446aa6537",
-        "styles/nav-list-css.usage.md": "cc89efb4a750f17191ca143fa66ab1845502f46a2e1656f8677f28e24008541c"
+        "styles/nav-list-css.css": "9003bbef94eccf450ed28f102cf05b5863a19e46004553acd48ddd4f0ad72ec7",
+        "styles/nav-list-css.usage.md": "32f2850746b695b0e5343a3d5711058b483692e0545429e86a57e78307aafda0"
       }
     },
     "notice-card-css": {
-      "version": "1.1.1",
+      "version": "1.2.0",
       "files": {
-        "styles/notice-card-css.css": "1ca6a691c1487f1bda5c7fd85c395c11817d2c0446b8b3f40f3b4a600b0d6a95",
-        "styles/notice-card-css.usage.md": "9e292cebd3344ad7c000fa5582b79a1851bec60ab4b19d2a5af37f3288264fd7"
+        "styles/notice-card-css.css": "1aab50acf85a8b237113c1dd585e1f8b19d88eb85b199bc9a001323dbd029844",
+        "styles/notice-card-css.usage.md": "c688d2c9b29ff134bfe0b973df0e678f25c2d9d639395f732027fa32aa92f4cf"
       }
     },
     "page-header-css": {
@@ -102,17 +109,17 @@
       }
     },
     "page-state-css": {
-      "version": "1.1.0",
+      "version": "1.2.0",
       "files": {
-        "styles/page-state-css.css": "2841e628b59c06b531e4d83d3327a94d5bcfdd29e6a3c13ce5d025b258f403cf",
-        "styles/page-state-css.usage.md": "22177f1a96c88a704692d1de3131af1c087e6b175989320190f27b3ca44cf4e2"
+        "styles/page-state-css.css": "2737a1123f19f382bfc66160e46d95b76a33942b129a921c0a3d4a93051ddf9f",
+        "styles/page-state-css.usage.md": "50fe757f92686b968e8155276f4461308db791c870a092fe35053797d3cb6f8a"
       }
     },
     "progress-css": {
-      "version": "1.1.1",
+      "version": "1.2.0",
       "files": {
-        "styles/progress-css.css": "f761d141b9a2961ed11b9454fcf484bee078086c836749796041f3808f3be192",
-        "styles/progress-css.usage.md": "75b11f158a8b85da2272ffde8ace604fac9c16202e288007d668cf34540f6907"
+        "styles/progress-css.css": "8799ee0ba70a285432f05cf429d8e967f7468cc75428a814049cafd494c82b73",
+        "styles/progress-css.usage.md": "cd6c7be51362be9143668c37eb09601d2551abe309b76a7fdfcb40611d5c291f"
       }
     },
     "select-css": {
@@ -137,10 +144,10 @@
       }
     },
     "site-nav-css": {
-      "version": "1.2.2",
+      "version": "1.3.0",
       "files": {
-        "styles/site-nav-css.css": "0cfba98652c93bc4cb64298c3f6f28203f8e38608aed0b60a939109e9a894bb8",
-        "styles/site-nav-css.usage.md": "800b6236ad4ed86d43e2b4676cdbc94adc78524d01b4e864cd869ccb877367bb"
+        "styles/site-nav-css.css": "0b231d80bbd14c6f5c39898a9da26eb7bd3e5b05d4dedb614c02940093cbdd69",
+        "styles/site-nav-css.usage.md": "8044f80b8a7a3b4f77452535e5dd99cf70f94fbdd8ec6b55d6e70e95dcf5ea19"
       }
     },
     "spam-check-css": {
@@ -172,10 +179,10 @@
       }
     },
     "table-css": {
-      "version": "1.1.1",
+      "version": "1.2.0",
       "files": {
-        "styles/table-css.css": "3deb69588aca2496dc59aeccf109ce9547cac4e7f330791ead48e398fd2ca5e6",
-        "styles/table-css.usage.md": "4037054f845934c728b28e316ebe9bcc4550be4abf5f779fbebaf3944b248a3f"
+        "styles/table-css.css": "045208f0f4cc83707168443173fd78aa04cdf4ff08b89c92c1970afab6cf35b5",
+        "styles/table-css.usage.md": "da45e43042134bc0f924534e7cdcb38ee327b2c06ca063e7bfec32508e1387c2"
       }
     },
     "text-button-css": {
@@ -186,10 +193,10 @@
       }
     },
     "top-bar-css": {
-      "version": "1.1.1",
+      "version": "1.1.2",
       "files": {
         "styles/top-bar-css.css": "c1c35bb388cfc232aadcb84bdea0ffaebaff351564a3b293721d1751515a0d71",
-        "styles/top-bar-css.usage.md": "a27e1ba3e26a95e9087137e5f93951bb5e2a5d8421a5f31778fcda06705c248c"
+        "styles/top-bar-css.usage.md": "8d746bdf15f474e9bce4da30976c1b89d03515e7080e97b2e57abcbf5eb1a148"
       }
     },
     "variables": {

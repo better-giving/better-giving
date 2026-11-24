@@ -383,7 +383,8 @@ describe('every colour lands on the radix step for its job', () => {
 				".page-video-box[data-face='loading'] .page-video-status | background": 'slate-3',
 				".page-video-box[data-face='error'] | background": 'red-3',
 				'.gift-card | background': 'slate-1',
-				'.gift-employer | background': 'slate-3'
+				'.gift-employer | background': 'slate-3',
+				'.page-program-photo | background': 'slate-3'
 			}
 		},
 		'3, 4 and 5: a control’s ground, its hover and its press': {
@@ -425,7 +426,9 @@ describe('every colour lands on the radix step for its job', () => {
 				'.page-video-box | border': 'slate-6',
 				".page-video-box[data-face='error'] | border-color": 'red-6',
 				'.gift-card | border': 'slate-6',
-				'.gift-detail | border-block-start': 'slate-6'
+				'.gift-detail | border-block-start': 'slate-6',
+				'.page-program-photo | border': 'slate-6',
+				'.page-program-org | border-block-start': 'slate-6'
 			}
 		},
 		[RING]: {
@@ -457,6 +460,7 @@ describe('every colour lands on the radix step for its job', () => {
 			at: {
 				'.page-profile-badge | color': 'on-brand-9',
 				".ended [part~='action'] | color": 'on-brand-9',
+				'.page-ground .page-closed a.ds-btn-primary | color': 'on-brand-9',
 				[`${WIDE} » ${OVER_FILL} | --page-quiet`]: 'on-brand-9',
 				[`${WIDE} » ${OVER_FILL} | color`]: 'on-brand-9',
 				[`${WIDE} » ${HERO_OVER_FILL} | --page-quiet`]: 'on-brand-9',
@@ -497,12 +501,13 @@ describe('every colour lands on the radix step for its job', () => {
 					'slate-11',
 				'.page-ground .amount-label | color': 'slate-11',
 				'.page-profile-ein | color': 'slate-11',
+				'.page-program-of | color': 'slate-11',
 				'.page-profile .page-about .page-label | color': 'slate-12',
 				'.page-profile :is(.page-about-statement, .page-about-beneath) | color': 'slate-12',
 				'.page-messages-time | color': 'slate-11',
 				'.page-messages-count | color': 'slate-11',
 				'.page-fundraise-note | color': 'slate-11',
-				'.page-ground .page-fundraise-act > a.ds-btn | color': 'slate-12',
+				'.page-ground a:where(.ds-btn-secondary) | color': 'slate-12',
 				'.page-messages-refused | color': 'red-11',
 				".page-video-box[data-face='loading'] .page-video-status | color": 'slate-12',
 				'.page-video-error-title | color': 'red-11',
@@ -698,17 +703,18 @@ describe('the scrim over the feature’s cover', () => {
 	});
 });
 
+/** a selector's specificity as one number, ids over classes over types; `:where()` counts nothing. */
+function specificity(selector: string): number {
+	const bare = selector.replace(/:where\((?:[^()]|\([^()]*\))*\)/g, '');
+	const ids = (bare.match(/#[\w-]+/g) ?? []).length;
+	const classes = (bare.match(/\.[\w-]+|\[[^\]]+\]|:(?!:)[\w-]+/g) ?? []).length;
+	const types = (bare.match(/(?:^|[\s>+~])[a-z][\w-]*/gi) ?? []).length;
+	return ids * 10000 + classes * 100 + types;
+}
+
 describe('an ended page’s way on to /donate', () => {
 	// the link is the form's action drawn without the registry's class, so the label's ink is
 	// whichever `color` outranks the rest: the page's link rule, or the ended page's own.
-	const specificity = (selector: string) => {
-		const bare = selector.replace(/:where\([^)]*\)/g, '');
-		const ids = (bare.match(/#[\w-]+/g) ?? []).length;
-		const classes = (bare.match(/\.[\w-]+|\[[^\]]+\]|:(?!:)[\w-]+/g) ?? []).length;
-		const types = (bare.match(/(?:^|[\s>+~])[a-z][\w-]*/gi) ?? []).length;
-		return ids * 10000 + classes * 100 + types;
-	};
-
 	it('draws its label in the fill’s ink, over the ink the page draws a link in', () => {
 		const own = ".ended [part~='action']";
 		expect(declared(page, own).color).toBe('var(--_on-p)');
@@ -717,17 +723,47 @@ describe('an ended page’s way on to /donate', () => {
 	});
 });
 
-describe('the entry card’s press, a link drawn as the registry’s secondary press', () => {
-	const button = blocks(
-		readFileSync(require.resolve('@better-giving/form/registry/styles/button-css.css'), 'utf8')
+// the entry card's press and a pledge's emailed instructions (./takeover.tsx) are links drawn as the
+// registry's secondary press, and the page's link ink, `.page-ground a`, outranks the variant's own
+// `.ds-btn-secondary`.
+describe('a link drawn as the registry’s secondary press', () => {
+	const buttonText = readFileSync(
+		require.resolve('@better-giving/form/registry/styles/button-css.css'),
+		'utf8'
 	);
+	const button = blocks(buttonText);
 	const scope: Scope = { ...formBase, ...declared(page, '.page > .page-ground') };
+	const own = '.page-ground a:where(.ds-btn-secondary)';
 
 	it('draws its label in the variant’s own ink, not the ink of whatever holds it', () => {
-		const own = declared(page, '.page-ground .page-fundraise-act > a.ds-btn').color ?? '';
+		const ink = declared(page, own).color ?? '';
 		const variant = declared(button, '.ds-btn-secondary').color ?? '';
-		expect(own).not.toBe('inherit');
-		expect(substitute(scope, own)).toBe(substitute(scope, variant));
+		expect(ink).not.toBe('inherit');
+		expect(substitute(scope, ink)).toBe(substitute(scope, variant));
+	});
+
+	// level with the link rule, so the later of the two in the sheet wins.
+	it('takes the ink back from the page’s link rule, standing after it at its specificity', () => {
+		const at = (selector: string) => page.findIndex((block) => block.at.at(-1) === selector);
+		expect(specificity(own)).toBe(specificity('.page-ground a'));
+		expect(at(own)).toBeGreaterThan(at('.page-ground a'));
+	});
+
+	// under the pointer and pressed the variant moves its ground and edge and keeps its ink; disabled
+	// and busy it draws gray 11, on selectors this rule must not outrank.
+	it('leaves every state the registry draws to the registry', () => {
+		const states = button.filter(({ at }) =>
+			/\.ds-btn-secondary:(?:hover|active)/.test(at.at(-1) ?? '')
+		);
+		expect(states.length).toBeGreaterThan(0);
+		expect(states.every(({ decls }) => decls.color === undefined)).toBe(true);
+		for (const state of [
+			'a.ds-btn-secondary[aria-disabled="true"]',
+			'.ds-btn-secondary[aria-busy="true"]'
+		]) {
+			expect(buttonText).toContain(state);
+			expect(specificity(state)).toBeGreaterThan(specificity(own));
+		}
 	});
 
 	// the press is an `a`, so a page ring on every focused link would outrank `.ds-btn:focus-visible`.
@@ -741,6 +777,29 @@ describe('the entry card’s press, a link drawn as the registry’s secondary p
 			.filter((selector) => /(?:^|[\s>+~])a(?::not\([^)]*\))*:focus/.test(selector));
 		expect(linkRings).toEqual(['.page-ground a:not(.ds-btn):focus-visible']);
 		expect(declared(button, '.ds-btn:focus-visible').outline).toBe('2px solid var(--ring)');
+	});
+});
+
+// the form draws the benefits panel's fine print a step under the claim, and the page's paragraph
+// reset is level with that rule on specificity and loads after it.
+describe('the benefits panel’s fine print', () => {
+	it('keeps the form’s space above it: the page’s paragraph reset reaches every paragraph but it', () => {
+		const parts = blocks(
+			readFileSync(require.resolve('@better-giving/form/styles/parts.css'), 'utf8')
+		);
+		expect(declared(parts, '.benefits-fine').margin).toBe('var(--_sp2) 0 0');
+
+		const resets = page.filter(
+			({ at, decls }) =>
+				decls.margin === '0' && (at.at(-1) ?? '').startsWith('.page-ground :where(')
+		);
+		expect(resets).toHaveLength(1);
+		const listed = (resets[0]?.at.at(-1) ?? '')
+			.slice('.page-ground :where('.length, -1)
+			.split(',')
+			.map((selector) => selector.trim());
+		const paragraphs = listed.filter((selector) => /^p(?![\w-])/.test(selector));
+		expect(paragraphs).toEqual(['p:not(.benefits-fine)']);
 	});
 });
 
@@ -1266,6 +1325,7 @@ describe('the sections ./page.css draws', () => {
 	const components = [
 		join(here, 'page-view.tsx'),
 		join(here, 'gift-page.tsx'),
+		join(here, 'program-page.tsx'),
 		join(here, 'site-nav.tsx'),
 		join(here, 'site-footer.tsx'),
 		...globSync(join(here, 'sections/*.tsx')).filter((file) => !file.includes('.spec.'))
@@ -1286,11 +1346,16 @@ describe('the sections ./page.css draws', () => {
 	const CHROME = ['site-nav-css', 'site-footer-css'].map((item) =>
 		require.resolve(`@better-giving/operator/registry/styles/${item}.css`)
 	);
+	// the registry's avatar and page state the program page links (`programPageLinks` in
+	// ./program-page.tsx).
+	const PROGRAM = ['avatar-css', 'page-state-css'].map((item) =>
+		require.resolve(`@better-giving/operator/registry/styles/${item}.css`)
+	);
 	const drawn = new Set(
 		[
 			pageText,
-			...[FORM_LAYOUT, FORM_BUTTON, SPINNER, LEAD, FIELD, ...GIFT, ...CHROME].map((file) =>
-				readFileSync(file, 'utf8')
+			...[FORM_LAYOUT, FORM_BUTTON, SPINNER, LEAD, FIELD, ...GIFT, ...CHROME, ...PROGRAM].map(
+				(file) => readFileSync(file, 'utf8')
 			)
 		].flatMap((css) =>
 			[...stripComments(css).matchAll(/\.(-?[_a-zA-Z][\w-]*)/g)].map((m) => m[1] ?? '')
@@ -1377,5 +1442,14 @@ describe('the entry card’s width', () => {
 		expect(declared(page, '.page-fundraise-heading')['overflow-wrap']).toBe(
 			declared(page, '.page-profile-name')['overflow-wrap']
 		);
+	});
+});
+
+describe('a program’s page', () => {
+	it('wraps the description and the heading over the card as it wraps the program’s name, never past the column', () => {
+		const wrap = declared(page, '.page-program-name')['overflow-wrap'];
+		expect(wrap).toBe('anywhere');
+		for (const selector of ['.page-program-description', '.page-program .page-profile-box-heading'])
+			expect(declared(page, selector)['overflow-wrap'], selector).toBe(wrap);
 	});
 });

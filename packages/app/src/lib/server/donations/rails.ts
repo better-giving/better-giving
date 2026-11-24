@@ -37,10 +37,11 @@ export const RAIL_LABELS: Record<PaymentMethod, string> = {
  * typed at that day's UTC midnight.
  */
 export function isDatedByDay(method: PaymentMethod | null | undefined): boolean {
-	return DATED_BY_DAY.includes(method);
+	return method != null && DATED_BY_DAY_METHODS.includes(method);
 }
 
-const DATED_BY_DAY: readonly (PaymentMethod | null | undefined)[] = [
+/** the rails `isDatedByDay` answers true for. */
+export const DATED_BY_DAY_METHODS: readonly PaymentMethod[] = [
 	...IN_HAND_METHODS,
 	...PLEDGE_METHODS
 ];

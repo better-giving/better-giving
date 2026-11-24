@@ -9067,7 +9067,7 @@ describe('a stock or IRA (QCD) pledge', () => {
 		await settle();
 		return card;
 	};
-	/** the stock pending screen, saved from the details step through `steer`, as no screen sends it until the first step's unit panel draws a ticker. */
+	/** the stock pending screen, saved from the details step through `steer`, as no screen sends it. */
 	const stockPending = async (options: PledgeOptions = {}) => {
 		const card = await atDetailsStep(pledging({ saved: STOCK_PLEDGE, ...options }));
 		type(card.find('#email'), 'maya.okafor@example.org');
@@ -9139,6 +9139,49 @@ describe('a stock or IRA (QCD) pledge', () => {
 		card.rail('card');
 		expect(card.find('.step-give .row.fee').hidden).toBe(false);
 		expect(shows(card, '[part~="submit"] .action-label')).toBe('Donate $26.06');
+	});
+
+	it('keeps Continue, with no total and no receipt line, while the save is in flight', async () => {
+		const card = await onIra({
+			config: { ...PLEDGES, receipts: true },
+			ports: {
+				pledges: { id: () => 'pledge-1', save: () => new Promise(() => {}), told: async () => {} }
+			}
+		});
+		type(custodian(card), 'Fidelity Investments');
+		card.find('[part~="submit"]').click();
+		await settle();
+
+		expect(card.find('[part~="submit"]').getAttribute('aria-busy')).toBe('true');
+		expect(shows(card, '[part~="submit"] .action-label')).toBe('Continue');
+		expect(card.find('.step-give .row.fee').hidden).toBe(true);
+		expect(card.find('.step-give .row.total').hidden).toBe(true);
+		expect(shows(card, '.step-give .aside')).toBe('');
+	});
+
+	// the box stands in a root of its own with no form around it, so Enter there reaches no button;
+	// the gift page's box is in the page's form, where Enter presses Continue.
+	it('presses Continue on Enter in the custodian box, and not while a word is being composed', async () => {
+		const saves: (QuoteRequest | StockPledgeRequest)[] = [];
+		const card = await onIra({ saves });
+		type(custodian(card), 'Fidelity Investments');
+		const enter = (init: KeyboardEventInit & { keyCode?: number }) => {
+			const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, ...init });
+			// set after construction: an engine may drop the legacy `keyCode` from an event's init.
+			if (init.keyCode !== undefined)
+				Object.defineProperty(event, 'keyCode', { value: init.keyCode });
+			custodian(card).dispatchEvent(event);
+		};
+
+		enter({ isComposing: true });
+		enter({ keyCode: 229 });
+		await settle();
+		expect(saves).toEqual([]);
+
+		enter({});
+		await settle();
+		expect(saves).toHaveLength(1);
+		expect(heading(card)).toBe('Your IRA (QCD) gift is pending');
 	});
 
 	it('saves nothing on a Continue with no custodian, says so under the box and puts the caret in it', async () => {
@@ -9680,31 +9723,43 @@ describe('a stock or IRA (QCD) pledge', () => {
 		expect(shows(card, '.takeover > .foot > button')).toBe('Done');
 	});
 
-	/** `quote`'s pledge with no address to send its receipt to, as the endpoint answers one with none on file. */
-	const unaddressed = (quote: Quote): Quote => ({
+	/**
+	 * `quote`'s pledge with no address to send its receipt to: `''`, as the endpoint answers one with
+	 * none on file or on a deployment that cannot send mail (`Pledge.receiptTo` in ./v1.ts), or blank.
+	 */
+	const unaddressed = (quote: Quote, receiptTo: string): Quote => ({
 		...quote,
-		pledge: { ...(quote.pledge as NonNullable<Quote['pledge']>), receiptTo: ' ' }
+		pledge: { ...(quote.pledge as NonNullable<Quote['pledge']>), receiptTo }
 	});
 
-	it('names no receipt address on the IRA (QCD) thank-you when the pledge has none', async () => {
-		const card = await iraPending({ saved: unaddressed(IRA_PLEDGE) });
+	it.each([
+		['empty', ''],
+		['blank', ' ']
+	])(
+		'names no receipt address on the IRA (QCD) thank-you when the pledge’s is %s',
+		async (_, to) => {
+			const card = await iraPending({ saved: unaddressed(IRA_PLEDGE, to) });
 
-		primary(card).click();
-		await settle();
+			primary(card).click();
+			await settle();
 
-		expect(heading(card)).toBe('Thank you');
-		expect(notice(card)).toEqual([
-			{
-				role: null,
-				title: 'We’ve told the organization',
-				body: 'Your gift counts when it arrives.'
-			}
-		]);
-		expect(said(card)).toBe('We’ve told the organization. Your gift counts when it arrives.');
-	});
+			expect(heading(card)).toBe('Thank you');
+			expect(notice(card)).toEqual([
+				{
+					role: null,
+					title: 'We’ve told the organization',
+					body: 'Your gift counts when it arrives.'
+				}
+			]);
+			expect(said(card)).toBe('We’ve told the organization. Your gift counts when it arrives.');
+		}
+	);
 
-	it('names no receipt address on the stock thank-you when the pledge has none', async () => {
-		const card = await stockPending({ saved: unaddressed(STOCK_PLEDGE) });
+	it.each([
+		['empty', ''],
+		['blank', ' ']
+	])('names no receipt address on the stock thank-you when the pledge’s is %s', async (_, to) => {
+		const card = await stockPending({ saved: unaddressed(STOCK_PLEDGE, to) });
 
 		primary(card).click();
 		await settle();
@@ -9720,5 +9775,159 @@ describe('a stock or IRA (QCD) pledge', () => {
 		expect(said(card)).toBe(
 			'We’ve told the organization. Your gift counts when the shares arrive.'
 		);
+	});
+
+	// happy-dom lays nothing out, so a rule is held to the elements it selects: each selector the
+	// sheets the card adopts write, matched against the screens the card really draws.
+	describe('the rules the sheets keep for a pledge’s screens', () => {
+		const selectors = [partStyles, layoutStyles].flatMap((css) =>
+			[...css.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/([^{};]+)\{([^{}]*)\}/g)].flatMap(
+				([, list = '', body = '']) =>
+					list.split(/,(?![^(]*\))/).map((selector) => ({ selector: selector.trim(), body }))
+			)
+		);
+		/** every rule keyed on a pledge's pending screen: a takeover holding a drawn details list. */
+		const pending = selectors
+			.map(({ selector }) => selector)
+			.filter(
+				(selector) => selector.startsWith('.takeover:has(') && selector.includes('.pledge-details')
+			);
+		/** the pending rules that select nothing on the screen the card is showing, and those that do. */
+		const unmatched = (card: Mounted) =>
+			pending.filter((selector) => card.shadow.querySelector(selector) === null);
+		const matched = (card: Mounted) =>
+			pending.filter((selector) => card.shadow.querySelector(selector) !== null);
+
+		opensTheUnitPanel();
+
+		const ONE_COIN: FormConfig = {
+			...CONFIG,
+			paymentMethods: ['card', 'crypto'],
+			coins: [
+				{ coin: 'btc', ticker: 'btc', name: 'Bitcoin', network: 'Bitcoin', memoRequired: false }
+			]
+		};
+		const BTC: Quote = {
+			paymentToken: 'don_1',
+			feeMinor: 25,
+			totalMinor: 2525,
+			deposit: {
+				address: 'bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh',
+				memo: null,
+				coin: 'btc',
+				network: 'Bitcoin',
+				coinAmount: '0.00072',
+				giftCoinAmount: '0.00071',
+				validUntil: '2023-11-21T12:00:00.000Z',
+				qr: { rows: ['110', '011', '101'] }
+			}
+		};
+		/** the crypto address screen: the coin picked on the first step, then details and the review step's press. */
+		const atDeposit = async (status: CheckoutPorts['status']) => {
+			const card = await mount({
+				config: ONE_COIN,
+				ports: { estimate: async () => 2500, quote: async () => BTC, status }
+			});
+			await give(card, 'coin:btc');
+			type(quantity(card), '25');
+			await priced();
+			await throughDetails(card);
+			card.find('.step-give [part~="submit"]').click();
+			await settle();
+			return card;
+		};
+
+		it.each([
+			['card thank-you', 'Thank you', () => atSubmitted()],
+			[
+				'failed',
+				'',
+				() =>
+					atSubmitted({
+						ports: {
+							confirm: async () => ({
+								kind: 'declined' as const,
+								message: 'Your card was declined.'
+							})
+						}
+					})
+			],
+			['confirm', '', () => atCorrection()],
+			[
+				'mandate',
+				'',
+				() =>
+					atSubmitted({
+						ports: {
+							quote: async () => ({
+								paymentToken: 'pi_1',
+								feeMinor: 106,
+								totalMinor: 2606,
+								mandate: { text: 'By clicking, you authorize the debit of your account.' }
+							})
+						}
+					})
+			],
+			['crypto deposit', 'Send your gift', () => atDeposit(async () => ({ state: 'waiting' }))],
+			[
+				'crypto thank-you',
+				'Thank you',
+				async () => {
+					vi.useFakeTimers({ shouldAdvanceTime: true });
+					onTestFinished(() => void vi.useRealTimers());
+					const card = await atDeposit(async () => ({ state: 'received' }));
+					await vi.advanceTimersByTimeAsync(DEPOSIT_POLL_MS);
+					return card;
+				}
+			]
+		])('selects nothing on the %s screen', async (_screen, title, reach) => {
+			const card = await reach();
+			expect(card.find('.takeover').hidden).toBe(false);
+			if (title !== '') expect(heading(card)).toBe(title);
+			expect(pending.length).toBeGreaterThan(0);
+			expect(matched(card)).toEqual([]);
+		});
+
+		it.each([
+			['stock', () => stockPending()],
+			['IRA (QCD)', () => iraPending()]
+		])('selects every part it names on the pending %s screen', async (_rail, reach) => {
+			const card = await reach();
+			expect(pending.length).toBeGreaterThan(0);
+			expect(unmatched(card)).toEqual([]);
+		});
+
+		it('selects nothing on a pledge’s thank-you', async () => {
+			const card = await iraPending();
+			primary(card).click();
+			await settle();
+			expect(heading(card)).toBe('Thank you');
+			expect(matched(card)).toEqual([]);
+		});
+
+		// the gift page and the supporter area draw the registry's notice card off the same sheets
+		// (packages/app/src/lib/donate/plain-page.tsx), and theirs keep the registry's title face.
+		it('sets a notice title in the card’s face on the pledge block alone', async () => {
+			const faces = selectors
+				.filter(({ selector }) => selector.endsWith('.ds-notice-card-title'))
+				.filter(({ body }) => /(^|;)\s*font-family\s*:/.test(body))
+				.map(({ selector }) => selector);
+			const other = document.createElement('section');
+			other.className = 'ds-notice-card ds-notice-card-info';
+			other.innerHTML =
+				'<div class="ds-notice-card-content"><div class="ds-notice-card-text">' +
+				'<p class="ds-notice-card-title">Your gift page is ready</p></div></div>';
+			document.body.append(other);
+			const title = other.querySelector('.ds-notice-card-title') as HTMLElement;
+			const card = await iraPending();
+			const titles = card.all('.pledge .ds-notice-card-title');
+
+			expect(faces.length).toBeGreaterThan(0);
+			expect(faces.filter((selector) => title.matches(selector))).toEqual([]);
+			expect(titles).toHaveLength(2);
+			for (const pledged of titles) {
+				expect(faces.filter((selector) => !pledged.matches(selector))).toEqual([]);
+			}
+		});
 	});
 });

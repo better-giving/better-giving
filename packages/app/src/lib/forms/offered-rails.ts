@@ -45,8 +45,8 @@ import type { ProcessorRail } from '@better-giving/form/embed/rails';
  *
  * the two pledge rails are not on it and cannot be (`PLEDGE_RAILS` in
  * `packages/form/src/embed/rails.ts`): no processor settles them, and a deployment offers each one
- * exactly when its `pledge_rail` row is on (`readPublishedConfig` in
- * `$lib/server/forms/published-config.ts`).
+ * when its `pledge_rail` row is on, stock only once a ticker list is held too
+ * (`readPublishedConfig` in `$lib/server/forms/published-config.ts`).
  *
  * more than one processor's rails, and being on this list says nothing about which: `STRIPE_RAILS`,
  * `PAYPAL_RAILS`, `CHARIOT_RAILS` and `NOWPAYMENTS_RAILS` in `packages/form/src/embed/rails.ts` are

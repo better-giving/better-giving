@@ -507,7 +507,8 @@ export async function recordAuthorizedGift(
  * and the annotation on `donationRow` makes leaving the spread out an error too.
  *
  * the `notify` pair collapses to two nulls together or two strings together, which is the pairing
- * `Tribute` holds and the columns cannot.
+ * `Tribute` holds and `donation`'s columns cannot; `pledge`'s hold it too, by
+ * `pledge_tribute_notify_check` (../db/schema.ts).
  */
 type TributeColumns = {
 	tributeKind: TributeKind | null;

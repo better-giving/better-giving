@@ -50,7 +50,14 @@ function sheetsFor(doc: Document): readonly CSSStyleSheet[] {
 	return built;
 }
 
-export function createIraPanel(doc: Document): IraPanel {
+export function createIraPanel(
+	doc: Document,
+	/**
+	 * the review step's Continue, pressed. the box has no form owner in this root, so Enter in it
+	 * reaches no default button, where the gift page's box presses Continue through its form.
+	 */
+	onEnter: () => void
+): IraPanel {
 	const host = doc.createElement('div');
 	const root = host.attachShadow({ mode: 'open' });
 	root.adoptedStyleSheets = [...sheetsFor(doc)];
@@ -84,6 +91,13 @@ export function createIraPanel(doc: Document): IraPanel {
 
 	let current: CustodianField | null = null;
 	field.addEventListener('input', () => current?.onChange(field.value));
+	field.addEventListener('keydown', (event) => {
+		// an Enter that commits an input method's word is the method's, not a press (229 is the
+		// keyCode an engine reports for a key the method holds).
+		if (event.key !== 'Enter' || event.isComposing || event.keyCode === 229) return;
+		event.preventDefault();
+		onEnter();
+	});
 
 	return {
 		host,

@@ -47,7 +47,7 @@ const NOT_SENT =
 //
 // mounted rather than rendered to a string, because the phase is the router's and exists only
 // between a press and a landing. it is not the browser spec CLAUDE.md bans over a dashboard
-// screen: nothing here reads a computed style or a class.
+// screen: nothing here reads a computed style.
 
 // react refuses to flush work inside `act` without this, and says so rather than hanging.
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -77,18 +77,25 @@ const STORED = '0192a4c1-0000-7000-8000-000000000002';
 
 type Loaded = Parameters<typeof Program>[0]['loaderData'];
 
-/** an active program with nothing just landed. */
-function record(confirmArchive: boolean, imageId: string | null): Loaded {
+/** the program's public address and the preview's, as the loader hands them on. */
+const PUBLIC_URL = `https://give.example/programs/${PROGRAM_ID}`;
+const PREVIEW_SRC = `/programs/${PROGRAM_ID}/preview`;
+
+/** a program with nothing just landed: active, or archived where `archived` is set. */
+function record(confirmArchive: boolean, imageId: string | null, archived = false): Loaded {
 	return {
 		id: PROGRAM_ID,
 		name: 'Winter Shelter',
 		description: 'Beds and a hot meal through the cold months.',
-		status: 'active',
-		archived: false,
-		editor: {
-			name: 'Winter Shelter',
-			description: 'Beds and a hot meal through the cold months.'
-		},
+		status: archived ? 'archived' : 'active',
+		archived,
+		publicPage: { url: PUBLIC_URL, previewSrc: PREVIEW_SRC },
+		editor: archived
+			? null
+			: {
+					name: 'Winter Shelter',
+					description: 'Beds and a hot meal through the cold months.'
+				},
 		saved: null,
 		archivedJustNow: false,
 		imageId,
@@ -109,7 +116,8 @@ function record(confirmArchive: boolean, imageId: string | null): Loaded {
 function screen({
 	confirmArchive = false,
 	imageId = null as string | null,
-	uploadHeld = false
+	uploadHeld = false,
+	archived = false
 } = {}): {
 	root: HTMLElement;
 	posted: string[];
@@ -124,7 +132,7 @@ function screen({
 			loader: () => new Promise<never>(() => {}),
 			Component: () =>
 				createElement(Program as never, {
-					loaderData: record(confirmArchive, imageId),
+					loaderData: record(confirmArchive, imageId, archived),
 					actionData: useActionData(),
 					params: { id: PROGRAM_ID },
 					matches: []
@@ -214,6 +222,82 @@ async function press(button: HTMLButtonElement): Promise<void> {
 		await new Promise((resolve) => setTimeout(resolve, 0));
 	});
 }
+
+/** the section a level-two heading reading `heading` heads, or null where none is drawn. */
+function sectionNamed(root: HTMLElement, heading: string): HTMLElement | null {
+	const h2 = [...root.querySelectorAll('h2')].find((h) => h.textContent === heading);
+	return h2?.closest('section') ?? null;
+}
+
+/** the text of the element a section's `aria-labelledby` names, or null where it names none. */
+function labelOf(section: HTMLElement | null): string | null {
+	const id = section?.getAttribute('aria-labelledby');
+	return id ? (document.getElementById(id)?.textContent ?? null) : null;
+}
+
+describe('the two cards', () => {
+	it('are sections each named by its own heading', () => {
+		const { root } = screen();
+
+		expect(labelOf(sectionNamed(root, 'Details'))).toBe('Details');
+		expect(labelOf(sectionNamed(root, 'Public page'))).toBe('Public page');
+	});
+
+	it('names the archived record by its heading in Details’ place', () => {
+		const { root } = screen({ archived: true });
+
+		const record = sectionNamed(root, 'How this program was described');
+		expect(labelOf(record)).toBe('How this program was described');
+		expect(labelOf(sectionNamed(root, 'Public page'))).toBe('Public page');
+	});
+
+	// the record stands in the 3fr card of `.adm-cardpair`, too narrow beside a setting row's 20rem
+	// label track: packages/operator/src/styles/adm.css draws both classes read here, and
+	// packages/operator/src/styles/setting-row-shapes.spec.ts asserts what each rule draws.
+	it('stacks the archived description under its label and wraps a long word in it', () => {
+		const { root } = screen({ archived: true });
+
+		const value = sectionNamed(root, 'How this program was described')?.querySelector('dd');
+		expect(value?.closest('.adm-setting')?.classList.contains('adm-setting--stacked')).toBe(true);
+		expect(value?.classList.contains('adm-setting__value--wrap')).toBe(true);
+	});
+
+	it('draws no section inside Details', () => {
+		const { root } = screen();
+
+		expect(sectionNamed(root, 'Details')?.querySelector('section')).toBeNull();
+	});
+});
+
+describe('the Public page card', () => {
+	it('shows an active program’s public address and a preview of what is saved, beside Details', () => {
+		const { root } = screen();
+
+		const details = sectionNamed(root, 'Details');
+		expect(details).not.toBeNull();
+		expect(details?.querySelector('input[name="name"]')).not.toBeNull();
+		const card = sectionNamed(root, 'Public page');
+		expect(card).not.toBeNull();
+		expect(card?.textContent).toContain(PUBLIC_URL);
+		expect(card?.querySelector('a[target="_blank"]')?.getAttribute('href')).toBe(PUBLIC_URL);
+		const frame = card?.querySelector('iframe');
+		expect(frame?.getAttribute('src')).toBe(PREVIEW_SRC);
+		expect(frame?.getAttribute('title')).toBe('Preview of the Winter Shelter page');
+	});
+
+	it('keeps only the sentence and Open page for an archived program, with the record for Details', () => {
+		const { root } = screen({ archived: true });
+
+		expect(sectionNamed(root, 'Details')).toBeNull();
+		expect(sectionNamed(root, 'How this program was described')).not.toBeNull();
+		const card = sectionNamed(root, 'Public page');
+		expect(card).not.toBeNull();
+		expect(card?.textContent).toContain('This program is archived');
+		expect(card?.querySelector('a[target="_blank"]')?.getAttribute('href')).toBe(PUBLIC_URL);
+		expect(card?.querySelector('iframe')).toBeNull();
+		expect(root.querySelector('iframe')).toBeNull();
+	});
+});
 
 it('holds the save through the redirect’s loading, and a second press posts nothing', async () => {
 	const { root, posted } = screen();

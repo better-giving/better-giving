@@ -81,6 +81,21 @@ describe('messages from donors', () => {
 		expect(times[0]?.dateTime).toBe(message(1).receivedAt);
 	});
 
+	// a pledge marked received, or money entered in hand, is dated by its day, stored at that day's
+	// UTC midnight: its age is counted in days from the day, never in hours from that midnight.
+	it('dates a gift recorded by its day from that day', () => {
+		const byDay: DonorMessage = {
+			name: 'Maya O.',
+			note: 'For the pantry.',
+			receivedAt: '2026-11-09T00:00:00.000Z',
+			receivedOn: '2026-11-09'
+		};
+		const { host } = mount({ initial: { messages: [byDay, message(1)], total: 2, next: null } });
+		const times = [...host.querySelectorAll('time')];
+		expect(times.map((t) => t.textContent)).toEqual(['today', 'yesterday']);
+		expect(times.map((t) => t.dateTime)).toEqual(['2026-11-09', message(1).receivedAt]);
+	});
+
 	it('counts six of many in the band and offers six more', () => {
 		const { host } = mount({ initial: page(1, 6, 48, 'c6') });
 		expect(rows(host)).toHaveLength(6);

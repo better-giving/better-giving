@@ -88,7 +88,7 @@ describe('searchTickers', () => {
 		['*', []], // as a prefix query: every name
 		['"', []],
 		['^', []],
-		['apple OR alcoa', []], // as OR: AA too
+		['apple OR alcoa', []], // as OR: AA, AAPL, APLE
 		['NEAR(apple hath)', []],
 		['-apple', ['AAPL', 'APLE']] // as NOT: nothing
 	])(

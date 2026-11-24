@@ -316,10 +316,9 @@ const CRYPTO: ServedConfig = {
 };
 
 /**
- * card beside both pledge rails, in the identity the design package's frames are drawn in, so each
- * pledge screen can be put beside its frame. IRA (QCD) is a row on the review step; stock is saved
- * from the details step by the panel's Pledge stock, the one sender of that event until the first
- * step's unit panel draws a ticker.
+ * card beside both pledge rails. IRA (QCD) is a row on the review step; stock is saved from the
+ * details step by the panel's Pledge stock, the one sender of that event, since no screen sends it
+ * (`steer` in ../src/element.ts).
  */
 const PLEDGES: ServedConfig = {
 	...DEFAULT,
@@ -488,7 +487,7 @@ export function pledgeStock(): void {
 	steering?.({ type: 'PLEDGE_STOCK', ticker: 'AAPL', shares: '50' });
 }
 
-/** the pledge a save answers with, in the frames' own values, under the id the save sent. */
+/** the pledge a save answers with, under the id the save sent. */
 function savedPledge(request: QuoteRequest | StockPledgeRequest): Quote {
 	const id = request.pledgeId ?? 'dev-pledge';
 	if (request.method === 'stock' && 'ticker' in request) {

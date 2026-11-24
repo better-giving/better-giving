@@ -34,7 +34,7 @@ import {
  * packages/form/src/config.ts drops a config offering nothing at all, which is a donation form that
  * renders nothing on a site nobody here can see.
  */
-const ONE_TIME_ONLY: readonly Frequency[] = Object.freeze(['one_time']);
+export const ONE_TIME_ONLY: readonly Frequency[] = Object.freeze(['one_time']);
 
 /**
  * what each standing offers a donor, total over the port's own union.

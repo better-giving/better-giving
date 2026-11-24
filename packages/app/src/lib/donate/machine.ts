@@ -9,6 +9,7 @@ import type { CheckoutEvent, CheckoutInput, Failure } from '@better-giving/form/
 import { toState, type CheckoutSnapshot, type State } from '@better-giving/form/connect';
 import type { CheckoutPorts, FundReports } from '@better-giving/form/ports';
 import { createPaymentSurface, type PaymentSeams } from '@better-giving/form/embed/surface';
+import { EmbedFailure } from '@better-giving/form/embed/api';
 import { createChallenge, type ChallengeSeams } from '@better-giving/form/embed/challenge';
 import type { FormConfig, PaymentMethod } from '@better-giving/form/v1';
 import { createActor, type Actor } from 'xstate';
@@ -124,6 +125,19 @@ export type Checkout = {
 	 */
 	rows(listener: (count: number) => void): void;
 	/**
+	 * tells `listener` when a program page's quote is refused as an unknown form and the form itself
+	 * still reads, which is how a program no longer active is told apart from a form that is gone: the
+	 * endpoint answers both with the same refusal (`pageProgramId` in
+	 * packages/app/src/lib/server/donations/quote.ts). the refusal waits on the form's config read,
+	 * `REREAD_TIMEOUT_MS` at most, and is told here only where that read answers OK, so the failure
+	 * screen's first draw already knows the program stopped — while the gift request and that wait
+	 * together finish inside the flow's own `PORT_TIMEOUT_MS` (packages/form/src/checkout.machine.ts).
+	 * a refusal landing later loses to that timeout: the generic failure draws first and this is told
+	 * after it. never told on a card with no `pageProgramId`, nor after `stop`. one listener; a second
+	 * call replaces the first.
+	 */
+	stopped(listener: () => void): void;
+	/**
 	 * everything this checkout started, let go of.
 	 *
 	 * safe in any order and any number of times, because every stop it reaches is. the provider's
@@ -136,9 +150,54 @@ export type Checkout = {
 };
 
 /**
+ * how long a program page's refused quote waits on the form's config read before the flow hears
+ * the refusal with the API's own sentence.
+ */
+const REREAD_TIMEOUT_MS = 5_000;
+
+/**
+ * `quote`, awaiting `heard` on a refusal as an unknown form and then rethrowing it unchanged, so
+ * whatever `heard` learns is in place before the flow draws the failure, unless the flow's own port
+ * timeout ends the attempt first.
+ *
+ * the inner port is called before anything is awaited: `quoteThrough` in
+ * @better-giving/form/embed/surface opens a provider's window inside the donor's press.
+ */
+function heardStopping(
+	quote: CheckoutPorts['quote'],
+	heard: () => Promise<void>
+): CheckoutPorts['quote'] {
+	return async (request) => {
+		try {
+			return await quote(request);
+		} catch (error) {
+			if (error instanceof EmbedFailure && error.code === 'form_not_found') await heard();
+			throw error;
+		}
+	};
+}
+
+/**
+ * whether the form's config read answers OK: the read the embed boots on (`configUrl` in
+ * packages/form/src/embed/runtime.ts, which the package does not export), same-origin as in
+ * ./ports.ts. a refusal, an unreachable endpoint and an abort are all `false`.
+ */
+async function formStillReads(formId: string, signal: AbortSignal): Promise<boolean> {
+	try {
+		const response = await fetch(`/api/v1/forms/${encodeURIComponent(formId)}/config`, {
+			signal,
+			headers: { accept: 'application/json' }
+		});
+		return response.ok;
+	} catch {
+		return false;
+	}
+}
+
+/**
  * the flow, running, with every provider wired into it.
  *
- * the payment surface is built before the actor because two of the actor's five ports are its own
+ * the payment surface is built before the actor because two of the actor's ports are its own
  * and a third is wrapped around it (./ports.ts).
  * it is the composer in @better-giving/form/embed/surface rather than either processor's adapter,
  * so a deployment holding two of them still hands the flow one surface and nothing below this line
@@ -165,7 +224,9 @@ export type Checkout = {
 export function startCheckout(
 	config: FormConfig,
 	mounts: CheckoutMounts,
-	opening?: Opening
+	opening?: Opening,
+	/** the program a program page was drawn for: the machine's own `pageProgramId` input. */
+	pageProgramId?: string
 ): Checkout {
 	const {
 		paymentMount,
@@ -183,6 +244,7 @@ export function startCheckout(
 	let unavailable: (failure: Failure) => void = () => {};
 	let fundSays: (event: CheckoutEvent) => void = () => {};
 	let opened: FundReports['opened'] = () => null;
+	let stopped: () => void = () => {};
 
 	const ira = paymentMount.ownerDocument.createElement('div');
 
@@ -200,12 +262,34 @@ export function startCheckout(
 		ira
 	);
 
+	const ports = deploymentPorts(surface);
+	const rereads = new AbortController();
+	// a controller per read, aborted by its own timeout or by a `stop` that lands while it runs: a
+	// timeout aborting `rereads` itself would refuse every later attempt's read before it is sent. a
+	// refusal arriving after `stop` still sends its read, bounded by the timeout alone, and tells
+	// nobody.
+	const reread = async (): Promise<void> => {
+		const read = new AbortController();
+		const abort = (): void => read.abort();
+		const timer = setTimeout(abort, REREAD_TIMEOUT_MS);
+		rereads.signal.addEventListener('abort', abort, { once: true });
+		try {
+			if ((await formStillReads(config.formId, read.signal)) && !rereads.signal.aborted) stopped();
+		} finally {
+			clearTimeout(timer);
+			rereads.signal.removeEventListener('abort', abort);
+		}
+	};
 	const actor = createActor(checkoutMachine, {
 		input: {
 			config,
-			ports: deploymentPorts(surface),
+			ports:
+				pageProgramId === undefined
+					? ports
+					: { ...ports, quote: heardStopping(ports.quote, reread) },
 			...(resumeToken === null ? {} : { resume: { paymentToken: resumeToken } }),
-			...(opening === undefined ? {} : { opening })
+			...(opening === undefined ? {} : { opening }),
+			...(pageProgramId === undefined ? {} : { pageProgramId })
 		}
 	});
 
@@ -287,7 +371,11 @@ export function startCheckout(
 		actor,
 		ira,
 		rows: (listener) => surface.rows(listener),
+		stopped: (listener) => {
+			stopped = listener;
+		},
 		stop() {
+			rereads.abort();
 			subscription.unsubscribe();
 			// the IRA (QCD) row reports its rail closing as `surface.stop` below takes it off the page,
 			// and the actor it would report to is stopped by then.

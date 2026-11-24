@@ -73,9 +73,9 @@ export type ProgramOption = Pick<Program, 'id' | 'name'>;
 /**
  * the two columns a donor's picker renders, and deliberately not the row.
  *
- * `description` is staff wording until a screen decides otherwise, and `status` says nothing to a
+ * `description` is the program page's to draw and not the picker's, and `status` says nothing to a
  * donor who is only ever shown the active list — a projection that returned the row would put
- * both in front of a browser to save naming two columns here.
+ * both in every picker's payload to save naming two columns here.
  */
 const PROGRAM_OPTION_COLUMNS = {
 	id: program.id,

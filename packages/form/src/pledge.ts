@@ -37,8 +37,8 @@ export function pledgeSummary(pledge: Pledge, money: (minor: number) => string):
 
 /**
  * where the gift is sent, as the organisation saved it, and the reference that matches it to the
- * donor. a saved mailing address is one line per line (`Pledge` in ./v1.ts) and is drawn on one, the
- * way the footer draws the organisation's own.
+ * donor. a saved mailing address is one line per line (`Pledge` in ./v1.ts) and is drawn on one,
+ * since the value's whitespace collapses.
  */
 export function pledgeDetails(pledge: Pledge): PledgeRow[] {
 	const reference: PledgeRow = {

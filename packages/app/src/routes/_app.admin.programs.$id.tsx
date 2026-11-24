@@ -8,7 +8,7 @@ import { PROGRAM_STATUS_TONES } from '$lib/admin/status-tones';
 import { MarkedText } from '@better-giving/operator/marked-text.react';
 import { useSaveState } from '@better-giving/operator/save-state.react';
 import { getFormProps } from '@conform-to/react';
-import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useId, useRef, useState } from 'react';
 import {
 	data,
 	Form,
@@ -24,6 +24,7 @@ import { replaceRefusal } from '$lib/admin/page-edit/replace-photo';
 import { postPhoto, type UploadAnswer } from '$lib/admin/page-edit/photo-upload';
 import { ProgramFields } from '$lib/admin/programs/fields';
 import { ProgramPhotoControl } from '$lib/admin/programs/photo-control';
+import { PublicPageCard } from '$lib/admin/programs/public-page';
 import { type CrumbHandle, ScreenHeading } from '$lib/admin/crumbs';
 import { buttonState } from '$lib/admin/save-button-state';
 import { savedSection } from '$lib/admin/saved-section';
@@ -45,6 +46,7 @@ import { redactPublicId } from '$lib/redact';
 import { invalid, parseForm, submittedForm, submittedVersion, unread } from '$lib/server/conform';
 import { loadFailed, notFound } from '$lib/server/db/load-failure';
 import { redirectWithFlash, SAVED_FLASH, takeFlash } from '$lib/server/flash';
+import { programPageUrl } from '$lib/server/pages/program-page';
 import {
 	archiveProgram,
 	type ProgramSave,
@@ -206,6 +208,14 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
 			description: record.description,
 			status: record.status,
 			archived,
+			// the address donors open, on the origin this screen was asked on as the page derives the
+			// one it shares, and the page's preview the card frames.
+			publicPage: {
+				url: programPageUrl(new URL(request.url).origin, record.id),
+				// the row's version rides the address, so a save changes the frame's `src` and the frame
+				// draws what was saved rather than the page it loaded before.
+				previewSrc: `${href('/programs/:id/preview', { id: record.id })}?v=${record.updatedAt.getTime()}`
+			},
 			// the boxes, or nothing for a cause nobody may edit: an archived one draws a record, so a
 			// seed for it would be values for a form nothing renders.
 			editor: archived ? null : programInputValuesFrom(record),
@@ -341,6 +351,8 @@ function screen(id: string): string {
 // editable screen.
 export default function Program({ loaderData, actionData }: Route.ComponentProps) {
 	const { archived, archivedJustNow, description, editor, id, name, status } = loaderData;
+	const detailsHeading = useId();
+	const publicHeading = useId();
 
 	// whether the archive's own outcome is on the screen. the banner reporting it is the only thing
 	// the archive leaves behind — there is no control left for it to report on — so it is where focus
@@ -386,8 +398,9 @@ export default function Program({ loaderData, actionData }: Route.ComponentProps
 
 	return (
 		// one column and the column is what spaces it: every block below carries no margin of its
-		// own, so one that is not rendered leaves no space behind it.
-		<Column>
+		// own, so one that is not rendered leaves no space behind it. the wide measure, since two
+		// cards stand abreast in it.
+		<Column wide>
 			{/* the outcome that belongs to the page as a whole, above everything. dropped the moment a
 			    later attempt comes back rejected: a confirmation sitting above a failure reads as one
 			    confused sentence.
@@ -424,17 +437,32 @@ export default function Program({ loaderData, actionData }: Route.ComponentProps
 				}
 			/>
 
-			{editor === null ? (
-				<StoredRecord description={description} />
-			) : (
-				<Editor
-					boxes={editor}
-					imageId={loaderData.imageId}
-					version={loaderData.version}
-					saved={loaderData.saved}
-					actionData={actionData}
-				/>
-			)}
+			{/* two groups, two cards: what the program is, and the page donors see it on. */}
+			<div className="adm-cardpair">
+				{editor === null ? (
+					<StoredRecord description={description} />
+				) : (
+					<Section card labelledBy={detailsHeading}>
+						<h2 id={detailsHeading}>Details</h2>
+						<Editor
+							boxes={editor}
+							imageId={loaderData.imageId}
+							version={loaderData.version}
+							saved={loaderData.saved}
+							actionData={actionData}
+						/>
+					</Section>
+				)}
+				<Section card labelledBy={publicHeading}>
+					<h2 id={publicHeading}>Public page</h2>
+					<PublicPageCard
+						name={name}
+						url={loaderData.publicPage.url}
+						previewSrc={loaderData.publicPage.previewSrc}
+						archived={archived}
+					/>
+				</Section>
+			</div>
 
 			{archived ? null : (
 				<ArchiveSection
@@ -518,6 +546,7 @@ function Editor({
 			<input {...whichForm(PROGRAM_EDIT.id)} />
 			<input {...recordVersion(version)} />
 			<ProgramFields
+				bare
 				boxes={{ name: fields.name, description: fields.description }}
 				photo={
 					<ProgramPhotoControl
@@ -602,18 +631,19 @@ function useProgramPhoto(seeded: string | null, actionData: AdminActionData, sai
  * one thing an archived cause still says about itself.
  */
 function StoredRecord({ description }: { readonly description: string | null }) {
+	const heading = useId();
 	return (
-		<Section>
-			<h2>How this program was described</h2>
+		<Section card labelledBy={heading}>
+			<h2 id={heading}>How this program was described</h2>
 			<p className="adm-prose">
 				Nothing on an archived program can be changed. The gifts recorded against it still name it.
 			</p>
 			<dl>
-				<div className="adm-setting">
+				<div className="adm-setting adm-setting--stacked">
 					<dt className="adm-setting__label">Description</dt>
 					{/* the word rather than a blank, because a blank value beside a label reads as a
 					    screen that failed to load one. */}
-					<dd className="adm-setting__value">{description ?? 'None'}</dd>
+					<dd className="adm-setting__value adm-setting__value--wrap">{description ?? 'None'}</dd>
 				</div>
 			</dl>
 		</Section>

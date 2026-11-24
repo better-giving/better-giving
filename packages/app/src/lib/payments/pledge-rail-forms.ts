@@ -42,7 +42,7 @@ export const STOCK_RAIL_INPUT = z.object({
 export const IRA_QCD_RAIL_INPUT = z.object({
 	payee_name: detail(MAX_RAIL_DETAIL),
 	// a textarea submits its line breaks as CRLF; stored as LF, the one break the donor's pending
-	// screen and the emails print.
+	// screen prints.
 	mailing_address: detail(MAX_MAILING_ADDRESS).transform((text) => text.replace(/\r\n?/g, '\n'))
 });
 

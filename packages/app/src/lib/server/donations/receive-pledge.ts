@@ -26,7 +26,7 @@ import { sendTributeNotice } from './tribute-notice';
 // nothing: the second batch's `donation` insert meets the first's primary key and the whole batch is
 // refused, atomically, where a guard on `donation_id is null` alone would let a second gift commit
 // beside a stamp that matched no row. the guard stays on the stamp all the same, and
-// `pledge_donation_id_idx` keeps one pledge to one gift.
+// `pledge_donation_id_idx` keeps a gift to one pledge.
 //
 // the receipt is not sent here. `sendReceivedPledgeMail` below runs after the commit, when the
 // caller hands it to the deferred-work tracker. a press that finds the gift already recorded
@@ -63,9 +63,10 @@ export type ReceivedPledge = {
  *   not_found        — no pledge has this id.
  *   already_received — an earlier press recorded it, and this one wrote nothing. `gift` is the gift
  *                      as that press recorded it, for the mail it may not have sent.
- *   write_failed     — the write did not report success, or it did and the gift's donor could not
- *                      be read for its mail; the cause is logged. it may have landed, and pressing
- *                      again is safe: the gift's id is the pledge's.
+ *   write_failed     — the pledge or an earlier press's gift could not be read, the write did not
+ *                      report success, or it did and the gift's donor or cause could not be read
+ *                      for its mail; the cause is logged. it may have landed, and pressing again is
+ *                      safe: the gift's id is the pledge's.
  */
 export type ReceivePledgeResult =
 	| { readonly ok: true; readonly gift: ReceivedPledge }
@@ -131,8 +132,9 @@ export async function receivePledge(db: Db, arrival: PledgeArrival): Promise<Rec
 
 	try {
 		await db.batch([
-			// the page the pledge was made on, while it was neither ended nor hidden on the day the gift
-			// arrived (../supporters/gifts.ts).
+			// the page owning the pledge's form, unless it was ended or hidden at or before the UTC
+			// midnight that `dated` is: a page ended later on the arrival day still counts the gift
+			// (`supporterPageCountingOf` in ../supporters/gifts.ts).
 			db.insert(donation).values({
 				...donationRow,
 				supporterPageId: supporterPageCountingOf(row.formId, arrival.dated)
@@ -168,8 +170,9 @@ export async function receivePledge(db: Db, arrival: PledgeArrival): Promise<Rec
 	try {
 		return { ok: true, gift: await receivedOf(db, row, arrival) };
 	} catch (error) {
-		// the gift is in the books but its receipt has no address yet, so the press is answered as
-		// failed: pressing again finds the gift recorded and sends its mail (`alreadyReceived`).
+		// the gift is in the books but its donor or cause could not be read for its mail, so the press
+		// is answered as failed: pressing again finds the gift recorded and sends its mail
+		// (`alreadyReceived`).
 		return failed(error);
 	}
 }
@@ -256,7 +259,8 @@ function failed(error: unknown): ReceivePledgeResult {
  * the donor's receipt for a received pledge — the shares on a stock gift and never the value staff
  * entered, the amount on an IRA (QCD) gift (`PledgeReceived` in the emails package's receipt) —
  * and then the notice to the person they asked us to tell, where they named one. both claim their
- * own stamp on the gift before they send, so a second call sends nothing; neither throws.
+ * own stamp on the gift before they send and hand it back when the send fails, so a second call
+ * sends only what the first did not; neither throws.
  */
 export async function sendReceivedPledgeMail(
 	deps: ReceiptDeps,

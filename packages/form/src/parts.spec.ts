@@ -209,7 +209,8 @@ describe('the published manifest', () => {
 	it('names the pledge screens’ controls among the presses `action-quiet` reaches', () => {
 		// the told screen's Done and the pending screen's mail link are the registry's filled
 		// secondary button (src/views.ts, `secondary.filled` and `secondaryLink`), and each pledge
-		// row's copy mark is one too (`copyControl` in src/pledge-screen.ts).
+		// row's copy mark carries the part too, as the card's own `copy` box rather than a registry
+		// button (`copyControl` in src/pledge-screen.ts).
 		const quiet = element?.cssParts?.find((cssPart) => cssPart.name === 'action-quiet');
 
 		expect(quiet?.description).toContain('`Done`');

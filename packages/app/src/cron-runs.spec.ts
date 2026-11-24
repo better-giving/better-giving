@@ -155,11 +155,16 @@ describe('which run an expression reaches', () => {
 		expect(sweepSupporterLeftovers).toHaveBeenCalledExactlyOnceWith(db, SCHEDULED_AT);
 	});
 
-	it('refreshes the stock ticker list once a day at 04:20, handing it no From address', async () => {
-		await fires('20 4 * * *', { MAIL_FROM: 'donations@example.org' } as unknown as typeof env);
+	it('refreshes the stock ticker list once a day at 04:20, handing it MAIL_FROM for sec.gov', async () => {
+		await fires('20 4 * * *', { MAIL_FROM: ' giving@cedarfork.org ' } as unknown as typeof env);
 
 		expect(refreshTickers).toHaveBeenCalledExactlyOnceWith(
-			{ db, fetch: expect.any(Function), email: expect.anything() },
+			{
+				db,
+				fetch: expect.any(Function),
+				email: expect.anything(),
+				mailFrom: 'giving@cedarfork.org'
+			},
 			SCHEDULED_AT
 		);
 		expect(sendDueEntries).not.toHaveBeenCalled();

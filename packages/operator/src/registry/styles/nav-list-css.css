@@ -75,12 +75,18 @@
   transition-duration: var(--duration-fast);
   transition-timing-function: var(--ds-ease-out);
 }
-/* 16px, centred on the label's first line, in the label's ink */
-.ds-nav-link > svg {
+/* 16px, centred on the label's first line, in the label's ink. an img (a
+   colour mark) takes the same box: contained, on the row's corner, and no
+   tint, since the row's fill shows around it */
+.ds-nav-link > :is(svg, img) {
   flex-shrink: 0;
   inline-size: calc(var(--ds-spacing) * 4);
   block-size: calc(var(--ds-spacing) * 4);
   margin-block: calc(0.5lh - var(--ds-spacing) * 2);
+}
+.ds-nav-link > img {
+  border-radius: var(--radius);
+  object-fit: contain;
 }
 .ds-nav-label {
   flex: 1 1 0%;

@@ -87,6 +87,22 @@
   text-wrap: pretty;
 }
 
+/* a command or a value in the body is `code`: a chip on the gray-3 fill, 2px
+   by 6px, in mono at 0.875em so it matches the text around it. a long one
+   wraps, with the corner and the padding repeated on each wrapped line
+   (clone), and one press selects all of it, to copy */
+.ds-page-state-body code {
+  padding: calc(var(--ds-spacing) * 0.5) calc(var(--ds-spacing) * 1.5);
+  border-radius: var(--radius);
+  background-color: var(--gray-3);
+  color: var(--gray-12);
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  overflow-wrap: anywhere;
+  box-decoration-break: clone;
+  user-select: all;
+}
+
 /* the 500's alert: the title and the body alone, still 8px apart */
 .ds-page-state-message {
   display: flex;

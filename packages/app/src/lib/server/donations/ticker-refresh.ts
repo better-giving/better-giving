@@ -18,9 +18,10 @@ import {
 //
 // sec.gov answers 403 to a request whose User-Agent names no contact
 // (https://www.sec.gov/os/accessing-edgar-data), so the contact is the notification address saved
-// in Settings; with none the run still asks, and a 403 is a failure like any other, logged by
-// `alert` (../email/alert.ts) and mailed to nobody. its fair-access limit is ten requests a second;
-// this run makes two, one after the other.
+// in Settings, else `MAIL_FROM` (docs/configuration.md → Stock tickers). with neither the run still
+// asks, and a 403 is a failure like any other, logged by `alert` (../email/alert.ts) and mailed
+// to nobody. its fair-access limit is ten requests a second; this run makes two, one after the
+// other.
 
 export const EXCHANGE_FILE_URL = 'https://www.sec.gov/files/company_tickers_exchange.json';
 export const FUND_FILE_URL = 'https://www.sec.gov/files/company_tickers_mf.json';
@@ -29,6 +30,8 @@ export type TickerRefreshDeps = {
 	readonly db: Db;
 	readonly fetch: typeof globalThis.fetch;
 	readonly email: EmailProvider;
+	/** the env's `MAIL_FROM`, read per run: sec.gov's contact where Settings saves no address. */
+	readonly mailFrom: string | null;
 };
 
 /**
@@ -112,7 +115,7 @@ export async function refreshTickers(deps: TickerRefreshDeps, now: Date): Promis
 		const replacedAt = await tickersReplacedAt(deps.db);
 		if (replacedAt !== null && now.getTime() - replacedAt.getTime() < FRESH_FOR_MS) return;
 		const profile = await readOrgProfile(deps.db);
-		const contact = profile?.notificationEmail ?? null;
+		const contact = profile?.notificationEmail ?? deps.mailFrom;
 		const userAgent = contact === null ? 'better-giving' : `better-giving ${contact}`;
 		const fetched = listedOnce(await fetchTickers(deps, userAgent));
 		// a truncated copy parses as well as a whole one: a list under half the one held is refused,

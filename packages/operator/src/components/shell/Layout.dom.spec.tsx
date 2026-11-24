@@ -1,7 +1,7 @@
 import type { ComponentProps } from 'react';
 import { describe, expect, it } from 'vitest';
 import { render } from '../render.testing';
-import { Group } from './Layout.jsx';
+import { Group, Section } from './Layout.jsx';
 
 // what a `Group` draws when a caller states less than everything. both of the band's parts are the
 // caller's: its words, because a primitive that filled them in would print one screen's copy on
@@ -35,5 +35,25 @@ describe('the band a group names itself in', () => {
 		const root = render(Group, { labelAs: 'h3', children: <p>Sent from this address.</p> });
 
 		expect(root.textContent).not.toContain('Payment notifications');
+	});
+});
+
+describe('the name a section is read by', () => {
+	it('is the heading a caller points it at', () => {
+		const root = render(Section, {
+			card: true,
+			labelledBy: 'details-heading',
+			children: <h2 id="details-heading">Details</h2>
+		});
+
+		const section = root.querySelector('section');
+		expect(section?.getAttribute('aria-labelledby')).toBe('details-heading');
+		expect(document.getElementById('details-heading')?.textContent).toBe('Details');
+	});
+
+	it('is none where a caller points at nothing', () => {
+		const root = render(Section, { children: <h2>Archive</h2> });
+
+		expect(root.querySelector('section')?.hasAttribute('aria-labelledby')).toBe(false);
 	});
 });

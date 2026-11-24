@@ -337,7 +337,7 @@ function caretInAnotherCard(own: ShadowRoot): boolean {
 }
 
 /**
- * who a donor on a given rail is waiting on, which is four answers rather than eight.
+ * who a donor on a given rail is waiting on, which is five answers rather than ten.
  *
  * the wallets are a card presented differently and wait on the same issuer; the two hosted-window
  * rails wait on the processor whose window opened, and there the word a donor read on the control
@@ -534,8 +534,8 @@ type Receipt = 'none' | 'charged' | 'pending';
 /**
  * one full-card screen, as data.
  *
- * a descriptor rather than a branch per node. every takeover is the same eight or nine elements
- * with different words in them, so what varies is stated once, in one place a reader can compare
+ * a descriptor rather than a branch per node. every takeover is the same set of elements with
+ * different words in them, so what varies is stated once, in one place a reader can compare
  * screens across — and the patch below is then total over this record rather than a chain of
  * conditions that quietly leaves a node from the last screen on the next one.
  */
@@ -613,8 +613,9 @@ const BLANK: Takeover = {
 
 /**
  * a saved pledge's screen: the instructions while the donor has not said they asked for the
- * transfer, the same with the error notice where the last press did not reach the organisation, and
- * the thank-you once it did.
+ * transfer, the same with the error notice where the last press was refused, or with the info notice
+ * naming the new reference once the pledge was saved again, and the thank-you once a told press
+ * reached the organisation.
  *
  * the thank-you's notice names the address the receipt goes to, which is the pledge's own
  * (`Pledge.receiptTo` in ./v1.ts): the receipt is sent when staff mark the gift received, whatever
@@ -2830,7 +2831,7 @@ export function createCard(
 		oneTimeOffer,
 		oneTimeButton
 	]);
-	const iraPanel = createIraPanel(doc);
+	const iraPanel = createIraPanel(doc, () => submitButton.click());
 
 	const submitLabel = make(doc, 'span', { class: 'action-label' });
 	const submitButton = make(
@@ -3707,7 +3708,7 @@ export function createCard(
 		// four arrivals put the caret somewhere other than the heading, each on the control that fixes
 		// what the donor arrived about: a refusal of the amount on the box holding the figure, a coin
 		// the account no longer takes — or a way back from the address screen — on the unit pill, and
-		// a custodian the endpoint refused on its box.
+		// a refusal of the custodian on the IRA (QCD) panel's box.
 		const refusedAmount = api.state.step === 'amount' && api.state.refusal !== undefined;
 		const refusedCoin =
 			api.state.step === 'amount' && api.state.coinRefusal?.code === 'coin_not_accepted';
@@ -3947,8 +3948,8 @@ export function createCard(
 	 * just pressed Try again. without this they land at the payment box with nothing on the card
 	 * saying the card was refused, and the press reads as having done nothing.
 	 *
-	 * only a rail's refusal is taken. ten of the eleven ways into `failed` are a quote that could
-	 * not be minted, a payment surface that never drew, a challenge that could not be shown or a
+	 * only a rail's refusal is taken. every other way into `failed` is a quote that could not be
+	 * minted, a payment surface that never drew, a challenge that could not be shown or a
 	 * port that did not answer — none of them a statement about the card the donor entered, and all
 	 * of them read as one beside the payment fields, over a box retyping cannot fix. `refusedByRail`
 	 * (./connect.ts) is what says which, and the words cannot: a rejected quote arrives carrying a
@@ -4154,8 +4155,10 @@ export function createCard(
 		// nothing is worse than one that is not there.
 		// an IRA (QCD) gift is pledged rather than charged: no processor, a fee of nothing, and nothing
 		// totalled today. the receipt states the gift alone, the fee decision is not offered, and the
-		// press saves the pledge rather than spending money, so it says Continue.
-		const pledging = state.step === 'give' && state.method === 'ira_qcd';
+		// press saves the pledge rather than spending money, so it says Continue. the save in flight is
+		// `working` on the same rail, and keeps the review step on screen (`visibleStep` above).
+		const pledging =
+			(state.step === 'give' || state.step === 'working') && state.method === 'ira_qcd';
 		const changeable = state.step === 'give' && !pledging;
 		// a coin gift's review step words every line of this block itself, each figure "about" because
 		// the coin is valued when it arrives (`coinReview` in ./unit.ts); only the rows are this file's.
@@ -4247,8 +4250,8 @@ export function createCard(
 		// an empty address stays empty and hidden. `receipts === true` names the address the receipt
 		// is going to. otherwise the line says no email will be sent, so the step does not promise
 		// a receipt this deployment cannot send.
-		// a pledge's receipt is sent when staff mark it received, which its pending screen says, so the
-		// line promising one now is not drawn over it. nor over a coin gift's press, which mints an
+		// a pledge's receipt is sent when staff mark it received, which its thank-you's notice says, so
+		// the line promising one now is not drawn over it. nor over a coin gift's press, which mints an
 		// address rather than making the gift: the design draws that step with no such line.
 		const email = pledging || coin !== undefined ? '' : api.emailField.value.trim();
 		const receiptLine =

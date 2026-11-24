@@ -97,6 +97,7 @@ describe('a pledge a screen may draw', () => {
 
 	it('takes a pledge with no address to send its receipt to', () => {
 		expect(pledgeIsUsable({ ...STOCK, receiptTo: '' }, 'stock', 'p1')).toBe(true);
+		expect(pledgeIsUsable({ ...IRA, receiptTo: '' }, 'ira_qcd', 'p2')).toBe(true);
 		expect(pledgeIsUsable({ ...IRA, receiptTo: ' ' }, 'ira_qcd', 'p2')).toBe(true);
 	});
 

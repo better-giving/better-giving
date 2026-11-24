@@ -1195,8 +1195,9 @@ export function connect<
 		skipEmployerButton: button({ onClick: () => send({ type: 'SKIP_EMPLOYER' }) }),
 
 		// off the top-level state rather than off the projected `State` above, because the two do
-		// not answer the same question: `working` collapses five machine states into one screen, and
-		// the marks are drawn on the step underneath whichever of them the flow is passing through.
+		// not answer the same question: `working` collapses many machine states into one screen
+		// (`toState` above), and the marks are drawn on the step underneath whichever of them the
+		// flow is passing through.
 		// a state that is not a numbered step at all — a takeover — leaves every mark unavailable,
 		// which is what no step being on screen looks like.
 		stepButtons: NUMBERED_STEPS.map((step, at) =>

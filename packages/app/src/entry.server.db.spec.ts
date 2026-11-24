@@ -34,6 +34,9 @@ import * as editFundraiser from './routes/fundraise.pages.$id.edit';
 import * as giftPage from './routes/gift.$token';
 import * as login from './routes/login';
 import * as previewPage from './routes/preview.$pageId';
+import * as programPage from './routes/programs.$id';
+import * as programPreview from './routes/programs.$id_.preview';
+import { insertProgram } from './program-routes.testing';
 import { finishSetup } from './webhook-routes.testing';
 import { client, run, stmt } from '$lib/server/db/database.testing';
 import { createDeferredWork } from '$lib/server/runtime/deferred';
@@ -192,6 +195,13 @@ const handle = createRequestHandler(
 			module: editFundraiser
 		},
 		{ id: 'routes/gift.$token', parentId: 'root', path: 'gift/:token', module: giftPage },
+		{ id: 'routes/programs.$id', parentId: 'root', path: 'programs/:id', module: programPage },
+		{
+			id: 'routes/programs.$id_.preview',
+			parentId: 'root',
+			path: 'programs/:id/preview',
+			module: programPreview
+		},
 		{ id: 'routes/api.v1', parentId: 'root', path: 'api/v1', module: publicApi },
 		{
 			id: 'routes/api.v1.forms.$id.config',
@@ -587,7 +597,7 @@ describe('the editor’s preview of a page', () => {
 		);
 	}
 
-	it('may be framed by no one, as no document may', async () => {
+	it('may be framed by no one, since it opens in a tab of its own', async () => {
 		const response = await answer();
 		expect(response.status).toBe(200);
 		expect(response.headers.get('content-type')).toMatch(/^text\/html/);
@@ -607,6 +617,88 @@ describe('the editor’s preview of a page', () => {
 
 	it('is kept by no cache, since it is a draft read under a session', async () => {
 		expect((await answer()).headers.get('cache-control')).toBe('no-store');
+	});
+});
+
+describe('a program’s page and the program editor’s preview of it', () => {
+	const PROGRAM_ID = '019fb600-0000-7000-8000-0000000000f1';
+
+	// a deployment able to draw the page, for the editor's preview's reasons above.
+	beforeAll(async () => {
+		await writeOrgRow(client, { tax_id: '12-3456789' });
+		for (const [path, kept] of [
+			['/__recurring-cadences', ['one_time']],
+			['/__offered-rails', ['card']]
+		] as const) {
+			await edgeCache().put(
+				new Request(`${ORIGIN}${path}`),
+				new Response(JSON.stringify(kept), {
+					headers: { 'content-type': 'application/json', 'cache-control': 'max-age=300' }
+				})
+			);
+		}
+		await insertProgram({ id: PROGRAM_ID, name: 'Winter coats' });
+	});
+	afterAll(async () => {
+		// archived rather than deleted: the Donation page's settings row followed it, and still names it.
+		await run(stmt("update program set status = 'archived', archived_at = 0"));
+		await run(stmt('delete from org_profile'));
+	});
+
+	const STRIPE_KEYS = {
+		STRIPE_SECRET_KEY: 'sk_test_abc',
+		STRIPE_PUBLISHABLE_KEY: 'pk_test_abc',
+		STRIPE_WEBHOOK_SECRET: 'whsec_abc'
+	};
+
+	it('may be framed by no one at the page’s own address', async () => {
+		const response = await send(`/programs/${PROGRAM_ID}`, undefined, STRIPE_KEYS);
+		expect(response.status).toBe(200);
+		const policy = directives(response.headers.get('content-security-policy'));
+		expect(policy.get('frame-ancestors')).toEqual(["'none'"]);
+		expect(response.headers.get('x-frame-options')).toBe('DENY');
+	});
+
+	it('may be framed by this deployment’s own pages at the preview’s address, and by no other', async () => {
+		const response = await send(`/programs/${PROGRAM_ID}/preview`, undefined, STRIPE_KEYS);
+		expect(response.status).toBe(200);
+		expect(response.headers.get('content-type')).toMatch(/^text\/html/);
+		const policy = directives(response.headers.get('content-security-policy'));
+		expect(policy.get('frame-ancestors')).toEqual(["'self'"]);
+		expect(response.headers.get('x-frame-options')).toBe('SAMEORIGIN');
+		expect(policy.get('object-src')).toEqual(["'none'"]);
+		expect(policy.get('script-src')).toContain('https://js.stripe.com');
+	});
+
+	it('keeps the preview’s framing on the closed screen an archived or unknown id draws', async () => {
+		const response = await send(
+			'/programs/019fb600-0000-7000-8000-0000000000f2/preview',
+			undefined,
+			STRIPE_KEYS
+		);
+		expect(response.status).toBe(404);
+		expect(
+			directives(response.headers.get('content-security-policy')).get('frame-ancestors')
+		).toEqual(["'self'"]);
+		expect(response.headers.get('x-frame-options')).toBe('SAMEORIGIN');
+	});
+
+	it.each([
+		['the page’s own address', `/programs/${PROGRAM_ID}`, 200],
+		['the page’s closed screen', '/programs/019fb600-0000-7000-8000-0000000000f2', 404],
+		['the preview’s address', `/programs/${PROGRAM_ID}/preview`, 200],
+		['the preview’s closed screen', '/programs/019fb600-0000-7000-8000-0000000000f2/preview', 404]
+	])('is kept by no cache at %s', async (_, path, status) => {
+		const response = await send(path, undefined, STRIPE_KEYS);
+		expect(response.status).toBe(status);
+		expect(response.headers.get('cache-control')).toBe('no-store');
+	});
+
+	it('tells crawlers to leave the preview out', async () => {
+		const html = await (
+			await send(`/programs/${PROGRAM_ID}/preview`, undefined, STRIPE_KEYS)
+		).text();
+		expect(html).toMatch(/<meta name="robots" content="noindex"\/?>/);
 	});
 });
 

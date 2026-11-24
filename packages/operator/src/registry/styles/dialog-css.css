@@ -22,6 +22,7 @@
   --ds-container-2xl: calc(42 * var(--ds-rem, 1rem));
   --ds-container-3xl: calc(48 * var(--ds-rem, 1rem));
   --ds-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ds-z-index-modal: 50;
   /* the top gap, 24px, more under a device notch */
   --ds-dialog-top: max(
     calc(var(--ds-spacing) * 6),
@@ -106,6 +107,20 @@
   }
 }
 
+/* a preview: a dialog drawn with the open attribute instead of showModal() (a
+   doc page, a test) is not in the top layer, so it has no ::backdrop. with the
+   ds-dialog-preview modifier its scrim is a --overlay shadow spread past the
+   box, over the page, under the box's own z-index. cosmetic only: no focus
+   trap, the page stays interactive and scrollable. it is opt-in, so an app's
+   dialog opened with show() does not dim the page; a modal dialog matches
+   :modal and never this */
+.ds-dialog-preview[open]:not(:modal) {
+  z-index: var(--ds-z-index-modal);
+  box-shadow:
+    var(--shadow-floating),
+    0 0 0 100vmax var(--overlay);
+}
+
 /* the page under an open modal does not scroll. no scrollbar-gutter here: it
    would reserve a gutter on a page that had no scrollbar, and shift it */
 :root:has(.ds-dialog:modal) {
@@ -177,6 +192,58 @@
   background-color: var(--popover);
   color: var(--gray-12);
 }
+/* the surface's title and the line under it, as the sheet's are: 18px bold
+   display, then 14px gray-11, 2px under it. the React Modal has no visible
+   title of its own (its `title` is a name for screen readers), so these are
+   the twin's alone */
+.ds-dialog-title {
+  --ds-text-lg: calc(1.125 * var(--ds-rem, 1rem));
+  --ds-text-lg-lh: calc(1.75 / 1.125);
+  --ds-font-weight-bold: 700;
+  --ds-tracking-tight: -0.025em;
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--ds-text-lg);
+  line-height: var(--ds-text-lg-lh);
+  font-weight: var(--ds-font-weight-bold);
+  letter-spacing: var(--ds-tracking-tight);
+}
+.ds-dialog-desc {
+  --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
+  --ds-text-sm: calc(0.875 * var(--ds-rem, 1rem));
+  --ds-text-sm-lh: calc(1.25 / 0.875);
+  margin: calc(var(--ds-spacing) * 0.5) 0 0;
+  color: var(--gray-11);
+  font-size: var(--ds-text-sm);
+  line-height: var(--ds-text-sm-lh);
+}
+
+/* the footer, 24px under the content: the buttons at the end of the row,
+   the primary last */
+.ds-dialog-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: safe center;
+  gap: calc(var(--ds-spacing) * 3);
+  margin-block-start: calc(var(--ds-spacing) * 6);
+}
+.ds-dialog-actions {
+  display: flex;
+  align-items: safe center;
+  gap: calc(var(--ds-spacing) * 3);
+  margin-inline-start: auto;
+}
+/* under 40rem the box is 90% wide (about 289px of content at 375; the sheet
+   fills the viewport): the buttons stack at full width in reading order, so
+   the primary, last, is at the bottom */
+@media (width < 40rem) {
+  .ds-dialog-actions {
+    flex-direction: column;
+    align-items: stretch;
+    inline-size: 100%;
+  }
+}
+
 /* in the sheet it fills the box and scrolls its own height, so the skin the
    other sizes wear on the box is the surface's here. below 40rem the box is
    the whole viewport, and a corner would show the scrim behind it */

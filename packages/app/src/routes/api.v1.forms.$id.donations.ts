@@ -13,8 +13,9 @@ import { database, platform } from '../context';
 import type { Route } from './+types/api.v1.forms.$id.donations';
 
 // the endpoint that takes money: a donor's submission in, an authoritative fee and a payment token
-// out. it is the second route under `/api/v1` and the only one that writes anything. a `stock` or
-// `ira_qcd` body saves a pledge instead and charges nothing (`Quote.pledge` in
+// out. it is the one route under `/api/v1` that mints a payment; others there write too, such as
+// the employer write and the pledge told press, and none charges (AGENTS.md -> Routes). a `stock`
+// or `ira_qcd` body saves a pledge instead and charges nothing (`Quote.pledge` in
 // packages/form/src/v1.ts), under the same four controls below.
 //
 // a resource route: no component export, so react router answers with what the handlers return
@@ -36,10 +37,11 @@ import type { Route } from './+types/api.v1.forms.$id.donations';
 //                   then charges a bucket of its own, ten times tighter, because what a submission
 //                   costs is not what a read costs — see the note on the charge below. it never
 //                   charges the surface's, and ../routes.spec.ts fails it if it does.
-//   CORS          — below, from the row `mintQuote` carries out on every branch and from the env
-//                   that names this deployment's own donation page. a browser cannot read a 4xx
-//                   body without the header either, so a refusal handed back without the row is a
-//                   refusal the page that asked never sees.
+//   CORS          — below, from the row `mintQuote` carries out and from this deployment's own
+//                   origin. a browser cannot read a 4xx body without the header either, so a
+//                   refusal handed back without the row is one a cross-origin page never sees.
+//                   an unusable `pageProgramId` is answered with no row, exactly as an
+//                   unknown form, and the program page that sends one reads it same-origin.
 //   spam check    — inside `mintQuote`, before anything is minted at the processor: Turnstile where
 //                   both its keys are set, ALTCHA otherwise ($lib/server/api/challenge.ts).
 //   amount bounds — inside `mintQuote`, re-read from the form record. the amount in the body is an
@@ -211,7 +213,9 @@ async function readJsonBody(request: Request): Promise<unknown> {
  *   and there is no credential to present. the donation form's answer is a fresh token, which is
  *   what the `challenge_failed` code exists to tell it.
  * - 404 / 410 / 409, the form: an id this deployment never had, one permanently retired, or one
- *   whose own stored state stops it. as the config route argues at length.
+ *   whose own stored state stops it. as the config route argues at length. a `pageProgramId` that
+ *   names no active program, or arrives on a form that is not the Donation page's, is answered as
+ *   the first, word for word and header for header (`mintQuote`).
  * - 409 / 422, a donor-advised fund's answer: an approval in the fund's window that expired before
  *   the grant was created, or an amount the fund will not grant. 409 rather than Chariot's own 410,
  *   which on this surface already means a retired form; both are the donor's to act on in the

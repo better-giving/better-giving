@@ -50,8 +50,9 @@ describe('the rails a confirmation names at both ends', () => {
 	});
 
 	/**
-	 * every rail is settled by exactly one processor, which is what lets each adapter hold a table
-	 * total over its own list rather than over the vocabulary.
+	 * every rail but the two pledge rails is settled by exactly one processor, and those by none,
+	 * which is what lets each adapter hold a table total over its own list rather than over the
+	 * vocabulary.
 	 *
 	 * the runtime half of a claim the types make one way only: `STRIPE_RAILS`, `PAYPAL_RAILS`,
 	 * `CHARIOT_RAILS`, `NOWPAYMENTS_RAILS` and `PLEDGE_RAILS` are each checked to be a subset of

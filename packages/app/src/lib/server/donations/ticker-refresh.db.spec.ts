@@ -64,9 +64,11 @@ afterEach(() => {
 	vi.restoreAllMocks();
 });
 
+const MAIL_FROM = 'donations@cedarfork.org';
+
 /** one run at `NOW`, against the stand-in. */
 function refresh(sec: ReturnType<typeof secStandIn>, email: EmailProvider): Promise<void> {
-	return refreshTickers({ db, fetch: sec.fetch, email }, NOW);
+	return refreshTickers({ db, fetch: sec.fetch, email, mailFrom: MAIL_FROM }, NOW);
 }
 
 /** a list of `count` companies already held, replaced two days before `NOW`. */
@@ -185,7 +187,7 @@ describe('refreshTickers', () => {
 		expect(await searchTickers(db, 'OLD', 8)).toEqual([]);
 		expect(sec.requests.map((r) => r.url)).toEqual([EXCHANGE_FILE_URL, FUND_FILE_URL]);
 		for (const request of sec.requests) {
-			expect(request.headers.get('user-agent')).toContain('alerts@example.org');
+			expect(request.headers.get('user-agent')).toBe('better-giving alerts@example.org');
 		}
 		expect(sent).toEqual([]);
 	});
@@ -303,7 +305,7 @@ describe('refreshTickers', () => {
 		}) as typeof globalThis.fetch;
 		const { email, sent } = recordingEmail();
 
-		const refreshing = refreshTickers({ db, fetch: stalled, email }, NOW);
+		const refreshing = refreshTickers({ db, fetch: stalled, email, mailFrom: MAIL_FROM }, NOW);
 		await vi.waitFor(() => expect(requests).toHaveLength(1));
 		deadline.abort(new DOMException('The operation was aborted due to timeout', 'TimeoutError'));
 		await refreshing;
@@ -332,7 +334,10 @@ describe('refreshTickers', () => {
 		}) as typeof globalThis.fetch;
 		const { email, sent } = recordingEmail();
 
-		const refreshing = refreshTickers({ db, fetch: stallsOnFunds, email }, NOW);
+		const refreshing = refreshTickers(
+			{ db, fetch: stallsOnFunds, email, mailFrom: MAIL_FROM },
+			NOW
+		);
 		await vi.waitFor(() => expect(requests).toHaveLength(2));
 		deadline.abort(new DOMException('The operation was aborted due to timeout', 'TimeoutError'));
 		await refreshing;
@@ -374,7 +379,7 @@ describe('refreshTickers', () => {
 		}) as typeof globalThis.fetch;
 		const { email, sent } = recordingEmail();
 
-		await refreshTickers({ db, fetch: unreachable, email }, NOW);
+		await refreshTickers({ db, fetch: unreachable, email, mailFrom: MAIL_FROM }, NOW);
 
 		expect(requests).toEqual([EXCHANGE_FILE_URL]);
 		expect((await searchTickers(db, 'OLD', 8)).map((row) => row.symbol)).toEqual(['OLD']);
@@ -389,24 +394,39 @@ describe('refreshTickers', () => {
 			})) as typeof globalThis.fetch;
 		const { email, sent } = recordingEmail();
 
-		await refreshTickers({ db, fetch: html, email }, NOW);
+		await refreshTickers({ db, fetch: html, email, mailFrom: MAIL_FROM }, NOW);
 
 		expect((await searchTickers(db, 'OLD', 8)).map((row) => row.symbol)).toEqual(['OLD']);
 		expect(sent).toHaveLength(1);
 		expect(sent[0]?.text).toContain(EXCHANGE_FILE_URL);
 	});
 
-	it('still asks, naming no contact, where no notifications address is saved', async () => {
+	it('names MAIL_FROM as the contact where no notifications address is saved', async () => {
 		await saveProfile(db, { notification_email: '' });
 		const sec = wholeFiles();
 
 		await refresh(sec, recordingEmail().email);
 
 		expect(sec.requests.map((r) => r.headers.get('user-agent'))).toEqual([
+			`better-giving ${MAIL_FROM}`,
+			`better-giving ${MAIL_FROM}`
+		]);
+		expect(await searchTickers(db, 'OLD', 8)).toEqual([]);
+	});
+
+	it('still asks, naming no contact, where neither a notifications address nor MAIL_FROM is set', async () => {
+		await saveProfile(db, { notification_email: '' });
+		const sec = wholeFiles();
+
+		await refreshTickers(
+			{ db, fetch: sec.fetch, email: recordingEmail().email, mailFrom: null },
+			NOW
+		);
+
+		expect(sec.requests.map((r) => r.headers.get('user-agent'))).toEqual([
 			'better-giving',
 			'better-giving'
 		]);
-		expect(await searchTickers(db, 'OLD', 8)).toEqual([]);
 	});
 
 	it('resolves and logs where the alert itself throws', async () => {
@@ -429,7 +449,10 @@ describe('refreshTickers', () => {
 
 describe('refreshTickersIfNoneHeld', () => {
 	const refreshIfNone = (sec: ReturnType<typeof secStandIn>) =>
-		refreshTickersIfNoneHeld({ db, fetch: sec.fetch, email: recordingEmail().email }, NOW);
+		refreshTickersIfNoneHeld(
+			{ db, fetch: sec.fetch, email: recordingEmail().email, mailFrom: MAIL_FROM },
+			NOW
+		);
 
 	it('fetches nothing where a list is held, however old, leaving it to the daily run', async () => {
 		const sec = wholeFiles();
@@ -459,7 +482,7 @@ describe('refreshTickersIfNoneHeld', () => {
 
 		await expect(
 			refreshTickersIfNoneHeld(
-				{ db: unmigrated, fetch: sec.fetch, email: recordingEmail().email },
+				{ db: unmigrated, fetch: sec.fetch, email: recordingEmail().email, mailFrom: MAIL_FROM },
 				NOW
 			)
 		).resolves.toBeUndefined();

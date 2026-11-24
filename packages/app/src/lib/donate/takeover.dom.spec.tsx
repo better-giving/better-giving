@@ -3,6 +3,8 @@ import { formatMinor } from '@better-giving/form/money';
 import { CHANGE_WHAT_YOU_GIVE } from '@better-giving/form/unit';
 import type { FeeRules, FormConfig, Pledge, Quote } from '@better-giving/form/v1';
 import type { FormValue } from '@better-giving/form/value';
+import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { act, createRef, type ReactNode, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { describe, expect, it, onTestFinished } from 'vitest';
@@ -864,6 +866,89 @@ describe('a saved pledge’s screens', () => {
 			'ds-btn ds-btn-secondary ds-btn-lg'
 		);
 		expect(root.querySelector('[disabled]')).toBeNull();
+	});
+
+	// the form's sheets size a pending screen by a takeover whose own shown pledge holds an unhidden
+	// details list. this page draws its pledge screens in the element's shape so those rules reach
+	// them, and these match the sheets' own selectors against the tree this page draws: every part
+	// they name on a pending screen, and no other takeover.
+	describe('the form’s pending-screen rules', () => {
+		const require = createRequire(import.meta.url);
+		const PENDING = '.takeover:has(> .pledge:not([hidden])):has(.pledge-details:not([hidden]))';
+		const scoped = ['parts.css', 'layout.css'].flatMap((sheet) =>
+			[
+				...readFileSync(require.resolve(`@better-giving/form/styles/${sheet}`), 'utf8')
+					.replace(/\/\*[\s\S]*?\*\//g, '')
+					.matchAll(/([^{}]+)\{/g)
+			]
+				.flatMap(([, list]) => (list ?? '').split(','))
+				.map((selector) => selector.trim())
+				.filter((selector) => selector.startsWith(PENDING))
+		);
+
+		it.each([
+			['stock', STOCK],
+			['IRA (QCD)', IRA]
+		])('reach every part they name on a pending %s screen', (_rail, pledge) => {
+			const root = pledged(pledge, 'pending');
+			expect(scoped.length).toBeGreaterThan(0);
+			expect(scoped.filter((selector) => root.querySelector(selector) === null)).toEqual([]);
+			expect(link(root)?.className).toBe('ds-btn ds-btn-secondary ds-btn-lg');
+		});
+
+		it('reach nothing on the thank-you', () => {
+			const root = pledged(STOCK, 'told');
+			expect(scoped.filter((selector) => root.querySelector(selector) !== null)).toEqual([]);
+		});
+
+		// `> .pledge` in every rule is what this page's tree has to keep true.
+		it.each([
+			['stock', STOCK],
+			['IRA (QCD)', IRA]
+		])('find the %s pledge a direct child of the takeover section', (_rail, pledge) => {
+			const block = pledged(pledge, 'pending').querySelector('.pledge');
+			expect(block?.parentElement?.matches('section.takeover')).toBe(true);
+		});
+
+		it.each<[string, State, FormConfig?]>([
+			['card thank-you', { step: 'success' }],
+			['crypto thank-you', { step: 'success', method: 'crypto' }, COINS],
+			['stock thank-you', { step: 'pledged', pledge: STOCK, phase: 'told', refused: false }, ORG],
+			['IRA (QCD) thank-you', { step: 'pledged', pledge: IRA, phase: 'told', refused: false }, ORG],
+			[
+				'correction',
+				{
+					step: 'confirm',
+					fv: GIFT,
+					quote: QUOTE,
+					reconciliation: {
+						kind: 'adjusted',
+						shownTotalMinor: 2575,
+						totalMinor: 2606,
+						deltaMinor: 31
+					},
+					method: 'card'
+				}
+			],
+			[
+				'mandate',
+				{ step: 'mandate', fv: GIFT, quote: { ...QUOTE, mandate: { text: 'You authorise.' } } }
+			],
+			['redirecting', { step: 'redirecting', method: 'card' }],
+			['processing', { step: 'processing', method: 'ach' }],
+			['indeterminate', { step: 'indeterminate' }],
+			['verification', { step: 'awaitingVerification', deadline: null }],
+			['verification closed', { step: 'verificationExpired' }],
+			['crypto address', AWAITING, COINS],
+			['crypto address closed', { ...AWAITING, closed: true }, COINS],
+			['crypto address expired', { step: 'depositExpired' }, COINS],
+			['failure', { step: 'failed', message: 'Your card was declined.' }],
+			['resuming', { step: 'working', phase: 'resuming' }],
+			['confirming', { step: 'working', fv: GIFT, phase: 'confirming', method: 'card' }]
+		])('reach nothing on the %s', (_screen, state, config) => {
+			const root = draw(state, config);
+			expect(scoped.filter((selector) => root.querySelector(selector) !== null)).toEqual([]);
+		});
 	});
 
 	it('lists a pending IRA (QCD) gift’s payee details, the address on one line', () => {

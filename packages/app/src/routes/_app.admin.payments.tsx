@@ -33,6 +33,7 @@ import {
 	STOCK_RAIL_INPUT
 } from '$lib/payments/pledge-rail-forms';
 import { STAFF_USER_ID } from '$lib/server/auth';
+import { readConfigEnv } from '$lib/server/config/env';
 import { invalid, parseForm, submittedForm } from '$lib/server/conform';
 import type { PledgeMethod } from '$lib/server/db/schema';
 import { notFound } from '$lib/server/db/load-failure';
@@ -234,7 +235,15 @@ export async function action(args: Route.ActionArgs) {
 		});
 		const { env, deferred } = context.get(platform);
 		deferred.waitUntil(
-			refreshTickersIfNoneHeld({ db, fetch, email: createEmailProvider(env) }, new Date())
+			refreshTickersIfNoneHeld(
+				{
+					db,
+					fetch,
+					email: createEmailProvider(env),
+					mailFrom: readConfigEnv(env).MAIL_FROM ?? null
+				},
+				new Date()
+			)
 		);
 		return { pledgeRail: { rail: 'stock' as const, outcome: 'saved' as const } };
 	}

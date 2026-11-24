@@ -83,8 +83,10 @@ export type StateToken = (typeof STATE_TOKENS)[number];
 /**
  * what a part is for, where its name alone does not say.
  *
- * one token today: `submit` distinguishes the control that spends the money from every other
- * `action`. `::part(submit)` therefore works on `part="action submit"` with no second name.
+ * one token today: `submit` distinguishes the review step's own press from every other `action`.
+ * that press spends the money on a rail that charges, mints the address on a crypto gift and saves
+ * the pledge on an IRA (QCD) one. `::part(submit)` therefore works on `part="action submit"` with
+ * no second name.
  */
 export const ROLE_TOKENS = ['submit'] as const;
 

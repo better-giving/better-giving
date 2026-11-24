@@ -34,7 +34,12 @@ export type WaitingPledge = {
 };
 
 export type WaitingCardProps = {
-	readonly waiting: { readonly total: number; readonly pledges: readonly WaitingPledge[] };
+	readonly waiting: {
+		readonly total: number;
+		/** whether Mark received sends the donor a receipt: false where this deployment sends no mail. */
+		readonly receipts: boolean;
+		readonly pledges: readonly WaitingPledge[];
+	};
 };
 
 /** what Mark received answers, or its refusal. */
@@ -167,6 +172,7 @@ export function WaitingCard({ waiting }: WaitingCardProps) {
 				<MarkReceivedDialog
 					key={pledge.id}
 					pledge={pledge}
+					receipts={waiting.receipts}
 					fetcher={fetcher}
 					answer={
 						pressed?.pledgeId === pledge.id && fetcher.data !== pressed.over
@@ -193,6 +199,7 @@ export function WaitingCard({ waiting }: WaitingCardProps) {
 
 type MarkReceivedDialogProps = {
 	readonly pledge: WaitingPledge;
+	readonly receipts: boolean;
 	readonly fetcher: FetcherWithComponents<ReceivedAnswer>;
 	/** the last answer, where it answered a press on this pledge. */
 	readonly answer: ReceivedAnswer | undefined;
@@ -203,6 +210,7 @@ type MarkReceivedDialogProps = {
 
 function MarkReceivedDialog({
 	pledge,
+	receipts,
 	fetcher,
 	answer,
 	onPress,
@@ -257,10 +265,12 @@ function MarkReceivedDialog({
 				fallbackFocus={fallback}
 			>
 				{/* the body is the dialog's description, so the receipt is read with the question; a
-				    donor who gave no email is sent none. */}
+				    donor who gave no email is sent none, and nobody is where this deployment sends no mail. */}
 				<p>
 					{pledge.pledged} from {pledge.donorName}, reference {pledge.reference}.
-					{pledge.donorEmail === null ? null : ' Marking this received emails the donor a receipt.'}
+					{!receipts || pledge.donorEmail === null
+						? null
+						: ' Marking this received emails the donor a receipt.'}
 				</p>
 				<MoneyField
 					id={fields.value.id}

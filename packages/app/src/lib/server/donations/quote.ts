@@ -23,8 +23,10 @@ import type { EmailProvider } from '../email/provider';
 import type { FormRecord } from '../forms/form-input';
 import { cachedCadences } from '../forms/cadence-cache';
 import { cachedCoins } from '../forms/coin-cache';
-import { readPublishedConfig } from '../forms/published-config';
+import { formNotFound, readPublishedConfig } from '../forms/published-config';
 import { cachedRails } from '../forms/rail-cache';
+import { readProgram } from '../programs/queries';
+import { isDonationPageForm } from '../pages/donation-page';
 import { giftLinkOrigin, giftPageUrl } from '../matching/links';
 import { processorSetupFix, type Processors } from '../payments/factory';
 import {
@@ -67,8 +69,12 @@ import {
 import { recordAuthorizedGift, recordDonation } from './record';
 import { tickerListed } from './tickers';
 
-// one donation attempt, from a posted body to a payment token — the server half of
-// `POST /api/v1/forms/:id/donations`.
+// one donation attempt, from a posted body to a payment token, or to a saved stock or IRA (QCD)
+// pledge — the server half of `POST /api/v1/forms/:id/donations`.
+//
+// a pledge (`mintPledge` below) runs the same config ladder and the same challenge, then saves the
+// pledge and its donor: no processor is asked and no gift is written, so the intent, the write
+// order and the two cadence branches below are the processor rails' alone.
 //
 // it is a module rather than the route's body for the reason ../forms/published-config.ts is one:
 // every refusal below is a decision, and a decision made inside a `RequestHandler` can only be
@@ -247,7 +253,8 @@ export function refusalCode(reason: QuoteRefusal): ApiErrorCode | null {
  * the form row is carried on both branches for the reason ../forms/published-config.ts carries it:
  * the CORS headers on every answer, refusals included, are decided from that row's
  * `allowed_origins`, and a refusal a browser cannot read is a refusal that reaches nobody. `null`
- * only where there is no row — an id nothing matches.
+ * where there is no row — an id nothing matches — and on `mintQuote`'s unusable `pageProgramId`
+ * refusal, which answers as an unknown form id does.
  */
 export type QuoteResult =
 	| { readonly ok: true; readonly quote: Quote; readonly form: FormRecord }
@@ -328,7 +335,8 @@ export type QuoteAttempt = {
 const LINE_LABEL = 'Donation';
 
 /**
- * mints one quote: checks everything, opens an intent, writes the gift.
+ * mints one quote: checks everything, then opens an intent and writes the gift, or, on a pledge
+ * rail, saves the pledge (`mintPledge`).
  *
  * never throws for a refusal. the payment port is sealed and `recordDonation` returns a result, so
  * the only way out of here is a `QuoteResult` — which is what keeps a public endpoint from
@@ -344,12 +352,13 @@ export async function mintQuote(deps: QuoteDeps, attempt: QuoteAttempt): Promise
 	//
 	// what comes back narrows what this path *offers* and never what it *accepts*, and two things
 	// hold that. `parseQuoteRequest` below reads both vocabularies whole rather than the served
-	// lists — `FREQUENCIES` in packages/form/src/v1.ts for the cadence and `OFFERED_PAYMENT_METHODS`
-	// for the rail; and `readPublishedConfig` mints no refusal over an empty rail list at all — the
-	// one that exists is `renderableConfig` in ../forms/published-config.ts, which only the config
-	// route composes. so a donor on a cached page holding a rail this deployment has since stopped
-	// offering is charged rather than turned away (CLAUDE.md), and so is every donor mid-checkout on
-	// an account whose last capability just went to `pending`.
+	// lists — `FREQUENCIES` in packages/form/src/v1.ts for the cadence and `OFFERED_PAYMENT_METHODS`,
+	// the processor rails alone, for the rail; and `readPublishedConfig` mints no refusal over an
+	// empty rail list at all — the one that exists is `renderableConfig` in
+	// ../forms/published-config.ts, which only the config route composes. so a donor on a cached
+	// page holding a rail this deployment has since stopped offering is charged rather than turned
+	// away (CLAUDE.md), and so is every donor mid-checkout on an account whose last capability just
+	// went to `pending`.
 	//
 	// a pledge reads neither: `mintPledge` below takes nothing from the config's cadences or
 	// processor rails, so a slow processor is no pledging donor's wait.
@@ -392,6 +401,10 @@ export async function mintQuote(deps: QuoteDeps, attempt: QuoteAttempt): Promise
 		return refuse(form, 'invalid_request', parsed.message, parsed.fix);
 	}
 	const submission = parsed.value;
+
+	// a program page's cause is checked before the challenge, as the form id is: `unusablePageProgram`.
+	const unusable = await unusablePageProgram(deps.db, form, attempt, submission.pageProgramId);
+	if (unusable !== null) return unusable;
 
 	const challenged = await challengeRefusal(deps, form, submission, attempt, origin);
 	if (challenged !== null) return challenged;
@@ -561,6 +574,29 @@ export async function mintQuote(deps: QuoteDeps, attempt: QuoteAttempt): Promise
 }
 
 /**
+ * a program page's cause must be an active program row, sent on the Donation page's form, which is
+ * the one form a program page serves. anything else is answered as an unknown form, word for word
+ * and with no form row, so the route's CORS headers match too: an archived id, an unknown id and
+ * another form's id read alike. an active id on the Donation page's form passes on to the
+ * challenge, so a caller can still learn which ids are active. the program page reads the answer
+ * same-origin, which `corsHeaders` in ../api/cors.ts echoes without the row. it is checked before
+ * the challenge, as the form id is, on a payment and on a pledge alike. `null` where the request
+ * names no page program or names a usable one.
+ */
+async function unusablePageProgram(
+	db: Db,
+	form: FormRecord,
+	attempt: QuoteAttempt,
+	pageProgramId: string | undefined
+): Promise<QuoteResult | null> {
+	if (pageProgramId === undefined || (await creditsPageProgram(db, form.id, pageProgramId))) {
+		return null;
+	}
+	const unknown = formNotFound(attempt.formId);
+	return refuse(null, 'form_not_found', unknown.message, unknown.fix);
+}
+
+/**
  * the anti-abuse challenge on the submission's token, or `null` where it cleared — run before
  * anything is minted or saved, on every rail.
  */
@@ -612,10 +648,12 @@ async function challengeRefusal(
  * (`pledge` in ../db/schema.ts). the answer is the pending screen's whole content
  * (`Quote.pledge` in packages/form/src/v1.ts).
  *
- * every refusal a donor can meet without a read runs first, then the two that need one — the rail
- * being on and the ticker being listed — and only then the challenge, so a token is never spent on
- * a pledge that was always going to be refused. a database fault in any of it throws, and
- * `mintQuote` answers that as `pledgeNotSaved` below.
+ * every refusal a donor can meet without a read runs first, then the three that need one — the rail
+ * being on, the ticker being listed and the page's cause being usable — and only then the
+ * challenge, so a token is never spent on a refusal those could make. a save refused after it
+ * (`pledge_id_taken`, or a write that failed) has spent the token. a database fault in those reads
+ * throws, and `mintQuote` answers that as `pledgeNotSaved` below; `savePledge` never throws, and a
+ * save that failed is answered the same way here.
  */
 async function mintPledge(
 	deps: QuoteDeps,
@@ -648,6 +686,9 @@ async function mintPledge(
 			field: 'ticker'
 		};
 	}
+
+	const unusable = await unusablePageProgram(deps.db, form, attempt, giver.pageProgramId);
+	if (unusable !== null) return unusable;
 
 	const challenged = await challengeRefusal(deps, form, giver, attempt, origin);
 	if (challenged !== null) return challenged;
@@ -754,7 +795,9 @@ function pledgeOnWire(
 	config: FormConfig,
 	typedEmail: string | null
 ): Pledge {
-	const receiptTo = saved.receiptTo ?? typedEmail ?? '';
+	// no address where this deployment cannot send mail (`FormConfig.receipts`), so neither the
+	// pending screen nor the told notice promises a receipt nobody will send.
+	const receiptTo = config.receipts ? (saved.receiptTo ?? typedEmail ?? '') : '';
 	if (onRail.method === 'stock') {
 		const { pledged, details } = onRail;
 		return {
@@ -1302,11 +1345,11 @@ function grantRefusal(
  *
  * the two halves are asymmetric on purpose, and it is the asymmetry `Program` in
  * packages/form/src/v1.ts states from the wire's side. a `pinned` form serves the cause's name and
- * no id, so the pin is written from the row and a body carrying one is refused by
- * `parseQuoteRequest` in ./quote-input.ts before this runs — reading the body here would let a
- * client overwrite a decision it was only told about. a `choice` form serves the ids because the
- * donor picks, so the pick is what is written, already checked against the list this request was
- * served.
+ * no id, so the pin is written from the row and a body carrying one without a `pageProgramId` is
+ * refused by `parseQuoteRequest` in ./quote-input.ts before this runs — reading the body here would
+ * let a client overwrite a decision it was only told about. a `choice` form serves the ids because
+ * the donor picks, so the pick is what is written, already checked against the list this request
+ * was served.
  *
  * null on every other shape, which is a gift credited to no cause — the same thing an absent pick
  * means, and what every staff-entered gift says (`donation.program_id` in ../db/schema.ts).
@@ -1315,11 +1358,27 @@ function grantRefusal(
  * is built from this row a few lines above. the row is the narrower reading — a `choice` whose
  * options are all retired is served as no program at all, and a donor who sent nothing is written
  * null either way.
+ *
+ * a program page's `pageProgramId` outranks all three modes. it is read only after `mintQuote` has
+ * found it an active program row sent on the Donation page's form, so what is written here is
+ * never a body's unchecked id.
  */
-function creditedProgram(form: FormRecord, submission: Pick<Giver, 'programId'>): string | null {
+function creditedProgram(
+	form: FormRecord,
+	submission: Pick<Giver, 'programId' | 'pageProgramId'>
+): string | null {
+	if (submission.pageProgramId !== undefined) return submission.pageProgramId;
 	if (form.programMode === 'pinned') return form.programId;
 	if (form.programMode === 'choice') return submission.programId ?? null;
 	return null;
+}
+
+async function creditsPageProgram(db: Db, formId: string, programId: string): Promise<boolean> {
+	const [onDonationPage, found] = await Promise.all([
+		isDonationPageForm(db, formId),
+		readProgram(db, programId)
+	]);
+	return onDonationPage && found !== null && found.archivedAt === null;
 }
 
 /**

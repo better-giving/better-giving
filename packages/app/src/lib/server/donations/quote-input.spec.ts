@@ -161,8 +161,8 @@ describe('parseQuoteRequest() — the choices the form offers', () => {
 	});
 
 	/**
-	 * every rail the vocabulary holds is one this deployment offers, which is why the case above is
-	 * the only refusal a rail can draw here.
+	 * every processor rail the vocabulary holds is one this deployment offers, which is why the case
+	 * above, and a pledge rail sent here, are the only refusals a rail can draw.
 	 *
 	 * asserted rather than assumed, because the gate reads `OFFERED_PAYMENT_METHODS` in
 	 * `$lib/forms/offered-rails.ts` and that list is free to shrink. the day it does, this turns red
@@ -661,6 +661,16 @@ describe('parseQuoteRequest() — the cause the donor chose', () => {
 		const result = parseQuoteRequest(body({ programId }), choosing);
 		expect(result.ok).toBe(false);
 		expect(result.ok || result.message).toContain('programId');
+	});
+
+	it.each([
+		['null', null],
+		['a number', 12],
+		['an array', ['a']]
+	] as const)('refuses a `pageProgramId` that is %s', (_label, pageProgramId) => {
+		const result = parseQuoteRequest(body({ pageProgramId }), choosing);
+		expect(result.ok).toBe(false);
+		expect(result.ok || result.message).toContain('`pageProgramId` is');
 	});
 });
 

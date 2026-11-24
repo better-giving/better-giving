@@ -48,8 +48,9 @@ import { greetingFor } from './greeting';
 //
 // the goods-or-services sentence branches exactly three ways and one of them always prints:
 // nothing was provided; something was, with a description and a good-faith estimate of its
-// fair market value; or the only benefit was an intangible religious one. there is no fourth
-// case and no "leave it out" case — the statement is what makes the document a receipt.
+// fair market value; or the only benefit was an intangible religious one. an IRA (QCD) gift
+// prints its own sentence in their place (`QCD_GOODS_STATEMENT`). there is no "leave it out"
+// case — the statement is what makes the document a receipt.
 //
 // this is not legal advice and a tax professional reviews the final copy. that sentence
 // belongs in this comment and not in the email: a disclaimer on a receipt is a receipt a
@@ -369,10 +370,10 @@ const RAIL_LABELS: readonly string[] = [
 ];
 
 /**
- * the label column in the text arm, widened by the longest label printed rather than by a guess.
+ * the label column in the text arm: two past the longest `RECEIPT_LABELS` entry, printed or not.
  *
- * the crypto and stock labels widen it on those receipts alone, so every other receipt's column
- * stays where it was.
+ * a receipt printing any rail label is widened by every one of them, crypto's and stock's alike,
+ * so every other receipt's column stays where it was.
  */
 function labelWidth(rows: readonly RecordRow[]): number {
 	const railed = rows.some((row) => RAIL_LABELS.includes(row.label));
@@ -433,7 +434,8 @@ const MATCH_NOTE =
 	"page, including our legal name, EIN and address and this gift's date and amount:";
 
 /**
- * the goods-or-services sentence — the branch that always prints, in all three of its forms.
+ * the goods-or-services sentence in its three forms, printed on every receipt but an IRA (QCD)
+ * gift's, which prints `QCD_GOODS_STATEMENT` below instead.
  *
  * the wording follows IRS Publication 1771 closely on purpose. it is the phrasing donors'
  * accountants recognise, and "we didn't give you anything" is not the same sentence in the

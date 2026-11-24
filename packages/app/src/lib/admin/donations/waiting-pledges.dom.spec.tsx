@@ -44,7 +44,7 @@ const JAMES: WaitingPledge = {
 	told: false
 };
 
-const BOTH: Waiting = { total: 2, pledges: [MAYA, JAMES] };
+const BOTH: Waiting = { total: 2, receipts: true, pledges: [MAYA, JAMES] };
 
 function mount(tree: ReactNode): HTMLElement {
 	const root = document.createElement('div');
@@ -67,7 +67,7 @@ const recording: Answer = (body, waiting) => {
 	const pledges = waiting.pledges.filter((one) => one.id !== id);
 	const donor = waiting.pledges.find((one) => one.id === id)?.donorName ?? null;
 	return [
-		{ total: pledges.length, pledges },
+		{ total: pledges.length, receipts: waiting.receipts, pledges },
 		{
 			received: {
 				pledgeId: id,
@@ -274,9 +274,20 @@ describe('the Mark received dialog', () => {
 
 	it('promises no receipt for a pledge whose donor gave no email', async () => {
 		const { root } = await screen(
-			{ total: 1, pledges: [{ ...MAYA, donorEmail: null }] },
+			{ total: 1, receipts: true, pledges: [{ ...MAYA, donorEmail: null }] },
 			recording
 		);
+		const dialog = await open(root, 'Maya Okafor');
+		const description = document.getElementById(dialog.getAttribute('aria-describedby') ?? '');
+
+		expect(description?.querySelector('p')?.textContent).toBe(
+			'50 shares of AAPL from Maya Okafor, reference CFCP-AAPL-7Q2D.'
+		);
+		expect(dialog.textContent).not.toContain('receipt');
+	});
+
+	it('promises no receipt where this deployment sends no mail', async () => {
+		const { root } = await screen({ ...BOTH, receipts: false }, recording);
 		const dialog = await open(root, 'Maya Okafor');
 		const description = document.getElementById(dialog.getAttribute('aria-describedby') ?? '');
 
@@ -314,7 +325,7 @@ describe('the Mark received dialog', () => {
 	});
 
 	it('closes onto the gifts table when the last pledge is marked', async () => {
-		const { root, posted } = await screen({ total: 1, pledges: [MAYA] }, recording);
+		const { root, posted } = await screen({ ...BOTH, total: 1, pledges: [MAYA] }, recording);
 		const dialog = await open(root, 'Maya Okafor');
 		await fill(dialog);
 		await markReceived(dialog, posted);
@@ -464,7 +475,7 @@ describe('the line a landed Mark received leaves', () => {
 	});
 
 	it('names the gift recorded, and stays after the last pledge takes the card with it', async () => {
-		const { root, posted } = await screen({ total: 1, pledges: [MAYA] }, recording);
+		const { root, posted } = await screen({ ...BOTH, total: 1, pledges: [MAYA] }, recording);
 		const dialog = await open(root, 'Maya Okafor');
 		await fill(dialog);
 		await markReceived(dialog, posted);

@@ -15,6 +15,7 @@ import {
 import type { BatchItem } from 'drizzle-orm/batch';
 import { uuidv7 } from 'uuidv7';
 import type { Db } from '../db/client';
+import { inPage } from '../db/id-set';
 import { type TimeWindow, withinWindow } from '../ledger/queries';
 import { overMonths, type MonthlyRun } from '../months';
 import {
@@ -719,10 +720,11 @@ export async function readContactNames(
  * that each say what their caller needs is the shape that keeps that true as a third caller
  * arrives.
  *
- * every rule the names read is under holds here too, for the same reasons stated there: an empty
- * list is answered without a query, `ids` is one bound parameter each against D1's cap of 100, and
- * archived contacts are included — a soft delete hides a donor from the donor file and does not
- * unmake the commitment they made.
+ * two rules the names read is under hold here too, for the same reasons stated there: an empty list
+ * is answered without a query, and archived contacts are included — a soft delete hides a donor from
+ * the donor file and does not unmake the commitment they made. `ids` is bound as one parameter
+ * (`inPage` in ../db/id-set.ts), so a caller may pass any number: the waiting pledges on Gifts are
+ * every one there is (`listWaitingPledges` in ../donations/pledges.ts).
  *
  * `primaryEmail` is `null` for a donor nobody has an address for, and that is a state /admin draws
  * rather than one it filters: a recurring gift is reachable through the deployment's own records
@@ -743,7 +745,7 @@ export async function readContactSummaries(
 			primaryEmail: contact.primaryEmail
 		})
 		.from(contact)
-		.where(inArray(contact.id, [...ids]));
+		.where(inPage(contact.id, ids));
 
 	return new Map(rows.map(({ id, ...summary }) => [id, summary]));
 }

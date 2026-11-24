@@ -144,8 +144,47 @@
   text-decoration: none;
 }
 
+/* with a name box in it the mark shrinks before the links do and stops growing
+   at 28rem from 40rem: a long name truncates rather than wrap, because a
+   wrapped name would grow the bar and break --ds-bar-h, which page-state
+   centres by. a mark with no name box (1.2.2's markup, the name as bare text)
+   is left as it was: none of this applies to it */
+.ds-site-nav-brand:has(> .ds-site-nav-name) {
+  flex: 0 1 auto;
+  gap: calc(var(--ds-spacing) * 2);
+  min-inline-size: 0;
+}
+@media (width >= 40rem) {
+  .ds-site-nav-brand:has(> .ds-site-nav-name) {
+    max-inline-size: calc(var(--ds-spacing) * 112);
+  }
+}
+/* the logo: 32px high, 10rem wide at most, contained, on the row's corner */
+.ds-site-nav-logo {
+  flex: none;
+  block-size: calc(var(--ds-spacing) * 8);
+  inline-size: auto;
+  max-inline-size: calc(var(--ds-spacing) * 40);
+  border-radius: var(--radius);
+  object-fit: contain;
+}
+/* the name: one line, cut with an ellipsis. hidden, not clip: an older Safari
+   draws no ellipsis on a clipped box. keep the full name in the page's h1 */
+.ds-site-nav-name {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .ds-site-nav-links {
   block-size: 100%;
+}
+/* the links and the end of the bar keep their size when the mark has a name
+   box to give way instead */
+.ds-site-nav-bar:has(.ds-site-nav-name)
+> :is(.ds-site-nav-links, .ds-site-nav-end) {
+  flex: none;
 }
 .ds-site-nav-links ul {
   display: flex;
@@ -206,6 +245,24 @@
 @media (width >= 40rem) {
   .ds-site-nav:not(.ds-site-nav-fold-nav) .ds-site-nav-toggle,
   .ds-site-nav:not(.ds-site-nav-fold-nav) .ds-site-nav-menu {
+    display: none;
+  }
+}
+
+/* one link, no actions and no account: nothing to fold, so under 640px the
+   link stays in the bar at 12px a side and the menu button and its panel are
+   gone. from 640px the rules above already do this. a bar with a second link,
+   an action or an account folds as before */
+@media (width < 40rem) {
+  .ds-site-nav-solo .ds-site-nav-links {
+    display: block;
+  }
+  .ds-site-nav-solo .ds-site-nav-link {
+    padding-inline: calc(var(--ds-spacing) * 3);
+    white-space: nowrap;
+  }
+  .ds-site-nav-solo .ds-site-nav-toggle,
+  .ds-site-nav-solo .ds-site-nav-menu {
     display: none;
   }
 }

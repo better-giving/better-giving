@@ -11,7 +11,7 @@
 // opening the row is choosing the rail, where the rows beside it choose by their own button: the box
 // inside is the rest of the choice. so the rail is reported when the row opens and taken back when it
 // closes, whoever closes it. `stock`, the other pledge rail, has no row: its ticker is picked on the
-// first step.
+// first step and saved by the details step's own press (`steer` in ../element.ts).
 
 import type { CheckoutPorts } from '../ports';
 import { PAYMENT_METHOD_LABELS, type PaymentMethod } from '../v1';

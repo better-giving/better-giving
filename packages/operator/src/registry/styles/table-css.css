@@ -1,15 +1,16 @@
 /* the registry's data table as plain css, no tailwind: the `.table` shell,
    header row, row dividers, hover and figure columns of the `tokens` item, the
    load-more row, and the `table` item's scroll region with its pinned first
-   column and its row headers. reads only the variables the `variables` item
+   column, its optional pinned last column, and its row headers. reads only the variables the `variables` item
    declares. table-css.test.tsx renders the React table beside it and asserts
    the same computed look in light and dark, for the default and example
    themes.
 
    the spacing step, the type size, the weights and the scrollbar width live
    only in tailwind's theme; they are declared here under ds- names with the
-   same values, and the test holds them equal. 40rem in the media query is
-   tailwind's sm, written out because a query cannot read a variable. */
+   same values, and the test holds them equal. 40rem and 48rem in the media
+   queries are tailwind's sm and md, written out because a query cannot read a
+   variable. */
 .ds-table {
   --ds-spacing: calc(0.25 * var(--ds-rem, 1rem));
   --ds-text-xs: calc(0.75 * var(--ds-rem, 1rem));
@@ -185,10 +186,11 @@
 }
 
 /* the first column pinned on the card's fill; the header's and a hovered
-   row's pinned cell keep their row's fill. a footer row of one cell is not
-   part of it (below); `:where` keeps the exclusion from outranking the
+   row's pinned cell keep their row's fill. a body or footer row of one cell
+   is not part of it (below); `:where` keeps the exclusion from outranking the
    header's and the hover's fill */
-.ds-table-scroll :is(th, td):first-child:not(:where(tfoot > tr > :only-child)) {
+.ds-table-scroll
+:is(th, td):first-child:not(:where(:is(tbody, tfoot) > tr > :only-child)) {
   position: sticky;
   inset-inline-start: 0;
   z-index: 1;
@@ -206,22 +208,22 @@
    the edge: the cue that more is off-screen */
 @media (width < 40rem) {
   .ds-table-scroll
-    :is(th, td):first-child:not(:where(tfoot > tr > :only-child)) {
+    :is(th, td):first-child:not(:where(:is(tbody, tfoot) > tr > :only-child)) {
     min-inline-size: calc(var(--ds-spacing) * 44);
   }
 }
 
-/* a footer row of one cell (load-more): as wide as the table, that cell cannot
-   stick, and its centred label sits mid-table, off a phone's screen. its child
+/* a body or footer row of one cell (the empty row, load-more): as wide as the
+   table, that cell cannot stick, and its centred label sits mid-table, off a phone's screen. its child
    is pinned instead, at the frame's visible width (100cqi: the frame is the
    inline-size container), so it stays in view at any scroll. a cell with an
    element child keeps no padding: inline padding would push that width past
    the frame's edge; a cell of text alone (a note) keeps its padding.
    `:has(> *)` adds no specificity */
-.ds-table-scroll tfoot > tr > :only-child:has(> *) {
+.ds-table-scroll :is(tbody, tfoot) > tr > :only-child:has(> *) {
   padding: 0;
 }
-.ds-table-scroll tfoot > tr > :only-child > * {
+.ds-table-scroll :is(tbody, tfoot) > tr > :only-child > * {
   position: sticky;
   inset-inline-start: 0;
   inline-size: 100cqi;
@@ -229,8 +231,29 @@
 /* flush with the frame's edges, which clip an outer ring: the 2px ring is
    drawn 2px in from the child's edges, as site-nav-css draws its full-height
    links' */
-.ds-table-scroll tfoot > tr > :only-child > :focus-visible {
+.ds-table-scroll :is(tbody, tfoot) > tr > :only-child > :focus-visible {
   outline-style: solid;
   outline-width: 2px;
   outline-offset: -4px;
+}
+
+/* the last column (a row's actions) pinned at the end from md, on the card's
+   fill and the header's panel, with a hairline on its start edge: the cut-off
+   cell beside it would otherwise run into it. the row hover above outranks the
+   fill here, so a hovered row's cell tints with the rest. under md it scrolls
+   with the rest; a row of one cell is left out, as from the first column */
+@media (width >= 48rem) {
+  .ds-table-scroll-pin-end
+    :is(th, td):last-child:not(:where(:is(tbody, tfoot) > tr > :only-child)) {
+    position: sticky;
+    inset-inline-end: 0;
+    z-index: 1;
+    background-color: var(--card);
+    border-inline-start-width: 1px;
+    border-inline-start-style: solid;
+    border-inline-start-color: var(--hairline);
+  }
+  .ds-table-scroll-pin-end thead th:last-child {
+    background-color: var(--panel);
+  }
 }

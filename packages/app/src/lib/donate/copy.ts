@@ -268,7 +268,7 @@ export function mandateNote(org: string, total: string): string {
 export const USE_DIFFERENT_METHOD = 'Use a different payment method';
 
 /**
- * who a donor on a given rail is waiting on, which is four answers rather than eight.
+ * who a donor on a given rail is waiting on, which is five answers rather than one per rail.
  *
  * the wallets are a card presented differently and wait on the same issuer; the two hosted-window
  * rails wait on the processor whose window opened, and there the word a donor read on the button is
@@ -601,6 +601,35 @@ export const CAMPAIGN_ENDED_THANKS = 'Thank you to everyone who gave.';
 export function donateTo(orgName: string | null): string {
 	return orgName === null ? 'Donate' : `Donate to ${orgName}`;
 }
+
+// ── the program page ─────────────────────────────────────────────────────────────────────────
+//
+// one program's public page ($lib/donate/program-page.tsx), and the screen an archived or unknown
+// program gets in its place, which names no program.
+
+export const PROGRAM_EYEBROW = 'Program';
+export const PROGRAM_OF = 'A program of';
+export const PROGRAM_EIN = 'EIN';
+export function giveToProgram(name: string): string {
+	return `Give to ${name}`;
+}
+export const PROGRAM_SHARE_HEADING = 'Share this program';
+export const PROGRAM_CLOSED_TITLE = 'This program isn’t taking gifts';
+export function programClosedBody(orgName: string): string {
+	// a name often ends in a mark that already closes the sentence ("Inc.", "Hope Now!").
+	const stop = /[.!?]$/.test(orgName) ? '' : '.';
+	return `Gifts to it are closed, or the link isn’t right. You can still give to ${orgName}${stop}`;
+}
+export const PROGRAM_CLOSED_ACTION = 'Go to the donate page';
+/**
+ * the card's word on a program page whose program closed after the page was drawn, the sentence
+ * read as `before`, `link`, `after` with `link` drawn as a link to the donate page.
+ */
+export const PROGRAM_STOPPED = {
+	before: 'This program stopped taking gifts. You can still give on the ',
+	link: 'donate page',
+	after: '.'
+} as const;
 
 // ── the gift page ────────────────────────────────────────────────────────────────────────────
 //

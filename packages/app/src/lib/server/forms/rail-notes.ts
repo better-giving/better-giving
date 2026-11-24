@@ -6,11 +6,12 @@ import { PROCESSOR_LABELS, type ProcessorName } from '../payments/provider';
 
 // what the donation-form editor says under a way of paying this deployment cannot charge.
 //
-// no screen chooses a rail — every form offers `OFFERED_PAYMENT_METHODS` in
-// `$lib/forms/offered-rails.ts` — and the mistake it exists to answer survives that: a rail the
-// account cannot charge is still offered to a donor, the operator finds out from a donor whose
-// payment failed, and the only screen that can fix it belongs to the processor. so the sentence
-// stands under the rails the editor states rather than in a block at the top of the page.
+// no screen chooses a rail for a form — every form offers `OFFERED_PAYMENT_METHODS` in
+// `$lib/forms/offered-rails.ts`, and the pledge rails Payments has on, stock once a ticker list is
+// held — and the mistake it exists to answer survives that: a rail the account cannot charge is
+// still offered to a donor, the operator finds out from a donor whose payment failed, and the only
+// screen that can fix it belongs to the processor. so the sentence stands under the rails the
+// editor states rather than in a block at the top of the page.
 //
 // it renames nothing and decides nothing about an account: ../payments/rail-chargeability.ts owns
 // which standing a rail is in, and the only job here is the words. that file's header states the

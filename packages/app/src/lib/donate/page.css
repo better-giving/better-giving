@@ -338,6 +338,14 @@ body {
 	/* the entry card's widest, where it stands under a campaign or the Donation page's own layout. */
 	--page-fundraise-width: 44rem;
 	--page-fundraise-inset: 1.25rem 1.5rem;
+	/* a program's page (./program-page.tsx), at a phone's sizes; the wide ones are under 60rem
+	   below. `--page-program-lead` is the site nav to the photo, `--page-program-photo` the square
+	   photo's widest and `--page-program-photo-gap` the space under it, and
+	   `--page-program-rule-gap` the space between the rule over the organisation and its row. */
+	--page-program-lead: 1.5rem;
+	--page-program-photo: 20rem;
+	--page-program-photo-gap: 1.5rem;
+	--page-program-rule-gap: 1.5rem;
 	/* the gift page's details from 30rem: the label column's floor, so the longest label stands a
 	   column's width off its value. */
 	--page-detail-label: 10rem;
@@ -366,6 +374,8 @@ body {
 		--page-profile-banner-ratio: 4 / 1;
 		--page-profile-name-long: 1.875rem;
 		--page-profile-lh-name-long: 2.25rem;
+		--page-program-lead: 3.5rem;
+		--page-program-photo-gap: 1.75rem;
 	}
 }
 
@@ -644,13 +654,23 @@ body {
  * button sheet, which this sheet's link ring would otherwise outrank.
  */
 
-.page-ground :where(h1, h2, h3, p, ul, ol, figure) {
+/* the benefits panel's fine print keeps the form's space above it (`.benefits-fine` in its
+   parts.css), a rule this one ties on specificity and would override by loading later. */
+.page-ground :where(h1, h2, h3, p:not(.benefits-fine), ul, ol, figure) {
 	margin: 0;
 }
 
 .page-ground a {
 	color: var(--page-accent);
 	text-underline-offset: 0.15em; /* raw-length-ok: a text metric, so it follows the words' own size. */
+}
+
+/* a link drawn as the registry's secondary press anywhere under the ground (the entry card's, a
+   pledge's emailed instructions in ./takeover.tsx, the supporter area's) takes back
+   `ds-btn-secondary`'s ink, gray 12, which the form names `--_n12`.
+   level with the rule above and after it, so the registry's disabled and busy gray still outrank it. */
+.page-ground a:where(.ds-btn-secondary) {
+	color: var(--_n12);
 }
 
 .page-ground a:not(.ds-btn):focus-visible,
@@ -1309,6 +1329,130 @@ body {
 	text-wrap: balance;
 }
 
+/* ── a program's page (./program-page.tsx) ── */
+
+/* on a phone the program, then the card under its heading, a group's step apart; from 60rem the
+   card stands in the box's column beside the program, both from the top. the heading over the card
+   is the profile head's (`.page-profile-box-heading`) and the name is drawn at the profile head's
+   sizes, its hero size from 60rem. */
+.page-body.page-program {
+	padding-block-start: var(--page-program-lead);
+}
+
+.page-program-layout {
+	display: flex;
+	flex-direction: column;
+	gap: var(--page-gap-group);
+}
+
+.page-program-layout > * {
+	min-inline-size: 0;
+}
+
+/* square, as the program editor crops it, on a cover's sunken well until the bytes arrive. */
+.page-program-photo {
+	box-sizing: border-box;
+	aspect-ratio: 1;
+	inline-size: 100%;
+	max-inline-size: var(--page-program-photo);
+	margin-block-end: var(--page-program-photo-gap);
+	overflow: hidden;
+	background: var(--_n3);
+	border: var(--_border) solid var(--page-plane-edge);
+	border-radius: var(--page-plane-radius);
+}
+
+.page-program-name {
+	overflow-wrap: anywhere;
+	font-family: var(--page-font-display);
+	font-size: var(--page-profile-name);
+	line-height: var(--page-profile-lh-name);
+	letter-spacing: var(--page-tracking-display);
+	font-weight: var(--page-w-display);
+	text-wrap: balance;
+}
+
+/* paragraphs a step apart, the body step on a phone and the large step from 60rem, each sized on
+   the paragraph so the steps between them stay the column's own. */
+.page-program-description {
+	overflow-wrap: anywhere;
+	display: flex;
+	flex-direction: column;
+	gap: var(--_sp4);
+	max-inline-size: var(--page-profile-measure);
+	margin-block-start: var(--_sp4);
+	line-height: var(--page-lh-prose);
+	text-wrap: pretty;
+}
+
+.page-program-description > p {
+	font-size: var(--_t-md);
+}
+
+/* who runs it, a group's step under the words and set off by a separator. */
+.page-program-org {
+	display: flex;
+	align-items: center;
+	gap: var(--_sp4);
+	margin-block-start: var(--page-gap-group);
+	padding-block-start: var(--page-program-rule-gap);
+	border-block-start: var(--_border) solid var(--page-plane-edge);
+}
+
+.page-program-of {
+	font-size: var(--_t-xs);
+	line-height: var(--page-profile-lh-xs);
+	color: var(--page-quiet);
+}
+
+.page-program-org-name {
+	overflow-wrap: anywhere;
+	font-weight: var(--_w-bold);
+	line-height: var(--_lh-tight);
+}
+
+.page-program .page-profile-box-heading {
+	overflow-wrap: anywhere;
+}
+
+@container page (min-width: 60rem) {
+	.page-program-layout {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) var(--page-box);
+		column-gap: var(--page-col-gap);
+		align-items: start;
+	}
+
+	.page-program-name {
+		font-size: var(--page-profile-name-hero);
+		line-height: var(--page-profile-lh-name-hero);
+	}
+
+	.page-program-description > p {
+		font-size: var(--_t-lg);
+	}
+}
+
+/* the closed screen: the registry's page state fills the ground between the site nav and the
+   footer, as it fills an app shell's `main` (page-state-css.usage.md), so the footer stands at the
+   window's foot. its one action is a link drawn as the registry's primary press, which takes the
+   press's ink, the generated `--_on-p`, over the page's link ink. */
+.page-ground:has(> .page-closed) {
+	display: flex;
+	flex-direction: column;
+}
+
+.page-closed {
+	--ds-page-min: 0px;
+	display: flex;
+	flex: 1 0 auto;
+	flex-direction: column;
+}
+
+.page-ground .page-closed a.ds-btn-primary {
+	color: var(--_on-p);
+}
+
 /* the box and, where donors choose a program, the chooser over it: one column of its own. */
 .page-profile-rail {
 	display: flex;
@@ -1706,11 +1850,6 @@ body {
 
 .page-fundraise-act > .ds-btn {
 	inline-size: 100%;
-}
-
-/* `ds-btn-secondary`'s ink, gray 12, which the form names `--_n12`. */
-.page-ground .page-fundraise-act > a.ds-btn {
-	color: var(--_n12);
 }
 
 .page-fundraise-note {

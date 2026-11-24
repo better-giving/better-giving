@@ -69,7 +69,8 @@ export function isPledgeRail(rail: PaymentMethod): rail is PledgeRail {
 }
 
 /**
- * the rail the donor was quoted on, as its own processor's name for it.
+ * the rail the donor was quoted on, as its own processor's name for it, or as the rail's own name on
+ * a pledge rail, which no processor settles.
  *
  * total over `PaymentMethod`, so a rail added to `PAYMENT_METHODS` in ../v1.ts without a name
  * here is a compile error rather than an element group collecting details the intent cannot be
