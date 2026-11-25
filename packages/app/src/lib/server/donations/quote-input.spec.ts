@@ -834,7 +834,7 @@ describe('parseQuoteRequest() — a contribution, which this deployment cannot t
 /** a config serving a sponsor and a contribution offer, which does not make one takeable here. */
 const OFFERING: FormConfig = {
 	...CONFIG,
-	sponsor: { legalName: 'Better Giving Fiscal Sponsorship Inc.', ein: '98-7654321' },
+	sponsor: { legalName: 'Better Giving Fiscal Sponsorship Inc.', ein: CONFIG.ein },
 	contribution: { options: [0.1, 0.15, 0.2], startsAt: 0.15 }
 };
 
