@@ -148,6 +148,8 @@ const CONFIG: FormConfig = {
 type Answers = {
 	readonly confirm?: () => Promise<unknown>;
 	readonly retrieve?: () => Promise<unknown>;
+	/** `false` is Stripe.js failing to load: the seam's loader resolves no namespace. */
+	readonly loads?: boolean;
 };
 
 /** the payment provider, as a plain object, with the one report the flow needs off it. */
@@ -175,7 +177,7 @@ function paymentProvider(answers: Answers = {}) {
 		retrievePaymentIntent: answers.retrieve ?? (async () => ({}))
 	} as unknown as StripeLike;
 	return {
-		load: async () => stripe,
+		load: async () => (answers.loads === false ? null : stripe),
 		pick: (type: string) => {
 			act(() => {
 				for (const handler of [...change]) {
@@ -2779,10 +2781,14 @@ describe('what the donor gives, on the first step', () => {
 			(disc) => disc.querySelector('img')?.getAttribute('src') ?? ''
 		);
 
-	/** a card on the everything deployment with AAPL picked, as a donor searches for it. */
-	async function giveStock(pledge: StockPledge | null = null) {
+	/** a card on the everything deployment, or `config`, with AAPL picked, as a donor searches for it. */
+	async function giveStock(
+		pledge: StockPledge | null = null,
+		config: FormConfig = WITH_EVERYTHING,
+		answers: Answers = {}
+	) {
 		const asked = deployment(pledge);
-		const { root } = await card(WITH_EVERYTHING);
+		const { root } = await card(config, answers);
 		press(pill(root));
 		await act(async () => {});
 		const box = unitPanel(root).querySelector('[role="combobox"]') as HTMLInputElement;
@@ -3069,6 +3075,32 @@ describe('what the donor gives, on the first step', () => {
 		expect(asked.saves).toHaveLength(1);
 	});
 
+	// a stock pledge reaches no processor, so the card's being down leaves it standing
+	// (`givesInKindWithoutBox` in @better-giving/form/machine).
+	it('goes from a stock to the pending screen with the card processor’s script failing to load', async () => {
+		const { root, asked } = await giveStock(
+			{
+				method: 'stock',
+				reference: 'ACME-AAPL-7Q2D',
+				receiptTo: 'donor@example.org',
+				ticker: 'AAPL',
+				shares: '50',
+				deliverTo: 'Harbor Street Securities',
+				dtcNumber: '0164',
+				accountNumber: 'Z12-345678',
+				accountName: 'Helping Hands'
+			},
+			{ ...CONFIG, paymentMethods: ['card', 'stock'] },
+			{ loads: false }
+		);
+		type(quantity(root), '50');
+
+		await throughDetails(root);
+
+		expect(one(screen(root), 'h2').textContent).toBe('Your stock gift is pending');
+		expect(asked.saves).toHaveLength(1);
+	});
+
 	// the route renders the card on the server from `initialSnapshot` (./machine.ts) and the client's
 	// first render reads the same snapshot, so what each draws of the first step is one tree.
 	it('serves the pill in the html, hydrates it unchanged, and mounts the panel on the client alone', async () => {
@@ -3264,6 +3296,145 @@ describe('a crypto gift', () => {
 		type(quantity(root), '25');
 		await priced();
 		expect(quantity(root).hasAttribute('aria-invalid')).toBe(false);
+	});
+
+	/**
+	 * the deployment with its estimate answering each read from `answers` in turn, the last of them
+	 * every read after; `asked` counts the reads. every other request answers that the gift is waiting.
+	 */
+	function pricing(...answers: ReadonlyArray<() => Response>) {
+		const server = { asked: 0 };
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (url: string) => {
+				if (!url.includes('/estimate?')) return json({ state: 'waiting' });
+				const answer = answers[Math.min(server.asked, answers.length - 1)];
+				server.asked += 1;
+				if (answer === undefined) throw new Error('no estimate answer given');
+				return answer();
+			})
+		);
+		return server;
+	}
+
+	/** the first step's Continue, given the turns the step after it takes to show. */
+	async function onward(root: HTMLElement): Promise<void> {
+		await act(async () => {
+			one(root, CONTINUE).click();
+			for (let at = 0; at < 4; at += 1) await Promise.resolve();
+		});
+	}
+
+	const PRICE_FAILURES = [
+		[
+			'is refused',
+			() => {
+				throw new TypeError('offline');
+			}
+		],
+		['answers no price', () => json({ estimateMinor: null })]
+	] as const;
+
+	// a failed check is no answer (`isPricedAt` in @better-giving/form/machine), so the donor asking for
+	// the same amount again is a new check rather than the old failure read back.
+	describe('a coin amount whose price check failed', () => {
+		it.each(PRICE_FAILURES)(
+			'is priced again when retyped, where the check %s',
+			async (_, fails) => {
+				const server = pricing(fails, () => json({ estimateMinor: 2500 }));
+				const { root } = await card(CRYPTO);
+				await give(root, 'coin:usdttrc20');
+				type(quantity(root), '25');
+				await priced();
+				await onward(root);
+				expect(onFirstStep(root)).toBe(true);
+
+				type(quantity(root), '');
+				type(quantity(root), '25');
+				await priced();
+
+				expect(server.asked).toBe(2);
+				await onward(root);
+				expect(onFirstStep(root)).toBe(false);
+			}
+		);
+
+		// the panel hands on a pick of the row already picked (`onSelect` in @better-giving/form/unit-panel).
+		it.each(PRICE_FAILURES)(
+			'is priced again when the coin is picked again, where the check %s',
+			async (_, fails) => {
+				const server = pricing(fails, () => json({ estimateMinor: 2500 }));
+				const { root } = await card(CRYPTO);
+				await give(root, 'coin:usdttrc20');
+				type(quantity(root), '25');
+				await priced();
+				await onward(root);
+				expect(onFirstStep(root)).toBe(true);
+
+				await give(root, 'coin:usdttrc20');
+				await priced();
+
+				expect(server.asked).toBe(2);
+				await onward(root);
+				expect(onFirstStep(root)).toBe(false);
+			}
+		);
+	});
+
+	// a coin amount priced outside the bounds is refused as the currency's amount is (`AmountDecision`
+	// in @better-giving/form/value), so it takes the same sentence, on the one box it was typed in.
+	it.each([
+		['0.00001', 95],
+		['0.0000001', 0]
+	])('refuses %s priced at %i cents with the range sentence on its box', async (amount, minor) => {
+		pricing(
+			() => json({ estimateMinor: minor }),
+			() => json({ estimateMinor: 2500 })
+		);
+		const { root } = await card(CRYPTO);
+		await give(root, 'coin:usdttrc20');
+		type(quantity(root), amount);
+		await priced();
+
+		await onward(root);
+
+		expect(onFirstStep(root)).toBe(true);
+		expect(document.activeElement).toBe(quantity(root));
+		expect(one(root, '#amount-problem').hidden).toBe(false);
+		expect(one(root, '#amount-problem').textContent).toBe(
+			copy.amountProblem((figure) => formatOffer(figure, 'en-US', 'usd'), 500, 500000)
+		);
+		expect(quantity(root).getAttribute('aria-describedby')).toBe('amount-problem');
+		expect(quantity(root).getAttribute('aria-invalid')).toBe('true');
+		expect(quantity(root).closest('[part~="amount-input"]')?.getAttribute('part')).toContain(
+			'invalid'
+		);
+
+		await onward(root);
+		expect(onFirstStep(root)).toBe(true);
+
+		type(quantity(root), '25');
+		await priced();
+		expect(one(root, '#amount-problem').hidden).toBe(true);
+		expect(quantity(root).hasAttribute('aria-invalid')).toBe(false);
+		expect(quantity(root).closest('[part~="amount-input"]')?.getAttribute('part')).not.toContain(
+			'invalid'
+		);
+	});
+
+	it('drops the range sentence from a box emptied after a refusal, and keeps it marked', async () => {
+		pricing(() => json({ estimateMinor: 95 }));
+		const { root } = await card(CRYPTO);
+		await give(root, 'coin:usdttrc20');
+		type(quantity(root), '0.00001');
+		await priced();
+		await onward(root);
+
+		type(quantity(root), '');
+
+		expect(one(root, '#amount-problem').hidden).toBe(true);
+		expect(quantity(root).hasAttribute('aria-describedby')).toBe(false);
+		expect(quantity(root).getAttribute('aria-invalid')).toBe('true');
 	});
 
 	it('keeps the amount sentence for a gift in the currency', async () => {
@@ -3760,6 +3931,63 @@ describe('a crypto gift', () => {
 			expect(onFirstStep(root)).toBe(true);
 			expect(document.activeElement).toBe(one(screen(root), 'h2'));
 			expect(server.quotes).toEqual([]);
+		});
+	});
+
+	// the payment surface reads Stripe.js resolving nothing as the card processor down and says so once
+	// (`sayWhatIsLeft` in @better-giving/form/embed/surface), and the flow decides what that leaves.
+	describe('with the card processor’s script failing to load', () => {
+		/** the sentence @better-giving/form/embed/stripe says when its fields never came up. */
+		const NO_FIELDS =
+			'The payment details on this form did not load, and nothing was charged. Reload the page ' +
+			'to try again.';
+
+		it('keeps the first step, and takes a coin through the review to its address', async () => {
+			const server = deployment(() => json(USDT));
+			const { root } = await card(CRYPTO, { loads: false });
+			expect(onFirstStep(root)).toBe(true);
+			await give(root, 'coin:usdttrc20');
+			type(quantity(root), '25');
+			await priced();
+
+			await throughDetails(root);
+
+			expect(screen(root).className).toContain('step-give');
+			expect(input(root, '.step-give .fee-decision input[type="checkbox"]').checked).toBe(true);
+
+			await throughReview(root);
+
+			expect(one(screen(root), 'h2').textContent).toBe(copy.SEND_HEADING);
+			expect(server.quotes).toMatchObject([{ method: 'crypto', coin: 'usdttrc20' }]);
+		});
+
+		it('refuses a gift of money on reaching the review step, and goes back to step 1 on Try again', async () => {
+			const server = deployment(() => json(USDT));
+			const { root } = await card(CRYPTO, { loads: false });
+
+			await walkToGive(root);
+
+			const failed = screen(root);
+			expect(failed.className).toContain('takeover');
+			expect(one(failed, 'h2').textContent).toBe(copy.FAILED_HEADING);
+			expect(one(failed, ':scope > .message').textContent).toBe(NO_FIELDS);
+			const primary = one(failed, ':scope > button[part~="action"]');
+			expect(primary.textContent).toBe(copy.TRY_AGAIN);
+
+			press(primary);
+
+			expect(onFirstStep(root)).toBe(true);
+			expect(server.quotes).toEqual([]);
+		});
+
+		it('ends the card with the same sentence on a form that offers the card alone', async () => {
+			deployment(() => json(USDT));
+			const { root } = await card(CONFIG, { loads: false });
+
+			const failed = screen(root);
+			expect(failed.className).toContain('takeover');
+			expect(one(failed, 'h2').textContent).toBe(copy.FAILED_HEADING);
+			expect(one(failed, ':scope > .message').textContent).toBe(NO_FIELDS);
 		});
 	});
 });

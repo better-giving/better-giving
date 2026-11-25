@@ -137,10 +137,12 @@ export function AmountStep({
 	const amountDescribed = amountWords === '' ? undefined : 'amount-problem';
 	// what the donor gives, as `connect` words it: a coin or a share count takes one box in the tiles'
 	// place (`unitEntry` is null on a gift in the currency), and a refusal of its amount is marked on
-	// that box the way a missing one is. a missing one is marked with no sentence: the bounds sentence
-	// is the currency's (`AmountDecision` in @better-giving/form/value).
+	// that box the way a missing one is. a missing one is marked with no sentence, and a coin amount
+	// priced outside the bounds with the bounds sentence, which is the currency's (`AmountDecision` in
+	// @better-giving/form/value).
 	const { pill, entry: unitEntry, cadenceNote, next } = api.unit;
-	const quantityRefused = unitEntry !== null && (missing.includes('quantity') || refusedAmount);
+	const quantityRefused =
+		unitEntry !== null && (missing.includes('quantity') || missingAmount || refusedAmount);
 	/** the Continue toward the payment step, or `null` on a gift in kind, which chooses no method. */
 	const toPayment = next.case === 'in-kind' ? null : next;
 
