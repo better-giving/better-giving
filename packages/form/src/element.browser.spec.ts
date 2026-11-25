@@ -1522,6 +1522,51 @@ describe('the first step’s unit pill and Continue', () => {
 		expect(pillOf(root).getAttribute('aria-expanded')).toBe('false');
 	});
 
+	// a host page may put the form inside a closed shadow root of its own. a press there reaches a
+	// listener on the document with a path that stops at that root's host, short of the panel.
+	it('keeps the panel open on a press in its box and picks a row, inside a closed shadow root', async () => {
+		const outer = document.createElement('div');
+		document.body.appendChild(outer);
+		planted.push(outer);
+		const closedRoot = outer.attachShadow({ mode: 'closed' });
+		const root = shadow(await mount(WITH_CRYPTO, { ports: PRICED, parent: closedRoot }));
+		// a locator cannot reach into a closed root, so the press is a real one at the node's centre,
+		// aimed through the page's root element, and the engine's hit test finds the node.
+		const press = async (node: HTMLElement) => {
+			const at = node.getBoundingClientRect();
+			const origin = document.documentElement.getBoundingClientRect();
+			await page.elementLocator(document.documentElement).click({
+				position: {
+					x: at.left + at.width / 2 - origin.left,
+					y: at.top + at.height / 2 - origin.top
+				}
+			});
+			await frames();
+		};
+		const dialog = () => {
+			const node = panelOf(root).querySelector<HTMLElement>('[role="dialog"]');
+			if (node === null) throw new Error('no unit panel dialog');
+			return node;
+		};
+
+		await press(pillOf(root));
+		expect(dialog().matches(':popover-open')).toBe(true);
+		const box = panelOf(root).querySelector<HTMLElement>('input');
+		if (box === null) throw new Error('no search box');
+		await press(box);
+
+		expect(dialog().matches(':popover-open')).toBe(true);
+		expect(pillOf(root).getAttribute('aria-expanded')).toBe('true');
+
+		const btc = panelOf(root).querySelector<HTMLElement>('[role="option"][data-value="coin:btc"]');
+		if (btc === null) throw new Error('no bitcoin row');
+		await press(btc);
+
+		expect(pillOf(root).getAttribute('aria-label')).toBe('Crypto: BTC');
+		expect(pillOf(root).getAttribute('aria-expanded')).toBe('false');
+		expect(dialog().matches(':popover-open')).toBe(false);
+	});
+
 	it('draws the pill 28px tall, centred in the 36px line, its discs 14px a quarter over each other', async () => {
 		const root = shadow(await mount(WITH_STOCK, { ports: PLEDGES }));
 		const pill = pillOf(root).getBoundingClientRect();

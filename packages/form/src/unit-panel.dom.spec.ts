@@ -68,15 +68,21 @@ type Mount = {
 	readonly choice?: Partial<UnitChoice>;
 	/** what the ticker read answers for a query; a throw is a search that could not be made. */
 	readonly answer?: (query: string) => Promise<readonly TickerMatch[]>;
+	/** where the pill, the field and the panel's host go; the page's body unless a test says. */
+	readonly within?: ParentNode;
 };
 
-function mounted({ choice: overrides = {}, answer = async () => STOCKS }: Mount = {}) {
+function mounted({
+	choice: overrides = {},
+	answer = async () => STOCKS,
+	within = document.body
+}: Mount = {}) {
 	const picked: string[] = [];
 	const closed: { restoreFocus: boolean }[] = [];
 	const asked: string[] = [];
 	const pill = document.createElement('button');
 	const field = document.createElement('div');
-	document.body.append(pill, field);
+	within.append(pill, field);
 	const panel = createUnitPanel(document, {
 		searchTickers: (query) => {
 			asked.push(query);
@@ -85,7 +91,7 @@ function mounted({ choice: overrides = {}, answer = async () => STOCKS }: Mount 
 		onClose: (detail) => closed.push(detail)
 	});
 	panels.push(panel);
-	document.body.appendChild(panel.host);
+	within.appendChild(panel.host);
 	let choice: UnitChoice = {
 		value: '',
 		search: 'Search currency, crypto or stock',
@@ -404,6 +410,36 @@ describe('the unit panel', () => {
 		expect(closed).toEqual([]);
 
 		press(document.body);
+		expect(closed).toEqual([{ restoreFocus: false }]);
+	});
+
+	// guards, not the proof: happy-dom's path reaches into a closed root as if it were open, so these
+	// hold the inside and outside rule there; the closed root itself is proven in the browser by
+	// ./element.browser.spec.ts.
+	it('tells a press inside it from one outside where it stands in a shadow root', async () => {
+		const outer = document.createElement('div');
+		document.body.appendChild(outer);
+		const closedRoot = outer.attachShadow({ mode: 'closed' });
+		const beside = document.createElement('button');
+		closedRoot.appendChild(beside);
+		const { root, input, pill, closed } = mounted({ within: closedRoot });
+		const press = (target: Element) =>
+			target.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, composed: true }));
+		press(root.querySelector('[data-value="coin:eth"]') as Element);
+		press(input);
+		press(pill);
+		expect(closed).toEqual([]);
+
+		press(beside);
+		expect(closed).toEqual([{ restoreFocus: false }]);
+	});
+
+	it('closes on a press on the page outside a shadow root it stands in', async () => {
+		const outer = document.createElement('div');
+		document.body.appendChild(outer);
+		const { closed } = mounted({ within: outer.attachShadow({ mode: 'closed' }) });
+		document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, composed: true }));
+
 		expect(closed).toEqual([{ restoreFocus: false }]);
 	});
 

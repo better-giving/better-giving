@@ -301,6 +301,25 @@ function place(parent: HTMLElement, children: readonly HTMLElement[]): void {
 	while (parent.children.length > children.length) parent.lastElementChild?.remove();
 }
 
+/**
+ * each root around `node`, its own first and the outermost last, with the host each shadow root
+ * hangs from (null for the outermost). a closed root is reachable this way from inside it.
+ */
+function ringsAround(node: Node): { readonly root: Node; readonly host: Element | null }[] {
+	const rings: { readonly root: Node; readonly host: Element | null }[] = [];
+	let root = node.getRootNode();
+	for (;;) {
+		// read on a fragment only: a detached anchor can be a root too, and its `host` is its URL's.
+		const host =
+			root.nodeType === root.DOCUMENT_FRAGMENT_NODE
+				? ((root as Partial<ShadowRoot>).host ?? null)
+				: null;
+		rings.push({ root, host });
+		if (host === null) return rings;
+		root = host.getRootNode();
+	}
+}
+
 export function createUnitPanel(doc: Document, handlers: UnitPanelHandlers): UnitPanel {
 	const host = doc.createElement('div');
 	const root = host.attachShadow({ mode: 'open' });
@@ -533,14 +552,27 @@ export function createUnitPanel(doc: Document, handlers: UnitPanelHandlers): Uni
 		outside = new AbortController();
 		const { signal } = outside;
 		const ours = (target: Node) => panel.contains(target) || anchor?.pill.contains(target) === true;
-		doc.addEventListener(
-			'pointerdown',
-			(event) => {
-				const path = event.composedPath();
-				if (!path.some((target) => target instanceof Node && ours(target))) dismiss(false);
-			},
-			{ capture: true, signal }
-		);
+		// a press is judged on every root from the host's out to the document, because a page may
+		// hold the form inside a closed shadow root of its own, and the path an outer root sees then
+		// stops at that root's host. a root whose path enters a root further in leaves the press to
+		// that root's listener, which sees deeper; a press that never enters one is judged where it
+		// stops.
+		const rings = ringsAround(host);
+		rings.forEach((ring, index) => {
+			const further: readonly EventTarget[] = rings
+				.slice(0, index)
+				.flatMap((inner) => (inner.host === null ? [] : [inner.host]));
+			ring.root.addEventListener(
+				'pointerdown',
+				(event) => {
+					const path = event.composedPath();
+					if (path.some((target) => target instanceof Node && ours(target))) return;
+					if (path.some((target) => further.includes(target))) return;
+					dismiss(false);
+				},
+				{ capture: true, signal }
+			);
+		});
 		panel.addEventListener(
 			'focusout',
 			(event) => {
