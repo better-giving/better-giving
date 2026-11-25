@@ -105,15 +105,16 @@ export type AmountDraft = {
 	 */
 	readonly programId?: string | undefined;
 	/**
-	 * what the donor gives, absent until they pick from the unit list: absent is the deployment's own
+	 * what the donor gives, absent until they pick from the unit panel: absent is the deployment's own
 	 * currency, the default, and a pick of that currency again is present, which is the one difference
 	 * between the pill's initial and picked states.
 	 */
 	readonly unit?: GiftUnit | undefined;
 	/**
-	 * a coin or share count as the donor typed it, read only while `unit` is a coin or a stock. text
-	 * rather than a number: a coin carries more precision than a double keeps (`Deposit.coinAmount` in
-	 * ./v1.ts), and a share count is decimal text on the wire (`StockPledgeRequest.shares`).
+	 * a coin amount or share count as the donor typed it, read only while `unit` is a coin or a
+	 * stock. text rather than a number: a coin carries more precision than a double keeps
+	 * (`Deposit.coinAmount` in ./v1.ts), and a share count is decimal text on the wire
+	 * (`StockPledgeRequest.shares`).
 	 */
 	readonly quantity?: string | undefined;
 };
@@ -128,7 +129,10 @@ export type GiftUnit =
 	| { readonly kind: 'coin'; readonly coin: string }
 	| { readonly kind: 'stock'; readonly ticker: string };
 
-/** a unit other than the currency, which makes the gift one-time and skips the money step. */
+/**
+ * a unit other than the currency, which makes the gift one-time with no payment method to choose: a
+ * coin's review step lists no method rows, and a stock has no review step.
+ */
 export function isInKind(
 	unit: GiftUnit | undefined
 ): unit is Exclude<GiftUnit, { kind: 'currency' }> {
@@ -265,16 +269,16 @@ export function sharesOf(text: string): string | null {
 export type PayerDraft = {
 	readonly method?: PaymentMethod | undefined;
 	/**
-	 * the coin picked for a `crypto` gift, as `PayableCoin.coin` names it.
-	 *
-	 * kept whichever rail the donor stands on, so a donor who leaves the crypto option and comes back
-	 * finds the coin they picked still in it.
+	 * the coin a `crypto` gift is sent in, as `PayableCoin.coin` names it: the one picked on the first
+	 * step, written by the review step's entry on a coin gift and dropped there on any other
+	 * (`standOnGift` in ./checkout.machine.ts).
 	 */
 	readonly coin?: string | undefined;
 	/**
 	 * the IRA custodian an `ira_qcd` pledge names, as the donor typed it.
 	 *
-	 * kept whichever rail the donor stands on, for the coin's reason above.
+	 * kept whichever rail the donor stands on, so a donor who leaves the IRA (QCD) option and comes
+	 * back finds the custodian they typed still in it.
 	 */
 	readonly custodian?: string | undefined;
 	readonly email?: string | undefined;
@@ -334,7 +338,7 @@ export type AmountDecision =
  * stored name and address in this project carries — 320 is RFC 5321's maximum for an address and
  * the name cap is round-number headroom over any real one.
  *
- * spent as `maxlength` on the controls (../views.ts) rather than as a decision below, and that is
+ * spent as `maxlength` on the controls (./views.ts) rather than as a decision below, and that is
  * the division this file already draws: what a donor can reach by typing is the platform's to stop,
  * and what no control can express is what `missingAmountDecisions` answers. a value that defeats
  * the attribute is refused by the endpoint, which names the field and the limit.

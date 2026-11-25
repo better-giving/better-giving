@@ -1621,7 +1621,7 @@ export function createCard(
 	// a deployment offering one cadence draws no control here, and the whole group is left out of
 	// the step rather than rendered with a single option in it: one option is not a choice, and a
 	// track holding it asks a donor to decide something already decided. what a control would have
-	// sent is seeded on the draft instead (`settledDraft` in ../checkout.machine.ts), so the gift
+	// sent is seeded on the draft instead (`settledDraft` in ./checkout.machine.ts), so the gift
 	// still carries a cadence and nothing downstream can tell one was never drawn.
 	//
 	// the nodes below are still built. they are unreferenced on such a deployment and the patch
@@ -2347,8 +2347,8 @@ export function createCard(
 		[make(doc, 'span', { class: 'action-label' }, [CONTINUE]), methodMarks, spinner(doc)]
 	);
 	// the Continue's case (`continueCase` in ./unit.ts): toward the payment step it is headed by the
-	// eyebrow, named for where it goes and described by the methods there; a gift in kind skips that
-	// step and it is a plain Continue.
+	// eyebrow, named for where it goes and described by the methods there; a gift in kind chooses no
+	// method there, and it is a plain Continue.
 	const nextEyebrow = make(doc, 'p', { class: 'eyebrow', hidden: true });
 	const nextMethods = make(doc, 'span', { class: 'vh', id: 'continue-methods' });
 	const nextAction = make(doc, 'div', { class: 'next' }, [
@@ -3171,7 +3171,7 @@ export function createCard(
 					]),
 				(next) => next.amountGroup,
 				// the amount is one decision, so the press writes its own figure into the box below. the
-				// tiles and the box are two views of one number — `AmountDraft` (../value.ts) carries one
+				// tiles and the box are two views of one number — `AmountDraft` (./value.ts) carries one
 				// `amountMinor` and no record of which control set it — and this is the second of them
 				// catching up with the first, in the formatting a donor typing that amount would have
 				// produced (`formatFigure` in ./money.ts).

@@ -67,8 +67,9 @@ type ServedConfig = {
  * the provider set every fixture carries.
  *
  * the key is a shape and not a credential: `checkout` below builds a payment surface for `crypto`
- * alone, and hands that one's Stripe half a loader that answers nothing, so no SDK reads this and
- * nothing is initialised with it. one processor, which is what a deployment holding one serves.
+ * and `pledges` alone, and hands its Stripe half a loader that answers nothing, so no SDK reads
+ * this and nothing is initialised with it. one processor, which is what a deployment holding one
+ * serves.
  */
 const PROVIDERS: readonly Provider[] = [{ name: 'stripe', publishableKey: 'pk_live_x' }];
 
@@ -307,7 +308,10 @@ const QR_ROWS = [
 	'1111111001111111111111101'
 ] as const;
 
-/** card and crypto, on both cadences, so picking a coin shows Monthly refused under its note. */
+/**
+ * card, with coins on the first step, on both cadences, so picking a coin shows Monthly refused
+ * under the one-time note.
+ */
 const CRYPTO: ServedConfig = {
 	...DEFAULT,
 	formId: 'frm_crypto',
@@ -316,9 +320,10 @@ const CRYPTO: ServedConfig = {
 };
 
 /**
- * card beside both pledge rails. IRA (QCD) is a row on the review step; stock is saved from the
- * details step by the panel's Pledge stock, the one sender of that event, since no screen sends it
- * (`steer` in ../src/element.ts).
+ * card beside both pledge rails. IRA (QCD) is a row on the review step; a stock is picked on the
+ * first step and saved by the details step's Continue. the panel's Pledge stock saves 50 AAPL from
+ * the details step whatever the first step picked, as the one sender of `PLEDGE_STOCK` (`steer` in
+ * ../src/element.ts).
  */
 const PLEDGES: ServedConfig = {
 	...DEFAULT,
@@ -670,7 +675,8 @@ function ports(
  * through.
  *
  * `crypto` and `pledges` are the exceptions, composed the way ../src/embed/runtime.ts composes them
- * so the IRA (QCD) row, what it holds and the monthly cadence taking it away are the shipped code.
+ * so the payment box beside a first step offering a coin or stock is the shipped code, and on
+ * `pledges` so are the IRA (QCD) row, what it holds and the monthly cadence taking it away.
  * the Stripe half is handed a loader that answers nothing, which that adapter reads as fields that
  * never came up, and the flow holds that report on a form whose first step offers a coin or stock
  * (`paymentUnavailable` in ../src/checkout.machine.ts) — so a gift in kind goes on. `pledges`

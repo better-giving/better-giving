@@ -36,9 +36,11 @@
  * a control whose ground is transparent at rest takes 3 under the pointer and 4 under the press,
  * which is the one variation the radix page the registry's scales come from states.
  *
- * the button, the text box, the box a donor ticks, the network badge, the busy ring and a saved
- * pledge's notice card are the registry's own controls (`ds-btn`, `ds-field-input`, `ds-checkbox`,
- * `ds-badge`, `ds-spinner`, `ds-notice-card`), drawn by its copied component sheets; ./parts.css
+ * the button, the text box, the box a donor ticks, the busy ring, a saved pledge's notice card and
+ * the unit pill's discs are the registry's own controls (`ds-btn`, `ds-field-input`, `ds-checkbox`,
+ * `ds-spinner`, `ds-notice-card`, `ds-avatar`), drawn by its copied component sheets, and so is the
+ * What you give panel, a coin's network badge included (`ds-combobox` on select-css's `ds-option`
+ * rows, in its own shadow root: ../unit-panel.ts and ./units.css); ./parts.css
  * draws the controls the registry has none of — the amount tiles and chips, the cadence tray, the
  * floating-label name boxes, the fee switch, the step marks — from the aliases below.
  *
@@ -99,7 +101,10 @@
  *     control needs to keep iOS Safari from zooming a page this card is a guest on: held at 16px
  *     (`.ds-field-input` in ./parts.css).
  *   - its badge's type is `0.75` of the base, 11.25px at the clamp's floor, under the 12px floor the
- *     card's small print keeps: held at 12px (`.ds-badge` in ./parts.css).
+ *     card's small print keeps: `.ds-badge` in ./parts.css holds badge-css's badge at 12px, and the
+ *     card draws none. the What you give panel's network badge is combobox-css's own
+ *     (`.ds-combobox-badge`), which declares that step on its own class in the panel's shadow root,
+ *     where ./parts.css does not reach, and is drawn at it.
  *
  * the registry states its large button's height on its class alone (`--ds-btn-size` on `.ds-btn-lg`),
  * so the skeleton's placeholder for it restates the figure (`.skeleton-action` in ./parts.css) — a
@@ -109,8 +114,10 @@
  * a press that is still checking a card is a lie about somebody's money: the card keeps it turning,
  * slowed (`--_dur-spin` below, and ./motion.css) — a fifth.
  *
- * the registry's `select-css` is not copied. its trigger is the text box the closed choices already
- * carry (`ds-field-input`, at the field's height), and what it adds the card cannot take: its list is
+ * the registry's `select-css` is copied for the What you give panel's rows (../unit-panel.ts), and
+ * the card's own select (../select.ts) does not take it. its trigger is the text box the closed
+ * choices already carry (`ds-field-input`, at the field's height), and what it adds the card cannot
+ * take: its list is
  * a floating layer on `--shadow-floating` at the card corner with the chosen row on an accent ground,
  * where this card's open list is flat at the inner corner and says the chosen row by its tick alone
  * (`[part~='select-list']` in ./parts.css) — and its chevron turns over

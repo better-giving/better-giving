@@ -345,9 +345,11 @@ function exampleCoinMark(config: PillConfig): UnitMark[] {
 }
 
 /**
- * the first step's Continue. `methods` and `one-method` go to the payment step, whose methods are
- * named in the eyebrow's hidden description, in the order the design lists them and only the
- * deployment's own; `in-kind` is a coin or stock gift, which chooses no payment method.
+ * the first step's Continue. `methods` and `one-method` head toward the payment step, whose methods
+ * are named in the eyebrow's hidden description, in the order the design lists them: the
+ * deployment's own, less the coin and stock the first step picks (`NOT_ON_THE_PAYMENT_STEP`).
+ * `in-kind` is a coin or stock gift, which chooses no payment method: a coin's Review step lists
+ * none, and a stock has no Review step.
  */
 export type ContinueCase =
 	| {

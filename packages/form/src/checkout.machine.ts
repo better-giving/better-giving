@@ -398,7 +398,10 @@ export type CheckoutContext = {
 	 * request under it as `pledge_id_taken`.
 	 */
 	readonly pledgeIds: Readonly<Record<string, string>>;
-	/** the shares a stock pledge gives, from the `PLEDGE_STOCK` that started it. */
+	/**
+	 * the shares a stock pledge gives, set by `chooseStock`: the stock picked on the first step, saved
+	 * by the details step's Continue, or the shares a `PLEDGE_STOCK` names.
+	 */
 	readonly stock: StockPick | null;
 	/** the endpoint refused the custodian a save named (`pledge_detail_invalid`), until it is retyped. */
 	readonly custodianRefused: boolean;
@@ -582,9 +585,9 @@ export type CheckoutEvent =
 	/** the IRA custodian an `ira_qcd` pledge names, as the donor types it on the review step. */
 	| { readonly type: 'SET_CUSTODIAN'; readonly custodian: string }
 	/**
-	 * the donor pledging shares of a ticker, from the details step: the press that saves a stock
-	 * pledge, as `SUBMIT` saves an IRA (QCD) one. a stock gift has no row on the review step — the
-	 * ticker is picked on the first step — so the save is the details step's own press.
+	 * shares of a ticker pledged from the details step, saved as a stock picked on the first step is
+	 * saved by that step's Continue. no screen sends it: the dev page's stock control does, through
+	 * `steer` in ./element.ts.
 	 */
 	| ({ readonly type: 'PLEDGE_STOCK' } & StockPick)
 	/** "I’ve contacted my broker", "I’ve asked my custodian", and the Try again after either fails. */
@@ -874,7 +877,7 @@ function pledgeRequest(
 		return { ...gift, coversFee: false, pledgeId, custodian: payer.custodian ?? '' };
 	}
 	if (context.stock === null)
-		throw new Error('unreachable: a stock payer is set by `PLEDGE_STOCK`');
+		throw new Error('unreachable: `chooseStock` sets the shares with the stock rail');
 	const { amountMinor: _amount, coversFee: _covers, method: _method, ...rest } = gift;
 	return { ...rest, method: 'stock', pledgeId, ...context.stock };
 }
@@ -1530,7 +1533,7 @@ export const checkoutMachine = setup({
 		/** the employer box holds an answer the endpoint takes. */
 		employerIsGiven: ({ context }) => employerAnswer(context.employer) !== null,
 
-		/** the rail on the draft is one a press of its own chose (`isHeldRail`). */
+		/** the rail on the draft is one the flow holds, not a row of the payment box (`isHeldRail`). */
 		holdsRail: ({ context }) => {
 			const { method } = context.payerDraft;
 			return method !== undefined && isHeldRail(method);

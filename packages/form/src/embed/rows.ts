@@ -6,8 +6,8 @@
 // rail's mark at the start, its name after it, no line between one row and the next, and the rail's
 // own branded button behind a press on the name. a row holding a processor's button reports nothing
 // to the flow: opening one is looking rather than choosing — the button inside it is still the press
-// that chooses, exactly as it was with no row around it. the IRA (QCD) and crypto rows hold the
-// card's own controls instead, and opening either chooses its rail (./pledge.ts, ./nowpayments.ts).
+// that chooses, exactly as it was with no row around it. the IRA (QCD) row holds the card's own
+// controls instead, and opening it chooses its rail (./pledge.ts).
 //
 // each row is a light-DOM node with a shadow root of its own. light DOM because what a processor's
 // row holds is that processor's own element, which has to stay reachable by its script (Chariot's

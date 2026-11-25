@@ -252,10 +252,12 @@ export type State =
 			 */
 			readonly payerComplete: boolean;
 			/**
-			 * the rail the payment surface last reported, where it reported one.
+			 * the rail on the draft, where there is one: the one the payment surface last reported, or a
+			 * coin gift's own (`standOnGift` in ./checkout.machine.ts).
 			 *
-			 * read for the words that differ by rail on this step — a crypto gift's fee sentence and its
-			 * coin list's refusal — and never for whether a press is taken, which `payerComplete` is.
+			 * read for what differs by rail on this step — the IRA (QCD) option's custodian box, its
+			 * refusal and the press that saves the pledge — and never for whether a press is taken, which
+			 * `payerComplete` is.
 			 */
 			readonly method?: PaymentMethod;
 			/**
@@ -927,6 +929,9 @@ export function connect<
 			)
 		}),
 
+		// a coin's network and logo ride through as the served config carries them and are read by no
+		// rule here: what a row draws from them is ./unit-panel.ts's, and a value derived on the way
+		// through would be one this seam had to keep true as well.
 		unitSelect: normalize.select({
 			name: 'unit',
 			value: draft.unit === undefined ? '' : unitKey(draft.unit),

@@ -164,8 +164,8 @@ const PINNED =
  * every processor this form can take a gift through, behind one surface.
  *
  * the adapters are built in the order they are read here and that order is what a donor sees: the
- * inline fields, then the hosted window's buttons under them, the fund, the IRA (QCD) option and the
- * crypto option.
+ * inline fields, then the hosted window's buttons under them, the fund and the IRA (QCD) option. a
+ * coin or stock is picked on the first step and has no adapter here.
  */
 export function createPaymentSurface(
 	config: FormConfig,
@@ -432,8 +432,10 @@ export function createPaymentSurface(
 
 	const confirm: CheckoutPorts['confirm'] = async (input): Promise<ConfirmOutcome> => {
 		const part = parts.find((candidate) => candidate.owns(input.method));
-		// the lists in ./rails.ts cover the rail vocabulary exactly once and an adapter is built
-		// for every rail the config offers, so a rail with no adapter is a rail no button ever drew.
+		// an adapter is built for every rail the box offers, which is every rail the config offers but
+		// `crypto` and `stock`: those are picked on the first step and never confirmed, since a coin
+		// gift's quote is its address and a stock gift's is its pledge. so a rail with no adapter is a
+		// rail no button ever drew.
 		// answered as an answer nobody has rather than as a refusal, which is the direction that costs
 		// a re-read rather than a Retry against an order that may exist.
 		if (part === undefined) return { kind: 'indeterminate' };

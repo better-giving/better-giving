@@ -2465,7 +2465,7 @@ describe('the gift the donor dedicates', () => {
 	});
 
 	// and what leaves for the endpoint carries the dedication and no recipient. blank on both is
-	// what `settle` (../value.ts) reads as `notify: null`, and `flatTribute` in ./checkout.machine.ts
+	// what `settle` (./value.ts) reads as `notify: null`, and `flatTribute` in ./checkout.machine.ts
 	// sends the two fields only where that is not null — so a name still in the draft would arrive
 	// on the request whatever the screen was showing.
 	it('sends the dedication and no recipient once the pair is taken back', async () => {
@@ -2612,7 +2612,7 @@ describe('the gift the donor dedicates', () => {
 	});
 
 	it('holds each box to the cap the endpoint holds it to', async () => {
-		// the caps are the app's own `MAX_NAME` and `MAX_EMAIL`, restated in ../value.ts because
+		// the caps are the app's own `MAX_NAME` and `MAX_EMAIL`, restated in ./value.ts because
 		// this package imports nothing from that app. set as the attribute, so a paste is truncated
 		// where it happens rather than refused after the donor has moved on.
 		const card = await withTributeOpened();
@@ -5269,8 +5269,8 @@ describe('the stylesheets', () => {
 	const still = `${declarations(partStyles)}\n${declarations(layoutStyles)}`;
 	const moving = declarations(motionStyles);
 	const css = `${still}\n${moving}`;
-	// the two sheets the card's own three do not cover: the unit panel's (../unit-panel.ts) and the
-	// payment rows' (../embed/rows.ts). they are adopted into shadow roots of their own rather than
+	// the two sheets the card's own three do not cover: the unit panel's (./unit-panel.ts) and the
+	// payment rows' (./embed/rows.ts). they are adopted into shadow roots of their own rather than
 	// into the card's, which is why they are not in `css` above — and why a token spent only in one
 	// of them is still a token this element spends.
 	const adopted = `${css}\n${declarations(unitStyles)}\n${declarations(rowStyles)}`;
