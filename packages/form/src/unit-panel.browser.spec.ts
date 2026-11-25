@@ -71,11 +71,16 @@ describe('the open unit panel', () => {
 		expect(dialog.matches(':popover-open')).toBe(true);
 	});
 
-	it('draws each row at least 48px tall with a 32px round mark', () => {
+	it('draws each row at least 48px tall with a 32px round mark', async () => {
 		const { root } = mounted();
 		const rows = [...root.querySelectorAll<HTMLElement>('[role="option"]')];
 
 		expect(rows).toHaveLength(2);
+		// the machine takes an `open` it was handed on a microtask (`send` in @zag-js/vanilla), and its
+		// list carries `hidden` until then, so a row measured in the task that opened the panel is 0px.
+		await expect
+			.poll(() => rows[0]?.getBoundingClientRect().height ?? 0)
+			.toBeGreaterThanOrEqual(48);
 		for (const row of rows) {
 			const mark = row.querySelector('.unit-mark') as HTMLElement;
 			const { width, height } = mark.getBoundingClientRect();
