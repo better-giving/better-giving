@@ -1119,7 +1119,8 @@ function CheckoutCard({
 
 	const busy = api.continueButton['aria-busy'];
 	// a press held on a challenge that is asking the donor to solve something: the puzzle is in the
-	// review step's box, and `aria-busy` over it would have assistive technology hold it back.
+	// box of the step the press is held on (`read` in ./machine.ts), and `aria-busy` over it would have
+	// assistive technology hold it back.
 	const asking = snapshot.value === 'holding' && snapshot.context.challengeInteractive;
 	// and the same wait for a lost pledge's save made again, whose puzzle is drawn under the told
 	// press: no write is out while it asks.

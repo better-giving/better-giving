@@ -249,12 +249,14 @@ function openFund(root: HTMLElement): StubConnect {
 
 /**
  * the callbacks the card last handed the challenge widget, which is what a token arrives through and
- * what says the widget is asking the donor to solve something; and every node it was drawn into.
+ * what says the widget is asking the donor to solve something; every node it was drawn into; and how
+ * many times it was reset.
  */
 const widget = {
 	answer: (_token: string): void => {},
 	asks: (): void => {},
-	drawn: [] as HTMLElement[]
+	drawn: [] as HTMLElement[],
+	resets: 0
 };
 
 /**
@@ -266,6 +268,7 @@ const widget = {
  */
 function challengeSeams({ mints }: { readonly mints: boolean }): ChallengeSeams {
 	widget.drawn = [];
+	widget.resets = 0;
 	let minted = 0;
 	const mint = (): void => {
 		minted += 1;
@@ -282,7 +285,10 @@ function challengeSeams({ mints }: { readonly mints: boolean }): ChallengeSeams 
 						mint();
 						return 'widget-1';
 					},
-					reset: mint,
+					reset: () => {
+						widget.resets += 1;
+						mint();
+					},
 					remove: () => {}
 				};
 				return api;
@@ -2781,14 +2787,18 @@ describe('what the donor gives, on the first step', () => {
 			(disc) => disc.querySelector('img')?.getAttribute('src') ?? ''
 		);
 
-	/** a card on the everything deployment, or `config`, with AAPL picked, as a donor searches for it. */
+	/**
+	 * a card on the everything deployment, or `config`, with AAPL picked, as a donor searches for it;
+	 * `mints` as `card` takes it.
+	 */
 	async function giveStock(
 		pledge: StockPledge | null = null,
 		config: FormConfig = WITH_EVERYTHING,
-		answers: Answers = {}
+		answers: Answers = {},
+		mints = true
 	) {
 		const asked = deployment(pledge);
-		const { root } = await card(config, answers);
+		const { root } = await card(config, answers, { mints });
 		press(pill(root));
 		await act(async () => {});
 		const box = unitPanel(root).querySelector('[role="combobox"]') as HTMLInputElement;
@@ -3099,6 +3109,100 @@ describe('what the donor gives, on the first step', () => {
 
 		expect(one(screen(root), 'h2').textContent).toBe('Your stock gift is pending');
 		expect(asked.saves).toHaveLength(1);
+	});
+
+	describe('a stock press held on a widget asking the donor', () => {
+		const AAPL: StockPledge = {
+			method: 'stock',
+			reference: 'ACME-AAPL-7Q2D',
+			receiptTo: 'donor@example.org',
+			ticker: 'AAPL',
+			shares: '50',
+			deliverTo: 'Harbor Street Securities',
+			dtcNumber: '0164',
+			accountNumber: 'Z12-345678',
+			accountName: 'Helping Hands'
+		};
+
+		/** past the save a token sends and its answer. */
+		async function answered(): Promise<void> {
+			await act(async () => {
+				for (let at = 0; at < 20; at += 1) await Promise.resolve();
+			});
+		}
+
+		// the press is held on the details step, and the review step's box is hidden on a stock gift.
+		it('draws the puzzle in the details step’s own box, and saves on the token it mints', async () => {
+			const { root, asked } = await giveStock(AAPL, WITH_EVERYTHING, {}, false);
+			type(quantity(root), '50');
+			await throughDetails(root);
+
+			act(() => {
+				widget.asks();
+			});
+
+			const shown = screen(root);
+			expect(shown.className).toContain('step-details');
+			expect(widget.drawn).toEqual([one(shown, '.challenge')]);
+			expect(asked.saves).toHaveLength(0);
+
+			token('tok_solved');
+			await answered();
+
+			expect(asked.saves).toEqual([expect.objectContaining({ turnstileToken: 'tok_solved' })]);
+			expect(one(screen(root), 'h2').textContent).toBe('Your stock gift is pending');
+		});
+
+		it('presses a refused save again on Try again, with its puzzle in the details step', async () => {
+			const { root } = await giveStock(AAPL, WITH_EVERYTHING, {}, false);
+			const saves: Record<string, unknown>[] = [];
+			vi.stubGlobal(
+				'fetch',
+				vi.fn(async (_url: string, init?: RequestInit) => {
+					if (init?.method !== 'POST') return Response.json({ state: 'waiting' });
+					const body = JSON.parse(String(init.body)) as { pledgeId: string };
+					saves.push(body);
+					if (saves.length === 1) {
+						return Response.json(
+							{ error: 'above_maximum', message: 'Give less.', fix: 'Give less.' },
+							{ status: 422 }
+						);
+					}
+					return Response.json({
+						paymentToken: body.pledgeId,
+						feeMinor: 0,
+						totalMinor: 0,
+						pledge: { ...AAPL, id: body.pledgeId }
+					});
+				})
+			);
+			type(quantity(root), '50');
+			await throughDetails(root);
+			token('tok_first');
+			await answered();
+			expect(one(screen(root), 'h2').textContent).toBe(copy.FAILED_HEADING);
+			const resets = widget.resets;
+
+			press(one(screen(root), ':scope > button[part~="action"]'));
+			act(() => {
+				widget.asks();
+			});
+
+			const shown = screen(root);
+			expect(shown.className).toContain('step-details');
+			expect(
+				every(shown, 'button').some((button) => button.textContent?.startsWith('Donate'))
+			).toBe(false);
+			expect(widget.resets).toBeGreaterThan(0);
+			expect(widget.resets).toBe(resets);
+			expect(widget.drawn).toEqual([one(shown, '.challenge')]);
+
+			token('tok_solved');
+			await answered();
+
+			expect(saves.map((save) => save.turnstileToken)).toEqual(['tok_first', 'tok_solved']);
+			expect(one(screen(root), 'h2').textContent).toBe('Your stock gift is pending');
+		});
 	});
 
 	// the route renders the card on the server from `initialSnapshot` (./machine.ts) and the client's

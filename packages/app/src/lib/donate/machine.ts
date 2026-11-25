@@ -89,7 +89,7 @@ export type CheckoutMounts = {
 	readonly challengeMount: HTMLElement;
 	/**
 	 * the review step's node for the same challenge, beside the press, which it is drawn afresh into
-	 * only while a press is held on it and it is asking the donor to solve something.
+	 * only while a press is held on that step and it is asking the donor to solve something.
 	 */
 	readonly heldChallengeMount: HTMLElement;
 	/**
@@ -334,11 +334,13 @@ export function startCheckout(
 			);
 		}
 
-		// the details step's node is hidden by the time a press is held, and a widget asking for the
-		// donor inside a node with no box is one they cannot answer. a redraw into the node it is
-		// already in does nothing, so this is said on every reading of that state.
+		// a widget asking for the donor inside a hidden node is one they cannot answer, so it is drawn
+		// on the step the held press is projected on: the details step for a stock gift, which has no
+		// review step (`holding` in @better-giving/form's connect.ts), the review step for every other.
+		// a redraw into the node it is already in does nothing, so this is said on every reading of
+		// that state.
 		if (snapshot.value === 'holding' && snapshot.context.challengeInteractive) {
-			challenge?.redraw?.(heldChallengeMount);
+			challenge?.redraw?.(state.step === 'details' ? challengeMount : heldChallengeMount);
 		}
 		// and the same for a lost pledge's save made again, which waits on the pledge screen.
 		if (
