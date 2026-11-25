@@ -499,8 +499,8 @@ describe('a response with a safe reading', () => {
 	});
 });
 
-/** a fiscal sponsor as the response names one. */
-const SPONSOR = { legalName: 'Better Giving Fiscal Sponsorship Inc.', ein: '98-7654321' };
+/** a fiscal sponsor as the response names one, its `ein` the one `RESPONSE` states. */
+const SPONSOR = { legalName: 'Better Giving Fiscal Sponsorship Inc.', ein: '12-3456789' };
 
 /** a contribution offered beside it, starting on the middle rate. */
 const CONTRIBUTION = { options: [0.05, 0.1, 0.15], startsAt: 0.1 };
@@ -532,16 +532,25 @@ describe('a fiscal sponsor and the contribution offered beside it', () => {
 		expect(config?.contribution).toStrictEqual(CONTRIBUTION);
 	});
 
+	// the legal identity a gift is solicited under: `ein` and `deductibilityStatement` are the
+	// sponsor's where one is present, so a sponsor that cannot be read leaves them naming an entity the
+	// form does not, and the config is refused rather than drawn.
 	it.each([
 		['a sponsor that is not a record', 'Better Giving Fiscal Sponsorship Inc.'],
+		['a sponsor that is null', null],
 		['a sponsor with a blank legal name', { ...SPONSOR, legalName: '  ' }],
-		['a sponsor with no ein', { legalName: SPONSOR.legalName }]
-	])('drops %s, and the contribution with it, and still loads', (_, sponsor) => {
-		const config = readFormConfig({ ...RESPONSE, sponsor, contribution: CONTRIBUTION });
+		['a sponsor with no legal name', { ein: SPONSOR.ein }],
+		['a sponsor with no ein', { legalName: SPONSOR.legalName }],
+		['a sponsor whose ein is not the config’s', { ...SPONSOR, ein: '98-7654321' }]
+	])('refuses a config carrying %s', (_, sponsor) => {
+		expect(readFormConfig({ ...RESPONSE, sponsor, contribution: CONTRIBUTION })).toBeNull();
+		expect(readFormConfig({ ...RESPONSE, sponsor })).toBeNull();
+	});
 
-		expect(config).not.toBeNull();
-		expect(config).not.toHaveProperty('sponsor');
-		expect(config).not.toHaveProperty('contribution');
+	it('reads a sponsor whose ein is the config’s with the padding trimmed', () => {
+		const config = readFormConfig({ ...RESPONSE, sponsor: { ...SPONSOR, ein: ' 12-3456789 ' } });
+
+		expect(config?.sponsor).toStrictEqual(SPONSOR);
 	});
 
 	it('reads a sponsor served with no contribution as asking for none', () => {

@@ -17,9 +17,11 @@
 //     ever complete, so the form would render and refuse every gift silently.
 //   - a field with a safe reading falls back to it. an unreadable `feeCoverage` becomes the one
 //     mode ./v1.ts carries, which leaves the fee the donor's own decision; an unreadable locale
-//     becomes a formatting default. an unreadable `sponsor` or `contribution` is dropped, and the
-//     form asks for the gift alone under the identity `ein` and `deductibilityStatement` state. the
-//     direction is always the one that cannot take a decision away from the donor.
+//     becomes a formatting default. an unreadable `contribution` is dropped, and the form asks for
+//     the gift alone. the direction is always the one that cannot take a decision away from the
+//     donor. an unreadable `sponsor` is the first kind rather than this one, and so is a sponsor
+//     whose `ein` is not the config's: `ein` and `deductibilityStatement` are the sponsor's where it
+//     is present, so a form that could not name it would state an identity it does not show.
 //
 // nothing here throws. an exception in this path is a donation form that never renders, which is
 // indistinguishable to the org from a nonprofit having a bad month.
@@ -275,25 +277,36 @@ function coins(value: unknown): readonly PayableCoin[] {
 
 /**
  * the fiscal sponsor and the contribution offered beside it, as the fields a config carries, `{}`
- * where either is unreadable.
+ * where the form has neither, and `null` where the response states a sponsor this file cannot read.
  *
- * dropped rather than refused, which is where these part company with `program` above: a form
- * read without them solicits the gift it solicited before, under the identity `ein` and
- * `deductibilityStatement` already state, and asks for no contribution. a contribution is read only
- * beside a readable sponsor, because the sponsor is who receives it, and it is dropped whole where
- * any rate is not a fraction in [0, 1] or `startsAt` names no option: a row offering fewer rates
- * than the deployment set, or starting on one it does not show, is a different question from the
- * one served.
+ * the sponsor is `program`'s case and not `coins`': where one is present, `ein` and
+ * `deductibilityStatement` are its and not the organisation's, so a sponsor that cannot be read
+ * leaves the form stating the identity of an entity it never names, on the screen that solicits a
+ * tax-deductible gift. an unreadable one is refused for that reason, and so is one whose `ein`
+ * differs from the config's own, since two EINs on one response are two answers to who the donee is.
+ * an absent sponsor is the ordinary form.
+ *
+ * the contribution is the opposite judgement, dropped rather than refused: a form read without it
+ * asks for the gift alone. it is read only beside a sponsor, because the sponsor is who receives it,
+ * and dropped whole where any rate is not a fraction in [0, 1] or `startsAt` names no option: a row
+ * offering fewer rates than the deployment set, or starting on one it does not show, is a different
+ * question from the one served.
  */
 function sponsorship(
 	sponsorValue: unknown,
-	contributionValue: unknown
-): Pick<FormConfig, 'sponsor' | 'contribution'> {
+	contributionValue: unknown,
+	ein: string
+): Pick<FormConfig, 'sponsor' | 'contribution'> | null {
+	if (sponsorValue === undefined) return {};
 	const source = record(sponsorValue);
 	const legalName = source === null ? null : text(source.legalName);
-	const ein = source === null ? null : text(source.ein);
-	if (legalName === null || ein === null) return {};
-	return { sponsor: { legalName, ein }, ...contribution(contributionValue) };
+	const sponsorEin = source === null ? null : text(source.ein);
+	if (legalName === null || sponsorEin === null) return null;
+	if (sponsorEin.trim() !== ein.trim()) return null;
+	return {
+		sponsor: { legalName: legalName.trim(), ein: sponsorEin.trim() },
+		...contribution(contributionValue)
+	};
 }
 
 function isRate(value: unknown): value is number {
@@ -371,6 +384,10 @@ export function readFormConfig(value: unknown): FormConfig | null {
 	// the reason written on `program` above.
 	const cause = program(source.program);
 	if (cause === null) return null;
+	// the other field whose unreadable state refuses the config, for the reason written on
+	// `sponsorship` above.
+	const sponsored = sponsorship(source.sponsor, source.contribution, ein);
+	if (sponsored === null) return null;
 
 	return {
 		formId,
@@ -394,6 +411,6 @@ export function readFormConfig(value: unknown): FormConfig | null {
 		...(turnstileSiteKey === null ? {} : { turnstileSiteKey }),
 		...(altchaChallengeUrl === null ? {} : { altchaChallengeUrl }),
 		...(payableCoins.length === 0 ? {} : { coins: payableCoins }),
-		...sponsorship(source.sponsor, source.contribution)
+		...sponsored
 	};
 }

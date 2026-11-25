@@ -136,8 +136,8 @@ export type Sponsor = { readonly legalName: string; readonly ein: string };
  * a contribution to the `Sponsor` above, asked beside the gift, as rates of it.
  *
  * a deployment offers one only beside a `sponsor`, and ./config.ts drops one that arrives without
- * it. what the donor chose travels as `QuoteRequest.contributionMinor`, in minor units rather than
- * as a rate, and the quote answers it as `Quote.contributionMinor`.
+ * a sponsor. what the donor chose travels as `QuoteRequest.contributionMinor`, in minor units
+ * rather than as a rate, and the quote answers it as `Quote.contributionMinor`.
  */
 export type Contribution = {
 	/** rates of the gift, as fractions. a custom amount is always allowed beside them. */
@@ -478,15 +478,16 @@ export type FormConfig = {
 	 * name.
 	 *
 	 * present, it is the contribution's recipient too, `ein` and `deductibilityStatement` above are the
-	 * sponsor's, and `orgLegalName` stays the organisation supported. ./config.ts drops an unreadable
-	 * one, and `contribution` with it, rather than refusing the config.
+	 * sponsor's, and `orgLegalName` stays the organisation supported. its `ein` is the config's own
+	 * `ein`, and ./config.ts refuses a config naming a sponsor it cannot read, or one whose `ein`
+	 * differs: a form that could not name the donee would state an identity it does not show.
 	 */
 	readonly sponsor?: Sponsor;
 	/**
 	 * the contribution to `sponsor` a donor is asked for beside the gift, absent where none is asked.
 	 *
 	 * a deployment offers one only beside a `sponsor`. ./config.ts drops one that arrives without a
-	 * readable sponsor, or whose rates it cannot read, rather than refusing the config.
+	 * sponsor, or whose rates it cannot read, and the form asks for the gift alone.
 	 */
 	readonly contribution?: Contribution;
 };
