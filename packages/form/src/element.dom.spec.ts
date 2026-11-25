@@ -33,6 +33,7 @@ import { DEFAULT_SHAPE } from './views';
 import { EMPLOYER_CLASS } from './employer-ask';
 import { TICKER_DEBOUNCE_MS } from './ticker-search';
 import { createFormRuntime } from './embed/runtime';
+import { createPaymentSurface, type PaymentSeams, quoteThrough } from './embed/surface';
 import { APPEARANCE_INPUTS } from './styles/appearance';
 import partStyles from './styles/parts.css?inline';
 import layoutStyles from './styles/layout.css?inline';
@@ -207,6 +208,12 @@ type Options = {
 	readonly searchTickers?: FormCheckout['searchTickers'];
 	/** how many options the payment box lists when the card first asks; one where unsaid. */
 	readonly rowCount?: number;
+	/**
+	 * the processors' scripts, as ./embed/runtime.ts's payment surface would load them. where given,
+	 * the checkout is that surface (`createPaymentSurface` in ./embed/surface.ts) rather than a stand-in,
+	 * and `rail`, `unavailable`, `rows` and `repeatingUnavailable` above are what it reports.
+	 */
+	readonly seams?: PaymentSeams;
 	readonly attributes?: Readonly<Record<string, string>>;
 	readonly children?: string;
 	/** where the element is put; the document's body where unsaid. */
@@ -269,6 +276,32 @@ async function mount(options: Options = {}): Promise<Mounted> {
 			},
 			checkout: (config, mount, onRail, onUnavailable, boot, fund, ira) => {
 				reports = fund;
+				if (options.seams !== undefined) {
+					options.boots?.(boot);
+					const ports = { ...PORTS, ...options.ports };
+					const surface = createPaymentSurface(
+						config,
+						mount,
+						onRail,
+						onUnavailable,
+						fund,
+						options.seams,
+						ira
+					);
+					return {
+						...surface,
+						input: {
+							config,
+							ports: {
+								...ports,
+								quote: quoteThrough(surface, ports.quote),
+								confirm: surface.confirm,
+								resume: surface.resume
+							}
+						},
+						...(options.searchTickers === undefined ? {} : { searchTickers: options.searchTickers })
+					};
+				}
 				// stood in the payment node the way the IRA (QCD) option stands it, so it is in the
 				// document and can hold the caret.
 				if (ira !== undefined) mount.appendChild(ira);
@@ -7331,6 +7364,91 @@ describe('what the donor gives, on the first step', () => {
 		expect(card.find('.step').hidden).toBe(false);
 		expect(card.find('.takeover').hidden).toBe(true);
 	});
+
+	// the same, from the card processor's script failing to load behind the real payment surface
+	// rather than from a report handed in: the surface says the card is down (`sayWhatIsLeft` in
+	// ./embed/surface.ts), and the flow decides what that leaves.
+	describe('with the card processor’s script failing to load', () => {
+		const STRIPE_DOWN: PaymentSeams = {
+			stripe: { load: () => Promise.resolve(null), delay: () => () => {} }
+		};
+		/** the sentence ./embed/stripe.ts says when its fields never came up. */
+		const NO_FIELDS =
+			'The payment details on this form did not load, and nothing was charged. Reload the page ' +
+			'to try again.';
+		const CARD_AND_CRYPTO: FormConfig = { ...WITH_CRYPTO, paymentMethods: ['card', 'crypto'] };
+
+		it('keeps the first step and gives a coin through to its address', async () => {
+			const card = await mount({
+				config: CARD_AND_CRYPTO,
+				ports: { ...UNIT_PORTS, quote: async () => BTC_QUOTE },
+				seams: STRIPE_DOWN
+			});
+			expect(card.find('.step').hidden).toBe(false);
+			expect(card.find('.takeover').hidden).toBe(true);
+
+			await give(card, 'coin:btc');
+			type(quantity(card), '0.005');
+			await priced();
+			await throughDetails(card);
+			card.find('.step-give [part~="submit"]').click();
+			await settle();
+
+			expect(card.text('.takeover [part~="heading"]')).toBe('Send your gift');
+		});
+
+		it('refuses a gift of money with the card’s sentence once it reaches the payment step', async () => {
+			const card = await mount({ config: CARD_AND_CRYPTO, ports: UNIT_PORTS, seams: STRIPE_DOWN });
+			press(card.all('[part~="amount-option"] input')[0] as HTMLElement);
+
+			await throughDetails(card);
+
+			expect(shows(card, '.takeover .message')).toBe(NO_FIELDS);
+		});
+
+		it('gives a stock through to the pending screen', async () => {
+			const card = await giveStock({
+				config: { ...CONFIG, paymentMethods: ['card', 'stock'] },
+				ports: {
+					...UNIT_PORTS,
+					pledges: {
+						id: () => 'pledge_1',
+						save: async () => ({
+							paymentToken: 'pledge_1',
+							feeMinor: 0,
+							totalMinor: 0,
+							pledge: {
+								id: 'pledge_1',
+								method: 'stock',
+								reference: 'ACME-AAPL-7Q2D',
+								receiptTo: 'donor@example.org',
+								ticker: 'AAPL',
+								shares: '50',
+								deliverTo: 'Harbor Street Securities',
+								dtcNumber: '0164',
+								accountNumber: 'Z12-345678',
+								accountName: 'Acme Relief Fund'
+							}
+						}),
+						told: async () => {}
+					}
+				},
+				seams: STRIPE_DOWN
+			});
+			type(quantity(card), '50');
+
+			await throughDetails(card);
+
+			expect(card.text('.takeover [part~="heading"]')).toBe('Your stock gift is pending');
+		});
+
+		it('goes unavailable with the card’s sentence where the form offers its processor’s rails alone', async () => {
+			const card = await mount({ config: CONFIG, ports: UNIT_PORTS, seams: STRIPE_DOWN });
+
+			expect(card.find('.step').hidden).toBe(true);
+			expect(shows(card, '.takeover .message')).toBe(NO_FIELDS);
+		});
+	});
 });
 
 describe('a crypto gift', () => {
@@ -7583,6 +7701,148 @@ describe('a crypto gift', () => {
 		expect(shows(card, '#amount-problem')).toBe('');
 		expect(quantity(card).hasAttribute('aria-describedby')).toBe(false);
 		expect(quantity(card).hasAttribute('aria-invalid')).toBe(false);
+	});
+
+	// a failed price check is never kept as the answer, so picking the same coin again from the panel
+	// asks again; once it priced, the same pick asks nothing and moves nothing.
+	it('asks for the price again when the same coin is picked after a failed check, and not once it priced', async () => {
+		let answer: () => Promise<number | null> = () =>
+			Promise.reject(new TypeError('Failed to fetch'));
+		const asked: string[] = [];
+		const card = await mount({
+			config: CRYPTO,
+			ports: {
+				estimate: ({ amount }) => {
+					asked.push(amount);
+					return answer();
+				}
+			}
+		});
+		await give(card, KEYS.USDT ?? '');
+		type(quantity(card), '0.005');
+		await priced();
+		expect(asked).toEqual(['0.005']);
+		expect(shows(card, '.unit-estimate .unit-figure')).toBe('');
+
+		answer = async () => 2500;
+		await give(card, KEYS.USDT ?? '');
+		expect(card.find('.step').hidden).toBe(false);
+		expect(quantity(card).value).toBe('0.005');
+		expect(card.shadow.activeElement?.closest('h1, h2, h3, [part~="heading"]')).toBeNull();
+		await priced();
+
+		expect(asked).toEqual(['0.005', '0.005']);
+		expect(shows(card, '.unit-estimate .unit-figure')).toBe('About $25.00');
+
+		const estimate = shows(card, '.unit-estimate');
+		const named = pill(card).getAttribute('aria-label');
+		await give(card, KEYS.USDT ?? '');
+		await priced();
+
+		expect(asked).toEqual(['0.005', '0.005']);
+		expect(quantity(card).value).toBe('0.005');
+		expect(shows(card, '.unit-estimate')).toBe(estimate);
+		expect(pill(card).getAttribute('aria-label')).toBe(named);
+
+		proceed(card);
+		expect(card.find('.step').hidden).toBe(true);
+	});
+
+	it('changes nothing when the currency already picked is picked again from the panel', async () => {
+		const asked: string[] = [];
+		const card = await mount({
+			config: CRYPTO,
+			ports: {
+				estimate: async ({ amount }) => {
+					asked.push(amount);
+					return 2500;
+				}
+			}
+		});
+		const cadences = () =>
+			(card.all('[part~="frequency-option"] input') as HTMLInputElement[]).map(
+				(input) => input.checked
+			);
+		const tiles = () =>
+			(card.all('[part~="amount-option"] input') as HTMLInputElement[]).map(
+				(input) => input.checked
+			);
+		await give(card, 'currency');
+		press(card.all('[part~="frequency-option"] input')[1] as HTMLElement);
+		press(card.all('[part~="amount-option"] input')[0] as HTMLElement);
+		await throughDetails(card);
+		const fee = card.find('.fee-decision input') as HTMLInputElement;
+		fee.click();
+		const covers = fee.checked;
+		(card.find('.step-give').querySelector('button.step-dot') as HTMLElement).click();
+		await settle();
+		const before = {
+			cadences: cadences(),
+			tiles: tiles(),
+			pill: pill(card).getAttribute('aria-label')
+		};
+		expect(card.find('.step').hidden).toBe(false);
+
+		await give(card, 'currency');
+		await priced();
+
+		expect(card.find('.step').hidden).toBe(false);
+		expect({
+			cadences: cadences(),
+			tiles: tiles(),
+			pill: pill(card).getAttribute('aria-label')
+		}).toEqual(before);
+		expect(shows(card, '#amount-problem')).toBe('');
+		proceed(card);
+		proceed(card);
+		await settle();
+		expect((card.find('.fee-decision input') as HTMLInputElement).checked).toBe(covers);
+		expect(asked).toEqual([]);
+	});
+
+	it('changes nothing when the stock already picked is picked again from the panel', async () => {
+		const asked: string[] = [];
+		const card = await mount({
+			config: { ...CRYPTO, paymentMethods: ['card', 'crypto', 'stock'] },
+			ports: {
+				estimate: async ({ amount }) => {
+					asked.push(amount);
+					return 2500;
+				},
+				pledges: {
+					id: () => 'pledge_1',
+					save: async () => ({ paymentToken: 'pledge_1', feeMinor: 0, totalMinor: 0 }),
+					told: async () => {}
+				}
+			},
+			searchTickers: async () => [{ symbol: 'AAPL', name: 'Apple Inc.' }]
+		});
+		const pickAapl = async () => {
+			pill(card).click();
+			await settle();
+			type(unitPanel(card).querySelector('[role="combobox"]') as HTMLInputElement, 'aa');
+			await new Promise((resolve) => setTimeout(resolve, TICKER_DEBOUNCE_MS + 20));
+			(
+				unitPanel(card).querySelector('[role="option"][data-value="stock:AAPL"]') as HTMLElement
+			).click();
+			await settle();
+		};
+		const cadences = () =>
+			(card.all('[part~="frequency-option"] input') as HTMLInputElement[]).map(
+				(input) => input.checked
+			);
+		await pickAapl();
+		type(quantity(card), '50');
+		const before = { cadences: cadences(), pill: pill(card).getAttribute('aria-label') };
+		expect(before.pill).toBe('Stock: AAPL');
+
+		await pickAapl();
+		await priced();
+
+		expect(card.find('.step').hidden).toBe(false);
+		expect(quantity(card).value).toBe('50');
+		expect({ cadences: cadences(), pill: pill(card).getAttribute('aria-label') }).toEqual(before);
+		expect(asked).toEqual([]);
 	});
 
 	it('shows what is being sent and where, in the order a donor reads it', async () => {

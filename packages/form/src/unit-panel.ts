@@ -447,9 +447,10 @@ export function createUnitPanel(doc: Document, handlers: UnitPanelHandlers): Uni
 			query = inputValue;
 			if (current?.stocks === true) tickers.search(inputValue);
 		},
-		// on every pick, the picked row again included, which `onValueChange` does not hear.
+		// on every pick, the picked row again included, which `onValueChange` does not hear: a re-pick
+		// is how a coin whose price check failed is asked again (`SET_UNIT` in ./checkout.machine.ts).
 		onSelect: ({ itemValue }: zag.SelectionDetails) => {
-			if (itemValue !== current?.value) current?.onChange(itemValue);
+			current?.onChange(itemValue);
 			dismiss(true);
 		}
 	}));

@@ -269,6 +269,23 @@ describe('one payment surface over however many processors a config names', () =
 		expect(k.unavailable[0]?.message).toContain('nothing was charged');
 	});
 
+	// a coin is given from the first step (`unitsOffered` in ../checkout.machine.ts) and is no part of
+	// this box, so with the card down the box has nothing left and says so. the flow, which knows a
+	// coin is still offered, decides what that leaves (`with the card processor’s script failing to
+	// load` in ../element.dom.spec.ts).
+	it('says the card is down on a form offering card and crypto', async () => {
+		const k = kit({ stripe: () => Promise.resolve(null) });
+		await composed(k, {
+			...CONFIG,
+			providers: [{ name: 'stripe', publishableKey: 'pk_live_x' }],
+			paymentMethods: ['card', 'crypto'],
+			coins: [{ coin: 'btc', ticker: 'btc', name: 'Bitcoin', network: 'btc', memoRequired: false }]
+		});
+		expect(k.unavailable).toHaveLength(1);
+		expect(k.unavailable[0]?.message).toContain('nothing was charged');
+		expect(k.mount.children).toHaveLength(1);
+	});
+
 	// the fund's adapter answers a microtask after it is built where the config names no Connect id,
 	// which is before the card's own adapter has had any chance to answer.
 	it('says nothing when a fund fails at once beside a card box still loading', async () => {

@@ -392,12 +392,14 @@ describe('the unit panel', () => {
 		expect(picked).toEqual(['stock:AAPL']);
 	});
 
-	it('closes again on picking the row already picked, changing nothing', async () => {
+	// a re-pick is how a donor asks again for a coin's price after a check that failed, so it is
+	// reported like any other pick.
+	it('reports a pick of the row already picked, and closes', async () => {
 		const { root, picked, closed } = mounted({ choice: { value: 'currency' } });
 		(root.querySelector('[data-value="currency"]') as HTMLElement).click();
 		await settle();
 
-		expect(picked).toEqual([]);
+		expect(picked).toEqual(['currency']);
 		expect(closed).toEqual([{ restoreFocus: true }]);
 	});
 

@@ -4184,25 +4184,109 @@ describe('what the donor gives', () => {
 
 	it('asks again when the donor picks the coin again after a failed read, and not once it priced', async () => {
 		let answer: () => Promise<number | null> = async () => null;
-		const { actor, calls, clock } = onCoin({ estimate: () => answer() });
+		const { actor, calls, clock } = onCoin({
+			estimate: () => answer(),
+			quote: () => Promise.reject({ code: 'above_maximum', message: 'refused' })
+		});
+		const btc = { kind: 'coin', coin: 'btc' } as const;
 		actor.send({ type: 'SET_QUANTITY', quantity: '0.005' });
 		clock.advance(ESTIMATE_DEBOUNCE_MS);
 		await settle();
 		expect(coinEstimate(actor.getSnapshot().context)).toEqual({ status: 'unpriced' });
 
 		answer = async () => 48_210;
-		actor.send({ type: 'SET_UNIT', unit: { kind: 'coin', coin: 'btc' } });
+		actor.send({ type: 'SET_UNIT', unit: btc });
+		expect(actor.getSnapshot().value).toBe('amount');
+		expect(actor.getSnapshot().context.draft).toMatchObject({ unit: btc, quantity: '0.005' });
 		clock.advance(ESTIMATE_DEBOUNCE_MS);
 		await settle();
 		expect(calls.estimate).toHaveLength(2);
 		expect(coinEstimate(actor.getSnapshot().context)).toEqual({ status: 'priced', minor: 48_210 });
 
-		actor.send({ type: 'SET_UNIT', unit: { kind: 'coin', coin: 'btc' } });
+		// priced, pressed through to the processor, and its refusal of the amount standing on step 1.
+		actor.send({ type: 'CONTINUE' });
+		actor.send({
+			type: 'SET_CONTACT',
+			email: 'donor@example.org',
+			firstName: 'Ada',
+			lastName: 'Lovelace'
+		});
+		actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'tk_ready' });
+		actor.send({ type: 'CONTINUE' });
+		actor.send({ type: 'SUBMIT' });
+		await settle();
+		const before = actor.getSnapshot();
+		expect(before.context.coinRefusal).toEqual({ code: 'above_maximum', coin: 'btc' });
+
+		actor.send({ type: 'SET_UNIT', unit: btc });
+		clock.advance(ESTIMATE_DEBOUNCE_MS);
+		await settle();
+
+		const after = actor.getSnapshot();
+		expect(calls.estimate).toHaveLength(2);
+		expect(after.value).toEqual(before.value);
+		expect(after.context.draft).toEqual(before.context.draft);
+		expect(after.context.coinPrice).toEqual(before.context.coinPrice);
+		expect(after.context.coinRefusal).toEqual(before.context.coinRefusal);
+		expect(toState(after)).toEqual(toState(before));
+
 		actor.send({ type: 'SET_QUANTITY', quantity: '0.005' });
 		clock.advance(ESTIMATE_DEBOUNCE_MS);
 		await settle();
 		expect(calls.estimate).toHaveLength(2);
 		expect(coinEstimate(actor.getSnapshot().context)).toEqual({ status: 'priced', minor: 48_210 });
+	});
+
+	it('changes nothing when the donor picks the currency or the stock already picked', async () => {
+		/** what a pick of the same unit must leave as it was, and the screen drawn off it. */
+		const kept = (snapshot: ReturnType<typeof actor.getSnapshot>) => ({
+			value: snapshot.value,
+			draft: snapshot.context.draft,
+			payerDraft: snapshot.context.payerDraft,
+			coinRefusal: snapshot.context.coinRefusal,
+			refusedCoins: snapshot.context.refusedCoins,
+			state: toState(snapshot)
+		});
+		const { actor, calls, clock } = harness({ config: EVERYTHING, estimate: async () => 48_210 });
+		const currency = { kind: 'currency' } as const;
+		actor.send({ type: 'SET_UNIT', unit: currency });
+		actor.send({ type: 'SET_FREQUENCY', frequency: 'monthly' });
+		actor.send({ type: 'SET_AMOUNT', amountMinor: 2500 });
+		actor.send({ type: 'CONTINUE' });
+		actor.send({
+			type: 'SET_CONTACT',
+			email: 'donor@example.org',
+			firstName: 'Ada',
+			lastName: 'Lovelace'
+		});
+		actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'tk_ready' });
+		actor.send({ type: 'CONTINUE' });
+		expect(actor.getSnapshot().value).toBe('give');
+		actor.send({ type: 'TOGGLE_FEE_COVERAGE' });
+		const covers = actor.getSnapshot().context.payerDraft.coversFee;
+		actor.send({ type: 'GO_TO_STEP', step: 'amount' });
+		const before = kept(actor.getSnapshot());
+		expect(before.draft).toMatchObject({ unit: currency, amountMinor: 2500, frequency: 'monthly' });
+
+		actor.send({ type: 'SET_UNIT', unit: currency });
+		clock.advance(ESTIMATE_DEBOUNCE_MS);
+		await settle();
+
+		expect(kept(actor.getSnapshot())).toEqual(before);
+		expect(actor.getSnapshot().context.payerDraft.coversFee).toBe(covers);
+
+		const stock = { kind: 'stock', ticker: 'AAPL' } as const;
+		actor.send({ type: 'SET_UNIT', unit: stock });
+		actor.send({ type: 'SET_QUANTITY', quantity: '50' });
+		const held = kept(actor.getSnapshot());
+		expect(held.draft).toMatchObject({ unit: stock, quantity: '50', frequency: 'one_time' });
+
+		actor.send({ type: 'SET_UNIT', unit: stock });
+		clock.advance(ESTIMATE_DEBOUNCE_MS);
+		await settle();
+
+		expect(kept(actor.getSnapshot())).toEqual(held);
+		expect(calls.estimate).toEqual([]);
 	});
 
 	it('refuses Continue on a coin amount with no estimate, as a quantity still missing', async () => {
