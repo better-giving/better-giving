@@ -577,6 +577,15 @@ describe('a fiscal sponsor and the contribution offered beside it', () => {
 		expect(readFormConfig({ ...RESPONSE, ein: 'pending', sponsor })).toBeNull();
 	});
 
+	it('reads a sponsor’s legal name with its padding trimmed', () => {
+		const config = readFormConfig({
+			...RESPONSE,
+			sponsor: { ...SPONSOR, legalName: `  ${SPONSOR.legalName}  ` }
+		});
+
+		expect(config?.sponsor?.legalName).toBe(SPONSOR.legalName);
+	});
+
 	it('reads a sponsor whose ein is the config’s with the padding trimmed', () => {
 		const config = readFormConfig({ ...RESPONSE, sponsor: { ...SPONSOR, ein: ' 12-3456789 ' } });
 

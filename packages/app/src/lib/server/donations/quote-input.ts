@@ -406,8 +406,8 @@ const COVERS_FEE = z.boolean({
  *
  * the quote this deployment mints never charges or records a contribution
  * (`QuoteRequest.contributionMinor` in packages/form/src/v1.ts), so a value taken would go uncharged
- * and unrecorded without a word. refused rather than ignored, whatever the served config says, so a
- * caller holding one learns it was not taken.
+ * and unrecorded without a word. refused rather than ignored, whatever the served config carries,
+ * so a caller holding one learns it was not taken.
  */
 const NO_CONTRIBUTION = z
 	.literal(0, {
@@ -421,9 +421,10 @@ const NO_CONTRIBUTION_FIX =
 
 /**
  * the same refusal on a stock or IRA (QCD) pledge, in its own words: a pledge states shares or a
- * custodian's amount and nothing is charged, so there is no gift for a contribution to sit beside
- * (`StockPledgeRequest` in packages/form/src/v1.ts carries no such field). kept apart from
- * `NO_CONTRIBUTION` so that pricing a contribution on a payment later does not let one through here.
+ * custodian's amount and nothing is charged, so there is no charge for a contribution to sit beside
+ * (`StockPledgeRequest` in packages/form/src/v1.ts carries no such field, and an IRA (QCD) request
+ * is a `QuoteRequest` and is refused all the same). a separate schema from `NO_CONTRIBUTION`, so
+ * that one rule changing does not change the other's.
  */
 const NO_PLEDGE_CONTRIBUTION = z
 	.literal(0, {

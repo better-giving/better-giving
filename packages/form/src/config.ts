@@ -21,7 +21,8 @@
 //     the gift alone. the direction is always the one that cannot take a decision away from the
 //     donor. an unreadable `sponsor` is the first kind rather than this one, and so is a sponsor
 //     whose `ein` is not the config's: `ein` and `deductibilityStatement` are the sponsor's where it
-//     is present, so a form that could not name it would state an identity it does not show.
+//     is present, so a response whose sponsor cannot be read states an identity for no donee, and
+//     the config is not one a gift is solicited under.
 //
 // nothing here throws. an exception in this path is a donation form that never renders, which is
 // indistinguishable to the org from a nonprofit having a bad month.
@@ -282,8 +283,8 @@ function coins(value: unknown): readonly PayableCoin[] {
  *
  * the sponsor is `program`'s case and not `coins`': where one is present, `ein` and
  * `deductibilityStatement` are its and not the organisation's, so a sponsor that cannot be read
- * leaves the form stating the identity of an entity it never names, on the screen that solicits a
- * tax-deductible gift. an unreadable one is refused for that reason, and so is one whose `ein`
+ * leaves a response stating the identity of a donee it never names, on a config a tax-deductible
+ * gift is solicited under. an unreadable one is refused for that reason, and so is one whose `ein`
  * differs from the config's own, since two EINs on one response are two answers to who the donee is.
  * the two are compared by their digits, so `12-3456789` and `123456789` are one number written two
  * ways and not a disagreement, and the sponsor is stated with the config's `ein` as it arrived,

@@ -480,8 +480,7 @@ export type FormConfig = {
 	 * present, it is the contribution's recipient too, `ein` and `deductibilityStatement` above are the
 	 * sponsor's, and `orgLegalName` stays the organisation supported. its `ein` is the config's own
 	 * `ein`, and ./config.ts refuses a config naming a sponsor it cannot read, or one whose `ein`
-	 * differs in its digits: a form that could not name the donee would state an identity it does not
-	 * show.
+	 * differs in its digits, since either states an identity for a donee the config does not name.
 	 */
 	readonly sponsor?: Sponsor;
 	/**
