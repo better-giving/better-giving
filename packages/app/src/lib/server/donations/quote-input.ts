@@ -419,6 +419,21 @@ const NO_CONTRIBUTION_FIX =
 	'Leave `contributionMinor` out or send `0`. This deployment offers no contribution.';
 
 /**
+ * the same refusal on a stock or IRA (QCD) pledge, in its own words: a pledge states shares or a
+ * custodian's amount and nothing is charged, so there is no gift for a contribution to sit beside
+ * (`StockPledgeRequest` in packages/form/src/v1.ts carries no such field). kept apart from
+ * `NO_CONTRIBUTION` so that pricing a contribution on a payment later does not let one through here.
+ */
+const NO_PLEDGE_CONTRIBUTION = z
+	.literal(0, {
+		error: (issue) => `\`contributionMinor\` is ${describe(issue.input)}, and a pledge takes none.`
+	})
+	.optional();
+
+const NO_PLEDGE_CONTRIBUTION_FIX =
+	'Leave `contributionMinor` out or send `0`. A stock or IRA (QCD) pledge carries no contribution.';
+
+/**
  * the donor's consent answer, or `null` for an integrator who never asked.
  *
  * nullable and still required: `.nullable()` admits `null` and refuses `undefined`, which is the
@@ -1015,8 +1030,10 @@ export function parsePledgeRequest(body: unknown, config: FormConfig): PledgeInp
 	const coversFee = COVERS_FEE.optional().safeParse(posted.coversFee);
 	if (!coversFee.success) return refusal(first(coversFee.error), COVERS_FEE_FIX);
 
-	const contribution = NO_CONTRIBUTION.safeParse(posted.contributionMinor);
-	if (!contribution.success) return refusal(first(contribution.error), NO_CONTRIBUTION_FIX);
+	const contribution = NO_PLEDGE_CONTRIBUTION.safeParse(posted.contributionMinor);
+	if (!contribution.success) {
+		return refusal(first(contribution.error), NO_PLEDGE_CONTRIBUTION_FIX);
+	}
 
 	const giver = parseGiver(posted, config);
 	if (!giver.ok) return giver;

@@ -881,5 +881,9 @@ describe('parsePledgeRequest() — a contribution, which a pledge cannot take ei
 		const refused = pledgeRefusal(make({ contributionMinor }));
 		expect(refused.ok).toBe(false);
 		expect(refused.message).toContain('`contributionMinor`');
+		// a pledge states shares or a custodian's amount and carries no contribution, which is the
+		// reason the answer gives rather than the payment path's.
+		expect(refused.message).toContain('a pledge takes none');
+		expect(refused.fix).toContain('pledge');
 	});
 });

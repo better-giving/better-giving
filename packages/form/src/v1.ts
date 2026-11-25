@@ -818,7 +818,9 @@ export type QuoteRequest = {
 	 * `amountMinor` keeps meaning the gift alone. the quote charges the contribution on top, so the
 	 * gift is still `Quote.totalMinor - Quote.feeMinor - Quote.contributionMinor`. a deployment
 	 * offers a contribution only beside a `sponsor`, and the endpoint refuses a non-zero value until
-	 * the deployment can price one, so a value it cannot take is never silently dropped.
+	 * the deployment can price one, so a value it cannot take is never silently dropped. a stock or
+	 * `ira_qcd` pledge carries none, whatever a deployment can price: nothing is charged on one, so
+	 * the endpoint refuses a non-zero value on a pledge as its own answer.
 	 */
 	readonly contributionMinor?: number;
 };
