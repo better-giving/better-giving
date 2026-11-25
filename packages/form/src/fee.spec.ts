@@ -446,7 +446,35 @@ describe('a gift with a contribution to the sponsor beside it', () => {
 		// past the cap both fees are the cap, so the contribution adds nothing to it
 		['a capped percentage', ACH, 100_000, 10_000, { gift: 500, contribution: 0, total: 110_500 }],
 		// 5150 − 5000 rounds up to 200; 7210 − 7000 = 210 rounds up to 300
-		['a fee rounded up to a step', DAF, 5000, 2000, { gift: 200, contribution: 100, total: 7300 }]
+		['a fee rounded up to a step', DAF, 5000, 2000, { gift: 200, contribution: 100, total: 7300 }],
+		// the figures below are worked by hand, so the split is held to numbers `estimateFee` did not
+		// produce. the cap binds at 500 / 0.008 = 62 500: 5000 / 0.992 = 5040.3 → 5041, a fee of 41, and
+		// 80 000 / 0.992 = 80 645.2 → 80 646 is past 80 000 + 500, so the sum's fee is the cap, 500, and
+		// the contribution's part is the 459 the gift's own fee left under it.
+		[
+			'a gift under the cap whose sum with the contribution goes over it',
+			ACH,
+			5000,
+			75_000,
+			{ gift: 41, contribution: 459, total: 80_500 }
+		],
+		// 10 030 / 0.971 = 10 329.6 → 10 330; 12 030 / 0.971 = 12 389.3 → 12 390
+		[
+			'a flat charge on a larger gift',
+			CARD,
+			10_000,
+			2000,
+			{ gift: 330, contribution: 60, total: 12_390 }
+		],
+		// 10 000 / 0.971 = 10 298.7 → 10 299, a fee of 299 rounded up to 300; 10 050 / 0.971 = 10 350.2 →
+		// 10 351, a fee of 301 rounded up to 400, so a contribution of 50 moves the fee a whole step
+		[
+			'a small contribution that carries the fee over a step',
+			DAF,
+			10_000,
+			50,
+			{ gift: 300, contribution: 100, total: 10_450 }
+		]
 	])('splits the fee under %s', (_, rule, gift, contribution, expected) => {
 		expect(estimateWithContribution(gift, contribution, rule)).toStrictEqual({
 			giftFeeMinor: expected.gift,

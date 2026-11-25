@@ -582,4 +582,46 @@ describe('a fiscal sponsor and the contribution offered beside it', () => {
 
 		expect(config?.contribution).toStrictEqual({ options: [0, 0.1] });
 	});
+
+	it('reads a starting rate of 0 as the rate the row starts on, when 0 is one of its options', () => {
+		const config = readFormConfig({
+			...RESPONSE,
+			sponsor: SPONSOR,
+			contribution: { options: [0, 0.1], startsAt: 0 }
+		});
+
+		expect(config?.contribution).toStrictEqual({ options: [0, 0.1], startsAt: 0 });
+	});
+
+	it('reads a rate of exactly 1 as a rate, and 0 as one too', () => {
+		const config = readFormConfig({
+			...RESPONSE,
+			sponsor: SPONSOR,
+			contribution: { options: [0, 0.5, 1], startsAt: 1 }
+		});
+
+		expect(config?.contribution).toStrictEqual({ options: [0, 0.5, 1], startsAt: 1 });
+	});
+
+	it('drops a contribution whose starting rate is null, which is no option it offers', () => {
+		const config = readFormConfig({
+			...RESPONSE,
+			sponsor: SPONSOR,
+			contribution: { options: [0.05, 0.1], startsAt: null }
+		});
+
+		expect(config?.sponsor).toStrictEqual(SPONSOR);
+		expect(config).not.toHaveProperty('contribution');
+	});
+
+	it('keeps an absent starting rate absent, and does not read it as null', () => {
+		const absent = readFormConfig({
+			...RESPONSE,
+			sponsor: SPONSOR,
+			contribution: { options: [0.05, 0.1] }
+		});
+
+		expect(absent?.contribution).toStrictEqual({ options: [0.05, 0.1] });
+		expect(absent?.contribution).not.toHaveProperty('startsAt');
+	});
 });

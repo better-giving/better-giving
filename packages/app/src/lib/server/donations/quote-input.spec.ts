@@ -831,6 +831,33 @@ describe('parseQuoteRequest() — a contribution, which this deployment cannot t
 	});
 });
 
+/** a config serving a sponsor and a contribution offer, which does not make one takeable here. */
+const OFFERING: FormConfig = {
+	...CONFIG,
+	sponsor: { legalName: 'Better Giving Fiscal Sponsorship Inc.', ein: '98-7654321' },
+	contribution: { options: [0.1, 0.15, 0.2], startsAt: 0.15 }
+};
+
+describe('a contribution beside a served config that offers one', () => {
+	it('is still refused on a quote', () => {
+		const result = parseQuoteRequest(body({ contributionMinor: 1500 }), OFFERING);
+
+		expect(result.ok).toBe(false);
+		expect(result.ok === false && result.message).toContain('`contributionMinor`');
+	});
+
+	it.each([stockBody, iraBody])('is still refused on a pledge', (make) => {
+		const result = parsePledgeRequest(make({ contributionMinor: 1500 }), OFFERING);
+
+		expect(result.ok).toBe(false);
+		expect(result.ok === false && result.message).toContain('`contributionMinor`');
+	});
+
+	it('leaves a body without one parsing as it does on a config that offers none', () => {
+		expect(parseQuoteRequest(body(), OFFERING)).toStrictEqual(parseQuoteRequest(body(), CONFIG));
+	});
+});
+
 describe('parsePledgeRequest() — a contribution, which a pledge cannot take either', () => {
 	it.each([stockBody, iraBody])(
 		'parses a body sending `contributionMinor` 0 exactly as one leaving it out',
