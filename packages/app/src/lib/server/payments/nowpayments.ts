@@ -582,8 +582,9 @@ export function createNowpaymentsProvider(credentials: NowpaymentsCredentials): 
 	 * what an amount of a coin is worth in dollars, at NOWPayments' current rate.
 	 *
 	 * a refusal here is retryable whatever NOWPayments answered: on the settlement path it values money
-	 * that already moved, and the IPN that asked is sent again; `estimateCoinValue` reads any refusal
-	 * alike. a refusal is not kept, so the next ask is a new call.
+	 * that already moved, and the IPN that asked is sent again. `estimateCoinValue` hands a refusal on
+	 * as it is, and the estimate read answers every one as no figure
+	 * (src/routes/api.v1.forms.$id.estimate.ts). a refusal is not kept, so the next ask is a new call.
 	 */
 	async function estimateInDollars(
 		coinAmount: string,

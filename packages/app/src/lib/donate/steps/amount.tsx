@@ -646,8 +646,9 @@ export function AmountStep({
 			{/*
 			 * the Continue's case (`continueCase` in @better-giving/form/unit): toward the payment step it
 			 * is headed by the eyebrow, named for where it goes and described by the methods there; a gift
-			 * in kind chooses no payment method and it is a plain Continue. the wrapper is what stands
-			 * the eyebrow the inside step over the button (`.next` in packages/form/src/styles/layout.css).
+			 * in kind, a coin or a stock, chooses no payment method and it is a plain Continue. the wrapper
+			 * stands the eyebrow over the button, the inside step apart (`.next` in
+			 * packages/form/src/styles/layout.css).
 			 */}
 			<div className="next">
 				{toPayment === null ? null : <p className="eyebrow">{toPayment.eyebrow}</p>}

@@ -23,9 +23,10 @@ import type { Route } from './+types/api.v1.forms.$id.estimate';
 // (./api.v1.forms.$id.config.ts), and asks NOWPayments nothing. every other miss is
 // `{ estimateMinor: null }` rather than a refusal, since the donation form meets each one alike —
 // with no figure it quotes no coin gift: an amount empty or over `AMOUNT_LENGTH_MAX` characters, a
-// coin the served list does not name — which is every coin while crypto is off, the list being empty
-// there (`cachedCoins` in $lib/server/forms/coin-cache.ts) — or an estimate NOWPayments refused or
-// did not answer in time.
+// coin not on the list the config read serves, or an estimate NOWPayments refused or did not answer
+// in time. that list is read from the same cache (`cachedCoins` in
+// $lib/server/forms/coin-cache.ts), and where it is empty or unread no coin is priced and the config
+// serves no crypto (`PublishedConfigSources.coins` in $lib/server/forms/published-config.ts).
 //
 // `Cache-Control: no-store` from `corsHeaders`: the figure moves with the coin's price.
 

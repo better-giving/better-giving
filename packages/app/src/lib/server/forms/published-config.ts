@@ -790,10 +790,10 @@ function isDrawnRail(rail: PaymentMethod): boolean {
 
 /**
  * whether a donor may give on `rail` at a cadence that repeats, as the donation form draws it: it
- * lists venmo, crypto, DAF and the IRA (QCD) row only on a one-time gift (`venmoIsOffered`,
- * `cryptoIsOffered`, `fundIsOffered` and `pledgeIsOffered` in packages/form/src/checkout.machine.ts),
- * and draws no stock row at all. total over `PaymentMethod`, so a rail added there is a compile error
- * here.
+ * lists venmo, DAF and the IRA (QCD) row only on a one-time gift (`venmoIsOffered`, `fundIsOffered`
+ * and `pledgeIsOffered` in packages/form/src/checkout.machine.ts), and a coin or a stock picked on
+ * the first step makes the gift one-time (`unitsOffered` in the same file). total over
+ * `PaymentMethod`, so a rail added to it is a compile error here.
  */
 const REPEATS_A_GIFT: Readonly<Record<PaymentMethod, boolean>> = {
 	card: true,
