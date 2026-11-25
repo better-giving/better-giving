@@ -815,3 +815,44 @@ describe('parsePledgeRequest() — what both rails refuse', () => {
 		expect(pledgeRefusal(iraBody({ email: '' })).message).toContain('`email`');
 	});
 });
+
+describe('parseQuoteRequest() — a contribution, which this deployment cannot take yet', () => {
+	it('parses a body sending `contributionMinor` 0 exactly as one leaving it out', () => {
+		expect(parseQuoteRequest(body({ contributionMinor: 0 }), CONFIG)).toStrictEqual(
+			parseQuoteRequest(body(), CONFIG)
+		);
+	});
+
+	// nothing here can price one, so a contribution taken would be one silently dropped.
+	it.each([500, -100, 2.5, '500', null])('refuses `contributionMinor` %j', (contributionMinor) => {
+		const refused = refusal({ contributionMinor });
+		expect(refused.ok).toBe(false);
+		expect(refused.message).toContain('`contributionMinor`');
+	});
+});
+
+describe('parsePledgeRequest() — a contribution, which a pledge cannot take either', () => {
+	it.each([stockBody, iraBody])(
+		'parses a body sending `contributionMinor` 0 exactly as one leaving it out',
+		(make) => {
+			expect(parsePledgeRequest(make({ contributionMinor: 0 }), CONFIG)).toStrictEqual(
+				parsePledgeRequest(make(), CONFIG)
+			);
+		}
+	);
+
+	it.each(
+		(
+			[
+				['stock', stockBody],
+				['ira_qcd', iraBody]
+			] as const
+		).flatMap(([rail, make]) =>
+			[500, -100, 2.5, '500', null].map((value) => [rail, make, value] as const)
+		)
+	)('refuses on `%s` a `contributionMinor` of %j', (_rail, make, contributionMinor) => {
+		const refused = pledgeRefusal(make({ contributionMinor }));
+		expect(refused.ok).toBe(false);
+		expect(refused.message).toContain('`contributionMinor`');
+	});
+});

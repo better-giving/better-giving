@@ -814,8 +814,8 @@ export type QuoteRequest = {
 	 *
 	 * `amountMinor` keeps meaning the gift alone. the quote charges the contribution on top, so the
 	 * gift is still `Quote.totalMinor - Quote.feeMinor - Quote.contributionMinor`. a deployment
-	 * offers a contribution only beside a `sponsor`, and the endpoint refuses a non-zero value while
-	 * the served config offers no `contribution`.
+	 * offers a contribution only beside a `sponsor`, and the endpoint refuses a non-zero value until
+	 * the deployment can price one, so a value it cannot take is never silently dropped.
 	 */
 	readonly contributionMinor?: number;
 };
