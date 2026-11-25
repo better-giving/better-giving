@@ -233,8 +233,17 @@ function markNode(doc: Document, mark: Mark): HTMLElement {
 	return slot;
 }
 
-/** a row's nodes, the tick slot kept apart so a render can fill or empty it. */
-type RowNodes = { readonly row: HTMLElement; readonly tick: HTMLElement };
+/**
+ * a row's nodes, the tick slot and the refusal line kept apart so a render can fill or empty the one
+ * and place or take out the other: a row is kept by value across renders, and a coin can be refused
+ * after its row was built.
+ */
+type RowNodes = {
+	readonly row: HTMLElement;
+	readonly text: HTMLElement;
+	readonly reason: HTMLElement;
+	readonly tick: HTMLElement;
+};
 
 /**
  * the registry's combobox row: the mark, the code with its badge on line one, the plain name under
@@ -248,7 +257,7 @@ function rowNodes(doc: Document, row: Row): RowNodes {
 	if (row.badge !== null) line.appendChild(node(doc, 'span', 'ds-combobox-badge', [row.badge]));
 	const text = node(doc, 'span', 'ds-combobox-text', [line]);
 	if (row.name !== '') text.appendChild(node(doc, 'span', 'ds-option-meta', [row.name]));
-	if (row.refused) text.appendChild(node(doc, 'span', 'ds-option-meta', [COIN_REFUSED]));
+	const reason = node(doc, 'span', 'ds-option-meta', [COIN_REFUSED]);
 	const tick = node(doc, 'span', 'ds-combobox-tick');
 	tick.setAttribute('aria-hidden', 'true');
 	const element = node(doc, 'div', 'ds-option ds-combobox-option', [
@@ -256,7 +265,7 @@ function rowNodes(doc: Document, row: Row): RowNodes {
 		text,
 		tick
 	]);
-	return { row: element, tick };
+	return { row: element, text, reason, tick };
 }
 
 /** the machine's id, and the prefix of every id in the root. */
@@ -508,8 +517,12 @@ export function createUnitPanel(doc: Document, handlers: UnitPanelHandlers): Uni
 			spread(group.element, api.getItemGroupProps({ id: key }) as Props, ID);
 			spread(group.heading, api.getItemGroupLabelProps({ htmlFor: key }) as Props, ID);
 			const nodes = mine.map((row) => {
-				const { row: element, tick } = rowFor(row);
+				const { row: element, text, reason, tick } = rowFor(row);
 				spread(element, api.getItemProps({ item: row }) as Props, ID);
+				if (row.refused !== (reason.parentNode === text)) {
+					if (row.refused) text.appendChild(reason);
+					else reason.remove();
+				}
 				const picked = api.getItemState({ item: row }).selected;
 				if (picked !== (tick.firstChild !== null)) {
 					tick.replaceChildren(...(picked ? [glyph(doc, 'tick', '')] : []));

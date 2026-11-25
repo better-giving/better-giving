@@ -32,6 +32,7 @@ import {
 import { DEFAULT_SHAPE } from './views';
 import { EMPLOYER_CLASS } from './employer-ask';
 import { TICKER_DEBOUNCE_MS } from './ticker-search';
+import { COIN_REFUSED } from './unit';
 import { createFormRuntime } from './embed/runtime';
 import { createPaymentSurface, type PaymentSeams, quoteThrough } from './embed/surface';
 import { APPEARANCE_INPUTS } from './styles/appearance';
@@ -8372,6 +8373,10 @@ describe('a crypto gift', () => {
 		expect(quantity(card).hasAttribute('aria-invalid')).toBe(false);
 	});
 
+	// the coin's row was drawn, allowed, when the donor picked it, so the refusal reaches a row that
+	// already stands, and the row has to say why it is passed over as well as be passed over. the
+	// machine keeps a refused coin refused for the visit (`refusedCoins` in ./checkout.machine.ts), so
+	// nothing here lifts it.
 	it('lands a coin the account no longer takes back on the pill, the coin marked in the list', async () => {
 		const card = await onCoin('USDT', {
 			ports: { quote: () => Promise.reject({ code: 'coin_not_accepted', message: 'refused' }) }
@@ -8381,11 +8386,18 @@ describe('a crypto gift', () => {
 		expect(card.find('.step').hidden).toBe(false);
 		expect(card.text('#amount-problem')).toBe('Tether USD (Tron) is no longer accepted');
 		expect(card.shadow.activeElement).toBe(pill(card));
-		expect(
-			unitPanel(card)
-				.querySelector('[role="option"][data-value="coin:usdttrc20"]')
-				?.getAttribute('aria-disabled')
-		).toBe('true');
+
+		pill(card).click();
+		await settle();
+		const row = unitPanel(card).querySelector(
+			'[role="option"][data-value="coin:usdttrc20"]'
+		) as HTMLElement;
+
+		expect(row.getAttribute('aria-disabled')).toBe('true');
+		expect([...row.querySelectorAll('.ds-option-meta')].map((line) => line.textContent)).toEqual([
+			'Tether USD (Tron)',
+			COIN_REFUSED
+		]);
 	});
 });
 

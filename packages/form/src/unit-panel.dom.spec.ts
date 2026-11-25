@@ -1,4 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import variablesSource from './registry/styles/variables.css?raw';
+import tokenSource from './styles/tokens.css?raw';
+import { COIN_REFUSED } from './unit';
 import { createUnitPanel, type UnitChoice, type UnitPanel } from './unit-panel';
 import type { TickerMatch } from './v1';
 
@@ -462,16 +465,101 @@ describe('the unit panel', () => {
 		expect(closed).toEqual([{ restoreFocus: false }]);
 	});
 
-	it('renders no control disabled, a refused coin included', async () => {
-		const options = OPTIONS.map((option) =>
-			option.value === 'coin:eth' ? { ...option, refused: true } : option
-		);
-		const { root, typed } = mounted({ choice: { options } });
-		await typed('e', SEARCHED);
+	// the account refuses a coin after the panel already drew its row, so the row is the same node
+	// before and after, and its reason follows the flag on every update, both ways.
+	it('says why a coin refused after the list was drawn is passed over, and stops when it is lifted', async () => {
+		const { panel, root } = mounted();
 		const eth = root.querySelector('[data-value="coin:eth"]') as HTMLElement;
+		const reasons = () =>
+			[...eth.querySelectorAll('.ds-option-meta')].map((line) => line.textContent);
+		const refusing = (refused: boolean): UnitChoice => ({
+			value: '',
+			search: 'Search currency, crypto or stock',
+			options: OPTIONS.map((option) =>
+				option.value === 'coin:eth' ? { ...option, refused } : option
+			),
+			stocks: true,
+			onChange: () => {}
+		});
+		expect(reasons()).toEqual(['Ethereum']);
 
+		panel.update(refusing(true));
+		await settle();
+
+		expect(root.querySelector('[data-value="coin:eth"]')).toBe(eth);
 		expect(root.querySelectorAll('[disabled]')).toHaveLength(0);
 		expect(eth.getAttribute('aria-disabled')).toBe('true');
-		expect(eth.textContent).toContain('no longer accepted');
+		expect(reasons()).toEqual(['Ethereum', COIN_REFUSED]);
+
+		panel.update(refusing(false));
+		await settle();
+
+		expect(root.querySelector('[data-value="coin:eth"]')).toBe(eth);
+		expect(eth.hasAttribute('aria-disabled')).toBe(false);
+		expect(reasons()).toEqual(['Ethereum']);
+	});
+});
+
+/**
+ * every custom property a sheet declares, keyed by the rules it sits in, outermost first and joined
+ * by ` | `, each prelude with its whitespace collapsed: `@media (…) | :root` → `--duration-fast` → `0.01ms`.
+ */
+function declared(css: string): Map<string, Map<string, string>> {
+	const text = css.replace(/\/\*[\s\S]*?\*\//g, '');
+	const found = new Map<string, Map<string, string>>();
+	const open: string[] = [];
+	let piece = '';
+	const flush = () => {
+		const at = piece.indexOf(':');
+		const name = piece.slice(0, at).trim();
+		if (at > 0 && name.startsWith('--')) {
+			const where = open.join(' | ');
+			const rule = found.get(where) ?? new Map<string, string>();
+			rule.set(
+				name,
+				piece
+					.slice(at + 1)
+					.replace(/\s+/g, ' ')
+					.trim()
+			);
+			found.set(where, rule);
+		}
+		piece = '';
+	};
+	for (const char of text) {
+		if (char === '{') {
+			open.push(piece.replace(/\s+/g, ' ').trim());
+			piece = '';
+		} else if (char === '}') {
+			flush();
+			open.pop();
+		} else if (char === ';') flush();
+		else piece += char;
+	}
+	return found;
+}
+
+describe('the registry values the panel reads', () => {
+	const registry = declared(variablesSource);
+	const tokens = declared(tokenSource);
+	const REDUCE = '@media (prefers-reduced-motion: reduce)';
+	// the node under `:host` and under the deployment's `[data-donate-root]`, where the registry's
+	// `[data-theme]` declares `--shadow-ink`, which the floating shadow mixes.
+	const CARD_NODE = ':host > *, [data-donate-root] > *';
+
+	it('restates the floating shadow and the fast duration on the card node at the registry’s values', () => {
+		const stated = registry.get(':root');
+		expect(stated?.get('--shadow-floating')).toMatch(/^0 10px 15px -3px color-mix/);
+		expect(stated?.get('--duration-fast')).toBe('150ms');
+
+		expect(tokens.get(CARD_NODE)?.get('--shadow-floating')).toBe(stated?.get('--shadow-floating'));
+		expect(tokens.get(CARD_NODE)?.get('--duration-fast')).toBe(stated?.get('--duration-fast'));
+	});
+
+	it('collapses the restated fast duration under reduced motion as the registry does', () => {
+		const reduced = registry.get(`${REDUCE} | :root`)?.get('--duration-fast');
+		expect(reduced).toBe('0.01ms');
+
+		expect(tokens.get(`${REDUCE} | ${CARD_NODE}`)?.get('--duration-fast')).toBe(reduced);
 	});
 });
