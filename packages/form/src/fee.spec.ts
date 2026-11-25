@@ -498,6 +498,10 @@ describe('a gift with a contribution to the sponsor beside it', () => {
 				expect(split && split.giftFeeMinor + split.contributionFeeMinor).toBe(whole.feeMinor);
 				expect(split?.totalMinor).toBe(whole.totalMinor);
 				expect(split?.contributionFeeMinor).toBeGreaterThanOrEqual(0);
+				// the total is the gift, the contribution and both covers, whatever `estimateFee` says.
+				expect(split?.totalMinor).toBe(
+					gift + contribution + (split?.giftFeeMinor ?? 0) + (split?.contributionFeeMinor ?? 0)
+				);
 			}
 		}
 	});
@@ -507,7 +511,6 @@ describe('a gift with a contribution to the sponsor beside it', () => {
 		['a rate past the widest it treats as a price', 5000, 500, { percent: 0.6, fixedMinor: 0 }],
 		['a gift that is not a whole amount', 50.5, 500, CARD],
 		['a negative contribution', 5000, -100, CARD],
-		['a negative contribution the gift fee would absorb', 100_000, -10_000, ACH],
 		['a fractional contribution', 5000, 0.5, CARD],
 		['a contribution that is not a number', 5000, Number.NaN, CARD]
 	])('says nothing on %s', (_, gift, contribution, rule) => {

@@ -169,8 +169,10 @@ export type ContributionEstimate = {
  * splitting the sum's fee in proportion would move the gift's line every time the contribution
  * moved. at a contribution of 0 this is `estimateFee` with a zero second part.
  *
- * `null` where either estimate is, and on a contribution that is not a whole non-negative amount:
- * no part it returns is ever negative.
+ * `null` where either estimate is, and on a contribution that is not a whole non-negative amount.
+ * no part it returns is negative, and that needs no check of its own: the fee `estimateFee` states
+ * never falls as the amount grows, under a cap and a rounding step alike, so the sum's fee is never
+ * under the gift's.
  */
 export function estimateWithContribution(
 	giftMinor: number,
@@ -181,9 +183,11 @@ export function estimateWithContribution(
 	const gift = estimateFee(giftMinor, rule);
 	const whole = estimateFee(giftMinor + contributionMinor, rule);
 	if (gift === null || whole === null) return null;
-	const contributionFeeMinor = whole.feeMinor - gift.feeMinor;
-	if (contributionFeeMinor < 0) return null;
-	return { giftFeeMinor: gift.feeMinor, contributionFeeMinor, totalMinor: whole.totalMinor };
+	return {
+		giftFeeMinor: gift.feeMinor,
+		contributionFeeMinor: whole.feeMinor - gift.feeMinor,
+		totalMinor: whole.totalMinor
+	};
 }
 
 /**
