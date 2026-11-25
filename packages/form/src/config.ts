@@ -17,8 +17,9 @@
 //     ever complete, so the form would render and refuse every gift silently.
 //   - a field with a safe reading falls back to it. an unreadable `feeCoverage` becomes the one
 //     mode ./v1.ts carries, which leaves the fee the donor's own decision; an unreadable locale
-//     becomes a formatting default. the direction is always the one that cannot take a decision
-//     away from the donor.
+//     becomes a formatting default. an unreadable `sponsor` or `contribution` is dropped, and the
+//     form asks for the gift alone under the identity `ein` and `deductibilityStatement` state. the
+//     direction is always the one that cannot take a decision away from the donor.
 //
 // nothing here throws. an exception in this path is a donation form that never renders, which is
 // indistinguishable to the org from a nonprofit having a bad month.
@@ -273,6 +274,45 @@ function coins(value: unknown): readonly PayableCoin[] {
 }
 
 /**
+ * the fiscal sponsor and the contribution offered beside it, as the fields a config carries, `{}`
+ * where either is unreadable.
+ *
+ * dropped rather than refused, which is where these part company with `program` above: a form
+ * read without them solicits the gift it solicited before, under the identity `ein` and
+ * `deductibilityStatement` already state, and asks for no contribution. a contribution is read only
+ * beside a readable sponsor, because the sponsor is who receives it, and it is dropped whole where
+ * any rate is not a fraction in [0, 1] or `startsAt` names no option: a row offering fewer rates
+ * than the deployment set, or starting on one it does not show, is a different question from the
+ * one served.
+ */
+function sponsorship(
+	sponsorValue: unknown,
+	contributionValue: unknown
+): Pick<FormConfig, 'sponsor' | 'contribution'> {
+	const source = record(sponsorValue);
+	const legalName = source === null ? null : text(source.legalName);
+	const ein = source === null ? null : text(source.ein);
+	if (legalName === null || ein === null) return {};
+	return { sponsor: { legalName, ein }, ...contribution(contributionValue) };
+}
+
+function isRate(value: unknown): value is number {
+	return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1;
+}
+
+function contribution(value: unknown): Pick<FormConfig, 'contribution'> {
+	const source = record(value);
+	if (source === null || !Array.isArray(source.options) || source.options.length === 0) return {};
+	const options: unknown[] = [...source.options];
+	if (!options.every(isRate)) return {};
+	const { startsAt } = source;
+	if (startsAt === undefined) return { contribution: { options } };
+	return isRate(startsAt) && options.includes(startsAt)
+		? { contribution: { options, startsAt } }
+		: {};
+}
+
+/**
  * the mode every served config is read as, whatever it names.
  *
  * `FEE_COVERAGE_MODES` in ./v1.ts carries one member, so there is nothing to read off the
@@ -353,6 +393,7 @@ export function readFormConfig(value: unknown): FormConfig | null {
 		...cause,
 		...(turnstileSiteKey === null ? {} : { turnstileSiteKey }),
 		...(altchaChallengeUrl === null ? {} : { altchaChallengeUrl }),
-		...(payableCoins.length === 0 ? {} : { coins: payableCoins })
+		...(payableCoins.length === 0 ? {} : { coins: payableCoins }),
+		...sponsorship(source.sponsor, source.contribution)
 	};
 }

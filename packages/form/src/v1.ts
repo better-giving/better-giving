@@ -123,6 +123,30 @@ export type Program =
 export const NO_PROGRAM_LABEL = 'Where it’s needed most';
 
 /**
+ * the fiscal sponsor a gift is given to, where the organisation supported is sponsored rather than
+ * a charity in its own name.
+ *
+ * the sponsor is the donee, and the recipient of any `Contribution` below. where `FormConfig.sponsor`
+ * is present, `FormConfig.ein` and `FormConfig.deductibilityStatement` are the sponsor's, and
+ * `FormConfig.orgLegalName` stays the organisation the gift supports.
+ */
+export type Sponsor = { readonly legalName: string; readonly ein: string };
+
+/**
+ * a contribution to the `Sponsor` above, asked beside the gift, as rates of it.
+ *
+ * a deployment offers one only beside a `sponsor`, and ./config.ts drops one that arrives without
+ * it. what the donor chose travels as `QuoteRequest.contributionMinor`, in minor units rather than
+ * as a rate, and the quote answers it as `Quote.contributionMinor`.
+ */
+export type Contribution = {
+	/** rates of the gift, as fractions. a custom amount is always allowed beside them. */
+	readonly options: readonly number[];
+	/** the option the row starts on. absent is a row that starts off. */
+	readonly startsAt?: number;
+};
+
+/**
  * how the donor is asked to cover the processing fee.
  *
  * one mode: the receipt's fee line renders as a decision the donor makes, on a control that states
@@ -447,6 +471,22 @@ export type FormConfig = {
 	 * coin to pick as one not offering it.
 	 */
 	readonly coins?: readonly PayableCoin[];
+	/**
+	 * the fiscal sponsor that is the donee, absent where the organisation receives gifts in its own
+	 * name.
+	 *
+	 * present, it is the contribution's recipient too, `ein` and `deductibilityStatement` above are the
+	 * sponsor's, and `orgLegalName` stays the organisation supported. ./config.ts drops an unreadable
+	 * one, and `contribution` with it, rather than refusing the config.
+	 */
+	readonly sponsor?: Sponsor;
+	/**
+	 * the contribution to `sponsor` a donor is asked for beside the gift, absent where none is asked.
+	 *
+	 * a deployment offers one only beside a `sponsor`. ./config.ts drops one that arrives without a
+	 * readable sponsor, or whose rates it cannot read, rather than refusing the config.
+	 */
+	readonly contribution?: Contribution;
 };
 
 /**
@@ -549,6 +589,15 @@ export type Quote = {
 	 * carries; a `pledgeId` naming anything else is `pledge_id_taken`.
 	 */
 	readonly pledge?: Pledge;
+	/**
+	 * the contribution to `FormConfig.sponsor` this charge carries, absent where it carries none.
+	 *
+	 * part of the charge rather than beside it: `totalMinor` is the whole charge and `feeMinor` the
+	 * whole covered fee, the contribution's share of that fee included, so the gift is
+	 * `totalMinor - feeMinor - contributionMinor`. with no contribution that is
+	 * `totalMinor - feeMinor`, the arithmetic every quote without one already answers to.
+	 */
+	readonly contributionMinor?: number;
 };
 
 /**
@@ -759,6 +808,16 @@ export type QuoteRequest = {
 	 * carries this or `turnstileToken`, whichever check the served config names, and never both.
 	 */
 	readonly altchaPayload?: string;
+	/**
+	 * the contribution to `FormConfig.sponsor` the donor chose beside the gift, in minor units,
+	 * absent or 0 where they chose none.
+	 *
+	 * `amountMinor` keeps meaning the gift alone. the quote charges the contribution on top, so the
+	 * gift is still `Quote.totalMinor - Quote.feeMinor - Quote.contributionMinor`. a deployment
+	 * offers a contribution only beside a `sponsor`, and the endpoint refuses a non-zero value while
+	 * the served config offers no `contribution`.
+	 */
+	readonly contributionMinor?: number;
 };
 
 /** the most characters `QuoteRequest.custodian` may hold once trimmed. */

@@ -498,3 +498,88 @@ describe('a response with a safe reading', () => {
 		expect(config?.paymentMethods).toEqual(['card']);
 	});
 });
+
+/** a fiscal sponsor as the response names one. */
+const SPONSOR = { legalName: 'Better Giving Fiscal Sponsorship Inc.', ein: '98-7654321' };
+
+/** a contribution offered beside it, starting on the middle rate. */
+const CONTRIBUTION = { options: [0.05, 0.1, 0.15], startsAt: 0.1 };
+
+describe('a fiscal sponsor and the contribution offered beside it', () => {
+	it('reads a config naming neither exactly as it read before either existed', () => {
+		expect(readFormConfig(RESPONSE)).toStrictEqual({
+			formId: 'frm_a8x2k9',
+			providers: [{ name: 'stripe', publishableKey: 'pk_test_x' }],
+			currency: 'usd',
+			suggestedAmountsMinor: [2500, 10_000],
+			minAmountMinor: 500,
+			maxAmountMinor: 5_000_000,
+			frequencies: ['one_time', 'monthly'],
+			paymentMethods: ['card', 'apple_pay'],
+			feeCoverage: 'optional',
+			feeRules: { card: { percent: 0.029, fixedMinor: 30 } },
+			locale: 'en-US',
+			orgLegalName: 'Acme Relief Fund',
+			ein: '12-3456789',
+			deductibilityStatement: 'No goods or services were provided in exchange for this gift.'
+		});
+	});
+
+	it('reads a sponsor and its contribution', () => {
+		const config = readFormConfig({ ...RESPONSE, sponsor: SPONSOR, contribution: CONTRIBUTION });
+
+		expect(config?.sponsor).toStrictEqual(SPONSOR);
+		expect(config?.contribution).toStrictEqual(CONTRIBUTION);
+	});
+
+	it.each([
+		['a sponsor that is not a record', 'Better Giving Fiscal Sponsorship Inc.'],
+		['a sponsor with a blank legal name', { ...SPONSOR, legalName: '  ' }],
+		['a sponsor with no ein', { legalName: SPONSOR.legalName }]
+	])('drops %s, and the contribution with it, and still loads', (_, sponsor) => {
+		const config = readFormConfig({ ...RESPONSE, sponsor, contribution: CONTRIBUTION });
+
+		expect(config).not.toBeNull();
+		expect(config).not.toHaveProperty('sponsor');
+		expect(config).not.toHaveProperty('contribution');
+	});
+
+	it('reads a sponsor served with no contribution as asking for none', () => {
+		const config = readFormConfig({ ...RESPONSE, sponsor: SPONSOR });
+
+		expect(config?.sponsor).toStrictEqual(SPONSOR);
+		expect(config).not.toHaveProperty('contribution');
+	});
+
+	it('drops a contribution served with no sponsor to receive it, and still loads', () => {
+		const config = readFormConfig({ ...RESPONSE, contribution: CONTRIBUTION });
+
+		expect(config).not.toBeNull();
+		expect(config).not.toHaveProperty('contribution');
+	});
+
+	it.each([
+		['rates that are not a list', { options: '0.1' }],
+		['no rates at all', { options: [] }],
+		['a rate above the whole gift', { options: [0.1, 1.5] }],
+		['a negative rate', { options: [-0.05, 0.1] }],
+		['a rate that is not a number', { options: [0.1, '0.15'] }],
+		['a rate that is not finite', { options: [0.1, Number.NaN] }],
+		['a starting rate it does not offer', { options: [0.05, 0.1], startsAt: 0.2 }]
+	])('drops a contribution with %s whole and keeps the sponsor', (_, contribution) => {
+		const config = readFormConfig({ ...RESPONSE, sponsor: SPONSOR, contribution });
+
+		expect(config?.sponsor).toStrictEqual(SPONSOR);
+		expect(config).not.toHaveProperty('contribution');
+	});
+
+	it('reads a contribution with no starting rate as one that starts off, adding no key', () => {
+		const config = readFormConfig({
+			...RESPONSE,
+			sponsor: SPONSOR,
+			contribution: { options: [0, 0.1] }
+		});
+
+		expect(config?.contribution).toStrictEqual({ options: [0, 0.1] });
+	});
+});

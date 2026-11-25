@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	estimateDeductedFee,
 	estimateFee,
+	estimateWithContribution,
 	MAX_FEE_PERCENT,
 	reconcile,
 	RECONCILIATION_KINDS,
@@ -421,5 +422,67 @@ describe('the reconciliation vocabulary', () => {
 			expect(RECONCILIATION_LABELS[kind]).toBeTypeOf('string');
 		}
 		expect(RECONCILIATION_KINDS).toHaveLength(3);
+	});
+});
+
+describe('a gift with a contribution to the sponsor beside it', () => {
+	it('is the gift’s own estimate when the contribution is nothing', () => {
+		// $50.00 on a card grosses up to $51.81: (5000 + 30) / 0.971 = 5180.2, rounded up.
+		expect(estimateWithContribution(5000, 0, CARD)).toStrictEqual({
+			giftFeeMinor: 181,
+			contributionFeeMinor: 0,
+			totalMinor: 5181
+		});
+	});
+
+	/** a proportion and nothing else. */
+	const PERCENT_ONLY: FeeRule = { percent: 0.05, fixedMinor: 0 };
+
+	it.each([
+		// 1000 / 0.95 = 1052.6 → 1053; 1100 / 0.95 = 1157.9 → 1158
+		['a percentage alone', PERCENT_ONLY, 1000, 100, { gift: 53, contribution: 5, total: 1158 }],
+		// 5030 / 0.971 = 5180.2 → 5181; 5530 / 0.971 = 5695.2 → 5696
+		['a flat charge beside it', CARD, 5000, 500, { gift: 181, contribution: 15, total: 5696 }],
+		// past the cap both fees are the cap, so the contribution adds nothing to it
+		['a capped percentage', ACH, 100_000, 10_000, { gift: 500, contribution: 0, total: 110_500 }],
+		// 5150 − 5000 rounds up to 200; 7210 − 7000 = 210 rounds up to 300
+		['a fee rounded up to a step', DAF, 5000, 2000, { gift: 200, contribution: 100, total: 7300 }]
+	])('splits the fee under %s', (_, rule, gift, contribution, expected) => {
+		expect(estimateWithContribution(gift, contribution, rule)).toStrictEqual({
+			giftFeeMinor: expected.gift,
+			contributionFeeMinor: expected.contribution,
+			totalMinor: expected.total
+		});
+	});
+
+	it.each([
+		['a percentage alone', PERCENT_ONLY],
+		['a percentage and a flat charge', CARD],
+		['a capped percentage', ACH],
+		['a fee rounded up to a step', DAF]
+	])('charges under %s exactly the one fee on gift and contribution together', (_, rule) => {
+		for (const gift of [100, 2500, 5000, 99_999, 1_000_000]) {
+			for (const contribution of [0, 1, 250, 1500, 75_000]) {
+				const split = estimateWithContribution(gift, contribution, rule);
+				const whole = estimated(gift + contribution, rule);
+
+				expect(split?.giftFeeMinor).toBe(estimated(gift, rule).feeMinor);
+				expect(split && split.giftFeeMinor + split.contributionFeeMinor).toBe(whole.feeMinor);
+				expect(split?.totalMinor).toBe(whole.totalMinor);
+				expect(split?.contributionFeeMinor).toBeGreaterThanOrEqual(0);
+			}
+		}
+	});
+
+	it.each([
+		['no rule for the rail', 5000, 500, undefined],
+		['a rate past the widest it treats as a price', 5000, 500, { percent: 0.6, fixedMinor: 0 }],
+		['a gift that is not a whole amount', 50.5, 500, CARD],
+		['a negative contribution', 5000, -100, CARD],
+		['a negative contribution the gift fee would absorb', 100_000, -10_000, ACH],
+		['a fractional contribution', 5000, 0.5, CARD],
+		['a contribution that is not a number', 5000, Number.NaN, CARD]
+	])('says nothing on %s', (_, gift, contribution, rule) => {
+		expect(estimateWithContribution(gift, contribution, rule)).toBeNull();
 	});
 });
