@@ -547,6 +547,36 @@ describe('a fiscal sponsor and the contribution offered beside it', () => {
 		expect(readFormConfig({ ...RESPONSE, sponsor })).toBeNull();
 	});
 
+	it('states the sponsor’s ein as the config’s own, whatever padding either arrived with', () => {
+		const config = readFormConfig({
+			...RESPONSE,
+			ein: ' 12-3456789 ',
+			sponsor: { ...SPONSOR, ein: '12-3456789' }
+		});
+
+		expect(config?.sponsor?.ein).toBe(config?.ein);
+	});
+
+	it('reads a sponsor whose ein is the config’s number written another way', () => {
+		const config = readFormConfig({ ...RESPONSE, sponsor: { ...SPONSOR, ein: '123456789' } });
+
+		expect(config?.sponsor).toStrictEqual(SPONSOR);
+		expect(config?.sponsor?.ein).toBe(config?.ein);
+	});
+
+	it.each([
+		['a different number', { ...SPONSOR, ein: '12-3456780' }],
+		['a number with a digit more', { ...SPONSOR, ein: '12-34567890' }]
+	])('refuses a config whose sponsor ein is %s from the config’s', (_, sponsor) => {
+		expect(readFormConfig({ ...RESPONSE, sponsor })).toBeNull();
+	});
+
+	it('refuses a sponsor and a config whose eins hold no digits to compare', () => {
+		const sponsor = { ...SPONSOR, ein: 'pending' };
+
+		expect(readFormConfig({ ...RESPONSE, ein: 'pending', sponsor })).toBeNull();
+	});
+
 	it('reads a sponsor whose ein is the config’s with the padding trimmed', () => {
 		const config = readFormConfig({ ...RESPONSE, sponsor: { ...SPONSOR, ein: ' 12-3456789 ' } });
 

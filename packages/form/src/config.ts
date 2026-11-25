@@ -175,8 +175,9 @@ function feeRules(value: unknown): FeeRules {
  * response states one this file cannot read.
  *
  * three answers rather than two, because an absent program and an unreadable one are opposite
- * judgements here. this is the one field on the response that says where the money goes, so there
- * is no safe reading of a mangled one: a pin whose name did not arrive draws a screen naming no
+ * judgements here. this is the field on the response that says which cause the money goes to
+ * (`sponsorship` below is the one that says which entity receives it), so there is no safe reading
+ * of a mangled one: a pin whose name did not arrive draws a screen naming no
  * cause, and a list with one unreadable entry offers a donor fewer causes than the org set, with
  * nothing on the card to say one is missing. both are a gift credited somewhere the org did not
  * say, so the whole config goes and the element states which field it could not read.
@@ -284,7 +285,10 @@ function coins(value: unknown): readonly PayableCoin[] {
  * leaves the form stating the identity of an entity it never names, on the screen that solicits a
  * tax-deductible gift. an unreadable one is refused for that reason, and so is one whose `ein`
  * differs from the config's own, since two EINs on one response are two answers to who the donee is.
- * an absent sponsor is the ordinary form.
+ * the two are compared by their digits, so `12-3456789` and `123456789` are one number written two
+ * ways and not a disagreement, and the sponsor is stated with the config's `ein` as it arrived,
+ * which keeps `FormConfig.sponsor.ein` equal to `FormConfig.ein` as ./v1.ts says. an absent sponsor
+ * is the ordinary form.
  *
  * the contribution is the opposite judgement, dropped rather than refused: a form read without it
  * asks for the gift alone. it is read only beside a sponsor, because the sponsor is who receives it,
@@ -302,11 +306,10 @@ function sponsorship(
 	const legalName = source === null ? null : text(source.legalName);
 	const sponsorEin = source === null ? null : text(source.ein);
 	if (legalName === null || sponsorEin === null) return null;
-	if (sponsorEin.trim() !== ein.trim()) return null;
-	return {
-		sponsor: { legalName: legalName.trim(), ein: sponsorEin.trim() },
-		...contribution(contributionValue)
-	};
+	// a number with no digits has nothing to compare, so two such strings are not the same entity.
+	const digits = sponsorEin.replace(/\D/g, '');
+	if (digits === '' || digits !== ein.replace(/\D/g, '')) return null;
+	return { sponsor: { legalName: legalName.trim(), ein }, ...contribution(contributionValue) };
 }
 
 function isRate(value: unknown): value is number {
@@ -380,12 +383,10 @@ export function readFormConfig(value: unknown): FormConfig | null {
 
 	const turnstileSiteKey = text(source.turnstileSiteKey);
 	const altchaChallengeUrl = text(source.altchaChallengeUrl);
-	// the one field whose unreadable state refuses the whole config rather than falling back, for
-	// the reason written on `program` above.
+	// two fields refuse the whole config rather than falling back when they are unreadable: this one,
+	// for the reason written on `program` above, and the sponsor below, for the one on `sponsorship`.
 	const cause = program(source.program);
 	if (cause === null) return null;
-	// the other field whose unreadable state refuses the config, for the reason written on
-	// `sponsorship` above.
 	const sponsored = sponsorship(source.sponsor, source.contribution, ein);
 	if (sponsored === null) return null;
 
