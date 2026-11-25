@@ -823,11 +823,23 @@ describe('parseQuoteRequest() — a contribution, which this deployment cannot t
 		);
 	});
 
-	// nothing here can price one, so a contribution taken would be one silently dropped.
-	it.each([500, -100, 2.5, '500', null])('refuses `contributionMinor` %j', (contributionMinor) => {
+	// the server's quote never charges or records a contribution, so one taken would be one silently
+	// dropped.
+	it.each([
+		[500, '500'],
+		[-100, '-100'],
+		[2.5, '2.5'],
+		['500', 'a string'],
+		[null, 'null']
+	])('refuses `contributionMinor` %j', (contributionMinor, described) => {
 		const refused = refusal({ contributionMinor });
 		expect(refused.ok).toBe(false);
-		expect(refused.message).toContain('`contributionMinor`');
+		expect(refused.message).toBe(
+			`\`contributionMinor\` is ${described}, and this deployment takes no contribution.`
+		);
+		expect(refused.fix).toBe(
+			'Leave `contributionMinor` out or send `0`. This deployment offers no contribution.'
+		);
 	});
 });
 
@@ -839,18 +851,22 @@ const OFFERING: FormConfig = {
 };
 
 describe('a contribution beside a served config that offers one', () => {
-	it('is still refused on a quote', () => {
+	it('is still refused on a quote, in the payment wording', () => {
 		const result = parseQuoteRequest(body({ contributionMinor: 1500 }), OFFERING);
 
 		expect(result.ok).toBe(false);
-		expect(result.ok === false && result.message).toContain('`contributionMinor`');
+		expect(result.ok === false && result.message).toBe(
+			'`contributionMinor` is 1500, and this deployment takes no contribution.'
+		);
 	});
 
-	it.each([stockBody, iraBody])('is still refused on a pledge', (make) => {
+	it.each([stockBody, iraBody])('is still refused on a pledge, in the pledge wording', (make) => {
 		const result = parsePledgeRequest(make({ contributionMinor: 1500 }), OFFERING);
 
 		expect(result.ok).toBe(false);
-		expect(result.ok === false && result.message).toContain('`contributionMinor`');
+		expect(result.ok === false && result.message).toBe(
+			'`contributionMinor` is 1500, and a pledge takes none.'
+		);
 	});
 
 	it('leaves a body without one parsing as it does on a config that offers none', () => {
@@ -875,15 +891,24 @@ describe('parsePledgeRequest() — a contribution, which a pledge cannot take ei
 				['ira_qcd', iraBody]
 			] as const
 		).flatMap(([rail, make]) =>
-			[500, -100, 2.5, '500', null].map((value) => [rail, make, value] as const)
+			(
+				[
+					[500, '500'],
+					[-100, '-100'],
+					[2.5, '2.5'],
+					['500', 'a string'],
+					[null, 'null']
+				] as const
+			).map(([value, described]) => [rail, make, value, described] as const)
 		)
-	)('refuses on `%s` a `contributionMinor` of %j', (_rail, make, contributionMinor) => {
+	)('refuses on `%s` a `contributionMinor` of %j', (_rail, make, contributionMinor, described) => {
 		const refused = pledgeRefusal(make({ contributionMinor }));
 		expect(refused.ok).toBe(false);
-		expect(refused.message).toContain('`contributionMinor`');
 		// a pledge states shares or a custodian's amount and carries no contribution, which is the
 		// reason the answer gives rather than the payment path's.
-		expect(refused.message).toContain('a pledge takes none');
-		expect(refused.fix).toContain('pledge');
+		expect(refused.message).toBe(`\`contributionMinor\` is ${described}, and a pledge takes none.`);
+		expect(refused.fix).toBe(
+			'Leave `contributionMinor` out or send `0`. A stock or IRA (QCD) pledge carries no contribution.'
+		);
 	});
 });

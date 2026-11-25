@@ -404,9 +404,10 @@ const COVERS_FEE = z.boolean({
 /**
  * the donor's contribution, which only `0` or absence passes.
  *
- * nothing in this deployment prices one (`QuoteRequest.contributionMinor` in packages/form/src/v1.ts),
- * so a value taken would go uncharged and unrecorded without a word. refused rather than ignored,
- * whatever the served config says, so a caller holding one learns it was not taken.
+ * the quote this deployment mints never charges or records a contribution
+ * (`QuoteRequest.contributionMinor` in packages/form/src/v1.ts), so a value taken would go uncharged
+ * and unrecorded without a word. refused rather than ignored, whatever the served config says, so a
+ * caller holding one learns it was not taken.
  */
 const NO_CONTRIBUTION = z
 	.literal(0, {
