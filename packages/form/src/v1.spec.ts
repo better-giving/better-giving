@@ -1,5 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, expectTypeOf, it } from 'vitest';
 import {
+	type QuoteRequest,
+	type StockPledgeRequest,
 	API_ERROR_CODES,
 	DONATION_STATES,
 	FEE_COVERAGE_MODES,
@@ -67,6 +69,17 @@ describe('the v1 vocabularies', () => {
 			'pledge_not_found',
 			'pledge_id_taken'
 		]);
+	});
+});
+
+// checked by `tsc` through `pnpm check`: vitest does not typecheck, so these hold the shape rather
+// than a value.
+describe('the v1 request shapes', () => {
+	it('lets a quote request carry a contribution and a stock pledge carry none', () => {
+		expectTypeOf<QuoteRequest>().toHaveProperty('contributionMinor');
+		expectTypeOf<StockPledgeRequest>().not.toHaveProperty('contributionMinor');
+		// the runner wants a runtime assertion in every test: the rail the pledge type is for.
+		expect(PAYMENT_METHODS).toContain('stock');
 	});
 });
 

@@ -431,7 +431,9 @@ export type FormConfig = {
 	readonly feeRules: FeeRules;
 	readonly locale: string;
 	readonly orgLegalName: string;
+	/** the sponsor's, where `sponsor` below is present; the organisation's otherwise. */
 	readonly ein: string;
+	/** the sponsor's, where `sponsor` below is present; the organisation's otherwise. */
 	readonly deductibilityStatement: string;
 	/**
 	 * whether a gift that landed is followed by an emailed receipt.
@@ -828,12 +830,16 @@ export const MAX_CUSTODIAN = 200;
  *
  * a `QuoteRequest` with no `amountMinor` and no `coversFee`: the donor states shares rather than an
  * amount, the gift's value is set when the shares arrive, and a pledge carries no fee.
- * `amountMinor` sent here is refused. `ticker` is one `symbol` from
+ * `amountMinor` sent here is refused, and `contributionMinor` is not a field of it: a contribution is
+ * a share of a gift's amount and a pledge states none. `ticker` is one `symbol` from
  * `GET /api/v1/forms/:id/tickers`, refused as `ticker_not_listed` where the list does not hold it.
  * `shares` is decimal text above zero, at most six decimal places and at most 10,000,000: `"50"`,
  * `"12.5"`.
  */
-export type StockPledgeRequest = Omit<QuoteRequest, 'amountMinor' | 'coversFee' | 'method'> & {
+export type StockPledgeRequest = Omit<
+	QuoteRequest,
+	'amountMinor' | 'coversFee' | 'method' | 'contributionMinor'
+> & {
 	readonly method: 'stock';
 	readonly pledgeId: string;
 	readonly ticker: string;
