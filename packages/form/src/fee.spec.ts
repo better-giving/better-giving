@@ -512,7 +512,9 @@ describe('a gift with a contribution to the sponsor beside it', () => {
 		['a gift that is not a whole amount', 50.5, 500, CARD],
 		['a negative contribution', 5000, -100, CARD],
 		['a fractional contribution', 5000, 0.5, CARD],
-		['a contribution that is not a number', 5000, Number.NaN, CARD]
+		['a contribution that is not a number', 5000, Number.NaN, CARD],
+		// the gift alone prices, and gift plus contribution is past what the fixed-point gross-up holds
+		['a sum too large to price when the gift is not', 5000, 9_000_000_000_000, CARD]
 	])('says nothing on %s', (_, gift, contribution, rule) => {
 		expect(estimateWithContribution(gift, contribution, rule)).toBeNull();
 	});
