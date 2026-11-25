@@ -7556,6 +7556,35 @@ describe('a crypto gift', () => {
 		expect(box.getAttribute('part')).not.toContain('invalid');
 	});
 
+	// a coin amount priced outside the form's bounds is refused as the currency's is, so it says why
+	// with the currency's sentence rather than marking the box alone.
+	it('names the bounds beside the box for an amount priced outside them, until one prices inside', async () => {
+		const prices: Record<string, number> = { '0.00001': 95, '0.005': 2500 };
+		const card = await mount({
+			config: CRYPTO,
+			ports: { estimate: async ({ amount }) => prices[amount] ?? null }
+		});
+		await give(card, KEYS.USDT ?? '');
+		type(quantity(card), '0.00001');
+		await priced();
+
+		proceed(card);
+
+		expect(card.find('.step').hidden).toBe(false);
+		expect(shows(card, '#amount-problem')).toBe('Enter an amount between $5 and $50,000');
+		expect(card.shadow.activeElement).toBe(quantity(card));
+		expect(quantity(card).getAttribute('aria-invalid')).toBe('true');
+		expect(quantity(card).getAttribute('aria-describedby')).toBe('amount-problem');
+
+		type(quantity(card), '0.005');
+		expect(shows(card, '#amount-problem')).toBe('Enter an amount between $5 and $50,000');
+		await priced();
+
+		expect(shows(card, '#amount-problem')).toBe('');
+		expect(quantity(card).hasAttribute('aria-describedby')).toBe(false);
+		expect(quantity(card).hasAttribute('aria-invalid')).toBe(false);
+	});
+
 	it('shows what is being sent and where, in the order a donor reads it', async () => {
 		const { card } = await atAddress();
 

@@ -112,6 +112,7 @@ import {
 	completeAmount,
 	completeFundPayer,
 	completePayer,
+	isWithinBounds,
 	missingAmountDecisions,
 	missingPayerFields,
 	payerCoversFee,
@@ -416,7 +417,7 @@ export type CheckoutContext = {
 	 * renderer focuses the unit pill. cleared once the donor picks or leaves the step.
 	 */
 	readonly unitReturned: boolean;
-	/** the coin amount waiting to be priced, from the keystroke that typed it until its answer. */
+	/** the coin amount waiting to be priced, from the keystroke or pick that asked until its answer. */
 	readonly pricing: CoinPricing | null;
 	/** the read pricing `pricing`, stopped when a newer amount replaces it. */
 	readonly estimateRead: ActorRefFrom<typeof readEstimate> | null;
@@ -1227,6 +1228,14 @@ function samePricing(a: CoinPricing | null, b: CoinPricing | null): boolean {
 	return a !== null && b !== null && a.coin === b.coin && a.quantity === b.quantity;
 }
 
+/**
+ * `answer` priced `typed`. an answer of `null` is a read that failed or could not price, which is
+ * never kept as the answer: the donor's next pick or keystroke for the same amount asks again.
+ */
+function isPricedAt(answer: CheckoutContext['coinPrice'], typed: CoinPricing): boolean {
+	return samePricing(answer, typed) && answer?.minor !== null;
+}
+
 /** the estimate of the coin amount on the draft now, or `null` where none has answered for it. */
 function pricedMinor(context: CheckoutContext): number | null {
 	const { coinPrice } = context;
@@ -1243,9 +1252,24 @@ export function coinEstimate(
 ): { status: 'pricing' } | { status: 'priced'; minor: number } | { status: 'unpriced' } | null {
 	const typed = coinPricingOf(context.draft);
 	if (typed === null) return null;
-	if (!samePricing(context.coinPrice, typed)) return { status: 'pricing' };
+	if (samePricing(context.pricing, typed) || !samePricing(context.coinPrice, typed)) {
+		return { status: 'pricing' };
+	}
 	const minor = context.coinPrice?.minor ?? null;
 	return minor === null ? { status: 'unpriced' } : { status: 'priced', minor };
+}
+
+/**
+ * the last estimate of the picked coin while a newer amount of it waits to be priced, where that
+ * estimate was outside the form's bounds, else `null`. the bounds refusal stands until an answer
+ * lifts it, so a renderer's sentence is not dropped and written back (re-announced) per keystroke.
+ */
+function heldOutOfBounds(context: CheckoutContext): number | null {
+	const { coinPrice: last, pricing } = context;
+	const typed = coinPricingOf(context.draft);
+	if (typed === null || !samePricing(pricing, typed) || last === null) return null;
+	if (last.coin !== typed.coin || last.minor === null) return null;
+	return isWithinBounds(last.minor, context.config) ? null : last.minor;
 }
 
 /**
@@ -1254,7 +1278,11 @@ export function coinEstimate(
  * refusal a screen names and the guard on `CONTINUE` are one reading.
  */
 export function missingAmount(context: CheckoutContext): readonly AmountDecision[] {
-	const missing = missingAmountDecisions(context.draft, context.config, pricedMinor(context));
+	const missing = missingAmountDecisions(
+		context.draft,
+		context.config,
+		pricedMinor(context) ?? heldOutOfBounds(context)
+	);
 	const { unit } = context.draft;
 	// a coin the account refused on this card is refused again (`refusedCoins`), so its amount is not
 	// one a press may carry.
@@ -1713,6 +1741,20 @@ export const checkoutMachine = setup({
 			'output' in event && outcomeRoute(event.output) === params.route
 	},
 	actions: {
+		/**
+		 * the coin amount on the draft, where no answer prices it (`isPricedAt`), priced once it has
+		 * stood for `ESTIMATE_DEBOUNCE_MS`, each pick or keystroke starting that wait again.
+		 */
+		priceTyped: enqueueActions(({ context, enqueue }) => {
+			const typed = coinPricingOf(context.draft);
+			const unpriced = typed !== null && !isPricedAt(context.coinPrice, typed);
+			enqueue.assign({ pricing: unpriced ? typed : null });
+			enqueue.cancel('pricing');
+			if (unpriced) {
+				enqueue.raise({ type: 'PRICE_COIN' }, { id: 'pricing', delay: ESTIMATE_DEBOUNCE_MS });
+			}
+		}),
+
 		/** the one place a draft becomes the `fv` every later state is allowed to assume. */
 		commitAmount: assign({
 			fv: ({ context }) => completeAmount(context.draft, context.config, pricedMinor(context)),
@@ -2138,40 +2180,37 @@ export const checkoutMachine = setup({
 				},
 				/**
 				 * a unit picked. a different unit drops the typed quantity, which was a count of the old
-				 * one; picking the currency again restores no cadence the coin or stock displaced.
+				 * one; picking the currency again restores no cadence the coin or stock displaced. the same
+				 * coin picked again over an amount no read has priced asks again (`priceTyped`).
 				 */
 				SET_UNIT: {
 					guard: 'unitIsOffered',
-					actions: assign(({ context, event }) => {
-						const changed = !sameUnit(context.draft.unit, event.unit);
-						return {
-							draft: {
-								...context.draft,
-								unit: event.unit,
-								...(changed ? { quantity: undefined } : {}),
-								...(isInKind(event.unit) ? { frequency: 'one_time' as const } : {})
-							},
-							coinRefusal: changed ? null : context.coinRefusal,
-							pricing: changed ? null : context.pricing,
-							unitReturned: false
-						};
-					})
+					actions: [
+						assign(({ context, event }) => {
+							const changed = !sameUnit(context.draft.unit, event.unit);
+							return {
+								draft: {
+									...context.draft,
+									unit: event.unit,
+									...(changed ? { quantity: undefined } : {}),
+									...(isInKind(event.unit) ? { frequency: 'one_time' as const } : {})
+								},
+								coinRefusal: changed ? null : context.coinRefusal,
+								unitReturned: false
+							};
+						}),
+						'priceTyped'
+					]
 				},
-				/**
-				 * a coin amount or share count typed. a coin amount with no estimate yet is priced once it
-				 * has stood for `ESTIMATE_DEBOUNCE_MS`, each keystroke starting that wait again.
-				 */
+				/** a coin amount or share count typed, and a coin amount priced (`priceTyped`). */
 				SET_QUANTITY: {
-					actions: enqueueActions(({ context, event, enqueue }) => {
-						const draft = { ...context.draft, quantity: event.quantity };
-						const typed = coinPricingOf(draft);
-						const unpriced = typed !== null && !samePricing(context.coinPrice, typed);
-						enqueue.assign({ draft, coinRefusal: null, pricing: unpriced ? typed : null });
-						enqueue.cancel('pricing');
-						if (unpriced) {
-							enqueue.raise({ type: 'PRICE_COIN' }, { id: 'pricing', delay: ESTIMATE_DEBOUNCE_MS });
-						}
-					})
+					actions: [
+						assign({
+							draft: ({ context, event }) => ({ ...context.draft, quantity: event.quantity }),
+							coinRefusal: null
+						}),
+						'priceTyped'
+					]
 				},
 				// the newer amount's read replaces the one before it, which is stopped and so aborted.
 				PRICE_COIN: {

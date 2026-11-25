@@ -311,10 +311,11 @@ export type Payer = {
  * `note` is the conditional one: the step asks for it only where the donor asked for it first, and
  * a draft that never opened one is never short of it.
  *
- * `amount` is a gift in the currency, outside the form's bounds or not chosen; `quantity` is the one
- * box a coin amount or a share count is typed in, not yet one the gift can be decided at. the two
- * are apart because only the first has a sentence: the bounds are the currency's, and no copy names
- * a quantity that is missing, so a renderer marks that box alone.
+ * `amount` is a gift outside the form's bounds or not chosen: in the currency, or a coin amount whose
+ * estimate is outside them; `quantity` is the one box a coin amount or a share count is typed in, not
+ * yet one the gift can be decided at. the two are apart because only the first has a sentence: the
+ * bounds are the currency's, and no copy names a quantity that is missing, so a renderer marks that
+ * box alone.
  */
 export type AmountDecision =
 	| 'amount'
@@ -370,7 +371,12 @@ export function missingAmountDecisions(
 	const missing: AmountDecision[] = [];
 
 	if (giftMinorOf(draft, config, pricedMinor) === null) {
-		missing.push(isInKind(draft.unit) ? 'quantity' : 'amount');
+		// a coin amount with an estimate was priced outside the bounds, which is the currency's refusal.
+		const priced =
+			draft.unit?.kind === 'coin' &&
+			canonicalDecimal(draft.quantity ?? '') !== null &&
+			pricedMinor !== null;
+		missing.push(isInKind(draft.unit) && !priced ? 'quantity' : 'amount');
 	}
 	// trimmed, because that is what `completeAmount` carries: a note of spaces reaches the endpoint
 	// as nothing at all, so accepting it here would be a press refused nowhere and a note nobody
@@ -401,16 +407,20 @@ function giftMinorOf(
 				? null
 				: pricedMinor
 			: draft.amountMinor;
-	if (
-		amountMinor === undefined ||
-		amountMinor === null ||
-		!Number.isInteger(amountMinor) ||
-		amountMinor < config.minAmountMinor ||
-		amountMinor > config.maxAmountMinor
-	) {
+	if (amountMinor === undefined || amountMinor === null || !isWithinBounds(amountMinor, config)) {
 		return null;
 	}
 	return amountMinor;
+}
+
+/** a whole figure in minor units inside the form's bounds, which the endpoint re-reads. */
+export function isWithinBounds(
+	minor: number,
+	config: Pick<FormConfig, 'minAmountMinor' | 'maxAmountMinor'>
+): boolean {
+	return (
+		Number.isInteger(minor) && minor >= config.minAmountMinor && minor <= config.maxAmountMinor
+	);
 }
 
 /**

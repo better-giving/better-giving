@@ -4161,6 +4161,50 @@ describe('what the donor gives', () => {
 		expect(coinEstimate(actor.getSnapshot().context)).toEqual({ status: 'unpriced' });
 	});
 
+	it('asks again when the donor retypes the same amount a failed read was for', async () => {
+		let answer: () => Promise<number | null> = () =>
+			Promise.reject(new TypeError('Failed to fetch'));
+		const { actor, calls, clock } = onCoin({ estimate: () => answer() });
+		actor.send({ type: 'SET_QUANTITY', quantity: '0.005' });
+		clock.advance(ESTIMATE_DEBOUNCE_MS);
+		await settle();
+		expect(coinEstimate(actor.getSnapshot().context)).toEqual({ status: 'unpriced' });
+
+		answer = async () => 48_210;
+		actor.send({ type: 'SET_QUANTITY', quantity: '0.005' });
+		expect(coinEstimate(actor.getSnapshot().context)).toEqual({ status: 'pricing' });
+		clock.advance(ESTIMATE_DEBOUNCE_MS);
+		await settle();
+
+		expect(calls.estimate).toHaveLength(2);
+		expect(coinEstimate(actor.getSnapshot().context)).toEqual({ status: 'priced', minor: 48_210 });
+		actor.send({ type: 'CONTINUE' });
+		expect(actor.getSnapshot().value).toBe('details');
+	});
+
+	it('asks again when the donor picks the coin again after a failed read, and not once it priced', async () => {
+		let answer: () => Promise<number | null> = async () => null;
+		const { actor, calls, clock } = onCoin({ estimate: () => answer() });
+		actor.send({ type: 'SET_QUANTITY', quantity: '0.005' });
+		clock.advance(ESTIMATE_DEBOUNCE_MS);
+		await settle();
+		expect(coinEstimate(actor.getSnapshot().context)).toEqual({ status: 'unpriced' });
+
+		answer = async () => 48_210;
+		actor.send({ type: 'SET_UNIT', unit: { kind: 'coin', coin: 'btc' } });
+		clock.advance(ESTIMATE_DEBOUNCE_MS);
+		await settle();
+		expect(calls.estimate).toHaveLength(2);
+		expect(coinEstimate(actor.getSnapshot().context)).toEqual({ status: 'priced', minor: 48_210 });
+
+		actor.send({ type: 'SET_UNIT', unit: { kind: 'coin', coin: 'btc' } });
+		actor.send({ type: 'SET_QUANTITY', quantity: '0.005' });
+		clock.advance(ESTIMATE_DEBOUNCE_MS);
+		await settle();
+		expect(calls.estimate).toHaveLength(2);
+		expect(coinEstimate(actor.getSnapshot().context)).toEqual({ status: 'priced', minor: 48_210 });
+	});
+
 	it('refuses Continue on a coin amount with no estimate, as a quantity still missing', async () => {
 		const { actor, clock } = onCoin({ estimate: async () => null });
 		actor.send({ type: 'SET_QUANTITY', quantity: '0.005' });
@@ -4171,6 +4215,33 @@ describe('what the donor gives', () => {
 
 		expect(actor.getSnapshot().value).toBe('amount');
 		expect(toState(actor.getSnapshot())).toMatchObject({ step: 'amount', missing: ['quantity'] });
+	});
+
+	// a coin amount priced outside the form's bounds is refused as the currency's is, with the bounds
+	// sentence, from the answer until a newer amount prices inside them.
+	it('refuses Continue on a coin amount priced outside the bounds as an amount, until one prices inside', async () => {
+		const prices: Record<string, number> = { '0.00001': 95, '0.000012': 114, '0.005': 48_210 };
+		const { actor, clock } = onCoin({ estimate: async ({ amount }) => prices[amount] ?? null });
+		actor.send({ type: 'SET_QUANTITY', quantity: '0.00001' });
+		clock.advance(ESTIMATE_DEBOUNCE_MS);
+		await settle();
+
+		actor.send({ type: 'CONTINUE' });
+		expect(toState(actor.getSnapshot())).toMatchObject({ step: 'amount', missing: ['amount'] });
+
+		actor.send({ type: 'SET_QUANTITY', quantity: '0.000012' });
+		expect(toState(actor.getSnapshot())).toMatchObject({ missing: ['amount'] });
+		clock.advance(ESTIMATE_DEBOUNCE_MS);
+		await settle();
+		expect(toState(actor.getSnapshot())).toMatchObject({ missing: ['amount'] });
+
+		actor.send({ type: 'SET_QUANTITY', quantity: '0.005' });
+		clock.advance(ESTIMATE_DEBOUNCE_MS);
+		await settle();
+		expect(toState(actor.getSnapshot())).toMatchObject({ missing: [] });
+
+		actor.send({ type: 'SET_QUANTITY', quantity: '' });
+		expect(toState(actor.getSnapshot())).toMatchObject({ missing: ['quantity'] });
 	});
 
 	// the currency's amount names the form's bounds; a coin's or a share count's box is a quantity,
