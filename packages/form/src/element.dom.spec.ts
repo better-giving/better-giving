@@ -32,7 +32,7 @@ import {
 import { DEFAULT_SHAPE } from './views';
 import { EMPLOYER_CLASS } from './employer-ask';
 import { TICKER_DEBOUNCE_MS } from './ticker-search';
-import { COIN_REFUSED } from './unit';
+import { COIN_PRICE_FAILED, COIN_REFUSED } from './unit';
 import { createFormRuntime } from './embed/runtime';
 import { createPaymentSurface, type PaymentSeams, quoteThrough } from './embed/surface';
 import { APPEARANCE_INPUTS } from './styles/appearance';
@@ -7815,6 +7815,58 @@ describe('a crypto gift', () => {
 		expect(shows(card, '#amount-problem')).toBe('');
 		expect(quantity(card).hasAttribute('aria-describedby')).toBe(false);
 		expect(quantity(card).hasAttribute('aria-invalid')).toBe(false);
+	});
+
+	it('says beside the box that the price could not be checked, until a retry is out or it prices', async () => {
+		let answer: () => Promise<number | null> = () =>
+			Promise.reject(new TypeError('Failed to fetch'));
+		const card = await mount({ config: CRYPTO, ports: { estimate: () => answer() } });
+		await give(card, KEYS.USDT ?? '');
+		type(quantity(card), '0.005');
+		expect(shows(card, '#amount-problem')).toBe('');
+		await priced();
+
+		expect(shows(card, '#amount-problem')).toBe(COIN_PRICE_FAILED);
+		expect(quantity(card).getAttribute('aria-describedby')).toBe('amount-problem');
+		expect(card.text('[role="status"]')).toBe(COIN_PRICE_FAILED);
+
+		answer = () => new Promise(() => {});
+		type(quantity(card), '0.006');
+		expect(shows(card, '#amount-problem')).toBe('');
+		expect(quantity(card).hasAttribute('aria-describedby')).toBe(false);
+		expect(card.text('[role="status"]')).toBe('');
+
+		answer = async () => 2500;
+		type(quantity(card), '0.005');
+		await priced();
+		expect(shows(card, '#amount-problem')).toBe('');
+		expect(shows(card, '.unit-estimate .unit-figure')).toBe('About $25.00');
+	});
+
+	// the two never stand together: the bounds are said of an amount that priced, this of one that did not.
+	it('says the bounds or the failed check beside the box, never both, and nothing for an empty box', async () => {
+		let answer: () => Promise<number | null> = async () => 95;
+		const card = await mount({ config: CRYPTO, ports: { estimate: () => answer() } });
+		await give(card, KEYS.USDT ?? '');
+		type(quantity(card), '0.00001');
+		await priced();
+		proceed(card);
+		expect(shows(card, '#amount-problem')).toBe('Enter an amount between $5 and $50,000');
+
+		answer = async () => null;
+		type(quantity(card), '0.00002');
+		await priced();
+		expect(shows(card, '#amount-problem')).toBe(COIN_PRICE_FAILED);
+		expect(card.all('.message').filter((node) => node.closest('[hidden]') === null)).toHaveLength(
+			1
+		);
+
+		type(quantity(card), '');
+		await priced();
+		proceed(card);
+		expect(shows(card, '#amount-problem')).toBe('');
+		expect(quantity(card).getAttribute('aria-invalid')).toBe('true');
+		expect(quantity(card).hasAttribute('aria-describedby')).toBe(false);
 	});
 
 	// a failed price check is never kept as the answer, so picking the same coin again from the panel

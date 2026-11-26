@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
 	APPLE_SRC,
+	COIN_PRICE_FAILED,
 	coinRefusalSentence,
 	coinReview,
 	FLAG_SRC,
 	continueCase,
 	currencyOf,
 	noStockMatch,
+	unitEntry,
 	unitKey,
 	unitOfKey,
 	unitPill,
@@ -165,6 +167,33 @@ describe('the in-group sentences', () => {
 	it('quotes what the donor typed when no stock matches it', () => {
 		expect(noStockMatch('zzq')).toBe('No match for “zzq”. Try a name or a ticker.');
 		expect(STOCK_SEARCH_FAILED).toBe('Couldn’t search stocks. Try again in a moment.');
+	});
+});
+
+describe('the entry for a gift in kind', () => {
+	const BTC_UNIT = { kind: 'coin', coin: 'btc' } as const;
+
+	it('says the price could not be checked only where the check failed', () => {
+		expect(COIN_PRICE_FAILED).toBe(
+			'Couldn’t check the price. Retype the amount or pick the coin again.'
+		);
+		expect(unitEntry(CONFIG, BTC_UNIT, { status: 'unpriced' })).toEqual({
+			unitLabel: 'BTC',
+			estimate: null,
+			note: 'Your gift is valued in US dollars when it arrives.',
+			unpriced: COIN_PRICE_FAILED
+		});
+		expect(unitEntry(CONFIG, BTC_UNIT, { status: 'pricing' })?.unpriced).toBeNull();
+		expect(unitEntry(CONFIG, BTC_UNIT, null)?.unpriced).toBeNull();
+		expect(unitEntry(CONFIG, BTC_UNIT, { status: 'priced', minor: 48_210 })).toEqual({
+			unitLabel: 'BTC',
+			estimate: 'About $482.10',
+			note: 'Your gift is valued in US dollars when it arrives.',
+			unpriced: null
+		});
+		expect(
+			unitEntry(CONFIG, { kind: 'stock', ticker: 'AAPL' }, { status: 'unpriced' })?.unpriced
+		).toBeNull();
 	});
 });
 

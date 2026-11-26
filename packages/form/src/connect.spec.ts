@@ -1,7 +1,7 @@
 import { createActor } from 'xstate';
 import { describe, expect, it } from 'vitest';
 import { checkoutMachine, ESTIMATE_DEBOUNCE_MS } from './checkout.machine';
-import { VALUED_IN_USD } from './unit';
+import { COIN_PRICE_FAILED, VALUED_IN_USD } from './unit';
 import type { CheckoutEvent } from './checkout.machine';
 import { connect, TOP_LEVEL_STATES, type PropTypes } from './connect';
 import type { CheckoutPorts } from './ports';
@@ -832,18 +832,63 @@ describe('what the donor gives, projected', () => {
 		const { actor, get } = api(undefined, { config: UNITS, ports: PRICED });
 		actor.send({ type: 'SET_UNIT', unit: { kind: 'coin', coin: 'btc' } });
 		(get().quantityField as { onChange: (text: string) => void }).onChange('0.005');
-		expect(get().unit.entry).toEqual({ unitLabel: 'BTC', estimate: null, note: VALUED_IN_USD });
+		expect(get().unit.entry).toEqual({
+			unitLabel: 'BTC',
+			estimate: null,
+			note: VALUED_IN_USD,
+			unpriced: null
+		});
 
 		await priced();
 		expect(get().unit.entry).toEqual({
 			unitLabel: 'BTC',
 			estimate: 'About $482.10',
-			note: 'Your gift is valued in US dollars when it arrives.'
+			note: 'Your gift is valued in US dollars when it arrives.',
+			unpriced: null
 		});
 
 		actor.send({ type: 'SET_UNIT', unit: { kind: 'stock', ticker: 'AAPL' } });
-		expect(get().unit.entry).toEqual({ unitLabel: 'shares', estimate: null, note: null });
+		expect(get().unit.entry).toEqual({
+			unitLabel: 'shares',
+			estimate: null,
+			note: null,
+			unpriced: null
+		});
 		expect(get().quantityField).toMatchObject({ value: '', inputMode: 'decimal' });
+	});
+
+	it('says the price could not be checked once a read fails or prices nothing, and only then', async () => {
+		let answer: () => Promise<number | null> = () =>
+			Promise.reject(new TypeError('Failed to fetch'));
+		const { actor, get } = api(undefined, {
+			config: UNITS,
+			ports: { ...PRICED, estimate: () => answer() }
+		});
+		const typeIn = (text: string) =>
+			(get().quantityField as { onChange: (text: string) => void }).onChange(text);
+		actor.send({ type: 'SET_UNIT', unit: { kind: 'coin', coin: 'btc' } });
+		typeIn('0.005');
+		expect(get().unit.entry?.unpriced).toBeNull();
+
+		await priced();
+		expect(get().unit.entry?.unpriced).toBe(COIN_PRICE_FAILED);
+
+		answer = async () => null;
+		typeIn('0.006');
+		expect(get().unit.entry?.unpriced).toBeNull();
+		await priced();
+		expect(get().unit.entry?.unpriced).toBe(COIN_PRICE_FAILED);
+
+		answer = async () => 48_210;
+		typeIn('0.005');
+		await priced();
+		expect(get().unit.entry).toMatchObject({ estimate: 'About $482.10', unpriced: null });
+
+		answer = async () => null;
+		actor.send({ type: 'SET_UNIT', unit: { kind: 'stock', ticker: 'AAPL' } });
+		typeIn('50');
+		await priced();
+		expect(get().unit.entry?.unpriced).toBeNull();
 	});
 
 	it('flags Monthly unavailable with the one-time note while a coin or stock is picked', () => {

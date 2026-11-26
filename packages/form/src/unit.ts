@@ -9,7 +9,7 @@
 // `../package.json` exports this module as `./unit` for that second surface.
 
 import { formatMinor, formatOffer } from './money';
-import type { CoinRefusal } from './checkout.machine';
+import type { CoinRefusal, coinEstimate } from './checkout.machine';
 import type { GiftUnit } from './value';
 import { PAYMENT_METHODS, PAYMENT_METHOD_LABELS, type FormConfig, type PaymentMethod } from './v1';
 
@@ -51,6 +51,10 @@ export function aboutEstimate(minor: number, config: Pick<FormConfig, 'locale' |
  * so a deployment in any other states no note.
  */
 export const VALUED_IN_USD = 'Your gift is valued in US dollars when it arrives.';
+
+/** the sentence beside a coin amount whose price could not be checked: its read failed or answered none. */
+export const COIN_PRICE_FAILED =
+	'Couldn’t check the price. Retype the amount or pick the coin again.';
 
 /** the first step's Continue, and what it says of the payment step after it. */
 export const CONTINUE = 'Continue';
@@ -309,24 +313,31 @@ export function unitPill(
  * the entry for a gift in kind: the unit at the end of its one box, and the lines under it — a coin's
  * estimate once one is priced and its valuation note, nothing under a share count. `null` on a gift
  * in the currency, which the amount tiles take.
+ *
+ * `unpriced` is `COIN_PRICE_FAILED` while the price check of the coin amount in the box has failed,
+ * and `null` otherwise: while a read is out, once it prices, on an empty box and under a share count.
  */
 export type UnitEntry = {
 	readonly unitLabel: string;
 	readonly estimate: string | null;
 	readonly note: string | null;
+	readonly unpriced: string | null;
 };
 
 export function unitEntry(
 	config: PillConfig & Pick<FormConfig, 'currency'>,
 	picked: GiftUnit | undefined,
-	estimateMinor: number | null
+	estimate: ReturnType<typeof coinEstimate>
 ): UnitEntry | null {
-	if (picked?.kind === 'stock') return { unitLabel: SHARES, estimate: null, note: null };
+	if (picked?.kind === 'stock') {
+		return { unitLabel: SHARES, estimate: null, note: null, unpriced: null };
+	}
 	if (picked?.kind !== 'coin') return null;
 	return {
 		unitLabel: unitPill(config, { coin: true, stock: false }, picked).code,
-		estimate: estimateMinor === null ? null : aboutEstimate(estimateMinor, config),
-		note: currencyOf(config.currency, config.locale).code === 'USD' ? VALUED_IN_USD : null
+		estimate: estimate?.status === 'priced' ? aboutEstimate(estimate.minor, config) : null,
+		note: currencyOf(config.currency, config.locale).code === 'USD' ? VALUED_IN_USD : null,
+		unpriced: estimate?.status === 'unpriced' ? COIN_PRICE_FAILED : null
 	};
 }
 

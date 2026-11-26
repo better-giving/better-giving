@@ -907,7 +907,7 @@ export function connect<
 
 		unit: {
 			pill: unitPill(config, offered, draft.unit),
-			entry: unitEntry(config, draft.unit, estimate?.status === 'priced' ? estimate.minor : null),
+			entry: unitEntry(config, draft.unit, estimate),
 			cadenceNote: cadenceNote(draft.unit),
 			next: continueCase(config, inKind),
 			returned: context.unitReturned

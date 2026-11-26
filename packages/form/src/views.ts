@@ -3453,11 +3453,14 @@ export function createCard(
 		// a coin the account no longer takes is said in the same place, and marks no amount.
 		const refusal = api.state.step === 'amount' ? api.state.refusal : undefined;
 		const coinRefusal = api.state.step === 'amount' ? api.state.coinRefusal : undefined;
+		// a coin amount whose price check failed is said in the same place, with no press asking: the
+		// bounds are said only of an amount that priced, so the two never stand together.
+		const unpriced = api.state.step === 'amount' ? (api.unit.entry?.unpriced ?? null) : null;
 		const amountWords = missingAmount
 			? amountProblem
-			: coinRefusal === undefined
-				? ''
-				: coinRefusalWords(coinRefusal);
+			: coinRefusal !== undefined
+				? coinRefusalWords(coinRefusal)
+				: (unpriced ?? '');
 		// either is a refused amount, and marks the tray, the tiles and the entry the same way — or,
 		// on a gift in kind, the one box its quantity is typed in, which stands in their place. a
 		// quantity missing from that box marks it too, with no sentence: the bounds above are the
@@ -3616,7 +3619,10 @@ export function createCard(
 		//
 		// the details step's is among the `News` below rather than here: the amount step's is said by
 		// every patch while a decision is missing, and that one only by the press that moved no caret.
-		const askedFor = missingAmount ? amountProblem : '';
+		//
+		// a failed price check stands on this channel too, under the box like the bounds, for as long as
+		// it is drawn there.
+		const askedFor = missingAmount || amountWords === unpriced ? amountWords : '';
 
 		for (const node of [continueButton, detailsContinue]) {
 			toggleAttribute(node, 'aria-busy', busy ? 'true' : null);
