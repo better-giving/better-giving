@@ -1,6 +1,6 @@
 # Third-party notices
 
-This repository is MIT-licensed (`LICENSE`), except for the files below, each redistributed under its own licence.
+This repository is MIT-licensed (`LICENSE`), except for the material below, each redistributed under its own licence or dedication.
 
 ## OpenAPI 3.1 schema
 

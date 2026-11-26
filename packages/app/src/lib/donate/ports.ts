@@ -15,27 +15,27 @@ import type { CheckoutPorts } from '@better-giving/form/ports';
 // the set `CheckoutPorts` names. three of them are the payment surface's — `confirm` and `resume`
 // are its own, and the write is wrapped so the provider's fields learn the total the server just
 // named. then the read of a crypto gift the donor sends from their own wallet, the estimate a coin
-// amount is priced at on the first step, the thank-you's
-// employer write, the clock, and the two pledge rails' ports: the same write unwrapped, since no
-// processor stands behind a pledge, and the pending screen's told press. and beside the set, the
-// ticker search the first step's unit panel makes, which is the panel's and not the flow's.
+// amount is priced at on the first step, the thank-you's employer write, the clock, and the two
+// pledge rails' ports: the same write unwrapped, since no processor stands behind a pledge, and the
+// pending screen's told press. and beside the set, the ticker search the first step's unit panel
+// makes, which is the panel's and not the flow's.
 //
 // this is the client half of the rule CLAUDE.md states about payments: nothing here imports a
 // payment SDK. `createPaymentSurface` in @better-giving/form/embed/surface is the seam, and the
 // adapters behind it are the only modules on either side of the wire that know which processor a
 // gift is going through. the surface stays singular however many of them a served config names,
-// which is why this function still takes exactly one.
+// which is why `deploymentPorts` takes exactly one.
 
 /**
- * where the quote is posted and a crypto gift is read, which is nowhere: this page and `/api/v1` are
- * one deployment.
+ * where every client below sends its request, which is nowhere: this page and `/api/v1` are one
+ * deployment.
  *
  * `createQuote` and `createStatusRead` build `${origin}/api/v1/forms/:id/donations…`,
- * `createTickerRead` `${origin}/api/v1/forms/:id/tickers?q=`, and
- * `createEmployerWrite` `${origin}/api/v1/forms/:id/gifts/:token/employer`, and `createPledgeTold`
- * `${origin}/api/v1/forms/:id/donations/:pledgeId/told`, so an empty
- * origin is a path and each request is same-origin by construction rather than by a stored address
- * anyone can get wrong. it
+ * `createEstimateRead` `${origin}/api/v1/forms/:id/estimate?`, `createTickerRead`
+ * `${origin}/api/v1/forms/:id/tickers?q=`, `createEmployerWrite`
+ * `${origin}/api/v1/forms/:id/gifts/:token/employer`, and `createPledgeTold`
+ * `${origin}/api/v1/forms/:id/donations/:pledgeId/told`, so an empty origin is a path and each
+ * request is same-origin by construction rather than by a stored address anyone can get wrong. it
  * is not the absent origin that module refuses on — that is `null`, which is the embed being unable
  * to tell which deployment served it, and this page can always tell.
  */

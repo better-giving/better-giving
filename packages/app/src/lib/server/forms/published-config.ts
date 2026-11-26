@@ -58,8 +58,8 @@ import { readForm, readOwningPage, type OwningPage } from './queries';
  * the member is also the `error` field on the wire (`ApiError` in packages/form/src/v1.ts), so the
  * string an integrating agent switches on is the same string the endpoint switches on. one
  * vocabulary rather than a code and a translation of it — which is why the list is declared
- * against `ApiErrorCode` from that file rather than standing on its own: the wire vocabulary is a
- * permanent contract, so a member is minted there and spent here, never the other way round.
+ * against `ApiErrorCode` from that file rather than standing on its own: the wire vocabulary is
+ * packages/form's, so a member is minted there and spent here, never the other way round.
  *
  * a member per *screen*, not per check. each of the six carries exactly one `fix`, and two checks
  * whose fix is the same sentence are the same member — so the branches below outnumber the
@@ -600,10 +600,9 @@ export function publishedConfig(sources: PublishedConfigSources): PublishedConfi
 		suggestedAmountsMinor: form.suggestedAmounts,
 		minAmountMinor: minMinor,
 		maxAmountMinor: maxMinor,
-		// the deployment's own answer and never this row's. `frequencies` stays on the wire — it is
-		// a permanent contract (`FormConfig` in packages/form/src/v1.ts) — and the value comes from
-		// whether this deployment's processor account can collect a repeating gift, read by
-		// `offeredCadences` in ./offered-cadences.ts.
+		// the deployment's own answer and never this row's. `frequencies` is on the wire (`FormConfig`
+		// in packages/form/src/v1.ts), and the value comes from whether this deployment's processor
+		// account can collect a repeating gift, read by `offeredCadences` in ./offered-cadences.ts.
 		//
 		// narrower than what a gift is accepted on, and the processor rails in `paymentMethods` below
 		// are narrower under the same rule: `parseQuoteRequest` in ../donations/quote-input.ts reads
@@ -706,8 +705,8 @@ export const SERVED_LOCALE = 'en-US';
  * one rule, and it is the config *route's* rather than the ladder's: `readFormConfig` in
  * packages/form/src/config.ts drops a config offering no rail, so a body served with an empty
  * `paymentMethods` is a donation form that silently does not appear on a site nobody here can see,
- * and one offering stock alone is a form with nothing to press (`isDrawnRail` below). refusing
- * either instead puts a named value and a screen in front of an integrator.
+ * and one offering stock alone is refused beside it (`isDrawnRail` below). refusing either instead
+ * puts a named value and a screen in front of an integrator.
  *
  * **it is deliberately not part of `publishedConfig` above, and that is the whole point of it being
  * a separate function.** `readPublishedConfig` is the ladder `mintQuote` in ../donations/quote.ts
@@ -780,9 +779,8 @@ export function renderableConfig(result: PublishedConfigResult): PublishedConfig
 }
 
 /**
- * a rail a donor can pay with on the form as it is drawn. stock is served while Payments has it on
- * and a ticker list is held, but no screen in packages/form/src sends `PLEDGE_STOCK`
- * (packages/form/src/element.ts), so a config offering stock alone is a form with nothing to press.
+ * a rail `renderableConfig` above counts toward a form it serves: every rail but stock, so a config
+ * offering stock alone is refused there.
  */
 function isDrawnRail(rail: PaymentMethod): boolean {
 	return rail !== 'stock';
