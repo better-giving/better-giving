@@ -22,14 +22,14 @@ Seven packages under `packages/*`, and the graph is `app → operator`, with `ga
 | --- | --- |
 | `packages/app` | The deployed server. React Router, `ssr: true`: `/`, `/admin`, `/{slug}`, `/api/v1`, sign-in. Database, ledger, payments, mail send, scheduled runs. |
 | `packages/operator` | Shared operator components and tokens, for `/admin` and the gallery. |
-| `packages/form` | The embeddable donation element. A permanent public contract. |
+| `packages/form` | The embeddable donation element and its `v1` client. May change freely while Standalone is alpha. |
 | `packages/emails` | Mail templates, rendered to strings by the app. |
 | `packages/emails-preview` | Dev-only preview of those templates. |
 | `packages/gallery` | Dev-only component gallery (`pnpm run gallery`). Not an operator surface and never deployed. |
 | `packages/zapier` | The Zapier integration, pushed with its own CLI. |
 | `packages/design` | Artboards on the machine that drew them. Gitignored. No design rule is written there. |
 
-`packages/form/` and `packages/app/src/lib/forms/` are not the same thing. Everything in the package is a permanent contract; nothing in `forms/` is. Anything under `$lib/server/**` may import the package; the package imports nothing from the app. A value the app needs that `packages/form`'s `exports` map does not already name is a decision to widen that map, never a line added in passing.
+`packages/form/` and `packages/app/src/lib/forms/` are not the same thing. The package is the embeddable element and its `v1` client, and it may change freely while Standalone is alpha; `forms/` is the app's own. Anything under `$lib/server/**` may import the package; the package imports nothing from the app. A value the app needs that `packages/form`'s `exports` map does not already name is a decision to widen that map, never a line added in passing.
 
 Operator commands run at the repo root. The root `package.json` forwards them into `packages/app`. From inside a package the spelling is `pnpm -w run <script>`.
 
@@ -110,14 +110,12 @@ A repeating gift's row is written by the first charge that settles, from `packag
 
 `drizzle-kit generate` writes a draft. Read every `.sql` before committing it. Append `STRICT` by hand to every `CREATE TABLE`. Append new columns after `archived_at`, never reorder. Reference data ships as an idempotent migration, never a seed script. A migration's comments are frozen with its filename, except `0000_initial_schema.sql`, which a squash rewrites in place. `CONTRIBUTING.md` → Migrations is the full list, including the rebuild hand-edits.
 
-## Permanent contracts
+## Public surface while Standalone is alpha
 
-A contract below is permanent by decision. Weigh a fix on its own merits.
+Until Standalone has users, `v1`, the `--donate-*` seeds and `::part()` names, the element's attributes and the resume stamp `bg_donate_form` (`RESUME_FORM_PARAM` in `packages/form/src/embed/resume.ts`) may change in place. Ship no `v2` alongside, and write no backward-compatibility code or tests. The rules below are about structure, and they hold.
 
-- `v1`. Breaking changes ship as `v2` alongside.
-- The element's public style surface: `--donate-*` seeds and `::part()` names. Everything derived from a seed is `--_`-prefixed and private. `packages/form/custom-elements.json` ships in the same commit as any change to that list.
+- Everything derived from a `--donate-*` seed is `--_`-prefixed and private. `packages/form/custom-elements.json` ships in the same commit as any change to the public style list.
 - The element's public attributes stay primitive.
-- The resume stamp `bg_donate_form` (`RESUME_FORM_PARAM` in `packages/form/src/embed/resume.ts`).
 
 ## Product surface
 

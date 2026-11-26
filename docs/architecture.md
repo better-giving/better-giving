@@ -11,7 +11,7 @@ The database is one SQLite file, opened with `@libsql/client` on a `file:` URL. 
 | path | what it is |
 | --- | --- |
 | `packages/app` | The server: `/`, `/admin`, `/{slug}`, `/api/v1`, sign-in, the database, the ledger, payments, mail, scheduled runs |
-| `packages/form` | The embeddable donation element. A permanent public contract |
+| `packages/form` | The embeddable donation element and its `v1` client. May change freely while Standalone is alpha |
 | `packages/operator` | Shared components and tokens for `/admin` and the gallery |
 | `packages/emails` | Mail templates, rendered to strings by the app |
 | `packages/emails-preview` | Dev-only preview of those templates |
