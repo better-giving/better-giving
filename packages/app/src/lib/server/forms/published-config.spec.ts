@@ -1094,7 +1094,7 @@ describe('publishedConfig — the config it serves', () => {
 	 * the donor's own answer, falling back to that default — so the fee line is opt-out with the box
 	 * already ticked. that is a donor toggle with an on-by-default, not a per-form setting, which is
 	 * why nothing in /admin offers it. `optional` is the only member of `FEE_COVERAGE_MODES`, and
-	 * the field stays on the wire because `FormConfig` declares it and the element reads it.
+	 * the field stays on the wire because `FormConfig` declares it.
 	 */
 	it('serves fee coverage as optional, the donor-toggle mode', () => {
 		expect(served().feeCoverage).toBe('optional');

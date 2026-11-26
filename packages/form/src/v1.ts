@@ -783,7 +783,7 @@ export type QuoteRequest = {
 	 * field its served config names — this one or `altchaPayload` below. an absent token is the
 	 * submission's and is refused `challenge_failed`, which a fresh challenge fixes.
 	 *
-	 * optional because a deployment checking with ALTCHA, or with no check, has no token to send.
+	 * optional because a deployment checking with ALTCHA sends `altchaPayload` instead.
 	 */
 	readonly turnstileToken?: string;
 	/**
