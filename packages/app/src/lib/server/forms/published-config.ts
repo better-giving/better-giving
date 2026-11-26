@@ -815,7 +815,8 @@ function repeatsAGift(rail: PaymentMethod): boolean {
 /**
  * the 404 body for a form id this deployment never had: the config read and the submission answer
  * it through `publishedConfig` above, and the ticker search
- * (src/routes/api.v1.forms.$id.tickers.ts) answers it too.
+ * (src/routes/api.v1.forms.$id.tickers.ts) and the coin estimate
+ * (src/routes/api.v1.forms.$id.estimate.ts) answer it too.
  *
  * the gift submission answers an unusable `pageProgramId` with exactly these words
  * (`unusablePageProgram` in ../donations/quote.ts), so an archived id, an unknown id and another
