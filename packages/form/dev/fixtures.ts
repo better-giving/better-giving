@@ -320,10 +320,10 @@ const CRYPTO: ServedConfig = {
 };
 
 /**
- * card beside both pledge rails. IRA (QCD) is a row on the review step; a stock is picked on the
- * first step and saved by the details step's Continue. the panel's Pledge stock saves 50 AAPL from
- * the details step whatever the first step picked, as the one sender of `PLEDGE_STOCK` (`steer` in
- * ../src/element.ts).
+ * card beside both pledge rails. IRA (QCD) is a row on the review step; a stock is picked in the
+ * first step's What you give panel and saved by the details step's Continue, with no review step.
+ * the dev page's Pledge stock (./main.ts) saves 50 AAPL from the details step whatever the first
+ * step picked, as the one sender of `PLEDGE_STOCK` (`steer` in ../src/element.ts).
  */
 const PLEDGES: ServedConfig = {
 	...DEFAULT,
@@ -487,7 +487,7 @@ export type ToldAnswer = (typeof TOLD_ANSWERS)[number];
 /** the flow's `send`, held from the last checkout that handed it over (`steer` below). */
 let steering: ((event: CheckoutEvent) => void) | null = null;
 
-/** the panel's Pledge stock: 50 shares of AAPL, saved from the details step the flow is on. */
+/** the dev page's Pledge stock: 50 shares of AAPL, saved from the details step the flow is on. */
 export function pledgeStock(): void {
 	steering?.({ type: 'PLEDGE_STOCK', ticker: 'AAPL', shares: '50' });
 }
@@ -680,7 +680,7 @@ function ports(
  * the Stripe half is handed a loader that answers nothing, which that adapter reads as fields that
  * never came up, and the flow holds that report on a form whose first step offers a coin or stock
  * (`paymentUnavailable` in ../src/checkout.machine.ts) — so a gift in kind goes on. `pledges`
- * also hands the panel its hold on the flow (`steer`), which is how Pledge stock reaches it.
+ * also hands the dev page its hold on the flow (`steer`), which is how Pledge stock reaches it.
  */
 export function devRuntime(
 	ending: DepositEnding,

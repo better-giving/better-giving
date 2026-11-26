@@ -112,10 +112,11 @@
  * ../parts.ts), and so is the quiet action the thank-you's employer ask draws Skip as
  * (`EMPLOYER_CLASS` in ../employer-ask.ts). that class declares its own transition
  * (../registry/styles/button-css.css) and outweighs the zero-weight list, which would drop the
- * press's `scale` and time the fill by `--duration-fast`. that name is declared on the registry's
- * `:root` (../registry/styles/variables.css) and a shadow tree has no `:root`, so inside the card
- * it is the host page's, and the `reduce` collapse in ./tokens.css never reaches it. "restates the
- * motion of every registry control that brings its own" in ../element.dom.spec.ts holds it.
+ * press's `scale` and time the fill by the registry's `--duration-fast` (restated on the card's
+ * colour layer in ./tokens.css, with its reduced-motion collapse) rather than by this card's
+ * `--_move-state`. restated at the class so the press and the fill move on the card's own two.
+ * "restates the motion of every registry control that brings its own" in ../element.dom.spec.ts
+ * holds it.
  */
 :where(
 	[part~='action'],
@@ -144,12 +145,12 @@
 /*
  * the checkbox gives under the press, as the registry's `.ds-checkbox` does
  * (../registry/styles/checkbox-css.css). the part's own transition below names no `scale`, so the
- * registry's would run, on `--duration-fast`, which a shadow tree cannot read (the action's block
- * above says why) and the `reduce` collapse in ./tokens.css never reaches. restated at the class so
- * the press moves on `--_move-press`. this outranks the plain `[part~='checkbox']` rule below and
- * wins the whole `transition`, so it names that rule's edge and fill too, or a tick snaps. the
- * switch's `.fee-decision [part~='checkbox']` comes after it and still wins. "restates the motion of
- * every registry control that brings its own" in ../element.dom.spec.ts holds both.
+ * registry's would run, on its `--duration-fast` rather than this card's `--_move-press` (the
+ * action's block above). restated at the class so the press moves on `--_move-press`. this
+ * outranks the plain `[part~='checkbox']` rule below and wins the whole `transition`, so it names
+ * that rule's edge and fill too, or a tick snaps. the switch's `.fee-decision [part~='checkbox']`
+ * comes after it and still wins. "restates the motion of every registry control that brings its
+ * own" in ../element.dom.spec.ts holds both.
  */
 [part~='checkbox'].ds-checkbox {
 	transition:

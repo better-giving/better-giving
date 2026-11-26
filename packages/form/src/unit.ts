@@ -13,8 +13,9 @@ import type { CoinRefusal, coinEstimate } from './checkout.machine';
 import type { GiftUnit } from './value';
 import { PAYMENT_METHODS, PAYMENT_METHOD_LABELS, type FormConfig, type PaymentMethod } from './v1';
 
-/** the open list's dialog name, and the hidden label on its search box. */
+/** the What you give panel's dialog name (./unit-panel.ts). */
 export const UNIT_PANEL_NAME = 'What you give';
+/** the panel's search box placeholder and hidden label: with stocks offered, and without. */
 export const SEARCH_WITH_STOCK = 'Search currency, crypto or stock';
 export const SEARCH_WITHOUT_STOCK = 'Search currency or crypto';
 

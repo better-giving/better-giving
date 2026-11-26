@@ -115,12 +115,11 @@
  * slowed (`--_dur-spin` below, and ./motion.css) — a fifth.
  *
  * the registry's `select-css` is copied for the What you give panel's rows (../unit-panel.ts), and
- * the card's own select (../select.ts) does not take it. its trigger is the text box the closed
- * choices already carry (`ds-field-input`, at the field's height), and what it adds the card cannot
- * take: its list is
- * a floating layer on `--shadow-floating` at the card corner with the chosen row on an accent ground,
- * where this card's open list is flat at the inner corner and says the chosen row by its tick alone
- * (`[part~='select-list']` in ./parts.css) — a sixth.
+ * the card's own select (../select.ts) does not take it. that select's trigger is the text box the
+ * closed choices already carry (`ds-field-input`, at the field's height), and what `select-css` adds
+ * the card cannot take: its list is a floating layer on `--shadow-floating` at the card corner with
+ * the chosen row on an accent ground, where this card's open list is flat at the inner corner and
+ * says the chosen row by its tick alone (`[part~='select-list']` in ./parts.css) — a sixth.
  *
  * the registry states its busy ring's size on its class alone, five of its spacing steps
  * (`.ds-spinner` in ../registry/styles/spinner-css.css), as no variable a rule placing it can read,

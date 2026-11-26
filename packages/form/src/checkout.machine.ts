@@ -561,10 +561,10 @@ export type CheckoutEvent =
 	| { readonly type: 'TOGGLE_TRIBUTE' }
 	| { readonly type: 'CONTINUE' }
 	/**
-	 * backing off a screen the flow put the donor on, which is the correction screen and nothing
-	 * else.
+	 * backing off a screen the flow put the donor on: the correction screen, back to the review step,
+	 * and an open deposit address, back to the first step ("Change what you give").
 	 *
-	 * it moves one step and the step it moves to is written into the transition, so it says nothing
+	 * the step it moves to is written into the transition, so it says nothing
 	 * about where the donor came from. that is enough for a screen with one way off it and is not
 	 * enough for the step head, where a mark on the third step stands for the first: `GO_TO_STEP`
 	 * below is what names a destination, and the two sit beside each other rather than one
@@ -585,8 +585,8 @@ export type CheckoutEvent =
 	/** the IRA custodian an `ira_qcd` pledge names, as the donor types it on the review step. */
 	| { readonly type: 'SET_CUSTODIAN'; readonly custodian: string }
 	/**
-	 * shares of a ticker pledged from the details step, saved as a stock picked on the first step is
-	 * saved by that step's Continue. no screen sends it: the dev page's stock control does, through
+	 * shares of a ticker pledged from the details step, saved the way the details step's Continue
+	 * saves a stock picked on the first step. no screen sends it: the dev page's stock control does, through
 	 * `steer` in ./element.ts.
 	 */
 	| ({ readonly type: 'PLEDGE_STOCK' } & StockPick)
@@ -1681,20 +1681,20 @@ export const checkoutMachine = setup({
 		/** a fund's approval survived the failed send, so a Try again sends it again. */
 		grantIsHeld: ({ context }) => context.authorization !== null,
 
-		/** a `crypto` quote refused for the amount, which the amount step is where the donor fixes. */
+		/** a `crypto` quote refused for the amount; the donor fixes it in the first step's coin box. */
 		refusesAmountForCoin: ({ context, event }) => {
 			const code = 'error' in event ? coinRefusalOf(context, event.error)?.code : undefined;
 			return code === 'below_minimum' || code === 'above_maximum';
 		},
 
-		/** an IRA (QCD) save refused for its custodian, which the review step's box is where it is fixed. */
+		/** an IRA (QCD) save refused for its custodian; the donor fixes it in the review step's box. */
 		refusesCustodian: ({ context, event }) =>
 			'error' in event &&
 			context.payer?.method === 'ira_qcd' &&
 			errorCode(event.error) === 'pledge_detail_invalid' &&
 			errorField(event.error) === 'custodian',
 
-		/** a `crypto` quote refused for the coin, which the first step's unit list is where it is fixed. */
+		/** a `crypto` quote refused for the coin; the donor picks another in the What you give panel. */
 		refusesCoin: ({ context, event }) =>
 			'error' in event && coinRefusalOf(context, event.error)?.code === 'coin_not_accepted',
 
@@ -2149,8 +2149,8 @@ export const checkoutMachine = setup({
 		 */
 		amount: {
 			// a challenge report that has been waiting for a state that can answer it — see the root
-			// `on` above. the widget is drawn on the details step and outlives a Back press, so this
-			// step is one of the three that answers.
+			// `on` above. the widget is drawn on the details step and outlives a move back to this one,
+			// so this step is one of the three that answers.
 			always: { guard: 'challengeIsHeld', target: 'failed', actions: 'deliverChallenge' },
 			on: {
 				SET_AMOUNT: {
@@ -2174,7 +2174,7 @@ export const checkoutMachine = setup({
 					})
 				},
 				// a gift in kind is one-time only, so a repeating cadence is refused while one is picked:
-				// the control draws Monthly `aria-disabled` and still sends this.
+				// the track draws each repeating cadence `aria-disabled` and still sends this.
 				SET_FREQUENCY: {
 					guard: 'cadenceIsOpen',
 					actions: assign({
@@ -2448,8 +2448,8 @@ export const checkoutMachine = setup({
 				/**
 				 * the marks: the amount step behind, the review step ahead.
 				 *
-				 * `BACK` is not handled here. the way back off a numbered step is a mark, and the
-				 * correction screen is the one surface that sends the other event.
+				 * `BACK` is not handled here. the way back off a numbered step is a mark; `BACK` is
+				 * sent only by the correction screen and an open deposit address (`BACK` above).
 				 *
 				 * the backwards branch is unguarded and the forwards one asks what this step's own
 				 * Continue asks, so the pair is the same gate a donor met walking here.
@@ -3115,8 +3115,8 @@ export const checkoutMachine = setup({
 				 *
 				 * past `Deposit.validUntil` the address, the memo and every way to copy them are
 				 * withdrawn so nobody sends to an address no longer watched, and the reading goes on:
-				 * a coin sent before then may still arrive. the way back to the review step is on the
-				 * open address alone, because the closed one's screen draws no control.
+				 * a coin sent before then may still arrive. the way back to the first step is on the open
+				 * address alone, because the closed one's screen draws no control.
 				 */
 				address: {
 					initial: 'open',
@@ -3593,9 +3593,10 @@ export const checkoutMachine = setup({
 					{ guard: 'grantIsHeld', target: 'resending' },
 					{ guard: not('amountIsDecided'), target: 'amount' },
 					{ guard: not('payerFieldsAreGiven'), target: 'details' },
-					// a stock gift is pressed from the details step and has no review step, so its Try
-					// again is the same press again: landing it on the details step would drop the held
-					// rail (`beginAttempt`) and put the next Continue in front of a Donate press.
+					// a stock gift is saved by the details step's Continue and has no review step, so its
+					// Try again is that save again, on the rail it held: straight to `holding`, where
+					// landing on the details step would drop the rail (`beginAttempt`) and ask for the
+					// press a second time.
 					{ guard: 'givesStock', target: 'holding' },
 					// a gift of money with no payment box goes back to the first step, where a coin or
 					// stock can still be given (`paymentUnavailable`).

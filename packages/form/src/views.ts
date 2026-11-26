@@ -3461,10 +3461,11 @@ export function createCard(
 			: coinRefusal !== undefined
 				? coinRefusalWords(coinRefusal)
 				: (unpriced ?? '');
-		// either is a refused amount, and marks the tray, the tiles and the entry the same way — or,
-		// on a gift in kind, the one box its quantity is typed in, which stands in their place. a
-		// quantity missing from that box marks it too, with no sentence: the bounds above are the
-		// currency's, and no copy names a missing quantity (`AmountDecision` in ./value.ts).
+		// an amount outside the bounds and a coin's refusal of one are each a refused amount, and mark
+		// the tray, the tiles and the entry the same way — or, on a gift in kind, the one box its
+		// quantity is typed in, which stands in their place. a quantity not yet decided marks that box
+		// too, with no sentence of its own: no copy names a missing quantity (`AmountDecision` in
+		// ./value.ts); a coin amount whose price check failed carries the sentence above instead.
 		const amountRefused = missingAmount || missing.includes('quantity') || refusal !== undefined;
 		const inKind = api.unit.entry !== null;
 		const tilesRefused = amountRefused && !inKind;

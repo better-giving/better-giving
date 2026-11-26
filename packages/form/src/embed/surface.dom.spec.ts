@@ -295,7 +295,7 @@ describe('one payment surface over however many processors a config names', () =
 	});
 
 	// PayPal's adapter answers inside its own constructor where the config names no client id, which
-	// is before the IRA (QCD) option after it has been built at all.
+	// is before the IRA (QCD) option listed after it has been built.
 	it('says nothing when PayPal fails at once ahead of an option still to be built', async () => {
 		const k = kit();
 		createPaymentSurface(
@@ -642,7 +642,8 @@ describe('one payment surface over however many processors a config names', () =
 			surface.stop();
 		});
 
-		// told off `venmoIsOffered` in ../checkout.machine.ts, as the crypto option is off its own.
+		// told off `venmoIsOffered` in ../checkout.machine.ts, as the fund is off `fundIsOffered` and the
+		// IRA (QCD) option off `pledgeIsOffered`.
 		it('lists Venmo only while it is offered, and counts the box without it', async () => {
 			const k = kit();
 			const surface = await composed(k, { ...CONFIG, paymentMethods: ['card', 'paypal', 'venmo'] });

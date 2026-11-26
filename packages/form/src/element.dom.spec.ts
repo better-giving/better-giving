@@ -337,9 +337,9 @@ async function mount(options: Options = {}): Promise<Mounted> {
 		},
 		tag
 	);
-	// the registry keeps every tag's class, and the class this runtime, for the rest of the file: what
-	// the runtime was handed back is let go of as the case ends, or every card the file mounts stays
-	// reachable through it and the file runs out of heap.
+	// the custom element registry holds every tag's class, and each class holds its runtime, for the
+	// rest of the file. so the listeners the card handed this runtime are dropped as the case ends, or
+	// every card the file mounts stays reachable through them and the file runs out of heap.
 	onTestFinished(() => {
 		report = () => {};
 		stop = () => {};
@@ -5930,11 +5930,10 @@ describe('the stylesheets', () => {
 		expect(moving).not.toMatch(/var\(--_ease-/);
 	});
 
-	// a registry control that brings its own transition moves at the registry's duration, which is
-	// `--duration-fast` on the registry's `:root` (./registry/styles/variables.css): a shadow tree has
-	// no `:root`, so inside the card that name is the host page's, and the `reduce` collapse in
-	// ./styles/tokens.css never reaches it. its class also outweighs the zero-weight list in
-	// ./styles/motion.css, so the part loses the movements that sheet gives it. each such part is
+	// a registry control that brings its own transition moves at the registry's `--duration-fast`
+	// (restated on the card's colour layer in ./styles/tokens.css) rather than on the card's own
+	// `--_move-*` tokens, and its class outweighs the zero-weight list in ./styles/motion.css, so the
+	// part loses the movements that sheet gives it. each such part is
 	// restated there at its registry class, so what it moves is the motion sheet's.
 	it('restates the motion of every registry control that brings its own', () => {
 		// innermost blocks only, so a rule inside `@media (hover: hover)` is read under its own
