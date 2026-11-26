@@ -454,8 +454,9 @@ function describe(error: unknown): { message: string; fix?: string } {
  * out of it.
  *
  * public the way the attributes and part names are (../custom-elements.json is the list an
- * integrator reads): a name here is in somebody's `addEventListener`. every detail is primitives only, because it is handed to a page this project does not own
- * — nothing the donor typed is in one.
+ * integrator reads): a name here is in somebody's `addEventListener`. every detail is primitives
+ * only, because it is handed to a page this project does not own — nothing the donor typed is in
+ * one.
  */
 const DONATE_FORM_EVENTS = {
 	ready: 'bg-donate:ready',

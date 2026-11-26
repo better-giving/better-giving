@@ -460,7 +460,7 @@ describe('registering the element', () => {
 		expect(fetched.mock.calls[0]?.[0]).toBe(`${DEPLOYMENT}/api/v1/forms/frm_a8x2k9/config`);
 	});
 
-	it('defines the permanent tag', () => {
+	it('registers the element under its tag when the runtime starts', () => {
 		plantRuntimeScript();
 		stubFetch(new Response('Not Found', { status: 404 }));
 		startRuntime(document);

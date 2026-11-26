@@ -684,7 +684,8 @@ function servedProgram(program: Program | null): Program | null {
  * answer, falling back to `DEFAULT_COVERS_FEE` beside it, which is `true` — so the line renders
  * ticked with a way to untick it. that is a donor's decision with an on-by-default rather than an
  * org's setting, which is why nothing in /admin offers a box for it. the field stays on the wire
- * with nothing else it could say.
+ * because `FormConfig` in packages/form/src/v1.ts declares it and packages/form/src/config.ts
+ * reads it.
  */
 const SERVED_FEE_COVERAGE = 'optional' as const;
 

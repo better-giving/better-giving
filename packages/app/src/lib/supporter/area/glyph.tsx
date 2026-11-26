@@ -5,7 +5,7 @@ import { GLYPHS as FORM_GLYPHS } from '@better-giving/form/glyph';
 // (packages/form/src/glyph.ts) and so do these where that set has the mark; the rest are lucide's
 // `log-out`, `external-link`, `pencil`, `plus`, `trash-2`, `image-up`, `triangle-alert`, `info`,
 // `circle-check` and `arrow-left` (https://lucide.dev, ISC), which the form's set does not carry —
-// that set is the element's public contract, and widening it is not this screen's call.
+// that set is the element's own, and widening it is not this screen's call.
 
 const OWN_GLYPHS = {
 	'log-out': ['m16 17 5-5-5-5', 'M21 12H9', 'M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4'],

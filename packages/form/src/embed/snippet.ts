@@ -6,13 +6,12 @@ import { PRE_UPGRADE_RESERVATION } from './reservation';
  * outside its own tree.
  *
  * three surfaces agree on one string and there is no variant: what is pasted into an org's own
- * HTML is pasted into pages this project cannot reach,
- * so a second spelling of it would be the first place the three drift. it lives in the package
- * rather than in `src/lib/forms/`, where it first sat: two admin screens hand it out — the forms
- * list and the screen that edits one — and neither owns it more than the other, which is a real
- * argument for a shared function and always was. what was wrong was the directory: `src/lib/forms/`
- * is the directory whose defining property is that nothing in it is permanent (CLAUDE.md, "the
- * map"), and this is. both screens still reach it the same way, through
+ * HTML is pasted into pages this project cannot reach, so a second spelling of it would be the
+ * first place the three drift. it lives in the package rather than in `src/lib/forms/`, where it
+ * first sat: two admin screens hand it out — the forms list and the screen that edits one — and
+ * neither owns it more than the other, which is a real argument for a shared function and always
+ * was. what was wrong was the directory: `src/lib/forms/` is the app's own, and this is pasted
+ * into pages outside it. both screens still reach it the same way, through
  * `@better-giving/form/embed/snippet`.
  *
  * the host is passed in and is always the request's own origin, never a configured base URL: no

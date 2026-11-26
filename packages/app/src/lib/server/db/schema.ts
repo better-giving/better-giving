@@ -1055,9 +1055,8 @@ export const form = sqliteTable(
 		 * legal PRIMARY KEY, and it is the shape a hand-run `d1 execute` produces.
 		 *
 		 * deliberately no prefix check. `substr(id, 1, 4) = 'frm_'` would pin the public id
-		 * format in the database, and the public id format is not a rule of the
-		 * schema — pinning it there makes changing it a table rebuild on
-		 * a table `donation` references. (if a later reviewer does want one, it is
+		 * format in the database, and changing it would then be a table rebuild on a table
+		 * `donation` references. (if a later reviewer does want one, it is
 		 * `substr`, never `id like 'frm_%'`: `_` is a like wildcard, so the like form
 		 * silently accepts `frmX…` and proves nothing.)
 		 */
@@ -2063,9 +2062,9 @@ export const dispute = sqliteTable(
  *
  * the wire's `FREQUENCIES` (packages/form/src/v1.ts) minus `one_time`: a gift that does not repeat
  * has no row in this table at all. `satisfies readonly Frequency[]` is what holds the two
- * lists to the same words — a member
- * added there is one this union may take, while a word spelled differently here is a type
- * error rather than a database happily storing a cadence nothing can charge.
+ * lists to the same words — a member added there is one this union may take, while a word
+ * spelled differently here is a type error rather than a database happily storing a cadence
+ * nothing can charge.
  *
  * a third cadence does not arrive as a third member. widening this check is the table rebuild
  * rule 2 above describes, on a table `donation` points at — so from the first commitment

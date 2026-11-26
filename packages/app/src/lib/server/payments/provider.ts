@@ -52,7 +52,7 @@ import type {
  *
  * data, not a field name. `Provider` in packages/form/src/v1.ts is what tells an adapter on the
  * donor's page which SDK to reach for, so the contract carries a processor without a field named
- * after one — and a field named after one could only ever be corrected by shipping a `v2`.
+ * after one.
  */
 export const PROCESSOR_NAMES = [
 	'stripe',

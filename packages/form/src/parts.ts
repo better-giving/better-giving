@@ -2,12 +2,9 @@
 // Standalone is alpha a name may change in place (AGENTS.md → Public surface while Standalone is
 // alpha), and custom-elements.json ships in the same commit as any change to this list.
 //
-// `legal` was withdrawn from this list, which is the one exception and was taken out loud. the
-// identity footer left the card, so the name pointed at nothing a host could style; the withdrawal
-// is admitted by CLAUDE.md's own pre-release carve-out — no organisation has deployed and no site
-// carries the snippet — and it is recorded here rather than in a changelog so the next reader can
-// tell a stated exception from an oversight. a second withdrawal needs the same argument made
-// again, and it is not available once a real deployment exists.
+// `legal` was withdrawn from this list. the identity footer left the card, so the name pointed at
+// nothing a host could style; the withdrawal is recorded here rather than in a changelog so the
+// next reader can tell a deliberate removal from an oversight.
 //
 // a part list carries one name and any number of tokens. `part="action submit busy"` is matched
 // by `::part(action)`, `::part(submit)`, `::part(action submit)` and `::part(action busy)` alike,

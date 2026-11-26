@@ -247,8 +247,8 @@ export async function loader({ context, request, url }: Route.LoaderArgs) {
 			// built here rather than on the projection above, because the card is drawn over one form
 			// and a string on every row is a string the browser is sent once per form to draw none of.
 			// both halves come from `@better-giving/form/embed/snippet` and neither is spelled here:
-			// what is pasted into an org's own HTML goes out into pages we cannot reach, and a second spelling of
-			// either half is where the surfaces that agree on it start to disagree.
+			// what is pasted into an org's own HTML goes out into pages we cannot reach, and a second
+			// spelling of either half is where the surfaces that agree on it start to disagree.
 			embedding: embedded && {
 				id: embedded.id,
 				name: embedded.name,

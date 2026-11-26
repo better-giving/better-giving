@@ -25,9 +25,9 @@
  * nothing else.
  *
  * the value is a literal of its own and follows no other name in this repository — the element's tag
- * is `bg-donate-form`, and neither is derived from the other. it is a literal of its own for the reason the
- * tag is: it goes out on urls handed to a payment provider, and a donor coming back to a page stamped
- * by an older build is a donor whose gift no form on it claims.
+ * is `bg-donate-form`, and neither is derived from the other. the stamp goes out on urls handed to
+ * a payment provider, so a donor coming back to a page stamped by an older build is a donor whose
+ * gift no form on it claims.
  */
 export const RESUME_FORM_PARAM = 'bg_donate_form';
 

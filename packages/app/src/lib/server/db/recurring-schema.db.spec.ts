@@ -88,7 +88,7 @@ const insertPlan = (opts: {
 	);
 
 describe('a commitment repeats monthly or yearly, and nothing else', () => {
-	it('accepts the two the public contract offers', async () => {
+	it('accepts the monthly and yearly intervals', async () => {
 		// the positive control the rejections below are worth nothing without.
 		await insertPlan({ id: 'plan-monthly', interval: 'monthly' });
 		await insertPlan({ id: 'plan-yearly', interval: 'yearly' });

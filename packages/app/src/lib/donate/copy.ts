@@ -11,8 +11,8 @@ import { PAYMENT_METHOD_LABELS, type PaymentMethod } from '@better-giving/form/v
 //
 // the same screens are drawn by packages/form/src/views.ts for the embedded element, and the words
 // there are its own. that duplication is deliberate and bounded: the element's copy sits on a
-// stranger's page and this page's does not, so promoting the words to a form-package
-// entry is a decision to make once, out loud, and not a refactor to slip in — and until it is made,
+// stranger's page and this page's does not, so promoting the words to a form-package entry is a
+// decision to make once, out loud, and not a refactor to slip in — and until it is made,
 // a wording changed on one side is not changed on the other. what may not happen is a third copy:
 // no sentence a donor reads belongs anywhere else under this directory.
 

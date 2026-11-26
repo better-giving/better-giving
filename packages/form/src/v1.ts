@@ -29,7 +29,7 @@
  * often it repeats. the cost, recorded so it is not rediscovered, is that an org cannot say
  * "$1,000 one-time is fine, $1,000/month is not" — they pick amounts that read sanely at every
  * frequency they enable. keying `suggestedAmountsMinor` by frequency is the change that looks
- * obvious later and is a `v2`.
+ * obvious later and would change the shape of the config.
  */
 export const FREQUENCIES = ['one_time', 'monthly', 'yearly'] as const;
 export type Frequency = (typeof FREQUENCIES)[number];
@@ -300,8 +300,7 @@ export type MonthlyAsk = {
  * one payment provider this deployment uses, and the public key its SDK is initialised with.
  *
  * the vendor is data, not a field name. `name` is what tells an adapter which SDK to reach for,
- * so the contract can carry a provider without a field named after one — and a field named
- * after one could only ever be corrected by shipping a `v2`.
+ * so the contract can carry a provider without a field named after one.
  *
  * `name` is a string rather than a union of the processors this repository has an adapter for,
  * and that is the same decision: a deployment naming a processor this snippet does not know draws
@@ -342,9 +341,10 @@ export const PAYPAL_SDK_PATH = '/web-sdk/v6/core';
  * carries one.
  *
  * the last three are what a row *shows* rather than what a gift is built from, and all three are
- * optional: a deployment serving none draws the list it drew before. nothing here is ever assembled from `coin` or `ticker` — a logo path built out of a code
- * and a flag read off a list of coins this repo calls popular are both a table somebody has to
- * maintain and forgets to, and the whole of what these three carry is the processor's own answer.
+ * optional: a deployment serving none draws the list it drew before. nothing here is ever
+ * assembled from `coin` or `ticker` — a logo path built out of a code and a flag read off a list
+ * of coins this repo calls popular are both a table somebody has to maintain and forgets to, and
+ * the whole of what these three carry is the processor's own answer.
  *
  * `logo` is that processor's own path for the coin, absolute and `https:`, which ./config.ts refuses
  * anything else for: the row is drawn into a page this project does not own, so a relative path
@@ -648,8 +648,8 @@ export type QuoteRequest = {
 	 * payment port.
 	 *
 	 * present exactly when `method` is `'daf'` and absent on every other method, and it travels with
-	 * `authorizedMinor` below: the endpoint refuses one without the other. optional for the reason
-	 * every addition to this file is, so no published snippet's request changes meaning.
+	 * `authorizedMinor` below: the endpoint refuses one without the other. optional because a request
+	 * that is not a DAF gift carries neither.
 	 */
 	readonly authorizationId?: string;
 	/**
@@ -692,11 +692,11 @@ export type QuoteRequest = {
 	/**
 	 * the donor's own answer about being written to, or `null` where they were never asked.
 	 *
-	 * required and three-valued: the field keeps its name and every `boolean` a published snippet
-	 * already sends still means what it meant. what `null` adds is the case a boolean could not state. a headless integrator who
-	 * does not ask the question has no true answer to send, and `false` is not it — `false` is a
-	 * donor who was asked and declined, which the column records as a different fact from a donor
-	 * nobody asked (`consented_to_contact` is nullable in ../server/db/schema.ts).
+	 * required and three-valued: what `null` adds is the case a boolean could not state. a
+	 * headless integrator who does not ask the question has no true answer to send, and `false` is
+	 * not it — `false` is a donor who was asked and declined, which the column records as a
+	 * different fact from a donor nobody asked (`consented_to_contact` is nullable in
+	 * ../server/db/schema.ts).
 	 *
 	 * still required, so an absent field is refused rather than read as `null`: forgetting the
 	 * question and choosing not to ask it are different mistakes, and only one of them is a
@@ -783,10 +783,7 @@ export type QuoteRequest = {
 	 * field its served config names — this one or `altchaPayload` below. an absent token is the
 	 * submission's and is refused `challenge_failed`, which a fresh challenge fixes.
 	 *
-	 * the field is on the contract from the first version because adding it later would be a
-	 * request shape a published snippet does not send. it stays optional here for the same reason
-	 * every other addition to this file is: narrowing a shipped field is the breaking change this
-	 * file exists to prevent.
+	 * optional because a deployment checking with ALTCHA, or with no check, has no token to send.
 	 */
 	readonly turnstileToken?: string;
 	/**

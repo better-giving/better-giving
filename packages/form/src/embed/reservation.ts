@@ -4,7 +4,7 @@
  * **the height is pasted into sites this project cannot reach, read, or update, and no test can
  * hold it there.** once Standalone has users, a change here does not reach any page that took the
  * snippet. while it is alpha the number may change in place (AGENTS.md → Public surface while
- * Standalone is alpha). what the tests below bind is this repository to itself: `.loading`'s
+ * Standalone is alpha). what the specs bind is this repository to itself: `.loading`'s
  * `min-height` in ../styles/layout.css against this value, and this value against README.md,
  * DEPLOY.md and custom-elements.json. every one of those is a copy we own. change the number
  * after launch and the suite goes green while every embed already in the field reserves the old
@@ -54,8 +54,7 @@
  * stands past this floor and a short one stands well inside it. either way the page settles once,
  * when the card replaces the wait — down by the difference where the card is taller, up by it where
  * the card is shorter. that slack grew when the identity footer left the card and it was not taken
- * back: the height is frozen into pages this project cannot reach, so it is added to and never
- * reduced.
+ * back.
  *
  * the top is the end to sit at, because the two directions are not equally bad. a page that moves
  * *down* pushes what somebody was reading out from under them; a page that comes back up closes a
