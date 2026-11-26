@@ -815,3 +815,100 @@ describe('parsePledgeRequest() — what both rails refuse', () => {
 		expect(pledgeRefusal(iraBody({ email: '' })).message).toContain('`email`');
 	});
 });
+
+describe('parseQuoteRequest() — a contribution, which this deployment cannot take yet', () => {
+	it('parses a body sending `contributionMinor` 0 exactly as one leaving it out', () => {
+		expect(parseQuoteRequest(body({ contributionMinor: 0 }), CONFIG)).toStrictEqual(
+			parseQuoteRequest(body(), CONFIG)
+		);
+	});
+
+	// the server's quote never charges or records a contribution, so one taken would be one silently
+	// dropped.
+	it.each([
+		[500, '500'],
+		[-100, '-100'],
+		[2.5, '2.5'],
+		['500', 'a string'],
+		[null, 'null']
+	])('refuses `contributionMinor` %j', (contributionMinor, described) => {
+		const refused = refusal({ contributionMinor });
+		expect(refused.ok).toBe(false);
+		expect(refused.message).toBe(
+			`\`contributionMinor\` is ${described}, and this deployment takes no contribution.`
+		);
+		expect(refused.fix).toBe(
+			'Leave `contributionMinor` out or send `0`. This deployment offers no contribution.'
+		);
+	});
+});
+
+/** a config serving a sponsor and a contribution offer, which does not make one takeable here. */
+const OFFERING: FormConfig = {
+	...CONFIG,
+	sponsor: { legalName: 'Better Giving Fiscal Sponsorship Inc.', ein: CONFIG.ein },
+	contribution: { options: [0.1, 0.15, 0.2], startsAt: 0.15 }
+};
+
+describe('a contribution beside a served config that offers one', () => {
+	it('is still refused on a quote, in the payment wording', () => {
+		const result = parseQuoteRequest(body({ contributionMinor: 1500 }), OFFERING);
+
+		expect(result.ok).toBe(false);
+		expect(result.ok === false && result.message).toBe(
+			'`contributionMinor` is 1500, and this deployment takes no contribution.'
+		);
+	});
+
+	it.each([stockBody, iraBody])('is still refused on a pledge, in the pledge wording', (make) => {
+		const result = parsePledgeRequest(make({ contributionMinor: 1500 }), OFFERING);
+
+		expect(result.ok).toBe(false);
+		expect(result.ok === false && result.message).toBe(
+			'`contributionMinor` is 1500, and a pledge takes none.'
+		);
+	});
+
+	it('leaves a body without one parsing as it does on a config that offers none', () => {
+		expect(parseQuoteRequest(body(), OFFERING)).toStrictEqual(parseQuoteRequest(body(), CONFIG));
+	});
+});
+
+describe('parsePledgeRequest() — a contribution, which a pledge cannot take either', () => {
+	it.each([stockBody, iraBody])(
+		'parses a body sending `contributionMinor` 0 exactly as one leaving it out',
+		(make) => {
+			expect(parsePledgeRequest(make({ contributionMinor: 0 }), CONFIG)).toStrictEqual(
+				parsePledgeRequest(make(), CONFIG)
+			);
+		}
+	);
+
+	it.each(
+		(
+			[
+				['stock', stockBody],
+				['ira_qcd', iraBody]
+			] as const
+		).flatMap(([rail, make]) =>
+			(
+				[
+					[500, '500'],
+					[-100, '-100'],
+					[2.5, '2.5'],
+					['500', 'a string'],
+					[null, 'null']
+				] as const
+			).map(([value, described]) => [rail, make, value, described] as const)
+		)
+	)('refuses on `%s` a `contributionMinor` of %j', (_rail, make, contributionMinor, described) => {
+		const refused = pledgeRefusal(make({ contributionMinor }));
+		expect(refused.ok).toBe(false);
+		// a pledge states shares or a custodian's amount and carries no contribution, which is the
+		// reason the answer gives rather than the payment path's.
+		expect(refused.message).toBe(`\`contributionMinor\` is ${described}, and a pledge takes none.`);
+		expect(refused.fix).toBe(
+			'Leave `contributionMinor` out or send `0`. A stock or IRA (QCD) pledge carries no contribution.'
+		);
+	});
+});

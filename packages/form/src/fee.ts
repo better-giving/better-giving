@@ -148,6 +148,49 @@ export function estimateFee(amountMinor: number, rule: FeeRule | undefined): Fee
 }
 
 /**
+ * a covered fee split between a gift and the contribution charged beside it, and the total that
+ * carries both, all in minor units.
+ *
+ * the two parts sum to the fee `estimateFee` charges on gift and contribution together, which is
+ * the one fee the processor takes. `QuoteRequest.contributionMinor` in ./v1.ts is what this prices.
+ */
+export type ContributionEstimate = {
+	readonly giftFeeMinor: number;
+	readonly contributionFeeMinor: number;
+	readonly totalMinor: number;
+};
+
+/**
+ * what the donor is charged to cover the fee on a gift and on a contribution beside it, or `null`
+ * when the rule cannot say.
+ *
+ * the gift's part is the fee its own estimate states, so the gift's fee line reads what it read
+ * with no contribution, and the contribution's part is whatever the fee on the sum adds to it.
+ * splitting the sum's fee in proportion would move the gift's line every time the contribution
+ * moved. at a contribution of 0 this is `estimateFee` with a zero second part.
+ *
+ * `null` where either estimate is, and on a contribution that is not a whole non-negative amount.
+ * no part it returns is negative, and that needs no check of its own: the fee `estimateFee` states
+ * never falls as the amount grows, under a cap and a rounding step alike, so the sum's fee is never
+ * under the gift's.
+ */
+export function estimateWithContribution(
+	giftMinor: number,
+	contributionMinor: number,
+	rule: FeeRule | undefined
+): ContributionEstimate | null {
+	if (!Number.isInteger(contributionMinor) || contributionMinor < 0) return null;
+	const gift = estimateFee(giftMinor, rule);
+	const whole = estimateFee(giftMinor + contributionMinor, rule);
+	if (gift === null || whole === null) return null;
+	return {
+		giftFeeMinor: gift.feeMinor,
+		contributionFeeMinor: whole.feeMinor - gift.feeMinor,
+		totalMinor: whole.totalMinor
+	};
+}
+
+/**
  * a fee taken out of a gift and what is left of it, both in minor units.
  *
  * both numbers for the reason `FeeEstimate` above carries both: the declined reading of the fee
