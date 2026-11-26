@@ -1336,12 +1336,13 @@ export function donateFormClass(runtime: FormRuntime): CustomElementConstructor 
 					);
 				}
 
-				// a press held for a token while the widget asks the donor to solve something. the
-				// widget is in the details step's box, which is hidden here, so it is drawn afresh in
-				// the review step's, beside the press. a redraw into the box it is already in does
-				// nothing, so this is said on every reading of that state.
+				// a press held for a token while the widget asks the donor to solve something, which a
+				// widget in a hidden box cannot do. so it is drawn on the step the held press is projected
+				// on: the details step's own box for a stock gift, which has no review step (`holding` in
+				// ./connect.ts), the review step's beside the press for every other. a redraw into the
+				// box it is already in does nothing, so this is said on every reading of that state.
 				if (snapshot.value === 'holding' && snapshot.context.challengeInteractive) {
-					this.#challenge?.redraw?.(view.heldChallenge);
+					this.#challenge?.redraw?.(step === 'details' ? view.challenge : view.heldChallenge);
 				}
 				// and the same for a lost pledge's save made again, which waits on the pledge screen.
 				if (

@@ -7315,6 +7315,119 @@ describe('what the donor gives, on the first step', () => {
 		expect(saved).toHaveLength(1);
 	});
 
+	describe('a stock press held on a widget asking the donor', () => {
+		const AAPL_PLEDGE = (id: string): Quote => ({
+			paymentToken: id,
+			feeMinor: 0,
+			totalMinor: 0,
+			pledge: {
+				id,
+				method: 'stock',
+				reference: 'ACME-AAPL-7Q2D',
+				receiptTo: 'donor@example.org',
+				ticker: 'AAPL',
+				shares: '50',
+				deliverTo: 'Harbor Street Securities',
+				dtcNumber: '0164',
+				accountNumber: 'Z12-345678',
+				accountName: 'Acme Relief Fund'
+			}
+		});
+		/** the details step's own challenge box, where the widget is first drawn. */
+		const detailsBox = (card: Mounted) => card.find('.step-details .challenge');
+
+		// a stock gift has no review step, so the review step's box beside its press is hidden.
+		it('draws the puzzle in the details step’s own box, and saves once on the token it mints', async () => {
+			const drawn: HTMLElement[] = [];
+			const saves: (QuoteRequest | StockPledgeRequest)[] = [];
+			const card = await giveStock({
+				mints: false,
+				redraws: (node) => void drawn.push(node),
+				ports: {
+					...UNIT_PORTS,
+					pledges: {
+						id: () => 'pledge_1',
+						save: async (request) => {
+							saves.push(request);
+							return AAPL_PLEDGE('pledge_1');
+						},
+						told: async () => {}
+					}
+				}
+			});
+			type(quantity(card), '50');
+			await throughDetails(card);
+
+			card.interactive(true);
+			await settle();
+
+			expect(card.find('.step-details').hidden).toBe(false);
+			expect(drawn.length).toBeGreaterThan(0);
+			expect(drawn.every((node) => node === detailsBox(card))).toBe(true);
+			expect(detailsBox(card).closest('[hidden]')).toBeNull();
+			expect(saves).toEqual([]);
+
+			card.token('tk_solved');
+			await settle();
+
+			expect(saves.map((save) => save.turnstileToken)).toEqual(['tk_solved']);
+			expect(card.text('.takeover [part~="heading"]')).toBe('Your stock gift is pending');
+		});
+
+		it('presses a failed save again on Try again, with its puzzle in the details step', async () => {
+			const drawn: HTMLElement[] = [];
+			const saves: (QuoteRequest | StockPledgeRequest)[] = [];
+			let resets = 0;
+			const card = await giveStock({
+				mints: false,
+				redraws: (node) => void drawn.push(node),
+				resets: () => void (resets += 1),
+				ports: {
+					...UNIT_PORTS,
+					pledges: {
+						id: () => 'pledge_1',
+						save: async (request) => {
+							saves.push(request);
+							if (saves.length === 1) throw new TypeError('Failed to fetch');
+							return AAPL_PLEDGE('pledge_1');
+						},
+						told: async () => {}
+					}
+				}
+			});
+			type(quantity(card), '50');
+			await throughDetails(card);
+			card.token('tk_first');
+			await settle();
+			expect(primary(card).textContent).toBe('Try again');
+			const resetBeforeRetry = resets;
+
+			primary(card).click();
+			await settle();
+			card.interactive(true);
+			await settle();
+
+			expect(card.find('.takeover').hidden).toBe(true);
+			expect(card.find('.step-details').hidden).toBe(false);
+			const shown = card
+				.all('button')
+				.filter((button) => button.closest('[hidden]') === null)
+				.map((button) => button.textContent ?? '');
+			expect(shown.some((words) => words.startsWith('Donate'))).toBe(false);
+			expect(resetBeforeRetry).toBeGreaterThan(0);
+			expect(resets).toBe(resetBeforeRetry);
+			expect(drawn.length).toBeGreaterThan(0);
+			expect(drawn.every((node) => node === detailsBox(card))).toBe(true);
+			expect(detailsBox(card).closest('[hidden]')).toBeNull();
+
+			card.token('tk_solved');
+			await settle();
+
+			expect(saves.map((save) => save.turnstileToken)).toEqual(['tk_first', 'tk_solved']);
+			expect(card.text('.takeover [part~="heading"]')).toBe('Your stock gift is pending');
+		});
+	});
+
 	it('keeps the tiles and Other for the currency, and no box for a quantity', async () => {
 		const card = await mount({ config: WITH_CRYPTO, ports: UNIT_PORTS });
 
