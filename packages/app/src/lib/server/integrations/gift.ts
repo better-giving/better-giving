@@ -334,8 +334,9 @@ async function changedWithin(
 	const posting = alias(entryGroup, 'posting');
 	const disputed = alias(dispute, 'disputed');
 	// `<>` rather than `in`: sqlite takes an `in` on `source_type` to `entry_group_source_idx`, which
-	// leads with it, and sorts every posting. the two name the same set.
-	const keyedOnPayment = ne(posting.sourceType, 'donation');
+	// leads with it, and sorts every posting. the two name the same set: every source type but
+	// `donation` and `payout`, as `PAYMENT_KEYED_SOURCES` below does.
+	const keyedOnPayment = and(ne(posting.sourceType, 'donation'), ne(posting.sourceType, 'payout'));
 
 	const settled = db
 		.select({ at: gift.createdAt, id: gift.id })

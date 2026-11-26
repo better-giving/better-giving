@@ -111,8 +111,53 @@ describe('the posting a payout makes', () => {
 	});
 
 	it('refuses a negative amount, which would invert the entry', () => {
-		expect(() => payoutSettledPosting({ ...SETTLED, amount: -100 })).toThrow(RangeError);
-		expect(() => payoutReturnedPosting({ ...RETURNED, amount: -100 })).toThrow(RangeError);
+		for (const make of [
+			() => payoutSettledPosting({ ...SETTLED, amount: -100 }),
+			() => payoutReturnedPosting({ ...RETURNED, amount: -100 })
+		]) {
+			expect(make).toThrow(expect.objectContaining({ code: 'negative_amount' }));
+		}
+	});
+
+	it('names the payout in the memo, so a return says which payout it takes back', () => {
+		expect(payoutSettledPosting(SETTLED).group.memo).toBe('payout po_1');
+		expect(payoutReturnedPosting(RETURNED).group.memo).toBe('return of payout po_1');
+	});
+
+	it('refuses an amount that is not a whole number of minor units', () => {
+		for (const amount of [Number.NaN, 12.5]) {
+			expect(() => payoutSettledPosting({ ...SETTLED, amount })).toThrow(
+				expect.objectContaining({ code: 'non_integer_amount' })
+			);
+		}
+	});
+
+	it('refuses a time it cannot read', () => {
+		expect(() => payoutSettledPosting({ ...SETTLED, settled_at: 'soon' })).toThrow(
+			expect.objectContaining({ code: 'bad_occurred_at' })
+		);
+	});
+
+	it('refuses a redelivered payout with another amount, and a return after the settle posts', async () => {
+		const id = 'po_redelivered';
+		await db.batch(postingStatements(db, payoutSettledPosting({ ...SETTLED, payout_id: id })));
+		const before = await rowCounts();
+		expect(
+			await rejectionCode(() =>
+				db.batch(
+					postingStatements(db, payoutSettledPosting({ ...SETTLED, payout_id: id, amount: 999 }))
+				)
+			)
+		).toContain('SQLITE_CONSTRAINT_UNIQUE');
+		expect(await rowCounts()).toEqual(before);
+
+		await db.batch(
+			postingStatements(
+				db,
+				payoutReturnedPosting({ ...RETURNED, payout_id: id, return_id: 'ret_after' })
+			)
+		);
+		expect((await rowCounts()).groups).toBe(before.groups + 1);
 	});
 
 	it('refuses an empty payout or return id, whose prefixed key would still be non-empty', () => {

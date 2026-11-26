@@ -30,7 +30,7 @@ export type PayoutReturned = {
 	returned_at: string;
 };
 
-/** bank cash against grant income for the payout's `amount`. throws on a negative amount. */
+/** bank cash against grant income for the payout's `amount`. a negative amount is a `PostingError`. */
 export function payoutSettledPosting(body: PayoutSettled): Posting {
 	const amount = positive(body.amount);
 	return post({
@@ -39,6 +39,7 @@ export function payoutSettledPosting(body: PayoutSettled): Posting {
 		// the sponsor's casing is not the ledger's; ./posting.ts's `bad_currency` says why.
 		currency: body.currency.toUpperCase(),
 		occurredAt: new Date(body.settled_at),
+		memo: `payout ${body.payout_id}`,
 		lines: [
 			{ accountId: postableId('bankCash'), amountMinor: amount },
 			{ accountId: postableId('grantIncome'), amountMinor: -amount }
@@ -46,7 +47,7 @@ export function payoutSettledPosting(body: PayoutSettled): Posting {
 	});
 }
 
-/** grant income back out of bank cash for the returned `amount`. throws on a negative amount. */
+/** grant income back out of bank cash for the returned `amount`. a negative amount is a `PostingError`. */
 export function payoutReturnedPosting(body: PayoutReturned): Posting {
 	const amount = positive(body.amount);
 	return post({
@@ -54,6 +55,9 @@ export function payoutReturnedPosting(body: PayoutReturned): Posting {
 		sourceId: keyed('returned', body.return_id),
 		currency: body.currency.toUpperCase(),
 		occurredAt: new Date(body.returned_at),
+		// the payout a return takes back is named here, not looked up: the books refuse a
+		// read-then-write check (AGENTS.md -> Ledger, gifts, and schema).
+		memo: `return of payout ${body.payout_id}`,
 		lines: [
 			{ accountId: postableId('grantIncome'), amountMinor: amount },
 			{ accountId: postableId('bankCash'), amountMinor: -amount }
@@ -78,7 +82,8 @@ function keyed(prefix: 'settled' | 'returned', id: string): string {
 /** refuses a negative amount, which `post()` would book as the opposite entry and still balance. */
 function positive(amount: number): number {
 	if (amount < 0) {
-		throw new RangeError(
+		throw new PostingError(
+			'negative_amount',
 			`a payout event's amount is ${amount}. a negative amount would post the opposite entry — a settled payout as a return, or a return as income — so it is refused rather than booked.`
 		);
 	}

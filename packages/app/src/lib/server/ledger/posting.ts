@@ -136,6 +136,7 @@ export type PostingErrorCode =
 	| 'too_few_lines'
 	| 'non_integer_amount'
 	| 'zero_amount'
+	| 'negative_amount'
 	| 'unbalanced';
 
 export class PostingError extends Error {
