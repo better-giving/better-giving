@@ -14,15 +14,16 @@
 //     than optional ones for exactly this reason, and says so where the type is declared: a
 //     donation form that omits the deductibility statement is one that should not be on screen.
 //     the amount bounds are the same kind of thing from the other end: without them no amount is
-//     ever complete, so the form would render and refuse every gift silently.
+//     ever complete, so the form would render and refuse every gift silently. an unreadable
+//     `sponsor`, or one whose `ein` is not the config's, is the same kind: `ein` and
+//     `deductibilityStatement` are the sponsor's where it is present, so a response whose sponsor
+//     cannot be read states an identity for no donee, and the config is not one a gift is solicited
+//     under.
 //   - a field with a safe reading falls back to it. an unreadable `feeCoverage` becomes the one
 //     mode ./v1.ts carries, which leaves the fee the donor's own decision; an unreadable locale
-//     becomes a formatting default. an unreadable `contribution` is dropped, and the form asks for
+//     becomes a formatting default; an unreadable `contribution` is dropped, and the form asks for
 //     the gift alone. the direction is always the one that cannot take a decision away from the
-//     donor. an unreadable `sponsor` is the first kind rather than this one, and so is a sponsor
-//     whose `ein` is not the config's: `ein` and `deductibilityStatement` are the sponsor's where it
-//     is present, so a response whose sponsor cannot be read states an identity for no donee, and
-//     the config is not one a gift is solicited under.
+//     donor.
 //
 // nothing here throws. an exception in this path is a donation form that never renders, which is
 // indistinguishable to the org from a nonprofit having a bad month.
@@ -178,10 +179,10 @@ function feeRules(value: unknown): FeeRules {
  * three answers rather than two, because an absent program and an unreadable one are opposite
  * judgements here. this is the field on the response that says which cause the money goes to
  * (`sponsorship` below is the one that says which entity receives it), so there is no safe reading
- * of a mangled one: a pin whose name did not arrive draws a screen naming no
- * cause, and a list with one unreadable entry offers a donor fewer causes than the org set, with
- * nothing on the card to say one is missing. both are a gift credited somewhere the org did not
- * say, so the whole config goes and the element states which field it could not read.
+ * of a mangled one: a pin whose name did not arrive draws a screen naming no cause, and a list
+ * with one unreadable entry offers a donor fewer causes than the org set, with nothing on the card
+ * to say one is missing. both are a gift credited somewhere the org did not say, so the whole
+ * config goes and the element states which field it could not read.
  *
  * an entry is refused rather than dropped for that same reason, which is where this parts company
  * with `feeRules` above: a rail dropped is a fee line that does not render, and a cause dropped is
