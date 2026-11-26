@@ -37,4 +37,4 @@ The dashboard opens. A form takes gifts once Settings has the organisation's reg
 
 ## License
 
-MIT. See [`LICENSE`](LICENSE). Fork it, host it, change it, sell it. Stewarded by Better Giving. You run your own instance.
+MIT. See [`LICENSE`](LICENSE). Fork it, host it, change it, sell it. Stewarded by Better Giving. You run your own instance. MIT grants no right to the Better Giving name or mark.

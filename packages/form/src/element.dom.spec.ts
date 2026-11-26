@@ -873,6 +873,19 @@ describe('the attribute surface', () => {
 		expect(card.text('.unavailable-fix')).toContain('deductibilityStatement');
 	});
 
+	it('names the sponsor and its ein as a cause when the response carried a sponsor it refused', async () => {
+		const card = await mount({
+			loadConfig: async () => ({
+				...CONFIG,
+				sponsor: { legalName: 'Better Giving Fiscal Sponsorship Inc.', ein: '00-0000000' }
+			})
+		});
+
+		expect(card.text('.unavailable')).toContain('could not be read');
+		expect(card.text('.unavailable-fix')).toContain('sponsor');
+		expect(card.text('.unavailable-fix')).toContain('same ein');
+	});
+
 	it('keeps the sentence a failed read carried, including its fix', async () => {
 		const card = await mount({
 			loadConfig: async () => {

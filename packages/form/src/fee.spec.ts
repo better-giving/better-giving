@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	estimateDeductedFee,
 	estimateFee,
+	estimateWithContribution,
 	MAX_FEE_PERCENT,
 	reconcile,
 	RECONCILIATION_KINDS,
@@ -421,5 +422,100 @@ describe('the reconciliation vocabulary', () => {
 			expect(RECONCILIATION_LABELS[kind]).toBeTypeOf('string');
 		}
 		expect(RECONCILIATION_KINDS).toHaveLength(3);
+	});
+});
+
+describe('a gift with a contribution to the sponsor beside it', () => {
+	it('is the gift’s own estimate when the contribution is nothing', () => {
+		// $50.00 on a card grosses up to $51.81: (5000 + 30) / 0.971 = 5180.2, rounded up.
+		expect(estimateWithContribution(5000, 0, CARD)).toStrictEqual({
+			giftFeeMinor: 181,
+			contributionFeeMinor: 0,
+			totalMinor: 5181
+		});
+	});
+
+	/** a proportion and nothing else. */
+	const PERCENT_ONLY: FeeRule = { percent: 0.05, fixedMinor: 0 };
+
+	it.each([
+		// 1000 / 0.95 = 1052.6 → 1053; 1100 / 0.95 = 1157.9 → 1158
+		['a percentage alone', PERCENT_ONLY, 1000, 100, { gift: 53, contribution: 5, total: 1158 }],
+		// 5030 / 0.971 = 5180.2 → 5181; 5530 / 0.971 = 5695.2 → 5696
+		['a flat charge beside it', CARD, 5000, 500, { gift: 181, contribution: 15, total: 5696 }],
+		// past the cap both fees are the cap, so the contribution adds nothing to it
+		['a capped percentage', ACH, 100_000, 10_000, { gift: 500, contribution: 0, total: 110_500 }],
+		// 5150 − 5000 rounds up to 200; 7210 − 7000 = 210 rounds up to 300
+		['a fee rounded up to a step', DAF, 5000, 2000, { gift: 200, contribution: 100, total: 7300 }],
+		// the figures below are worked by hand, so the split is held to numbers `estimateFee` did not
+		// produce. the cap binds at 500 / 0.008 = 62 500: 5000 / 0.992 = 5040.3 → 5041, a fee of 41, and
+		// 80 000 / 0.992 = 80 645.2 → 80 646 is past 80 000 + 500, so the sum's fee is the cap, 500, and
+		// the contribution's part is the 459 the gift's own fee left under it.
+		[
+			'a gift under the cap whose sum with the contribution goes over it',
+			ACH,
+			5000,
+			75_000,
+			{ gift: 41, contribution: 459, total: 80_500 }
+		],
+		// 10 030 / 0.971 = 10 329.6 → 10 330; 12 030 / 0.971 = 12 389.3 → 12 390
+		[
+			'a flat charge on a larger gift',
+			CARD,
+			10_000,
+			2000,
+			{ gift: 330, contribution: 60, total: 12_390 }
+		],
+		// 10 000 / 0.971 = 10 298.7 → 10 299, a fee of 299 rounded up to 300; 10 050 / 0.971 = 10 350.2 →
+		// 10 351, a fee of 301 rounded up to 400, so a contribution of 50 moves the fee a whole step
+		[
+			'a small contribution that carries the fee over a step',
+			DAF,
+			10_000,
+			50,
+			{ gift: 300, contribution: 100, total: 10_450 }
+		]
+	])('splits the fee under %s', (_, rule, gift, contribution, expected) => {
+		expect(estimateWithContribution(gift, contribution, rule)).toStrictEqual({
+			giftFeeMinor: expected.gift,
+			contributionFeeMinor: expected.contribution,
+			totalMinor: expected.total
+		});
+	});
+
+	it.each([
+		['a percentage alone', PERCENT_ONLY],
+		['a percentage and a flat charge', CARD],
+		['a capped percentage', ACH],
+		['a fee rounded up to a step', DAF]
+	])('charges under %s exactly the one fee on gift and contribution together', (_, rule) => {
+		for (const gift of [100, 2500, 5000, 99_999, 1_000_000]) {
+			for (const contribution of [0, 1, 250, 1500, 75_000]) {
+				const split = estimateWithContribution(gift, contribution, rule);
+				const whole = estimated(gift + contribution, rule);
+
+				expect(split?.giftFeeMinor).toBe(estimated(gift, rule).feeMinor);
+				expect(split && split.giftFeeMinor + split.contributionFeeMinor).toBe(whole.feeMinor);
+				expect(split?.totalMinor).toBe(whole.totalMinor);
+				expect(split?.contributionFeeMinor).toBeGreaterThanOrEqual(0);
+				// the total is the gift, the contribution and both covers, whatever `estimateFee` says.
+				expect(split?.totalMinor).toBe(
+					gift + contribution + (split?.giftFeeMinor ?? 0) + (split?.contributionFeeMinor ?? 0)
+				);
+			}
+		}
+	});
+
+	it.each([
+		['no rule for the rail', 5000, 500, undefined],
+		['a rate past the widest it treats as a price', 5000, 500, { percent: 0.6, fixedMinor: 0 }],
+		['a gift that is not a whole amount', 50.5, 500, CARD],
+		['a negative contribution', 5000, -100, CARD],
+		['a fractional contribution', 5000, 0.5, CARD],
+		['a contribution that is not a number', 5000, Number.NaN, CARD],
+		// the gift alone prices, and gift plus contribution is past what the fixed-point gross-up holds
+		['a sum too large to price when the gift is not', 5000, 9_000_000_000_000, CARD]
+	])('says nothing on %s', (_, gift, contribution, rule) => {
+		expect(estimateWithContribution(gift, contribution, rule)).toBeNull();
 	});
 });

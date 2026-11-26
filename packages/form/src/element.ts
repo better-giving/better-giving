@@ -540,7 +540,9 @@ const UNREADABLE_CONFIG_FIX =
 	'The config response must carry formId, at least one providers entry with a name and a ' +
 	'publishableKey, currency, minAmountMinor, maxAmountMinor, at least one known frequency and ' +
 	'payment method, and the orgLegalName, ein and deductibilityStatement the gift is solicited ' +
-	'under.';
+	'under. A response that carries a sponsor must give it a legalName and the same ein as the one ' +
+	'above (punctuation may differ); a sponsor missing either, or stating another ein, makes the ' +
+	'config unreadable.';
 
 /**
  * the element class, closed over one runtime.
