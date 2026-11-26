@@ -33,7 +33,7 @@ import type {
 } from '../v1';
 import { LOADER_PATH } from './loader';
 
-/** the write one press makes. `v1` is permanent, so this path is too. */
+/** the write one press makes. */
 export function quoteUrl(origin: string, formId: string): string {
 	return `${origin}/api/v1/forms/${encodeURIComponent(formId)}/donations`;
 }
@@ -231,7 +231,7 @@ export function createQuote(
 	};
 }
 
-/** where a pledge's donor says they have asked for the transfer. `v1` is permanent, so this path is too. */
+/** where a pledge's donor says they have asked for the transfer. */
 export function toldUrl(origin: string, formId: string, pledgeId: string): string {
 	return `${statusUrl(origin, formId, pledgeId)}/told`;
 }
@@ -268,7 +268,7 @@ export function createPledgeTold(origin: string | null): PledgePorts['told'] {
 	};
 }
 
-/** where a gift paid to an address stands. `v1` is permanent, so this path is too. */
+/** where a gift paid to an address stands. */
 export function statusUrl(origin: string, formId: string, donationId: string): string {
 	return `${origin}/api/v1/forms/${encodeURIComponent(formId)}/donations/${encodeURIComponent(donationId)}`;
 }
@@ -300,7 +300,7 @@ export function createStatusRead(origin: string | null): CheckoutPorts['status']
 	};
 }
 
-/** where the thank-you names a gift's employer. `v1` is permanent, so this path is too. */
+/** where the thank-you names a gift's employer. */
 export function employerUrl(origin: string, formId: string, giftToken: string): string {
 	return `${origin}/api/v1/forms/${encodeURIComponent(formId)}/gifts/${encodeURIComponent(giftToken)}/employer`;
 }

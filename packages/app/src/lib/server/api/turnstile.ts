@@ -37,8 +37,8 @@
 // what a refusal is on the wire is the caller's decision, and one is not decided here.
 //
 // `API_ERROR_CODES` in `packages/form/src/v1.ts` has no member for a challenge that did not clear, and
-// this module does not add one: those codes are part of `v1`, which is add-never-rename
-// (CLAUDE.md), so minting one is a permanent contract rather than a detail of this check. the
+// this module does not add one: those codes are part of `v1`, so minting one is a change to
+// the wire vocabulary rather than a detail of this check. the
 // endpoint that takes a token inherits that decision, and it is worth deciding rather than
 // defaulting — `rejected` is the ordinary outcome here, not the exceptional one. a donor who
 // filled the form slowly hands over a token past its five minutes, and whatever code answers that

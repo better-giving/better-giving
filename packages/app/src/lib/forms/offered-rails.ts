@@ -13,8 +13,8 @@ import type { ProcessorRail } from '@better-giving/form/embed/rails';
 // is cached and reaches pages this deployment cannot recall (CLAUDE.md), so a rail we have stopped
 // offering still arrives and is charged rather than refused.
 //
-// it lives here rather than in `packages/form/src/v1.ts` because `v1` is a permanent wire contract and
-// which rails a deployment happens to offer is not part of it — `PAYMENT_METHODS` there stays the
+// it lives here rather than in `packages/form/src/v1.ts` because which rails a deployment happens to
+// offer is not part of the wire vocabulary — `PAYMENT_METHODS` there stays the
 // full vocabulary a config *may* report, and this is what this one does. it lives here rather than
 // under `$lib/server/**` because the operator console names the rails on a screen and a component
 // cannot import from there at all.

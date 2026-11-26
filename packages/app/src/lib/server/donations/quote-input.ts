@@ -1114,7 +1114,7 @@ function fieldRefusal(field: PledgeField, message: string, fix: string): PledgeR
  * the wire's name for a field `parseContact` reports under a column name.
  *
  * the two vocabularies are deliberately different — the contact parser's keys are the `contact`
- * table's columns, and `QuoteRequest` in packages/form/src/v1.ts is camelCase and permanent — so the map is
+ * table's columns, and `QuoteRequest` in packages/form/src/v1.ts is camelCase — so the map is
  * the seam between them rather than a translation anyone should do at a call site.
  *
  * its key order is also the order `firstReported` picks in — see there.

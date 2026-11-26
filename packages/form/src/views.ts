@@ -1024,7 +1024,7 @@ function takeoverFor(state: State, config: FormConfig, money: (minor: number) =>
 		// `state.fix` is not among what this screen says. it names a publishable key, an env var or a
 		// screen in /admin, and it is addressed to whoever administers the deployment rather than to
 		// the donor in front of the card — who can act on none of it. it stays on the wire, because
-		// `/api/v1` is a permanent contract (CLAUDE.md) and the reader it is written for is as
+		// the reader it is written for is as
 		// likely to be an agent wiring the embed; `createUnavailable` below is where such a reader
 		// is being addressed and is the one surface that renders it.
 		case 'failed':
@@ -1202,8 +1202,8 @@ export type CardView = {
 	/**
 	 * the box a payment provider's own fields appear in, handed out rather than looked up.
 	 *
-	 * by `::part()` name would be the obvious way and is the wrong one: the part vocabulary is a
-	 * permanent contract for a host page to style with (./parts.ts), and mounting is not what it
+	 * by `::part()` name would be the obvious way and is the wrong one: the part vocabulary is the
+	 * public style surface for a host page (./parts.ts), and mounting is not what it
 	 * was drawn for. a lookup would also make this file's internals load-bearing from outside it.
 	 *
 	 * it is not the node the provider mounts into. that node is in the light DOM and is projected

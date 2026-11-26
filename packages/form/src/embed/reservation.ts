@@ -1,16 +1,14 @@
 /**
  * the box a host page holds for this element before it upgrades.
  *
- * **the height is a permanent contract, and it is the one contract in this repository that no test
- * can hold.** it is pasted into sites this project cannot reach, read, or update — so the moment it
- * ships it is frozen in every page that took it, and a change here does not reach any of them. what
- * the tests below bind is this repository to itself: `.loading`'s `min-height` in
- * ../styles/layout.css against this value, and this value against README.md, DEPLOY.md and
- * custom-elements.json. every one of
- * those is a copy we own. change the number and the suite goes green while every embed already in
- * the field reserves the old box and reflows by the difference on every load, forever. so it is
- * add-never-change, exactly like the `--donate-*` seeds and the `::part()` names (CLAUDE.md,
- * "Permanent contracts"), and a form that needs a different box is a second element beside this one.
+ * **the height is pasted into sites this project cannot reach, read, or update, and no test can
+ * hold it there.** once Standalone has users, a change here does not reach any page that took the
+ * snippet. while it is alpha the number may change in place (AGENTS.md → Public surface while
+ * Standalone is alpha). what the tests below bind is this repository to itself: `.loading`'s
+ * `min-height` in ../styles/layout.css against this value, and this value against README.md,
+ * DEPLOY.md and custom-elements.json. every one of those is a copy we own. change the number
+ * after launch and the suite goes green while every embed already in the field reserves the old
+ * box and reflows by the difference on every load.
  *
  * the snippet loads the runtime `async`, so the parser reaches `<bg-donate-form>` before any of
  * this project's code has run: an unknown element is `display: inline` with no intrinsic size, the

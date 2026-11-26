@@ -4,10 +4,11 @@
 // sites this project cannot reach, on top of whatever they already run. it consumes the flow in
 // ./checkout.machine.ts through ./connect.ts and renders it; it re-implements none of it.
 //
-// the public surface is closed and permanent. two attributes (`form`, `variant`), three seed custom
-// properties, fifteen `::part()` names and two slots — all published in `custom-elements.json`,
-// all add-never-rename, exactly like `v1` (CLAUDE.md, "Permanent contracts"). one object-valued
-// attribute would make React support version-dependent, so the attributes stay primitive.
+// the public surface is two attributes (`form`, `variant`), three seed custom properties, fifteen
+// `::part()` names and two slots — all published in `custom-elements.json`, and free to change in
+// place while Standalone is alpha (AGENTS.md → Public surface while Standalone is alpha). one
+// object-valued attribute would make React support version-dependent, so the attributes stay
+// primitive.
 //
 // the runtime is injected at registration, not imported. `defineDonateForm` takes the two things
 // this element cannot build for itself — the read that fetches a form's configuration, and the
@@ -57,7 +58,7 @@ import layoutStyles from './styles/layout.css?inline';
 import motionStyles from './styles/motion.css?inline';
 import { brandCss, brandSeedOf, seedWatch } from './styles/brand';
 
-/** the tag, and it is permanent: a breaking change ships as a second element beside this one. */
+/** the tag the runtime registers the element under. */
 export const DONATE_FORM_TAG = 'bg-donate-form';
 
 /** the attribute surface, and there is no third. */
@@ -248,7 +249,7 @@ export type FormRuntime = {
 	 * publishable key the configuration carries.
 	 *
 	 * `mount` is the node a provider paints its own fields into. it is passed rather than found:
-	 * the `::part()` names are a permanent contract for a host page to style with (./parts.ts)
+	 * the `::part()` names are the public style surface for a host page (./parts.ts)
 	 * and querying one to mount into would spend that vocabulary on something it was not drawn
 	 * for. nothing about the node reaches `CheckoutInput` — the flow never learns a DOM node
 	 * exists, so a headless consumer is unaffected.
@@ -452,10 +453,8 @@ function describe(error: unknown): { message: string; fix?: string } {
  * the events this element dispatches on itself, which are the one surface a host page reads back
  * out of it.
  *
- * permanent the way the attributes and part names are (CLAUDE.md, "Permanent contracts";
- * ../custom-elements.json is the list an integrator reads): a name here is in somebody's
- * `addEventListener`, so one is added and never renamed, and a `detail` gains fields and loses
- * none. every detail is primitives only, because it is handed to a page this project does not own
+ * public the way the attributes and part names are (../custom-elements.json is the list an
+ * integrator reads): a name here is in somebody's `addEventListener`. every detail is primitives only, because it is handed to a page this project does not own
  * — nothing the donor typed is in one.
  */
 const DONATE_FORM_EVENTS = {
@@ -1158,8 +1157,8 @@ export function donateFormClass(runtime: FormRuntime): CustomElementConstructor 
 		 * node, this slotted node, and directly inside this element's shadow root — paint the same
 		 * button at the same size in all three, and a click on it inside a shadow root is `composed`
 		 * and reaches a listener on the host element. so a second provider is handed this node as it
-		 * stands; a node or a slot of its own would widen a published surface (CLAUDE.md, "Permanent
-		 * contracts") for nothing.
+		 * stands; a node or a slot of its own would widen the public surface
+		 * for nothing.
 		 *
 		 * what it costs is stated rather than hidden: this node is outside the encapsulation, so the
 		 * host page's own selectors reach it — a `div { margin: 2rem }` in their stylesheet lands on
@@ -1452,7 +1451,7 @@ export function donateFormClass(runtime: FormRuntime): CustomElementConstructor 
 }
 
 /**
- * registers the element under its permanent tag.
+ * registers the element under its tag.
  *
  * registration is where the runtime arrives, which is what lets the element be constructed by the
  * HTML parser — an upgrade calls a constructor with no arguments, so anything the element needs

@@ -247,7 +247,7 @@ export async function loader({ context, request, url }: Route.LoaderArgs) {
 			// built here rather than on the projection above, because the card is drawn over one form
 			// and a string on every row is a string the browser is sent once per form to draw none of.
 			// both halves come from `@better-giving/form/embed/snippet` and neither is spelled here:
-			// what is pasted into an org's own HTML is a permanent contract, and a second spelling of
+			// what is pasted into an org's own HTML goes out into pages we cannot reach, and a second spelling of
 			// either half is where the surfaces that agree on it start to disagree.
 			embedding: embedded && {
 				id: embedded.id,
@@ -607,7 +607,7 @@ export default function DonationForms({ loaderData, actionData }: Route.Componen
  *
  * neither string is spelled on this screen. both are built in the loader from `runtimeSnippet` and
  * `elementSnippet` in `@better-giving/form/embed/snippet`, which is where the pasted block lives
- * because it is a permanent contract three surfaces agree on.
+ * because three surfaces agree on it.
  *
  * no `<form>` around it — nothing in this card posts, and the way out is a link back to the
  * address the card was opened from.

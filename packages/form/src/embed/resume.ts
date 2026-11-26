@@ -14,7 +14,7 @@
 //
 // `../../package.json` exports this module as `./embed/resume`. the deployment's own donation page
 // claims a return the same way ./runtime.ts does, and it takes `RESUME_FORM_PARAM` from here rather
-// than spelling it: the stamp is permanent, and a second spelling of it is a return no form claims.
+// than spelling it: a second spelling of it is a return no form claims.
 
 /**
  * the parameter naming which form sent a donor away, on the url a provider returns them to.
@@ -25,8 +25,8 @@
  * nothing else.
  *
  * the value is a literal of its own and follows no other name in this repository — the element's tag
- * is `bg-donate-form`, and neither is derived from the other. it is permanent for the reason the tag
- * is: it goes out on urls handed to a payment provider, and a donor coming back to a page stamped
+ * is `bg-donate-form`, and neither is derived from the other. it is a literal of its own for the reason the
+ * tag is: it goes out on urls handed to a payment provider, and a donor coming back to a page stamped
  * by an older build is a donor whose gift no form on it claims.
  */
 export const RESUME_FORM_PARAM = 'bg_donate_form';
@@ -43,7 +43,7 @@ const RESUME_TOKEN_PARAM = 'payment_intent_client_secret';
 /**
  * where a claim is noted on a document that would not let its url be scrubbed.
  *
- * not a permanent contract the way `RESUME_FORM_PARAM` is, and it does not need to be: nothing
+ * not on a url the way `RESUME_FORM_PARAM` is, and it does not need to be: nothing
  * outside this module reads it, and a build that renamed it would re-serve one tab's claim rather
  * than strand a url in flight — which is the degraded case `takeResumeToken` already accepts.
  *

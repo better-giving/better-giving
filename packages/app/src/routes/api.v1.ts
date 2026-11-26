@@ -33,7 +33,7 @@ export const middleware: Route.MiddlewareFunction[] = [meterPublicApi];
  *
  * 404 and a sentence naming the surface, because a caller here is a person or an agent exploring —
  * the embedded form never asks for this address. no `error` code, for the reason the limiter's
- * refusal mints none: `API_ERROR_CODES` in packages/form/src/v1.ts is a permanent wire vocabulary
+ * refusal mints none: `API_ERROR_CODES` in packages/form/src/v1.ts is a wire vocabulary
  * whose members each name the screen that fixes them, and no screen fixes a URL with nothing at
  * the end of it.
  *

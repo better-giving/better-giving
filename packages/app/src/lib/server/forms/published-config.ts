@@ -58,8 +58,8 @@ import { readForm, readOwningPage, type OwningPage } from './queries';
  * the member is also the `error` field on the wire (`ApiError` in packages/form/src/v1.ts), so the
  * string an integrating agent switches on is the same string the endpoint switches on. one
  * vocabulary rather than a code and a translation of it — which is why the list is declared
- * against `ApiErrorCode` from that file rather than standing on its own: the wire vocabulary is a
- * permanent contract, so a member is minted there and spent here, never the other way round.
+ * against `ApiErrorCode` from that file rather than standing on its own: a member is minted
+ * there and spent here, never the other way round.
  *
  * a member per *screen*, not per check. each of the six carries exactly one `fix`, and two checks
  * whose fix is the same sentence are the same member — so the branches below outnumber the
@@ -601,7 +601,7 @@ export function publishedConfig(sources: PublishedConfigSources): PublishedConfi
 		minAmountMinor: minMinor,
 		maxAmountMinor: maxMinor,
 		// the deployment's own answer and never this row's. `frequencies` stays on the wire — it is
-		// a permanent contract (`FormConfig` in packages/form/src/v1.ts) — and the value comes from
+		// declared on `FormConfig` in packages/form/src/v1.ts — and the value comes from
 		// whether this deployment's processor account can collect a repeating gift, read by
 		// `offeredCadences` in ./offered-cadences.ts.
 		//
@@ -649,9 +649,8 @@ export function publishedConfig(sources: PublishedConfigSources): PublishedConfi
 		// true only when this deployment can deliver mail (`mailDelivers` in ../email/delivers.ts).
 		// the placeholders `.env.example` ships count as set and still do not deliver.
 		receipts: mailDelivers(sources.env)
-		// `monthlyAsk` stays declared on the contract in packages/form/src/v1.ts because `v1` is
-		// add-never-rename (CLAUDE.md), and nothing on either side touches it: no code here
-		// sets it and no code in packages/form/src/ reads it.
+		// `monthlyAsk` stays declared on `FormConfig` in packages/form/src/v1.ts, and nothing on
+		// either side touches it: no code here sets it and no code in packages/form/src/ reads it.
 	} satisfies FormConfig;
 	return {
 		ok: true,
@@ -685,7 +684,7 @@ function servedProgram(program: Program | null): Program | null {
  * answer, falling back to `DEFAULT_COVERS_FEE` beside it, which is `true` — so the line renders
  * ticked with a way to untick it. that is a donor's decision with an on-by-default rather than an
  * org's setting, which is why nothing in /admin offers a box for it. the field stays on the wire
- * because `v1` is add-never-rename (CLAUDE.md), and there is nothing else it could say.
+ * with nothing else it could say.
  */
 const SERVED_FEE_COVERAGE = 'optional' as const;
 

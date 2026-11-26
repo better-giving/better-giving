@@ -17,7 +17,7 @@
 // is no branch that falls back to the page's own origin, because the page's own origin is the one
 // answer that is wrong in a way nobody sees.
 
-/** the path the loader is served under. the snippet names it, so it is permanent. */
+/** the path the loader is served under. the snippet names it. */
 export const LOADER_PATH = '/embed.js';
 
 /**

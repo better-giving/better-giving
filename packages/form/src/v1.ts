@@ -4,23 +4,13 @@
 // convenience. the form is served from the deployment it talks to, so the two can never be a
 // version apart — but the same modules are meant to be extractable as a package a third party
 // installs, and such a consumer pins a version while the deployment moves on. what bounds that
-// drift is `v1` being permanent and this file naming nothing outside it. the moment a type
-// here widens to something deployment-internal, the bound is gone and nobody notices until a
-// donation page breaks on a site we cannot reach.
+// drift is this file naming nothing outside it. the moment a type here widens to something
+// deployment-internal, the bound is gone and nobody notices until a donation page breaks on a
+// site we cannot reach.
 //
-// so every type here is add-never-rename, which is CLAUDE.md's permanent-contract rule applied
-// to the wire: the snippet is pasted into sites we cannot reach, and a breaking change ships
-// as `v2` alongside rather than as an edit. a field may be added; a field may not be renamed,
-// retyped or removed. the `as const` arrays are covered too — a member may join
-// `PAYMENT_METHODS`, no member may leave it.
-//
-// `FormConfig.provider` was corrected to `providers` under that rule rather than in spite of it,
-// and it is recorded here for `PART_NAMES`' reason in ./parts.ts: the next reader has to be able to
-// tell a stated exception from an oversight. a second processor made the singular field
-// unrepresentable, and CLAUDE.md's *Permanent contracts* opens by saying nothing is deployed for
-// real and no site carries the snippet — so a contract here is permanent by decision rather than by
-// exposure, and the fix is weighed on its merits. **the correction stops being available the day
-// that paragraph is deleted**, and the next one needs the same argument made again.
+// while Standalone is alpha (AGENTS.md → Public surface while Standalone is alpha) `v1` may
+// change in place: no `v2` alongside and no backward-compatibility code. a field may be renamed,
+// retyped or removed, and the `as const` arrays change with it.
 //
 // not under `src/lib/server/**`, and more strongly than `../contacts/kinds.ts` is: this module is
 // consumed by code that runs on a stranger's website. it imports nothing — no framework, no
@@ -64,7 +54,7 @@ export const FREQUENCY_LABELS: Record<Frequency, string> = {
  * miss (`parseTribute` in `packages/app/src/lib/server/donations/quote-input.ts`). the two members
  * exist to slot into "in ___ of", which is what `TRIBUTE_KIND_LABELS` below writes out.
  *
- * a closed vocabulary on the wire, under this file's add-never-rename rule, and the only thing
+ * a closed vocabulary on the wire, and the only thing
  * holding a stored `donation.tribute_kind` to it is a check the app makes on the way in — the
  * column carries no constraint and cannot be given one. it is also the app's one list: every
  * surface there imports it from here rather than from a copy of its own.
@@ -153,8 +143,7 @@ export type Contribution = {
  * which way it is set, and it is the donor's to turn off from a default of covered. a fee added to a
  * gift without the donor agreeing to it is a charge they did not consent to, and that is not
  * something this project offers an org a setting for — so the field carries a vocabulary of one
- * rather than a boolean, and a second reading would be a member added here under this file's
- * add-never-rename rule.
+ * rather than a boolean, and a second reading would be a member added here.
  *
  * a config naming anything else reads as this mode: ./config.ts is where that is done, and it is
  * the direction that leaves the decision with the donor.
@@ -353,8 +342,7 @@ export const PAYPAL_SDK_PATH = '/web-sdk/v6/core';
  * carries one.
  *
  * the last three are what a row *shows* rather than what a gift is built from, and all three are
- * optional under this file's add-never-rename rule: a deployment serving none draws the list it drew
- * before. nothing here is ever assembled from `coin` or `ticker` — a logo path built out of a code
+ * optional: a deployment serving none draws the list it drew before. nothing here is ever assembled from `coin` or `ticker` — a logo path built out of a code
  * and a flag read off a list of coins this repo calls popular are both a table somebody has to
  * maintain and forgets to, and the whole of what these three carry is the processor's own answer.
  *
@@ -704,9 +692,8 @@ export type QuoteRequest = {
 	/**
 	 * the donor's own answer about being written to, or `null` where they were never asked.
 	 *
-	 * required and three-valued, which is the add half of this file's add-never-rename rule: the
-	 * field keeps its name and every `boolean` a published snippet already sends still means what
-	 * it meant. what `null` adds is the case a boolean could not state. a headless integrator who
+	 * required and three-valued: the field keeps its name and every `boolean` a published snippet
+	 * already sends still means what it meant. what `null` adds is the case a boolean could not state. a headless integrator who
 	 * does not ask the question has no true answer to send, and `false` is not it — `false` is a
 	 * donor who was asked and declined, which the column records as a different fact from a donor
 	 * nobody asked (`consented_to_contact` is nullable in ../server/db/schema.ts).
@@ -725,8 +712,7 @@ export type QuoteRequest = {
 	 * submits no key (AGENTS.md → Forms), and every gift sent before this field existed reads as a
 	 * private note. sent only beside a note.
 	 *
-	 * snake_case where its neighbours are camelCase: the name is the one the endpoint parses, and a
-	 * field on this type is never renamed.
+	 * snake_case where its neighbours are camelCase: the name is the one the endpoint parses.
 	 */
 	readonly note_public?: boolean;
 	/**
@@ -865,8 +851,7 @@ export type PledgeToldAnswer = {
  * where a gift paid to an address stands, as the waiting screen reads it.
  *
  * `waiting` is no deposit recorded against the gift yet, `received` is one recorded — the donor's
- * part is done — and `expired` is the address no longer watched with nothing received. a vocabulary
- * under this file's add-never-rename rule.
+ * part is done — and `expired` is the address no longer watched with nothing received.
  */
 export const DONATION_STATES = ['waiting', 'received', 'expired'] as const;
 export type DonationState = (typeof DONATION_STATES)[number];
@@ -932,9 +917,7 @@ export type ApiError = {
  * every value `error` above is allowed to hold, and the whole vocabulary of them.
  *
  * it is here rather than beside the code that produces it because it is a wire vocabulary, and
- * this file is where the add-never-rename rule is stated: a member is what an integrating agent
- * switches on, so renaming one breaks an integration that already handles it, and the only way to
- * add or merge a member is to edit the file whose header says that.
+ * a member is what an integrating agent switches on, so a change to one is an edit to this file.
  *
  * seventeen, and the count is held down deliberately. a code answers "which screen", the message
  * answers "which value" — so two codes carrying a byte-identical `fix` were one code all along

@@ -6,7 +6,7 @@ import { PRE_UPGRADE_RESERVATION } from './reservation';
  * outside its own tree.
  *
  * three surfaces agree on one string and there is no variant: what is pasted into an org's own
- * HTML is a permanent contract, the same standing `v1` and the element's attribute surface hold,
+ * HTML is pasted into pages this project cannot reach,
  * so a second spelling of it would be the first place the three drift. it lives in the package
  * rather than in `src/lib/forms/`, where it first sat: two admin screens hand it out — the forms
  * list and the screen that edits one — and neither owns it more than the other, which is a real

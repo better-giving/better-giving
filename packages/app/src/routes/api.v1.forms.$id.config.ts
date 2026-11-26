@@ -149,7 +149,7 @@ const GRANT = { methods: 'GET, OPTIONS', headers: null, maxAge: '600' } as const
 /**
  * the status each refusal answers with.
  *
- * the vocabulary is `PUBLISHED_CONFIG_REFUSALS` and it is a permanent wire contract; the statuses
+ * the vocabulary is `PUBLISHED_CONFIG_REFUSALS` and it is a wire vocabulary; the statuses
  * are this file's, and they are grouped rather than one-per-member on purpose. a caller that reads
  * the `error` string learns which screen fixes it; a caller that only sees the status — a proxy,
  * a log line, an uptime check — learns whose problem it is, and there are four answers to that:

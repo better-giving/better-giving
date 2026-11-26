@@ -29,9 +29,8 @@ const element = manifest.modules
 	.flatMap((module) => module.declarations)
 	.find((declaration) => declaration.tagName === 'bg-donate-form');
 
-// a seed published once stays published (AGENTS.md → Permanent contracts). a retired one is listed
-// with no effect, so the stylesheet registers nothing for it and the registration comparisons below
-// read the live seeds alone.
+// a retired seed stays listed in custom-elements.json with no effect, so the stylesheet registers
+// nothing for it and the registration comparisons below read the live seeds alone.
 const RETIRED_SEEDS = ['--donate-shade'];
 
 const publishedSeeds = Object.fromEntries(
@@ -120,7 +119,7 @@ const documentedTokens = (element?.cssParts ?? []).map((cssPart) => ({
 
 describe('the part vocabulary', () => {
 	it('is fifteen names, and a sixteenth is a decision rather than an edit', () => {
-		// the number is asserted on purpose. every name is permanent the day it ships, so growing
+		// the number is asserted on purpose. every name is public the day it ships, so growing
 		// the list has to be something a reader of the diff cannot miss. the one withdrawal the list
 		// has had, and the one addition, are argued at the top of ./parts.ts.
 		expect(PART_NAMES).toHaveLength(15);
@@ -133,8 +132,8 @@ describe('the part vocabulary', () => {
 
 	it('declares no state a part can never be in', () => {
 		// a token nothing emits is a state a host writes a rule for and never sees fire, and it is
-		// permanent the day it is published — so it costs an integrator a rule that silently does
-		// nothing and costs this repository a name it may not withdraw twice.
+		// public the day it is published — so it costs an integrator a rule that silently does
+		// nothing and costs this repository a name to withdraw.
 		expect(STATE_TOKENS.filter((token) => !emittedTokens.has(token))).toEqual([]);
 	});
 
@@ -312,7 +311,7 @@ describe('the published manifest', () => {
 		expect(published.sort()).toEqual(['form', 'variant']);
 	});
 
-	// a slot name is as permanent as a part name and as unguessable: a host writing `slot="loading"`
+	// a slot name is as public as a part name and as unguessable: a host writing `slot="loading"`
 	// is writing against this list. the `payment` name is on it because the element projects its own
 	// light DOM through it, which is observable from the host's page whether or not they use it.
 	it('lists exactly the slot names the element projects through', () => {

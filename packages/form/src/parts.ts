@@ -1,7 +1,6 @@
-// the element's `::part()` vocabulary, which is a permanent contract in the same sense `v1` is:
-// a name may be added, no name may ever be renamed or removed. the snippet is pasted into sites
-// this project cannot reach, so a host's `::part(action)` rule outlives every rewrite of the
-// markup underneath it (CLAUDE.md, "Permanent contracts").
+// the element's `::part()` vocabulary, which is the element's public style surface. while
+// Standalone is alpha a name may change in place (AGENTS.md → Public surface while Standalone is
+// alpha), and custom-elements.json ships in the same commit as any change to this list.
 //
 // `legal` was withdrawn from this list, which is the one exception and was taken out loud. the
 // identity footer left the card, so the name pointed at nothing a host could style; the withdrawal
@@ -95,8 +94,8 @@ export type RoleToken = (typeof ROLE_TOKENS)[number];
 /**
  * every slot the element projects light DOM through, and the whole of it.
  *
- * a slot name is permanent in the same sense a part name is: a host writing `slot="loading"` is
- * writing against this list, so a name may be added and none may ever be renamed or removed.
+ * a slot name is public in the same sense a part name is: a host writing `slot="loading"` is
+ * writing against this list, so a change to it ships with `custom-elements.json`.
  * `custom-elements.json` publishes both lists and ./parts.spec.ts fails when either disagrees with
  * the code.
  *

@@ -47,7 +47,7 @@ import {
 	scriptOrigin
 } from './loader';
 
-/** the read the element boots on. `v1` is permanent, so this path is too. */
+/** the read the element boots on. */
 export function configUrl(origin: string, formId: string): string {
 	return `${origin}/api/v1/forms/${encodeURIComponent(formId)}/config`;
 }

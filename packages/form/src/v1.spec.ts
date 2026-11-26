@@ -13,9 +13,8 @@ import {
 	TRIBUTE_KINDS
 } from './v1';
 
-// node pool. the header of ./v1.ts makes every member here add-never-rename, so each list is
-// pinned as a literal in order: a member renamed, removed or moved fails here, and a member added
-// is an edit to this file in the same change.
+// node pool. each list is pinned as a literal in order: a member renamed, removed or moved fails
+// here, and a member added is an edit to this file in the same change.
 
 describe('the v1 vocabularies', () => {
 	it('keeps every frequency, in order', () => {

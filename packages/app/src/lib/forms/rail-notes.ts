@@ -11,7 +11,7 @@ import type { PaymentMethod } from '@better-giving/form/v1';
 /**
  * one sentence per way of paying, or `null` where there is nothing to say.
  *
- * total over `PAYMENT_METHODS` in `packages/form/src/v1.ts`, which is a permanent contract that may gain a
+ * total over `PAYMENT_METHODS` in `packages/form/src/v1.ts`, which may gain a
  * member — total here means a rail added there without an answer is a compile error rather than a
  * rail that quietly says nothing. it stays total over the whole vocabulary rather than over
  * `OFFERED_PAYMENT_METHODS` in ./offered-rails.ts, so a rail that rejoins the offered list arrives

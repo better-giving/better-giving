@@ -3,7 +3,7 @@ import { TRIBUTE_KINDS, type TributeKind } from '@better-giving/form/v1';
 // the read side of a stored dedication: two columns narrowed into one value, or nothing.
 //
 // the vocabulary itself is not here. `TRIBUTE_KINDS` and `TributeKind` are
-// `@better-giving/form/v1`'s, where they are a permanent part of what an integrator posts, and
+// `@better-giving/form/v1`'s, where they are part of what an integrator posts, and
 // every surface in this app imports them from there — the admin screens already do (CLAUDE.md:
 // /admin does import the form's vocabulary and must keep being able to). a second copy under
 // `$lib` would be one both sides could edit and only one side would notice.

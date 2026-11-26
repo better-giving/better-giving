@@ -229,7 +229,7 @@ describe('what a refused caller is told', () => {
 
 	/**
 	 * no `error` code, and its absence is the decision. `API_ERROR_CODES` in packages/form/src/v1.ts is a
-	 * permanent wire vocabulary whose members are minted in that file, and every member names the
+	 * wire vocabulary whose members are minted in that file, and every member names the
 	 * screen that fixes it — a rate limit names no screen and is answered by the surface rather
 	 * than by any route. 429 is unambiguous on its own here: no other answer this endpoint gives
 	 * carries it, unlike 409 and 503, which is why those two need a code to tell them apart.
@@ -292,7 +292,7 @@ describe('when the limiter does not answer', () => {
 			message: expect.stringContaining('API_RATE_LIMITER'),
 			fix: expect.stringContaining('RATE_LIMITS')
 		});
-		// the same reason the 429 mints none: `API_ERROR_CODES` in packages/form/src/v1.ts is a permanent
+		// the same reason the 429 mints none: `API_ERROR_CODES` in packages/form/src/v1.ts is a
 		// wire vocabulary and every member of it names a screen that fixes it.
 		expect(body).not.toHaveProperty('error');
 	});

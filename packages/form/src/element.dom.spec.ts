@@ -1268,7 +1268,7 @@ describe('the style adoption', () => {
 
 describe('the part vocabulary as rendered', () => {
 	it('emits no token that is not in the published vocabulary', async () => {
-		// the assertion that keeps a permanent contract permanent: a fifteenth name shipped by
+		// the assertion that keeps the public vocabulary deliberate: a fifteenth name shipped by
 		// accident fails here rather than being discovered by a host whose rule stops working.
 		const known = new Set<string>([...PART_NAMES, ...STATE_TOKENS, ...ROLE_TOKENS]);
 		// a takeover rather than a numbered step: the takeovers are where a fifteenth name
@@ -6058,8 +6058,8 @@ describe('where a payment provider paints', () => {
 		expect(node.parentNode).toBe(card.host);
 	});
 
-	// by `::part()` name would be the obvious way and is the wrong one: the part vocabulary is a
-	// permanent contract for a host page to style with, and mounting is not what it was drawn for.
+	// by `::part()` name would be the obvious way and is the wrong one: the part vocabulary is the
+	// public style surface for a host page, and mounting is not what it was drawn for.
 	// the box keeps its name and keeps resolving, and the provider's fields reach it through a slot
 	// rather than by being appended into it.
 	it('projects that node back through the payment part, which still resolves', async () => {
@@ -6265,8 +6265,7 @@ describe('where a payment provider paints', () => {
 
 	// the `fix` beside that message names a key, a variable or a screen in /admin, and it is
 	// addressed to whoever administers the deployment — who is not the person looking at this card.
-	// it stays on the wire, because `/api/v1` is a permanent contract and an agent wiring the embed
-	// reads it; what it does not do is reach a donor, who can act on none of it.
+	// it stays on the wire, because an agent wiring the embed reads it; what it does not do is reach a donor, who can act on none of it.
 	it('keeps the operator’s instructions off the donor’s screen', async () => {
 		const card = await mount();
 		card.unavailable({

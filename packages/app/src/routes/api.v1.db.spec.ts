@@ -203,7 +203,7 @@ describe('the surface’s own address', () => {
 		const body = (await response.json()) as Record<string, unknown>;
 		expect(String(body.message)).toContain('/api/v1');
 		expect(String(body.fix)).toContain('/api/v1/forms/');
-		// no `error` code: `API_ERROR_CODES` in packages/form/src/v1.ts is a permanent wire
+		// no `error` code: `API_ERROR_CODES` in packages/form/src/v1.ts is a wire
 		// vocabulary whose members each name the screen that fixes them, and no screen fixes this.
 		expect(body).not.toHaveProperty('error');
 	});

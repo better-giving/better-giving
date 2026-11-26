@@ -164,7 +164,7 @@ const GRANT = { methods: 'POST, OPTIONS', headers: 'content-type', maxAge: '600'
  * the answer to a method this endpoint does not take.
  *
  * no `error` code, for the reason the surface's own not-found answer mints none: `API_ERROR_CODES`
- * in packages/form/src/v1.ts is a permanent wire vocabulary whose members each name the screen that
+ * in packages/form/src/v1.ts is a wire vocabulary whose members each name the screen that
  * fixes them, and no screen fixes a request made with the wrong verb. `Allow` is what a caller
  * acts on, and it is required on a 405
  * (https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/405).
@@ -231,7 +231,7 @@ async function readJsonBody(request: Request): Promise<unknown> {
  * - 409, a pledge id already naming a gift or a different pledge: a conflict with what this
  *   deployment holds, with no `field`, since no box the donor fills in is wrong.
  * - 500, a defect of ours. no code, because no screen fixes it: `API_ERROR_CODES` in
- *   `packages/form/src/v1.ts` is a permanent vocabulary whose members each name one, and a member for our
+ *   `packages/form/src/v1.ts` is a vocabulary whose members each name one, and a member for our
  *   own bug would ask a donation form to render a screen about it. this is also where a gift that
  *   could not be written lands — including the case where the form or the fund vanished between the
  *   read at the top of this request and the write at the bottom. nothing about the request is

@@ -218,8 +218,8 @@ export type QuoteRefusal = (typeof QUOTE_REFUSALS)[number];
  * the refusals that are also `API_ERROR_CODES` members, and therefore reach the wire as `error`.
  *
  * declared `satisfies readonly ApiErrorCode[]` so a member added here without being minted in
- * packages/form/src/v1.ts is a compile error — that file is where the add-never-rename rule is stated, so a
- * code is minted there and spent here, never the other way round.
+ * packages/form/src/v1.ts is a compile error — a code is
+ * minted there and spent here, never the other way round.
  */
 export const QUOTE_REFUSAL_CODES = [
 	'form_not_found',

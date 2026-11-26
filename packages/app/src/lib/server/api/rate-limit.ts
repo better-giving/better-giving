@@ -429,7 +429,7 @@ function ipv4Octets(text: string): number[] | null {
  * default is `/api/v1`'s, and `/zapier` passes its own ($lib/server/zapier/surface.ts).
  *
  * no `error` code, and the absence is deliberate: `API_ERROR_CODES` in `packages/form/src/v1.ts` is a
- * permanent wire vocabulary minted in that file, and every member of it names the screen that
+ * wire vocabulary minted in that file, and every member of it names the screen that
  * fixes it. a rate limit names no screen, is answered by the surface rather than by any route,
  * and is the only thing here that answers 429 — where 409 and 503 each cover two refusals and
  * need a code to be told apart.
@@ -555,7 +555,7 @@ export function signInRateLimitMessage(): string {
  *
  * it names the limiter and the file because the only person who can fix it is holding the
  * repository, and 500 because nothing about the request is wrong. no `error` code, for the same
- * reason the 429 mints none — `API_ERROR_CODES` in `packages/form/src/v1.ts` is a permanent wire
+ * reason the 429 mints none — `API_ERROR_CODES` in `packages/form/src/v1.ts` is a wire
  * vocabulary whose members each name the screen that fixes them, and no screen fixes this.
  */
 function unboundSurface(): Response {

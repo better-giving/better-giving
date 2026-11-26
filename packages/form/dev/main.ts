@@ -28,7 +28,7 @@ import { remember, remembered } from './state';
 // the element is created here rather than in ./index.html, so the document never holds an
 // unupgraded one: the registration below is on the same line of module evaluation as the
 // `createElement` that follows it. that is why this page carries no `:not(:defined)` reservation
-// rule — the box it reserves is a permanent contract with its own height in
+// rule — the box it reserves has its own height in
 // ../src/embed/reservation.ts, and a copy of that number in a page that cannot reach the window it
 // covers would be a fifth copy with nothing binding it to the other four.
 

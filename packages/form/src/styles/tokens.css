@@ -47,8 +47,7 @@
  * host chooses a corner without writing a length. everything else is `--_`-prefixed and private, or a
  * registry name: derived here, never read or written by a host. an org wanting more of this card
  * than its brand colour and the corner forks the package; ../../custom-elements.json states it to
- * integrators. `--donate-shade` stays listed there, because a published seed is permanent
- * (AGENTS.md → Permanent contracts), and has no effect: this file registers and reads nothing for
+ * integrators. `--donate-shade` stays listed there as a retired seed and has no effect: this file registers and reads nothing for
  * it, and the card's one grey is the registry's.
  *
  * the brand seed is the registry's accent step 9, and a seeded card is a seeded registry theme: the
