@@ -31,6 +31,7 @@ import {
 	aboutEstimate,
 	APPLE_SRC,
 	CHANGE_WHAT_YOU_GIVE,
+	COIN_PRICE_FAILED,
 	coinRefusalSentence,
 	coinReview,
 	CONTINUE_TO_PAYMENT,
@@ -2799,6 +2800,12 @@ describe('what the donor gives, on the first step', () => {
 	) {
 		const asked = deployment(pledge);
 		const { root } = await card(config, answers, { mints });
+		await pickApple(root);
+		return { root, asked };
+	}
+
+	/** AAPL picked from the pill's panel, as a donor searches for it. */
+	async function pickApple(root: HTMLElement): Promise<void> {
 		press(pill(root));
 		await act(async () => {});
 		const box = unitPanel(root).querySelector('[role="combobox"]') as HTMLInputElement;
@@ -2810,7 +2817,6 @@ describe('what the donor gives, on the first step', () => {
 		if (row === null) throw new Error('no AAPL in the unit panel');
 		press(row);
 		await frame();
-		return { root, asked };
 	}
 
 	it('draws the unit as plain text where the deployment offers its currency alone', async () => {
@@ -2951,6 +2957,32 @@ describe('what the donor gives, on the first step', () => {
 		expect(root.querySelector('.unit-estimate')).toBeNull();
 		expect(pill(root).getAttribute('aria-label')).toBe('Stock: AAPL');
 		expect(discs(root)).toEqual([APPLE_SRC]);
+	});
+
+	// a share count is never priced, so a coin's failed check does not follow the box into shares.
+	it('says nothing of a price under a share count typed after a coin’s check failed', async () => {
+		deployment();
+		const served = globalThis.fetch;
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (url: string, init?: RequestInit) => {
+				if (url.includes('/estimate?')) throw new TypeError('offline');
+				return served(url, init);
+			})
+		);
+		const { root } = await card(WITH_EVERYTHING);
+		await give(root, 'coin:btc');
+		type(quantity(root), '0.005');
+		await priced();
+		expect(one(root, '#amount-problem').textContent).toBe(COIN_PRICE_FAILED);
+
+		await pickApple(root);
+		type(quantity(root), '50');
+		await priced();
+
+		expect(one(root, '#amount-problem').hidden).toBe(true);
+		expect(quantity(root).hasAttribute('aria-describedby')).toBe(false);
+		expect(said(root)).not.toContain(COIN_PRICE_FAILED);
 	});
 
 	const cadences = (root: HTMLElement) =>
@@ -3483,6 +3515,107 @@ describe('a crypto gift', () => {
 				expect(onFirstStep(root)).toBe(false);
 			}
 		);
+
+		/** the sentence under the box, or `null` while that slot is hidden. */
+		const underBox = (root: HTMLElement) => {
+			const slot = one(root, '#amount-problem');
+			return slot.hidden ? null : slot.textContent;
+		};
+
+		// nothing presses for it and no caret moves to it, so the region is how it is heard.
+		it.each(PRICE_FAILURES)(
+			'says beside the box that the price could not be checked, where the check %s',
+			async (_, fails) => {
+				pricing(fails);
+				const { root } = await card(CRYPTO);
+				await give(root, 'coin:usdttrc20');
+				type(quantity(root), '25');
+				await priced();
+
+				expect(underBox(root)).toBe(COIN_PRICE_FAILED);
+				expect(quantity(root).getAttribute('aria-describedby')).toBe('amount-problem');
+				expect(said(root)).toBe(COIN_PRICE_FAILED);
+				expect(root.querySelector('.unit-figure')).toBeNull();
+
+				await onward(root);
+
+				expect(onFirstStep(root)).toBe(true);
+				expect(quantity(root).getAttribute('aria-invalid')).toBe('true');
+				expect(underBox(root)).toBe(COIN_PRICE_FAILED);
+				expect(said(root)).toBe(COIN_PRICE_FAILED);
+			}
+		);
+
+		it.each([
+			['retyped', (root: HTMLElement) => type(quantity(root), '30')],
+			['picked again', (root: HTMLElement) => give(root, 'coin:usdttrc20')]
+		])(
+			'drops the sentence while the amount %s is checked, and for the estimate once it prices',
+			async (_, retry) => {
+				pricing(
+					() => json({ estimateMinor: null }),
+					() => json({ estimateMinor: 2500 })
+				);
+				const { root } = await card(CRYPTO);
+				await give(root, 'coin:usdttrc20');
+				type(quantity(root), '25');
+				await priced();
+				expect(underBox(root)).toBe(COIN_PRICE_FAILED);
+
+				await retry(root);
+
+				expect(underBox(root)).toBeNull();
+				expect(quantity(root).hasAttribute('aria-describedby')).toBe(false);
+				expect(said(root)).not.toContain(COIN_PRICE_FAILED);
+
+				await priced();
+
+				expect(underBox(root)).toBeNull();
+				expect(quantity(root).hasAttribute('aria-describedby')).toBe(false);
+				expect(one(root, '.unit-figure').textContent).toBe(aboutEstimate(2500, CRYPTO));
+				expect(said(root)).not.toContain(COIN_PRICE_FAILED);
+			}
+		);
+
+		it('gives way to the range sentence once the amount prices outside the range', async () => {
+			pricing(
+				() => json({ estimateMinor: null }),
+				() => json({ estimateMinor: 95 })
+			);
+			const { root } = await card(CRYPTO);
+			await give(root, 'coin:usdttrc20');
+			type(quantity(root), '25');
+			await priced();
+			expect(underBox(root)).toBe(COIN_PRICE_FAILED);
+
+			type(quantity(root), '0.00001');
+			await priced();
+			expect(underBox(root)).toBeNull();
+			await onward(root);
+
+			expect(underBox(root)).toBe(
+				copy.amountProblem((figure) => formatOffer(figure, 'en-US', 'usd'), 500, 500000)
+			);
+			expect(said(root)).not.toContain(COIN_PRICE_FAILED);
+		});
+
+		// the empty box is marked with no sentence (`AmountDecision` in @better-giving/form/value).
+		it('says nothing under a box emptied after the check failed, on a Continue too', async () => {
+			pricing(() => json({ estimateMinor: null }));
+			const { root } = await card(CRYPTO);
+			await give(root, 'coin:usdttrc20');
+			type(quantity(root), '25');
+			await priced();
+			expect(underBox(root)).toBe(COIN_PRICE_FAILED);
+
+			type(quantity(root), '');
+			await onward(root);
+
+			expect(quantity(root).getAttribute('aria-invalid')).toBe('true');
+			expect(underBox(root)).toBeNull();
+			expect(quantity(root).hasAttribute('aria-describedby')).toBe(false);
+			expect(said(root)).toBe('');
+		});
 	});
 
 	// a coin amount priced outside the bounds is refused as the currency's amount is (`AmountDecision`

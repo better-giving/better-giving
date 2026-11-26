@@ -58,6 +58,11 @@ export type AmountStepProps = {
 	 * to them: a figure outside the form's own bounds no coin takes.
 	 */
 	readonly refusal: string;
+	/**
+	 * a coin amount's failed price check (`COIN_PRICE_FAILED` in @better-giving/form/unit), `''` where
+	 * there is none or where the bounds or a refusal outrank it. it stands in the same place.
+	 */
+	readonly unpriced: string;
 	/** whether that refusal is of the amount, which marks the box the amount was typed in. */
 	readonly refusedAmount: boolean;
 	/** whether the unit panel is open, which the pill says. */
@@ -106,6 +111,7 @@ export function AmountStep({
 	missing,
 	amountProblem,
 	refusal,
+	unpriced,
 	refusedAmount,
 	unitOpen,
 	onPill,
@@ -133,13 +139,13 @@ export function AmountStep({
 	const noteAsked = api.noteToggle.pressed === true;
 	const noteShown = api.notePublicToggle.pressed === true;
 	const noteAnonymous = api.noteAnonymousToggle.pressed === true;
-	const amountWords = missingAmount ? amountProblem : refusal;
+	const amountWords = missingAmount ? amountProblem : refusal !== '' ? refusal : unpriced;
 	const amountDescribed = amountWords === '' ? undefined : 'amount-problem';
 	// what the donor gives, as `connect` words it: a coin or a share count takes one box in the tiles'
 	// place (`unitEntry` is null on a gift in the currency), and a refusal of its amount is marked on
 	// that box the way a missing one is. a missing one is marked with no sentence, and a coin amount
 	// priced outside the bounds with the bounds sentence, which is the currency's (`AmountDecision` in
-	// @better-giving/form/value).
+	// @better-giving/form/value). a coin amount whose price check failed is described by `unpriced`.
 	const { pill, entry: unitEntry, cadenceNote, next } = api.unit;
 	const quantityRefused =
 		unitEntry !== null && (missing.includes('quantity') || missingAmount || refusedAmount);

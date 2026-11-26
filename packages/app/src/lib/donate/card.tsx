@@ -596,6 +596,13 @@ function CheckoutCard({
 	const coinRefusal = api.state.step === 'amount' ? api.state.coinRefusal : undefined;
 	const refusalWords = coinRefusal === undefined ? '' : coinRefusalSentence(coinRefusal, config);
 	const refusedAmount = api.state.step === 'amount' && api.state.refusal !== undefined;
+	// a coin amount whose price check failed, said in the same place at the lowest rank: the bounds,
+	// then the coin's refusal, then this. the bounds are said only of an amount that priced, so the two
+	// never stand together.
+	const unpricedWords =
+		api.state.step === 'amount' && !missingDecisions.includes('amount') && refusalWords === ''
+			? (api.unit.entry?.unpriced ?? '')
+			: '';
 
 	// ── which screen, and where the caret goes ───────────────────────────────────────────────────
 
@@ -1106,11 +1113,14 @@ function CheckoutCard({
 			: '';
 	const bounds = copy.amountProblem(offer, config.minAmountMinor, config.maxAmountMinor);
 	// what a numbered step was refused for, said out loud, and one sentence however many steps there
-	// are: the three are mutually exclusive, because a press is refused on the step it was made on. each
-	// is here only for the press that moved no caret and had no other channel (`askedInPlace`,
-	// `detailsSaid`, and a Continue refused with the caret already in the custodian box).
+	// are: the four are mutually exclusive, because a press is refused on the step it was made on and a
+	// failed price check is never drawn beside the bounds. a refusal is here only for the press that
+	// moved no caret and had no other channel (`askedInPlace`, `detailsSaid`, and a Continue refused
+	// with the caret already in the custodian box). a coin amount's failed price check arrives with no
+	// press and moves no caret, so it is here for as long as it is drawn under the box.
 	const askedFor = [
 		askedInPlace && missingDecisions.includes('amount') ? bounds : '',
+		unpricedWords,
 		detailsSaid,
 		spent === 'custodian' ? custodianWords : ''
 	]
@@ -1282,6 +1292,7 @@ function CheckoutCard({
 						missing={missingDecisions}
 						amountProblem={bounds}
 						refusal={refusalWords}
+						unpriced={unpricedWords}
 						refusedAmount={refusedAmount}
 						unitOpen={unitPanel.open}
 						onPill={unitPanel.toggle}
