@@ -136,6 +136,7 @@ export type PostingErrorCode =
 	| 'too_few_lines'
 	| 'non_integer_amount'
 	| 'zero_amount'
+	| 'negative_amount'
 	| 'unbalanced';
 
 export class PostingError extends Error {
@@ -176,7 +177,7 @@ export function post(input: PostingInput): Posting {
 	if (input.sourceId.length === 0) {
 		throw new PostingError(
 			'empty_source_id',
-			`sourceId is empty for a '${input.sourceType}' posting. it is half of the idempotency key — pass the id this source type is keyed on: a payment id, a donation id, or the uuidv7 minted for a correction. $lib/server/db/schema.ts names which one each type takes.`
+			`sourceId is empty for a '${input.sourceType}' posting. it is half of the idempotency key — pass the id this source type is keyed on: a payment id, a donation id, the uuidv7 minted for a correction, or a sponsor's payout as settled:<payout_id> or returned:<return_id>. $lib/server/db/schema.ts names which one each type takes.`
 		);
 	}
 

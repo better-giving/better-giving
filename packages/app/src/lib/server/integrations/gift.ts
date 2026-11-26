@@ -334,8 +334,9 @@ async function changedWithin(
 	const posting = alias(entryGroup, 'posting');
 	const disputed = alias(dispute, 'disputed');
 	// `<>` rather than `in`: sqlite takes an `in` on `source_type` to `entry_group_source_idx`, which
-	// leads with it, and sorts every posting. the two name the same set.
-	const keyedOnPayment = ne(posting.sourceType, 'donation');
+	// leads with it, and sorts every posting. the two name the same set: every source type but
+	// `donation` and `payout`, as `PAYMENT_KEYED_SOURCES` below does.
+	const keyedOnPayment = and(ne(posting.sourceType, 'donation'), ne(posting.sourceType, 'payout'));
 
 	const settled = db
 		.select({ at: gift.createdAt, id: gift.id })
@@ -427,8 +428,9 @@ function changedAt(db: Db): SQL<number> {
 
 /**
  * the latest journal entry keyed on the payment `paymentId` names. every source type but
- * `donation` is keyed on a payment id (`entry_group_source_idx` in ../db/schema.ts), and naming
- * them lets that index's leading column serve the read.
+ * `donation` and `payout` is keyed on a payment id (`entry_group_source_idx` in ../db/schema.ts),
+ * and naming them lets that index's leading column serve the read. `payout` is no gift's entry: its
+ * key is the sponsor's `settled:<payout_id>` or `returned:<return_id>`, never a payment id.
  */
 function postedAt(db: Db, paymentId: SQLWrapper, name: string) {
 	const posted = alias(entryGroup, name);
@@ -446,7 +448,7 @@ function postedAt(db: Db, paymentId: SQLWrapper, name: string) {
  * `SQLITE_MAX_VARIABLE_NUMBER` (32766, https://www.sqlite.org/limits.html).
  */
 const PAYMENT_KEYED_SOURCES = sql.raw(
-	`(${ENTRY_SOURCE_TYPES.filter((type) => type !== 'donation')
+	`(${ENTRY_SOURCE_TYPES.filter((type) => type !== 'donation' && type !== 'payout')
 		.map((type) => `'${type}'`)
 		.join(', ')})`
 );
