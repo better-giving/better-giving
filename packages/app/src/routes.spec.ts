@@ -231,7 +231,8 @@ const PUBLIC_ROUTE_FILES: readonly string[] = [
 	'routes/api.v1.forms.$id.tickers.ts',
 	// the estimate that same form's first step reads under a coin amount a donor types, priced by
 	// NOWPayments for a coin the account can be paid in. unauthenticated for the same reason; CORS
-	// from the form's own `allowed_origins` and the limit from the layout above it; no spam check and
+	// from the form's own `allowed_origins`, the limit from the layout above it plus a count of its
+	// own on the submission's limiter before NOWPayments is asked; no spam check and
 	// no amount bounds, because it takes no submission and initiates no payment — the gift quoted at
 	// its figure goes through the endpoint below, which owes both.
 	'routes/api.v1.forms.$id.estimate.ts',

@@ -711,7 +711,10 @@ export type CoinValueRequest = {
  * paid to an address settles at what arrived (`Arrival`), valued again when it does.
  */
 export type CoinValue = {
-	/** minor units of `CoinValueRequest.currency`, rounded to the nearest. zero for under half of one. */
+	/**
+	 * minor units of `CoinValueRequest.currency`, rounded to the nearest. zero for a positive value
+	 * under half of one; a value the processor answers as exactly zero is a refusal.
+	 */
 	readonly amountMinor: number;
 };
 

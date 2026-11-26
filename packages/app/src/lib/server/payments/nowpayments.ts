@@ -306,7 +306,10 @@ export function createNowpaymentsProvider(credentials: NowpaymentsCredentials): 
 					detail: `${JSON.stringify(request.coinAmount.slice(0, 40))} is not a positive decimal amount of a coin. Nothing was asked of NOWPayments.`
 				};
 			}
-			const valued = await estimateInDollars(coinAmount, request.coin, LIST_TIMEOUT_MS);
+			const valued = await estimateInDollars(coinAmount, request.coin, {
+				timeoutMs: LIST_TIMEOUT_MS,
+				unvalued: 'so the donation form shows no figure for it.'
+			});
 			if (!valued.ok) return valued;
 			return { ok: true, value: { amountMinor: centsRounded(valued.value) } };
 		},
@@ -589,7 +592,7 @@ export function createNowpaymentsProvider(credentials: NowpaymentsCredentials): 
 	async function estimateInDollars(
 		coinAmount: string,
 		coin: string,
-		timeoutMs = TIMEOUT_MS
+		{ timeoutMs = TIMEOUT_MS, unvalued = SETTLEMENT_UNVALUED } = {}
 	): Promise<PaymentResult<string>> {
 		const arrival = `${coinAmount} ${coin}`;
 		const known = dollarValues.get(arrival);
@@ -610,8 +613,8 @@ export function createNowpaymentsProvider(credentials: NowpaymentsCredentials): 
 			ok: false,
 			reason: 'provider_error',
 			detail:
-				`NOWPayments did not value ${coinAmount} ${coin.toUpperCase()} in dollars, so nothing was ` +
-				`settled. The read made again is worth making. NOWPayments said: ${quoteProblem(answer.body)}`
+				`NOWPayments did not value ${coinAmount} ${coin.toUpperCase()} in dollars, ${unvalued} ` +
+				`NOWPayments said: ${quoteProblem(answer.body)}`
 		};
 	}
 
@@ -646,6 +649,9 @@ const NO_LISTENER_ARMS =
 	'NOWPayments registers no webhook endpoint on the account: each payment carries the address it notifies. Nothing was asked of NOWPayments.';
 const NO_WALLETS =
 	'NOWPayments draws no wallet, so there is no hostname to register. Nothing was asked of NOWPayments.';
+
+/** how a refusal from `estimateInDollars` ends on the settlement path. */
+const SETTLEMENT_UNVALUED = 'so nothing was settled. The read made again is worth making.';
 
 /** digits with at most one point, as a donor types an amount; `canonicalDecimal` alone takes `1e3`. */
 const TYPED_DECIMAL = /^(\d+(\.\d*)?|\.\d+)$/;

@@ -2209,6 +2209,35 @@ describe('estimateCoinValue — what an amount of a coin is worth', () => {
 		expect(calls[0]?.key).toBe(CREDENTIALS.apiKey);
 	});
 
+	it.each([
+		['482.0931', 48209],
+		['482.095', 48210],
+		['0.0049', 0],
+		['0.005', 1]
+	])('rounds $%s to the nearest cent, half a cent up: %i', async (estimated, cents) => {
+		estimating({ status: 200, json: { estimated_amount: estimated } });
+
+		const result = await createNowpaymentsProvider(CREDENTIALS).estimateCoinValue({
+			coin: 'btc',
+			coinAmount: '0.00000001',
+			currency: 'USD'
+		});
+
+		expect(result).toEqual({ ok: true, value: { amountMinor: cents } });
+	});
+
+	it('refuses where NOWPayments values the amount at exactly zero', async () => {
+		estimating({ status: 200, json: { estimated_amount: '0' } });
+
+		const result = await createNowpaymentsProvider(CREDENTIALS).estimateCoinValue({
+			coin: 'btc',
+			coinAmount: '0.00000001',
+			currency: 'USD'
+		});
+
+		expect(result.ok === false && result.reason).toBe('provider_error');
+	});
+
 	it('asks for the amount as its canonical decimal', async () => {
 		const calls = estimating({ status: 200, json: { estimated_amount: '48.21' } });
 
@@ -2254,7 +2283,7 @@ describe('estimateCoinValue — what an amount of a coin is worth', () => {
 		['a fault', { status: 500, json: { message: 'Internal server error' } }],
 		['a coin it cannot price', { status: 400, json: { code: 'BAD_REQUEST', message: 'no pair' } }],
 		['no figure', { status: 200, json: { estimated_amount: null } }]
-	])('refuses where NOWPayments answers %s', async (_, answer) => {
+	])('refuses where NOWPayments answers %s, in words about an estimate', async (_, answer) => {
 		estimating(answer);
 
 		const result = await createNowpaymentsProvider(CREDENTIALS).estimateCoinValue({
@@ -2263,7 +2292,9 @@ describe('estimateCoinValue — what an amount of a coin is worth', () => {
 			currency: 'USD'
 		});
 
-		expect(result.ok).toBe(false);
+		expect(result.ok === false && result.reason).toBe('provider_error');
+		expect(result.ok === false && result.detail).toMatch(/^NOWPayments did not value 0\.005 BTC/);
+		expect(result.ok === false && result.detail).not.toMatch(/settled/);
 	});
 });
 

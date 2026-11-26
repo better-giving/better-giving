@@ -135,6 +135,20 @@ export function quoteRateLimitKey(request: Request): string | null {
 }
 
 /**
+ * what one coin estimate at `GET /api/v1/forms/:id/estimate` counts against on
+ * `QUOTE_RATE_LIMITER`, and `null` for a caller with no bucket at all.
+ *
+ * the submission's caller and width, since each estimate is a call to NOWPayments on the
+ * deployment's key as each submission is a call to a processor, under a name of its own: the form
+ * asks for an estimate as a donor types, and those reads spending the submission's count would
+ * refuse the gift they were typed for.
+ */
+export function estimateRateLimitKey(request: Request): string | null {
+	const payer = attributedCaller(request, 48);
+	return payer === null ? null : `${API_BASE_PATH} estimate ${payer}`;
+}
+
+/**
  * what one sign-in attempt counts against, the deployer's and a member's alike, and `null` for a
  * caller with no bucket at all.
  *
@@ -515,6 +529,26 @@ export function quoteRateLimitRefusal(headers: Headers): Response {
 				'so this one was not submitted. Nothing you entered is wrong, and nothing has been ' +
 				'charged.',
 			fix: `Wait ${PERIOD_SECONDS} seconds and press the button again. Everything you typed is still here.`
+		},
+		{ status: 429, headers: answer }
+	);
+}
+
+/**
+ * the answer to an address that has asked for too many coin estimates: the submission refusal's
+ * 429, headers and wait, in words about an estimate. the donation form shows no figure for any
+ * refused read (`createEstimateRead` in packages/form/src/embed/api.ts), so these words are for
+ * whoever else calls the address.
+ */
+export function estimateRateLimitRefusal(headers: Headers): Response {
+	const answer = new Headers(headers);
+	answer.set('retry-after', String(PERIOD_SECONDS));
+	answer.set('cache-control', 'no-store');
+	return Response.json(
+		{
+			message:
+				'This address has asked for more coin estimates than this deployment answers at once.',
+			fix: `Wait ${PERIOD_SECONDS} seconds and ask again.`
 		},
 		{ status: 429, headers: answer }
 	);

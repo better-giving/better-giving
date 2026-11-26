@@ -3,7 +3,7 @@ import { run, first, stmt } from '$lib/server/db/database.testing';
 import { edgeCache } from '$lib/server/edge-cache.testing';
 import { CLIENT_IP_HEADER } from '$lib/server/runtime/client-ip';
 import { readEnv } from '$lib/server/runtime/env';
-import { specRateLimiters } from '$lib/server/runtime/rate-limiter.testing';
+import { SPEC_RATE_LIMITS, specRateLimiters } from '$lib/server/runtime/rate-limiter.testing';
 import { mountRoutes } from '../route-request.testing';
 import * as surface from './api.v1';
 import * as estimate from './api.v1.forms.$id.estimate';
@@ -49,7 +49,7 @@ function nextAddress(): string {
 /** the paths NOWPayments was asked for, in order. */
 let asked: string[] = [];
 
-/** an account enabling BTC alone, whose estimate answers `estimated` for any amount of it. */
+/** an account enabling BTC alone, whose estimate answers `estimated` for any amount of BTC in USD. */
 function accountPricing(estimated: Response | (() => Response)): void {
 	asked = [];
 	vi.stubGlobal('fetch', async (input: Request | string | URL, init?: RequestInit) => {
@@ -59,7 +59,8 @@ function accountPricing(estimated: Response | (() => Response)): void {
 		if (url.pathname === '/v1/merchant/coins')
 			return Response.json({ selectedCurrencies: ['BTC'] });
 		if (url.pathname === '/v1/full-currencies') return Response.json({ currencies: [BTC] });
-		if (url.pathname === '/v1/estimate') {
+		const pair = `${url.searchParams.get('currency_from')} ${url.searchParams.get('currency_to')}`;
+		if (url.pathname === '/v1/estimate' && pair === 'btc usd') {
 			return typeof estimated === 'function' ? estimated() : estimated.clone();
 		}
 		return Response.json({ message: 'unscripted' }, { status: 500 });
@@ -119,6 +120,9 @@ describe('GET /api/v1/forms/:id/estimate', () => {
 		expect(response.status).toBe(200);
 		expect(await response.json()).toEqual({ estimateMinor: 48210 });
 		expect(response.headers.get('cache-control')).toBe('no-store');
+		expect(asked.filter((path) => path.startsWith('/v1/estimate'))).toEqual([
+			'/v1/estimate?amount=0.005&currency_from=btc&currency_to=usd'
+		]);
 	});
 
 	it('lets a page the form names read it, and echoes nothing to another site', async () => {
@@ -194,6 +198,9 @@ describe('GET /api/v1/forms/:id/estimate', () => {
 		const response = await get({ coin: 'btc', amount: `0.${'1'.repeat(30)}` });
 
 		expect(await response.json()).toEqual({ estimateMinor: 48210 });
+		expect(asked.filter((path) => path.startsWith('/v1/estimate'))).toEqual([
+			`/v1/estimate?amount=0.${'1'.repeat(30)}&currency_from=btc&currency_to=usd`
+		]);
 	});
 
 	it.each([
@@ -206,12 +213,64 @@ describe('GET /api/v1/forms/:id/estimate', () => {
 		]
 	])('answers no estimate where NOWPayments gives %s', async (_, answer) => {
 		accountPricing(answer);
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
 
 		const response = await get({ coin: 'btc', amount: '0.005' }, { origin: ALLOWED });
+		logged.mockRestore();
 
 		expect(response.status).toBe(200);
 		expect(response.headers.get('access-control-allow-origin')).toBe(ALLOWED);
 		expect(await response.json()).toEqual({ estimateMinor: null });
+	});
+
+	it('logs what NOWPayments refused, for whoever reads the server’s log', async () => {
+		accountPricing(() => Response.json({ message: 'Internal server error' }, { status: 500 }));
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+		await get({ coin: 'btc', amount: '0.005' });
+
+		expect(logged).toHaveBeenCalledTimes(1);
+		expect(logged.mock.calls[0]?.join(' ')).toMatch(/provider_error.*0\.005 BTC/);
+		logged.mockRestore();
+	});
+
+	it('logs nothing for an amount a caller typed that is no amount', async () => {
+		accountPricing(PRICED);
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+		const response = await get({ coin: 'btc', amount: 'abc' });
+
+		expect(await response.json()).toEqual({ estimateMinor: null });
+		expect(logged).not.toHaveBeenCalled();
+		logged.mockRestore();
+	});
+
+	it('refuses an address that has asked for too many estimates, in words the page can read', async () => {
+		accountPricing(PRICED);
+		const env = { ...readEnv({}, specRateLimiters()), ...NOWPAYMENTS } as Env;
+		const address = nextAddress();
+		const ask = () =>
+			surfaceRoutes(
+				new Request(`${ORIGIN}/api/v1/forms/${FORM_ID}/estimate?coin=btc&amount=0.005`, {
+					headers: { [CLIENT_IP_HEADER]: address, origin: ALLOWED }
+				}),
+				{ env }
+			);
+
+		const answered: number[] = [];
+		for (let i = 0; i < SPEC_RATE_LIMITS.QUOTE_RATE_LIMITER.limit; i += 1) {
+			answered.push((await ask()).status);
+		}
+		const refused = await ask();
+
+		expect(answered).not.toContain(429);
+		expect(refused.status).toBe(429);
+		expect(refused.headers.get('access-control-allow-origin')).toBe(ALLOWED);
+		expect(refused.headers.get('retry-after')).toBe('60');
+		expect(refused.headers.get('cache-control')).toBe('no-store');
+		expect(asked.filter((path) => path.startsWith('/v1/estimate'))).toHaveLength(
+			SPEC_RATE_LIMITS.QUOTE_RATE_LIMITER.limit
+		);
 	});
 });
 

@@ -3,6 +3,7 @@ import { CLIENT_IP_HEADER } from '$lib/server/runtime/client-ip';
 import {
 	apiRateLimitKey,
 	donorPageRateLimitKey,
+	estimateRateLimitKey,
 	imageRateLimitKey,
 	integrationsCallerRateLimitKey,
 	integrationsKeyRateLimitKey,
@@ -313,6 +314,7 @@ describe('what the tighter buckets count against', () => {
 	const TIGHT = [
 		['a sign-in attempt', signInRateLimitKey],
 		['a quote submission', quoteRateLimitKey],
+		['a coin estimate', estimateRateLimitKey],
 		['a fundraiser start', supporterStartRateLimitKey]
 	] as const;
 
@@ -373,6 +375,14 @@ describe('what the tighter buckets count against', () => {
 		expect(signInRateLimitKey(from('203.0.113.7'))).toBe('sign-in 203.0.113.7');
 		expect(quoteRateLimitKey(from('203.000.113.007'))).toBe('/api/v1 donations 203.0.113.7');
 		expect(quoteRateLimitKey(from('::ffff:203.0.113.7'))).toBe('/api/v1 donations 203.0.113.7');
+	});
+
+	/** one limiter, two counts: a donor's estimates while typing never spend the gift's own budget. */
+	it('counts a coin estimate apart from a submission by the same caller', () => {
+		expect(estimateRateLimitKey(from('203.0.113.7'))).toBe('/api/v1 estimate 203.0.113.7');
+		expect(estimateRateLimitKey(from('203.0.113.7'))).not.toBe(
+			quoteRateLimitKey(from('203.0.113.7'))
+		);
 	});
 
 	/**
