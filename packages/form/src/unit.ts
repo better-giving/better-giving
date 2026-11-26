@@ -42,6 +42,9 @@ export const ONE_TIME_ONLY = {
 /** the unit at the end of a share count's box. */
 export const SHARES = 'shares';
 
+/** the name of a share count's box; a coin amount's is `Amount`, as the currency's is. */
+export const SHARE_COUNT = 'Number of shares';
+
 /** the line under a coin amount the estimate priced, as `About $482.10`. */
 export function aboutEstimate(minor: number, config: Pick<FormConfig, 'locale' | 'currency'>) {
 	return `About ${formatMinor(minor, config.locale, config.currency)}`;
@@ -319,6 +322,8 @@ export function unitPill(
  * and `null` otherwise: while a read is out, once it prices, on an empty box and under a share count.
  */
 export type UnitEntry = {
+	/** the box's accessible name. the unit at its end is hidden, so the name says what it counts. */
+	readonly name: string;
 	readonly unitLabel: string;
 	readonly estimate: string | null;
 	readonly note: string | null;
@@ -331,10 +336,11 @@ export function unitEntry(
 	estimate: ReturnType<typeof coinEstimate>
 ): UnitEntry | null {
 	if (picked?.kind === 'stock') {
-		return { unitLabel: SHARES, estimate: null, note: null, unpriced: null };
+		return { name: SHARE_COUNT, unitLabel: SHARES, estimate: null, note: null, unpriced: null };
 	}
 	if (picked?.kind !== 'coin') return null;
 	return {
+		name: 'Amount',
 		unitLabel: unitPill(config, { coin: true, stock: false }, picked).code,
 		estimate: estimate?.status === 'priced' ? aboutEstimate(estimate.minor, config) : null,
 		note: currencyOf(config.currency, config.locale).code === 'USD' ? VALUED_IN_USD : null,

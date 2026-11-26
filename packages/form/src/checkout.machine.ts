@@ -81,6 +81,7 @@
 // indeterminate (a confirmation with no answer, which re-reads rather than re-charges).
 
 import {
+	and,
 	assign,
 	enqueueActions,
 	fromCallback,
@@ -244,11 +245,15 @@ function openingDraft(input: CheckoutInput): AmountDraft {
  * set at one site — `rememberDecline` below — and absent everywhere else, because the words cannot
  * carry the difference: `toFailure` hands a rejected quote the same bare `{ message }` it hands a
  * decline.
+ *
+ * `refusedStock` marks a stock save refused for the ticker or the shares, which the same press sent
+ * again is refused for again: Try again goes back to the first step, where both are picked.
  */
 export type Failure = {
 	readonly message: string;
 	readonly fix?: string;
 	readonly refusedByRail?: true;
+	readonly refusedStock?: true;
 };
 
 /**
@@ -450,6 +455,9 @@ export type CoinPricing = { readonly coin: string; readonly quantity: string };
  * priced once rather than once per keystroke. exported for the reason `MICRODEPOSIT_WINDOW_MS` is.
  */
 export const ESTIMATE_DEBOUNCE_MS = 200;
+
+/** the id of the delayed failed answer that stands in for an estimate read gone quiet. */
+const ESTIMATE_TIMEOUT = 'estimate-timeout';
 
 /**
  * one read of `CheckoutPorts.estimate`, answering `COIN_PRICED` with what it asked about, `null` on
@@ -1594,6 +1602,9 @@ export const checkoutMachine = setup({
 		/** the press being retried was a stock gift's, which is made from the details step. */
 		givesStock: ({ context }) => pressesOnDetails(context.payerDraft.method),
 
+		/** the failure is a stock save refused for its ticker or shares (`Failure.refusedStock`). */
+		stockIsRefused: ({ context }) => context.failure?.refusedStock === true,
+
 		/** a mark pressed for the first step while a stock gift's press is held. */
 		givesStockToFirstStep: ({ context, event }) =>
 			event.type === 'GO_TO_STEP' &&
@@ -1892,6 +1903,26 @@ export const checkoutMachine = setup({
 				displacedRail: standingRail(context),
 				payerDraft: { ...payerDraft, method: 'crypto' as const, coin: inKind.coin }
 			};
+		}),
+
+		/** a details-step box typed in. */
+		setContact: assign({
+			payerDraft: ({ context, event }) => {
+				if (event.type !== 'SET_CONTACT') return context.payerDraft;
+				return {
+					...context.payerDraft,
+					...(event.email !== undefined ? { email: event.email } : {}),
+					...(event.firstName !== undefined ? { firstName: event.firstName } : {}),
+					...(event.lastName !== undefined ? { lastName: event.lastName } : {})
+				};
+			}
+		}),
+
+		setConsent: assign({
+			payerDraft: ({ context, event }) =>
+				event.type === 'SET_CONSENT'
+					? { ...context.payerDraft, consentedToContact: event.consented }
+					: context.payerDraft
 		}),
 
 		/** the one place a donor draft becomes the payer an intent is minted for. */
@@ -2205,21 +2236,34 @@ export const checkoutMachine = setup({
 						'priceTyped'
 					]
 				},
-				/** a coin amount or share count typed, and a coin amount priced (`priceTyped`). */
+				/**
+				 * a coin amount or share count typed, and a coin amount priced (`priceTyped`). a refusal of
+				 * the amount is lifted by it; a refusal of the coin is not, since no amount of it is taken.
+				 */
 				SET_QUANTITY: {
 					actions: [
 						assign({
 							draft: ({ context, event }) => ({ ...context.draft, quantity: event.quantity }),
-							coinRefusal: null
+							coinRefusal: ({ context }) =>
+								context.coinRefusal?.code === 'coin_not_accepted' ? context.coinRefusal : null
 						}),
 						'priceTyped'
 					]
 				},
-				// the newer amount's read replaces the one before it, which is stopped and so aborted.
+				// the newer amount's read replaces the one before it, which is stopped and so aborted. a
+				// read with no answer after `PORT_TIMEOUT_MS` is answered as a failed one, for the
+				// reason `PORT_TIMEOUT_MS` gives.
 				PRICE_COIN: {
 					actions: enqueueActions(({ context, enqueue }) => {
 						if (context.estimateRead !== null) enqueue.stopChild(context.estimateRead);
+						enqueue.cancel(ESTIMATE_TIMEOUT);
 						const { pricing } = context;
+						if (pricing !== null) {
+							enqueue.raise(
+								{ type: 'COIN_PRICED', ...pricing, estimateMinor: null },
+								{ id: ESTIMATE_TIMEOUT, delay: PORT_TIMEOUT_MS }
+							);
+						}
 						enqueue.assign({
 							estimateRead: ({ spawn }) =>
 								pricing === null
@@ -2231,15 +2275,17 @@ export const checkoutMachine = setup({
 					})
 				},
 				// an answer for anything but the amount waiting to be priced is stale, and dropped.
+				// the read is stopped once answered, which aborts it where the answer was the timeout's.
 				COIN_PRICED: {
 					guard: 'pricesWhatIsTyped',
-					actions: assign({
-						coinPrice: ({ event }) => ({
-							coin: event.coin,
-							quantity: event.quantity,
-							minor: event.estimateMinor
-						}),
-						pricing: null
+					actions: enqueueActions(({ context, event, enqueue }) => {
+						if (context.estimateRead !== null) enqueue.stopChild(context.estimateRead);
+						enqueue.cancel(ESTIMATE_TIMEOUT);
+						enqueue.assign({
+							coinPrice: { coin: event.coin, quantity: event.quantity, minor: event.estimateMinor },
+							pricing: null,
+							estimateRead: null
+						});
 					})
 				},
 				SET_NOTE: {
@@ -2402,24 +2448,8 @@ export const checkoutMachine = setup({
 			// `beginAttempt` clears `failure`, and this is the step the widget is drawn on.
 			always: { guard: 'challengeIsHeld', target: 'failed', actions: 'deliverChallenge' },
 			on: {
-				SET_CONTACT: {
-					actions: assign({
-						payerDraft: ({ context, event }) => ({
-							...context.payerDraft,
-							...(event.email !== undefined ? { email: event.email } : {}),
-							...(event.firstName !== undefined ? { firstName: event.firstName } : {}),
-							...(event.lastName !== undefined ? { lastName: event.lastName } : {})
-						})
-					})
-				},
-				SET_CONSENT: {
-					actions: assign({
-						payerDraft: ({ context, event }) => ({
-							...context.payerDraft,
-							consentedToContact: event.consented
-						})
-					})
-				},
+				SET_CONTACT: { actions: 'setContact' },
+				SET_CONSENT: { actions: 'setConsent' },
 				SET_PROGRAM: { actions: 'pickProgram' },
 				// a press with a field still missing stays on this step, the way the amount step's
 				// own does: the guard is what stops a donor reaching the screen that spends the money
@@ -2591,6 +2621,8 @@ export const checkoutMachine = setup({
 			always: [
 				{ guard: 'challengeIsHeld', target: 'failed', actions: 'deliverChallenge' },
 				{ guard: 'moneyHasNoBox', target: 'failed', actions: 'deliverBoxDown' },
+				// a stock press is held on the details step, whose boxes stay open beside the puzzle.
+				{ guard: and([not('payerIsComplete'), 'givesStock']), target: 'details' },
 				{ guard: not('payerIsComplete'), target: 'give' },
 				{ guard: 'tokenIsFresh', target: 'quoting', actions: 'commitPayer' }
 			],
@@ -2607,6 +2639,10 @@ export const checkoutMachine = setup({
 				}
 			},
 			on: {
+				// a stock gift's held press is sent with what its boxes hold when the token lands
+				// (`commitPayer` above), so a box typed in meanwhile is kept.
+				SET_CONTACT: { actions: 'setContact' },
+				SET_CONSENT: { actions: 'setConsent' },
 				// a stock gift's press is held on the details step, whose mark back to the first step
 				// stays a way back: nothing has been sent, so leaving abandons nothing.
 				GO_TO_STEP: {
@@ -2831,6 +2867,11 @@ export const checkoutMachine = setup({
 									// that is the rail's, so it is marked the way `rememberDecline` marks one.
 									case 'daf_grant_declined':
 										return { ...failure, refusedByRail: true };
+									case 'ticker_not_listed':
+									case 'pledge_detail_invalid':
+										return context.payer?.method === 'stock'
+											? { ...failure, refusedStock: true }
+											: failure;
 									default:
 										return failure;
 								}
@@ -3593,6 +3634,7 @@ export const checkoutMachine = setup({
 					{ guard: 'grantIsHeld', target: 'resending' },
 					{ guard: not('amountIsDecided'), target: 'amount' },
 					{ guard: not('payerFieldsAreGiven'), target: 'details' },
+					{ guard: 'stockIsRefused', target: 'amount' },
 					// a stock gift is saved by the details step's Continue and has no review step, so its
 					// Try again is that save again, on the rail it held: straight to `holding`, where
 					// landing on the details step would drop the rail (`beginAttempt`) and ask for the

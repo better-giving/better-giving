@@ -178,6 +178,7 @@ describe('the entry for a gift in kind', () => {
 			'Couldn’t check the price. Retype the amount or pick the coin again.'
 		);
 		expect(unitEntry(CONFIG, BTC_UNIT, { status: 'unpriced' })).toEqual({
+			name: 'Amount',
 			unitLabel: 'BTC',
 			estimate: null,
 			note: 'Your gift is valued in US dollars when it arrives.',
@@ -186,6 +187,7 @@ describe('the entry for a gift in kind', () => {
 		expect(unitEntry(CONFIG, BTC_UNIT, { status: 'pricing' })?.unpriced).toBeNull();
 		expect(unitEntry(CONFIG, BTC_UNIT, null)?.unpriced).toBeNull();
 		expect(unitEntry(CONFIG, BTC_UNIT, { status: 'priced', minor: 48_210 })).toEqual({
+			name: 'Amount',
 			unitLabel: 'BTC',
 			estimate: 'About $482.10',
 			note: 'Your gift is valued in US dollars when it arrives.',

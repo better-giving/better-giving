@@ -2925,6 +2925,31 @@ describe('what the donor gives, on the first step', () => {
 		expect(root.querySelector('#quantity-entry')).toBeNull();
 	});
 
+	// the pill is in the server render, so its logo can fail before React hears an `error` event.
+	it('drops a coin logo that failed before the card hydrated', async () => {
+		deployment();
+		const element = <DonateCard config={WITH_CRYPTO} seams={seamsOver(paymentProvider())} />;
+		const host = document.createElement('div');
+		host.innerHTML = renderToString(element);
+		document.body.appendChild(host);
+		// the image broke before the script ran: no `error` event reaches React, and `decode()` rejects.
+		vi.spyOn(HTMLImageElement.prototype, 'decode').mockImplementation(function (
+			this: HTMLImageElement
+		) {
+			return this.getAttribute('src')?.endsWith('btc.svg') === true
+				? Promise.reject(new DOMException('broken', 'EncodingError'))
+				: Promise.resolve();
+		});
+		const mounted = await act(async () => hydrateRoot(host, element));
+		onTestFinished(() => {
+			act(() => mounted.unmount());
+			host.remove();
+		});
+		await act(async () => {});
+
+		expect(discs(host)).toEqual([FLAG_SRC.us]);
+	});
+
 	it('takes a coin amount in one box named Amount, with the estimate and the note under it', async () => {
 		deployment();
 		const { root } = await card(WITH_CRYPTO);
@@ -2951,6 +2976,7 @@ describe('what the donor gives, on the first step', () => {
 
 		expect(asked.tickers).toHaveLength(1);
 		expect(root.querySelector('[part~="amount-option"]')).toBeNull();
+		expect(one(root, 'label[for="quantity-entry"]').textContent).toBe('Number of shares');
 		expect(
 			quantity(root).closest('[part~="amount-input"]')?.querySelector('.adorn-trail')?.textContent
 		).toBe(SHARES);
@@ -3183,6 +3209,26 @@ describe('what the donor gives, on the first step', () => {
 
 			expect(asked.saves).toEqual([expect.objectContaining({ turnstileToken: 'tok_solved' })]);
 			expect(one(screen(root), 'h2').textContent).toBe('Your stock gift is pending');
+		});
+
+		// the press is held, not refused: the caret stays put, nothing says the card is working while
+		// the puzzle waits on the donor, and a box typed in meanwhile is what the save sends.
+		it('keeps the caret, the boxes and the silence while the donor solves the puzzle', async () => {
+			const { root, asked } = await giveStock(AAPL, WITH_EVERYTHING, {}, false);
+			type(quantity(root), '50');
+			await throughDetails(root);
+			act(() => {
+				widget.asks();
+			});
+
+			expect(document.activeElement).not.toBe(input(root, '#email'));
+			expect(said(root)).not.toBe(copy.WORKING);
+
+			type(input(root, '#email'), 'ada@example.org');
+			expect(input(root, '#email').value).toBe('ada@example.org');
+			token('tok_solved');
+			await answered();
+			expect(asked.saves).toEqual([expect.objectContaining({ email: 'ada@example.org' })]);
 		});
 
 		it('presses a refused save again on Try again, with its puzzle in the details step', async () => {
@@ -4122,6 +4168,8 @@ describe('a crypto gift', () => {
 			coinRefusalSentence({ code: 'coin_not_accepted', coin: 'usdttrc20' }, CRYPTO)
 		);
 		expect(document.activeElement).toBe(pill(root));
+		// the caret lands on the pill, so the pill is what says why.
+		expect(pill(root).getAttribute('aria-describedby')).toBe('amount-problem');
 		expect(
 			unitPanel(root)
 				.querySelector('[role="option"][data-value="coin:usdttrc20"]')

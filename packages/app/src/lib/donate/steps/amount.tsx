@@ -149,6 +149,9 @@ export function AmountStep({
 	const { pill, entry: unitEntry, cadenceNote, next } = api.unit;
 	const quantityRefused =
 		unitEntry !== null && (missing.includes('quantity') || missingAmount || refusedAmount);
+	// a coin the account no longer takes is fixed on the pill, where its arrival puts the caret.
+	const coinRefused =
+		api.state.step === 'amount' && api.state.coinRefusal?.code === 'coin_not_accepted';
 	/** the Continue toward the payment step, or `null` on a gift in kind, which chooses no method. */
 	const toPayment = next.case === 'in-kind' ? null : next;
 
@@ -316,7 +319,13 @@ export function AmountStep({
 					{pill.state === 'text' ? (
 						<span className="unit-text">{pill.code}</span>
 					) : (
-						<UnitPillButton pill={pill} open={unitOpen} onPress={onPill} buttonRef={refs.pill} />
+						<UnitPillButton
+							pill={pill}
+							open={unitOpen}
+							onPress={onPill}
+							buttonRef={refs.pill}
+							describedBy={coinRefused && amountWords !== '' ? 'amount-problem' : undefined}
+						/>
 					)}
 				</div>
 				{unitEntry !== null ? (
@@ -336,14 +345,14 @@ export function AmountStep({
 									aria-invalid={quantityRefused ? true : undefined}
 									aria-describedby={amountDescribed}
 								/>
-								{/* the unit is read off the pill, so its mark at the end is hidden as the code is. */}
+								{/* hidden as the code is; the box's name (`UnitEntry.name`) says what it counts. */}
 								<span className="adorn-trail" aria-hidden="true">
 									{unitEntry.unitLabel}
 								</span>
 							</div>
 						</div>
 						<label part={part('label')} className="vh" htmlFor="quantity-entry">
-							{copy.AMOUNT}
+							{unitEntry.name}
 						</label>
 						{unitEntry.estimate === null && unitEntry.note === null ? null : (
 							<div className="unit-estimate">
@@ -693,12 +702,14 @@ function UnitPillButton({
 	pill,
 	open,
 	onPress,
-	buttonRef
+	buttonRef,
+	describedBy
 }: {
 	readonly pill: UnitPill;
 	readonly open: boolean;
 	readonly onPress: () => void;
 	readonly buttonRef: RefObject<HTMLButtonElement | null>;
+	readonly describedBy: string | undefined;
 }) {
 	return (
 		<button
@@ -708,6 +719,7 @@ function UnitPillButton({
 			aria-haspopup="dialog"
 			aria-expanded={open}
 			aria-label={pill.name}
+			aria-describedby={describedBy}
 			onClick={onPress}
 		>
 			<span className="unit-code">{pill.code}</span>
@@ -725,15 +737,28 @@ function UnitPillButton({
 /**
  * a 14px disc holding one mark. a coin's logo is the processor's, so it is fetched lazily and with no
  * referrer, as the panel fetches it. xs draws no letter (avatar-css.usage.md), so an image that fails
- * takes its disc with it.
+ * takes its disc with it — including one that failed in the server render, before hydration put
+ * the `error` listener on it. `decode()` rejects for a broken image whenever it broke, where
+ * `naturalWidth` is no test: an SVG with no intrinsic size reads 0 once loaded.
  */
 function UnitDisc({ mark }: { readonly mark: UnitMark }) {
 	const [failed, setFailed] = useState(false);
+	const image = useRef<HTMLImageElement | null>(null);
+	useEffect(() => {
+		let mounted = true;
+		image.current?.decode().catch(() => {
+			if (mounted) setFailed(true);
+		});
+		return () => {
+			mounted = false;
+		};
+	}, []);
 	if (failed) return null;
 	const remote = mark.mark === 'logo';
 	return (
 		<span className="ds-avatar ds-avatar-xs">
 			<img
+				ref={image}
 				className="ds-avatar-img"
 				alt=""
 				decoding="async"

@@ -233,12 +233,18 @@ export type FormValue = {
  * decimal text as one canonical positive figure, or `null` where it is not one above zero.
  *
  * digits with an optional `.` fraction, surrounding space ignored, leading zeros of the whole part and
- * trailing zeros of the fraction dropped: ` .0050 ` is `0.005`. no grouping, sign or exponent, and no
- * decimal comma: a comma is a group separator in the deployment's default locale, so `1,000` read as
- * a decimal would be a gift a thousand times smaller than the one typed.
+ * trailing zeros of the fraction dropped: ` .0050 ` is `0.005`. no grouping, sign or exponent.
+ *
+ * a lone comma is a decimal point too, since a phone keypad in a decimal-comma locale offers no `.`
+ * (`inputmode="decimal"`): `0,01` is `0.01`. except where it could be a thousands group — three digits
+ * behind it after a whole part above zero — because `1,000` read as a decimal is a gift a thousand
+ * times smaller than the one typed, so that one is refused.
  */
 export function canonicalDecimal(text: string): string | null {
-	const match = /^(\d*)(?:\.(\d*))?$/.exec(text.trim());
+	const trimmed = text.trim();
+	const comma = /^(\d*),(\d*)$/.exec(trimmed);
+	if (comma !== null && /^\d{3}$/.test(comma[2] ?? '') && /[1-9]/.test(comma[1] ?? '')) return null;
+	const match = /^(\d*)(?:[.,](\d*))?$/.exec(trimmed);
 	if (match === null) return null;
 	const whole = (match[1] ?? '').replace(/^0+(?=\d)/, '');
 	const fraction = (match[2] ?? '').replace(/0+$/, '');

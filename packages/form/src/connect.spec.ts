@@ -833,6 +833,7 @@ describe('what the donor gives, projected', () => {
 		actor.send({ type: 'SET_UNIT', unit: { kind: 'coin', coin: 'btc' } });
 		(get().quantityField as { onChange: (text: string) => void }).onChange('0.005');
 		expect(get().unit.entry).toEqual({
+			name: 'Amount',
 			unitLabel: 'BTC',
 			estimate: null,
 			note: VALUED_IN_USD,
@@ -841,6 +842,7 @@ describe('what the donor gives, projected', () => {
 
 		await priced();
 		expect(get().unit.entry).toEqual({
+			name: 'Amount',
 			unitLabel: 'BTC',
 			estimate: 'About $482.10',
 			note: 'Your gift is valued in US dollars when it arrives.',
@@ -849,6 +851,7 @@ describe('what the donor gives, projected', () => {
 
 		actor.send({ type: 'SET_UNIT', unit: { kind: 'stock', ticker: 'AAPL' } });
 		expect(get().unit.entry).toEqual({
+			name: 'Number of shares',
 			unitLabel: 'shares',
 			estimate: null,
 			note: null,

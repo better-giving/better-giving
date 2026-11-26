@@ -881,6 +881,8 @@ function CheckoutCard({
 		api.continueButton.onClick();
 		const state = now().state;
 		if (before !== 'details' || state.step !== 'details') return;
+		// a stock gift's press held for its token stays on this step busy, and is no refusal.
+		if (now().continueButton['aria-busy']) return;
 		setAttempted(true);
 		const target = firstDetailsProblem(state.missing);
 		// which channel this refusal has, asked before the caret is moved rather than after. where the
@@ -1190,7 +1192,7 @@ function CheckoutCard({
 							? arrived.words
 							: copied !== ''
 								? copied
-								: busy && live !== null
+								: busy && !asking && live !== null
 									? workingWords(api.state)
 									: news !== null
 										? news.words

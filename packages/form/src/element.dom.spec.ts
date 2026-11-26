@@ -7119,6 +7119,7 @@ describe('what the donor gives, on the first step', () => {
 		await priced();
 
 		expect(tilesShown(card)).toBe(false);
+		expect(card.find(`label[for="quantity-entry"]`).textContent).toBe('Number of shares');
 		expect(trail(card)).toBe('shares');
 		expect(shows(card, '.unit-estimate')).toBe('');
 		expect(pill(card).getAttribute('aria-label')).toBe('Stock: AAPL');
@@ -7404,6 +7405,39 @@ describe('what the donor gives, on the first step', () => {
 			await settle();
 
 			expect(card.find('.card-body').getAttribute('aria-busy')).toBe('true');
+		});
+
+		// the press is held, not refused: the caret stays put, nothing says the card is working while
+		// the puzzle waits on the donor, and a box typed in meanwhile is what the save sends.
+		it('keeps the caret, the boxes and the silence while the donor solves the puzzle', async () => {
+			const saves: StockPledgeRequest[] = [];
+			const card = await giveStock({
+				mints: false,
+				ports: {
+					...UNIT_PORTS,
+					pledges: {
+						id: () => 'pledge_1',
+						save: async (request) => {
+							saves.push(request as StockPledgeRequest);
+							return AAPL_PLEDGE('pledge_1');
+						},
+						told: async () => {}
+					}
+				}
+			});
+			type(quantity(card), '50');
+			await throughDetails(card);
+			card.interactive(true);
+			await settle();
+
+			expect(card.shadow.activeElement).not.toBe(card.find('#email'));
+			expect(card.text('[role="status"]')).not.toBe('Working on your gift.');
+
+			type(card.find('#email'), 'ada@example.org');
+			expect((card.find('#email') as HTMLInputElement).value).toBe('ada@example.org');
+			card.token('tk_solved');
+			await settle();
+			expect(saves).toMatchObject([{ email: 'ada@example.org' }]);
 		});
 
 		it('presses a failed save again on Try again, with its puzzle in the details step', async () => {
@@ -8583,6 +8617,13 @@ describe('a crypto gift', () => {
 		expect(card.find('.step').hidden).toBe(false);
 		expect(card.text('#amount-problem')).toBe('Tether USD (Tron) is no longer accepted');
 		expect(card.shadow.activeElement).toBe(pill(card));
+		// the caret lands on the pill, so the pill is what says why.
+		expect(pill(card).getAttribute('aria-describedby')).toBe('amount-problem');
+
+		// and the sentence stands once the amount is retyped, since no amount of the coin is taken.
+		type(quantity(card), '60');
+		await settle();
+		expect(card.text('#amount-problem')).toBe('Tether USD (Tron) is no longer accepted');
 
 		pill(card).click();
 		await settle();

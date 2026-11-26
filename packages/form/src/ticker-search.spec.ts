@@ -53,7 +53,7 @@ describe('the ticker search', () => {
 		const { search, asked, fire } = controller();
 		search.search('a');
 		search.search('aa');
-		expect(search.state).toEqual({ status: 'loading', query: 'aa' });
+		expect(search.state).toEqual({ status: 'loading', query: 'aa', held: [] });
 		expect(stocksGroup(search.state)).toBeNull();
 
 		fire();
@@ -62,6 +62,39 @@ describe('the ticker search', () => {
 		await landed();
 		expect(search.state).toEqual({ status: 'results', query: 'aa', matches: [AAPL, AAL] });
 		expect(stocksGroup(search.state)).toEqual({ rows: [AAPL, AAL] });
+	});
+
+	// a row list that empties on every keystroke and comes back on the answer jumps the panel.
+	it('keeps the last answer’s rows drawn while a newer query is asked', async () => {
+		const { search, asked, fire } = controller();
+		search.search('aa');
+		fire();
+		asked[0]?.answer([AAPL, AAL]);
+		await landed();
+
+		search.search('aap');
+		expect(stocksGroup(search.state)).toEqual({ rows: [AAPL, AAL] });
+		fire();
+		asked[1]?.answer([AAPL]);
+		await landed();
+		expect(stocksGroup(search.state)).toEqual({ rows: [AAPL] });
+
+		search.search('');
+		search.search('aa');
+		expect(stocksGroup(search.state)).toBeNull();
+	});
+
+	it('shows nothing for a query cleared while it was asked, even once it answers', async () => {
+		const { search, asked, seen, fire } = controller();
+		search.search('aa');
+		fire();
+		search.search('');
+		expect(asked[0]?.signal.aborted).toBe(true);
+
+		asked[0]?.answer([AAPL]);
+		await landed();
+		expect(search.state).toEqual({ status: 'idle' });
+		expect(seen.some((state) => state.status === 'results')).toBe(false);
 	});
 
 	it('keeps the newest query’s answer, and never shows a stale or aborted one', async () => {

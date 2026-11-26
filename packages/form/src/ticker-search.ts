@@ -3,7 +3,7 @@
 // pure, with the request and the timers handed in, so the element's panel and the deployment's own
 // donation page search the same way and a spec can fire a debounce by hand. a query is asked once it
 // has stood for `TICKER_DEBOUNCE_MS`; a newer query aborts the request before it, and an answer for
-// any query but the newest is never shown.
+// any query but the newest is never shown — though its rows stay drawn until the newest answers.
 //
 // `../package.json` exports this module as `./ticker-search` for the deployment's own donation page.
 
@@ -15,11 +15,16 @@ export const TICKER_DEBOUNCE_MS = 200;
 
 /**
  * where the search for the text typed now stands. `idle` is an empty search, which draws no Stocks
- * group; `loading` a query with no answer yet, which draws nothing in it.
+ * group; `loading` a query with no answer yet, which draws the rows of the answer before it, `held`,
+ * and nothing where that answer had none.
  */
 export type TickerSearch =
 	| { readonly status: 'idle' }
-	| { readonly status: 'loading'; readonly query: string }
+	| {
+			readonly status: 'loading';
+			readonly query: string;
+			readonly held: readonly TickerMatch[];
+	  }
 	| { readonly status: 'results'; readonly query: string; readonly matches: readonly TickerMatch[] }
 	| { readonly status: 'none'; readonly query: string }
 	| { readonly status: 'failed'; readonly query: string };
@@ -79,7 +84,9 @@ export function createTickerSearch(ports: TickerSearchPorts): TickerSearchContro
 			stop();
 			const query = text.trim();
 			if (query === '') return show({ status: 'idle' });
-			show({ status: 'loading', query });
+			const held =
+				state.status === 'results' ? state.matches : state.status === 'loading' ? state.held : [];
+			show({ status: 'loading', query, held });
 			timer = ports.setTimeout(() => ask(query), TICKER_DEBOUNCE_MS);
 		},
 		get state() {
@@ -93,16 +100,17 @@ export function createTickerSearch(ports: TickerSearchPorts): TickerSearchContro
 }
 
 /**
- * what the Stocks group draws for a search: nothing while idle or loading, the rows of its answer, or
- * its in-group sentence.
+ * what the Stocks group draws for a search: nothing while idle, the rows of its answer or of the one
+ * held while loading, or its in-group sentence.
  */
 export function stocksGroup(
 	search: TickerSearch
 ): null | { readonly rows: readonly TickerMatch[] } | { readonly sentence: string } {
 	switch (search.status) {
 		case 'idle':
-		case 'loading':
 			return null;
+		case 'loading':
+			return search.held.length === 0 ? null : { rows: search.held };
 		case 'results':
 			return { rows: search.matches };
 		case 'none':

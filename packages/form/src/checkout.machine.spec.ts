@@ -4237,6 +4237,73 @@ describe('what the donor gives', () => {
 		expect(coinEstimate(actor.getSnapshot().context)).toEqual({ status: 'priced', minor: 48_210 });
 	});
 
+	it('keeps saying a refused coin is refused once its amount is retyped', async () => {
+		const { actor, clock } = await coinDetails({
+			quote: () => Promise.reject({ code: 'coin_not_accepted', message: 'refused' })
+		});
+		actor.send({ type: 'CONTINUE' });
+		actor.send({ type: 'SUBMIT' });
+		await settle();
+		expect(toState(actor.getSnapshot())).toMatchObject({
+			step: 'amount',
+			coinRefusal: { code: 'coin_not_accepted', coin: 'btc' }
+		});
+
+		actor.send({ type: 'SET_QUANTITY', quantity: '0.006' });
+		clock.advance(ESTIMATE_DEBOUNCE_MS);
+		await settle();
+		actor.send({ type: 'CONTINUE' });
+
+		expect(toState(actor.getSnapshot())).toMatchObject({
+			step: 'amount',
+			coinRefusal: { code: 'coin_not_accepted', coin: 'btc' }
+		});
+	});
+
+	it('states the amount unpriced once a read has not answered in time, and aborts it', async () => {
+		let signal: AbortSignal | undefined;
+		const { actor, clock } = onCoin({
+			estimate: (_input, aborted) => {
+				signal = aborted;
+				return new Promise(() => {});
+			}
+		});
+		actor.send({ type: 'SET_QUANTITY', quantity: '0.005' });
+		clock.advance(ESTIMATE_DEBOUNCE_MS);
+		clock.advance(PORT_TIMEOUT_MS - 1);
+		expect(coinEstimate(actor.getSnapshot().context)).toEqual({ status: 'pricing' });
+
+		clock.advance(1);
+		await settle();
+		expect(coinEstimate(actor.getSnapshot().context)).toEqual({ status: 'unpriced' });
+		expect(signal?.aborted).toBe(true);
+	});
+
+	it('drops a failed read for an amount or a coin no longer in the box', async () => {
+		const fails: Record<string, () => void> = {};
+		const { actor, clock } = onCoin({
+			estimate: ({ coin, amount }) =>
+				new Promise((resolve, reject) => {
+					fails[`${coin}:${amount}`] = () => reject(new TypeError('Failed to fetch'));
+					if (coin === 'eth') resolve(1_500);
+				})
+		});
+		actor.send({ type: 'SET_QUANTITY', quantity: '1' });
+		clock.advance(ESTIMATE_DEBOUNCE_MS);
+		actor.send({ type: 'SET_QUANTITY', quantity: '2' });
+		clock.advance(ESTIMATE_DEBOUNCE_MS);
+		fails['btc:1']?.();
+		await settle();
+		expect(coinEstimate(actor.getSnapshot().context)).toEqual({ status: 'pricing' });
+
+		actor.send({ type: 'SET_UNIT', unit: { kind: 'coin', coin: 'eth' } });
+		actor.send({ type: 'SET_QUANTITY', quantity: '2' });
+		clock.advance(ESTIMATE_DEBOUNCE_MS);
+		fails['btc:2']?.();
+		await settle();
+		expect(coinEstimate(actor.getSnapshot().context)).toEqual({ status: 'priced', minor: 1_500 });
+	});
+
 	it('changes nothing when the donor picks the currency or the stock already picked', async () => {
 		/** what a pick of the same unit must leave as it was, and the screen drawn off it. */
 		const kept = (snapshot: ReturnType<typeof actor.getSnapshot>) => ({
@@ -4364,7 +4431,7 @@ describe('what the donor gives', () => {
 		const { actor, calls, clock } = harness({ config: EVERYTHING });
 		actor.send({ type: 'SET_UNIT', unit: { kind: 'stock', ticker: 'AAPL' } });
 
-		for (const refused of ['', '0', '-5', '1e3', '1.1234567', '10000001', '12,5']) {
+		for (const refused of ['', '0', '-5', '1e3', '1.1234567', '10000001', '1,000']) {
 			actor.send({ type: 'SET_QUANTITY', quantity: refused });
 			actor.send({ type: 'CONTINUE' });
 			expect(actor.getSnapshot().value).toBe('amount');
@@ -4609,5 +4676,65 @@ describe('what the donor gives', () => {
 
 		expect(calls.quote).toEqual([]);
 		expect(calls.pledge).toHaveLength(2);
+	});
+
+	// the same ticker or shares sent again is refused again, so Try again goes where they are picked.
+	it.each([
+		{ code: 'ticker_not_listed', field: 'ticker' },
+		{ code: 'pledge_detail_invalid', field: 'shares' }
+	])('takes Try again to the first step after a $code refusal', async (refusal) => {
+		const { actor, calls } = stockDetails({
+			pledge: () => Promise.reject({ ...refusal, message: 'refused' })
+		});
+		actor.send({ type: 'CONTINUE' });
+		await settle();
+		expect(actor.getSnapshot().value).toBe('failed');
+
+		actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'tk_again' });
+		actor.send({ type: 'RETRY' });
+		await settle();
+
+		expect(actor.getSnapshot().value).toBe('amount');
+		expect(calls.pledge).toHaveLength(1);
+	});
+
+	/** the stock press held on an interactive challenge, its token not yet minted. */
+	function heldOnPuzzle() {
+		const h = harness({ config: EVERYTHING });
+		h.actor.send({ type: 'SET_UNIT', unit: { kind: 'stock', ticker: 'AAPL' } });
+		h.actor.send({ type: 'SET_QUANTITY', quantity: '50' });
+		h.actor.send({ type: 'CONTINUE' });
+		h.actor.send({
+			type: 'SET_CONTACT',
+			email: 'donor@example.org',
+			firstName: 'Ada',
+			lastName: 'Lovelace'
+		});
+		h.actor.send({ type: 'CONTINUE' });
+		h.actor.send({ type: 'SET_CHALLENGE_INTERACTIVE', interactive: true });
+		return h;
+	}
+
+	it('saves what the donor typed while the puzzle showed', async () => {
+		const { actor, calls } = heldOnPuzzle();
+		expect(actor.getSnapshot().value).toBe('holding');
+
+		actor.send({ type: 'SET_CONTACT', email: 'ada@example.org', firstName: 'Augusta' });
+		actor.send({ type: 'SET_CONSENT', consented: true });
+		actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'tk_solved' });
+		await settle();
+
+		expect(calls.pledge).toMatchObject([
+			{ email: 'ada@example.org', firstName: 'Augusta', consentedToContact: true }
+		]);
+	});
+
+	it('takes the held press back to the details step when the donor empties a field', () => {
+		const { actor } = heldOnPuzzle();
+		actor.send({ type: 'SET_CONTACT', email: '' });
+
+		expect(actor.getSnapshot().value).toBe('details');
+		expect(toState(actor.getSnapshot())).toMatchObject({ step: 'details', missing: ['email'] });
+		expect(actor.getSnapshot().context.payerDraft.method).not.toBe('stock');
 	});
 });

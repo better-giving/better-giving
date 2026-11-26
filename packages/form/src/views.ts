@@ -1739,8 +1739,8 @@ export function createCard(
 
 	// the entry for a gift in kind (`unitEntry` in ./unit.ts): one box for a coin amount or a share
 	// count, the unit at its end and the tiles off the step while it stands, drawn as the free entry
-	// on a bare tray is. named Amount as that entry is; the unit is read off the pill, so its mark at
-	// the end is hidden as the currency's code is.
+	// on a bare tray is. its mark at the end is hidden as the currency's code is, so the box's name
+	// (`UnitEntry.name`) says what it counts.
 	const quantityInput = make(doc, 'input', {
 		id: 'quantity-entry',
 		type: 'text',
@@ -1774,6 +1774,7 @@ export function createCard(
 		const { entry } = api.unit;
 		setHidden(amountTiles, entry !== null);
 		setHidden(quantityTray, entry === null);
+		setText(quantityLabel, entry?.name ?? 'Amount');
 		setText(quantityTrail, entry?.unitLabel ?? '');
 		setValue(quantityInput, api.quantityField.value);
 		const estimate = entry?.estimate ?? null;
@@ -2700,8 +2701,10 @@ export function createCard(
 		now().continueButton.onClick();
 		const after = now().state;
 		// the same rule the amount step's own Continue keeps: the flow refuses a press it has no
-		// field for, and refusing silently is a button that does nothing.
+		// field for, and refusing silently is a button that does nothing. a stock gift's press held
+		// for its token stays on this step busy, and is no refusal.
 		if (pressedOn !== 'details' || after.step !== 'details') return;
+		if (now().continueButton['aria-busy']) return;
 		attempted = true;
 		const target = firstDetailsProblem(after.missing);
 		// which channel this refusal has, asked before the caret is moved rather than after. where
@@ -3491,6 +3494,12 @@ export function createCard(
 			inKind && amountWords !== '' ? 'amount-problem' : null
 		);
 		toggleAttribute(quantityInput, 'aria-invalid', inKind && amountRefused ? 'true' : null);
+		// a coin the account no longer takes is fixed on the pill, where its arrival puts the caret.
+		toggleAttribute(
+			unitPillButton,
+			'aria-describedby',
+			coinRefusal?.code === 'coin_not_accepted' && amountWords !== '' ? 'amount-problem' : null
+		);
 		toggleAttribute(
 			quantityTray.firstElementChild as HTMLElement,
 			'part',
@@ -3688,8 +3697,15 @@ export function createCard(
 								: flipped
 									? { words: totalWords, restating: 'total' }
 									: null;
+		// nothing is worked on while a held press waits on the donor solving the puzzle.
 		const spoken =
-			standing !== '' ? standing : news !== null ? news.words : busy ? workingWords(api.state) : '';
+			standing !== ''
+				? standing
+				: news !== null
+					? news.words
+					: busy && !solving
+						? workingWords(api.state)
+						: '';
 		const heading = headings[step].textContent ?? '';
 		const restated = { total: totalWords, fields: missingFields, ask: askRefusal };
 		// a press asking for a repeat re-says only what it chose. a sentence kept from before it is
