@@ -110,6 +110,13 @@ export const POSTING_ACCOUNTS = {
 		name: 'Non-Deductible Donations',
 		type: 'revenue'
 	},
+	/** a hosted site's income: what its fiscal sponsor pays out, less what is returned. */
+	grantIncome: {
+		id: '01a216b0-2321-771d-b8f6-924ee2497128',
+		code: '4130',
+		name: 'Grant income',
+		type: 'revenue'
+	},
 	/** what the processor keeps, expensed gross so the gift is recorded at face value. */
 	processorFees: {
 		id: '019fb0b4-ec6e-7ff7-960c-a44693a8124e',
@@ -131,7 +138,7 @@ export const POSTING_ACCOUNTS = {
  * these are here to be read (subtree reports, chart display), never to be posted to.
  */
 export const ROLLUPS = {
-	/** parent of `donationsDeductible` and `donationsNonDeductible`. */
+	/** parent of `donationsDeductible`, `donationsNonDeductible` and `grantIncome`. */
 	donations: {
 		id: '019fb0b4-ec6e-7ff7-960c-a443c29210fa',
 		code: '4100',

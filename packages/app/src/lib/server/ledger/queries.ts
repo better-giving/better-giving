@@ -378,7 +378,8 @@ export type RaisedThroughForm = {
 
 /**
  * the entry groups whose `source_id` is a `payment.id` — every grain `entry_group_source_idx` in
- * ../db/schema.ts lists but `'donation'`, which no writer posts. a hand correction is
+ * ../db/schema.ts lists but `'donation'`, which no writer posts, and `'payout'`, keyed on the
+ * sponsor's payout or return id. a hand correction is
  * `'adjustment'` too, keyed on an id minted for it, so it matches no payment and names no form.
  */
 const PAYMENT_KEYED: readonly EntrySourceType[] = ['payment', 'refund', 'fee', 'adjustment'];

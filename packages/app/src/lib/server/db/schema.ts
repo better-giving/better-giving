@@ -623,8 +623,15 @@ export const account = sqliteTable(
  * `adjustment` is a correction. one a human posts is caused by no record and links to nothing, so
  * its `source_id` is minted for it. the one caused by a record is a dispute's settle-up
  * at its close, keyed on its refund-direction row, or on the disputed payment where no opening was
- * recorded. the grain of all five is on `entry_group_source_idx` below, which is the constraint it
- * is part of.
+ * recorded.
+ *
+ * `payout` is a hosted site's income: its fiscal sponsor is its only payment provider, and the site
+ * books grant income when a payout settles, and takes it back when the payout is returned, in whole
+ * or in parts. its gifts post nothing. it is keyed on the sponsor's payout or return id, not a
+ * `payment.id`.
+ *
+ * the grain of every member is on `entry_group_source_idx` below, which is the constraint it is
+ * part of.
  *
  * a dispute adds no member. what it withdraws is `'refund'` on its refund-direction row, and a won
  * dispute's money back is `'payment'` on that same row — the grain a refund that did not stand
@@ -635,7 +642,14 @@ export const account = sqliteTable(
  * module this file imports needs it. /admin/books lists journal entries and draws a word for each
  * source from ../../ledger/sources.ts, which takes only this type.
  */
-export const ENTRY_SOURCE_TYPES = ['payment', 'donation', 'refund', 'fee', 'adjustment'] as const;
+export const ENTRY_SOURCE_TYPES = [
+	'payment',
+	'donation',
+	'refund',
+	'fee',
+	'adjustment',
+	'payout'
+] as const;
 export type EntrySourceType = (typeof ENTRY_SOURCE_TYPES)[number];
 
 /**
@@ -729,6 +743,10 @@ export const entryGroup = sqliteTable(
 		 *                   close collides — and, for a win whose opening was never recorded, the
 		 *                   disputed payment's `payment.id`, one per charge, which holds while a
 		 *                   processor opens one dispute per charge.
+		 *   'payout'     -> `settled:<payout_id>` when a fiscal sponsor's payout settles, and
+		 *                   `returned:<return_id>` for each return against one, the ids the sponsor
+		 *                   issues. one type, two prefixes: a payout books once and each part of it
+		 *                   returned books once, and a payout id and a return id cannot collide.
 		 *
 		 * refunds are why this is written down. keying a refund on `donation.id` looks
 		 * natural — the refund is "about" that gift — and it makes the second refund on one
@@ -1610,8 +1628,19 @@ export type PledgeMethod = (typeof PLEDGE_METHODS)[number];
  * `nowpayments` is the processor that carries a `crypto` gift; NOWPayments' `payment_id` is the
  * row's `provider_txn_id`, so a delivery naming it finds the row through
  * `payment_provider_txn_idx` like every other processor's.
+ *
+ * `sponsor` is a hosted site's fiscal sponsor, the only provider such a site has. it is no
+ * exception to `payment_processor_needs_txn_id_check`: the sponsor's own id for the gift is the
+ * row's `provider_txn_id`.
  */
-export const PAYMENT_PROVIDERS = ['stripe', 'paypal', 'chariot', 'nowpayments', 'manual'] as const;
+export const PAYMENT_PROVIDERS = [
+	'stripe',
+	'paypal',
+	'chariot',
+	'nowpayments',
+	'sponsor',
+	'manual'
+] as const;
 export type PaymentProviderName = (typeof PAYMENT_PROVIDERS)[number];
 
 /**
@@ -1623,12 +1652,13 @@ export type PaymentProviderName = (typeof PAYMENT_PROVIDERS)[number];
  *
  * a processor that does run commitments is added here and to `PAYMENT_PROVIDERS` in the same
  * change, and that migration rebuilds both tables. `satisfies` holds this list to names the
- * other one has.
+ * other one has. `sponsor` is one: a hosted site takes its repeating gifts through its sponsor too.
  */
 export const RECURRING_PLAN_PROVIDERS = [
 	'stripe',
 	'paypal',
 	'chariot',
+	'sponsor',
 	'manual'
 ] as const satisfies readonly PaymentProviderName[];
 

@@ -309,6 +309,13 @@
       "when": 1795225039320,
       "tag": "0043_stock_tickers",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "6",
+      "when": 1795677054749,
+      "tag": "0044_sponsor_payouts",
+      "breakpoints": true
     }
   ]
 }

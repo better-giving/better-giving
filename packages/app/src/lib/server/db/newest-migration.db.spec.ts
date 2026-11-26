@@ -124,7 +124,7 @@ const DROPPED: readonly string[] = ['zapier_key'];
  * them aside and asserts they arrived. ./accounts.db.spec.ts holds each account to ./accounts.ts.
  */
 const SEEDED: Readonly<Record<string, readonly string[]>> = {
-	account: [POSTING_ACCOUNTS.fraudLoss.id]
+	account: [POSTING_ACCOUNTS.fraudLoss.id, POSTING_ACCOUNTS.grantIncome.id]
 };
 
 const sha256Hex = (value: string) => createHash('sha256').update(value).digest('hex');

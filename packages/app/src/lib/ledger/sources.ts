@@ -11,7 +11,7 @@ import type { EntrySourceType } from '../server/db/schema';
 /**
  * what a source is called on a screen.
  *
- * keyed by `EntrySourceType` rather than `string`, so a sixth source is a type error here rather
+ * keyed by `EntrySourceType` rather than `string`, so a new source is a type error here rather
  * than a raw `adjustment` rendered by a `?? value` fallback — the same discipline
  * `FORM_STATUS_LABELS` in `$lib/forms/statuses.ts` is under.
  *
@@ -27,5 +27,6 @@ export const ENTRY_SOURCE_LABELS: Record<EntrySourceType, string> = {
 	payment: 'Gift settled',
 	refund: 'Refund',
 	fee: 'Processor fee',
-	adjustment: 'Correction'
+	adjustment: 'Correction',
+	payout: 'Sponsor payout'
 };
