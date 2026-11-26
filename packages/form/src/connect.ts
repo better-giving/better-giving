@@ -227,6 +227,8 @@ export type State =
 			 * nothing else.
 			 */
 			readonly missing: readonly PayerField[];
+			/** `solving` as on the review step, for a stock gift's press held on this step. */
+			readonly solving: boolean;
 	  }
 	| {
 			readonly step: 'give';
@@ -727,13 +729,18 @@ export function toState(snapshot: CheckoutSnapshot): State {
 		case 'details':
 			return fv === null
 				? working('quoting')
-				: { step: 'details', fv, missing: missingPayerFields(context.payerDraft) };
+				: { step: 'details', fv, missing: missingPayerFields(context.payerDraft), solving: false };
 		case 'give':
 		// a press held for the challenge token is still the step it was made on, with its press busy:
 		// the review step's, or the details step's for a stock gift, which has no review step.
 		case 'holding':
 			if (step === 'holding' && fv !== null && pressesOnDetails(context.payerDraft.method)) {
-				return { step: 'details', fv, missing: missingPayerFields(context.payerDraft) };
+				return {
+					step: 'details',
+					fv,
+					missing: missingPayerFields(context.payerDraft),
+					solving: context.challengeInteractive
+				};
 			}
 			return fv === null
 				? working('quoting')

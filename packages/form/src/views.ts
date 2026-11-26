@@ -3424,7 +3424,8 @@ export function createCard(
 		// except while a held press waits on the donor solving the challenge drawn beside it: that
 		// puzzle is in the interior and is what they must act on now, so the flag stays on the press
 		// alone, which is what is waiting.
-		const solving = api.state.step === 'give' && api.state.solving;
+		const solving =
+			(api.state.step === 'give' || api.state.step === 'details') && api.state.solving;
 		toggleAttribute(body, 'aria-busy', busy && !solving ? 'true' : null);
 
 		// the told press is busy on its own write, which the flow's working states do not cover.

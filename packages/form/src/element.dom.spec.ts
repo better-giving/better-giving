@@ -7386,6 +7386,26 @@ describe('what the donor gives, on the first step', () => {
 			expect(card.text('.takeover [part~="heading"]')).toBe('Your stock gift is pending');
 		});
 
+		// the puzzle is in the card interior and is what the donor acts on, so the interior drops the
+		// busy flag while it asks, as the review step's does, and the press keeps it.
+		it('takes the busy flag off the card interior while the donor is solving, leaving it on Continue', async () => {
+			const card = await giveStock({ mints: false });
+			type(quantity(card), '50');
+			await throughDetails(card);
+			expect(card.find('.card-body').getAttribute('aria-busy')).toBe('true');
+
+			card.interactive(true);
+			await settle();
+
+			expect(card.find('.card-body').hasAttribute('aria-busy')).toBe(false);
+			expect(card.find('.step-details [part~="action"]').getAttribute('aria-busy')).toBe('true');
+
+			card.interactive(false);
+			await settle();
+
+			expect(card.find('.card-body').getAttribute('aria-busy')).toBe('true');
+		});
+
 		it('presses a failed save again on Try again, with its puzzle in the details step', async () => {
 			const drawn: HTMLElement[] = [];
 			const saves: (QuoteRequest | StockPledgeRequest)[] = [];
