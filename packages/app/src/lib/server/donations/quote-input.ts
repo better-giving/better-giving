@@ -423,8 +423,7 @@ const NO_CONTRIBUTION_FIX =
  * the same refusal on a stock or IRA (QCD) pledge, in its own words: a pledge states shares or a
  * custodian's amount and nothing is charged, so there is no charge for a contribution to sit beside
  * (`StockPledgeRequest` in packages/form/src/v1.ts carries no such field, and an IRA (QCD) request
- * is a `QuoteRequest` and is refused all the same). a separate schema from `NO_CONTRIBUTION`, so
- * that one rule changing does not change the other's.
+ * is a `QuoteRequest` and is refused all the same).
  */
 const NO_PLEDGE_CONTRIBUTION = z
 	.literal(0, {
