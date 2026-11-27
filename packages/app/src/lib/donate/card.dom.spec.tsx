@@ -28,7 +28,6 @@ import {
 import { formatOffer } from '@better-giving/form/money';
 import { TICKER_DEBOUNCE_MS } from '@better-giving/form/ticker-search';
 import {
-	aboutEstimate,
 	APPLE_SRC,
 	CHANGE_WHAT_YOU_GIVE,
 	COIN_PRICE_FAILED,
@@ -40,8 +39,7 @@ import {
 	ONE_TIME_ONLY,
 	SHARES,
 	UNIT_PANEL_NAME,
-	unitPill,
-	VALUED_IN_USD
+	unitPill
 } from '@better-giving/form/unit';
 import type { FeeRules, FormConfig, Pledge, Quote } from '@better-giving/form/v1';
 import { readFileSync } from 'node:fs';
@@ -2950,24 +2948,82 @@ describe('what the donor gives, on the first step', () => {
 		expect(discs(host)).toEqual([FLAG_SRC.us]);
 	});
 
-	it('takes a coin amount in one box named Amount, with the estimate and the note under it', async () => {
+	it('takes a coin amount in one box named Amount, its dollar value in the box before the unit', async () => {
 		deployment();
 		const { root } = await card(WITH_CRYPTO);
 		await give(root, 'coin:btc');
-		const notes = () => every(root, '.unit-estimate > p').map((line) => line.textContent ?? '');
+		const trail = () =>
+			quantity(root)
+				.closest('[part~="amount-input"]')
+				?.querySelector('.adorn-trail') as HTMLElement;
 
 		expect(root.querySelector('[part~="amount-option"]')).toBeNull();
 		expect(one(root, 'label[for="quantity-entry"]').textContent).toBe('Amount');
-		expect(
-			quantity(root).closest('[part~="amount-input"]')?.querySelector('.adorn-trail')?.textContent
-		).toBe('BTC');
-		expect(notes()).toEqual([VALUED_IN_USD]);
+		expect(trail().getAttribute('aria-hidden')).toBe('true');
+		expect(one(trail(), '.adorn-figure').hidden).toBe(true);
+		expect(trail().querySelector('.adorn-unit')?.textContent).toBe('BTC');
+		expect(quantity(root).hasAttribute('aria-describedby')).toBe(false);
 
 		type(quantity(root), '0.005');
 		await priced();
 
-		expect(notes()).toEqual([aboutEstimate(48_210, WITH_CRYPTO), VALUED_IN_USD]);
-		expect(one(root, '.unit-estimate > .unit-figure').textContent).toBe('About $482.10');
+		expect(trail().querySelector('.adorn-figure + .adorn-unit')).not.toBeNull();
+		expect(one(root, '.adorn-figure').hidden).toBe(false);
+		expect(one(root, '.adorn-figure').textContent).toBe('≈ $482.10');
+		expect(one(root, '.adorn-unit').textContent).toBe('BTC');
+		expect(root.querySelector('.unit-estimate')).toBeNull();
+		expect(root.textContent).not.toContain('valued in US dollars');
+
+		// the marks the box hides from a screen reader are read back to it as a description.
+		expect(quantity(root).getAttribute('aria-describedby')).toBe('amount-estimate');
+		expect(one(root, '#amount-estimate').textContent).toBe('About $482.10 in US dollars');
+
+		type(quantity(root), '');
+		await priced();
+		expect(one(trail(), '.adorn-figure').hidden).toBe(true);
+		expect(quantity(root).hasAttribute('aria-describedby')).toBe(false);
+	});
+
+	it('moves the dollar value under the box where the typed amount and it cannot share it', async () => {
+		// happy-dom lays nothing out: the box is 100 wide here and a typed character 12, so a
+		// ten-character amount overflows it with the figure inside and a five-character one does not.
+		const proto = HTMLInputElement.prototype;
+		const own = {
+			clientWidth: Object.getOwnPropertyDescriptor(proto, 'clientWidth'),
+			scrollWidth: Object.getOwnPropertyDescriptor(proto, 'scrollWidth')
+		};
+		Object.defineProperty(proto, 'clientWidth', { configurable: true, get: () => 100 });
+		Object.defineProperty(proto, 'scrollWidth', {
+			configurable: true,
+			get(this: HTMLInputElement) {
+				return this.value.length * 12;
+			}
+		});
+		try {
+			deployment();
+			const { root } = await card(WITH_CRYPTO);
+			await give(root, 'coin:btc');
+			const tray = quantity(root).closest('.tiles') as HTMLElement;
+			expect(tray.hasAttribute('data-figure')).toBe(false);
+
+			type(quantity(root), '0.005');
+			await priced();
+			expect(tray.getAttribute('data-figure')).toBe('inside');
+
+			type(quantity(root), '1234.56789');
+			await priced();
+			expect(tray.getAttribute('data-figure')).toBe('below');
+			expect(one(root, '.unit-figure').textContent).toBe('≈ $482.10');
+
+			type(quantity(root), '0.005');
+			await priced();
+			expect(tray.getAttribute('data-figure')).toBe('inside');
+		} finally {
+			for (const [name, descriptor] of Object.entries(own)) {
+				if (descriptor === undefined) Reflect.deleteProperty(proto, name);
+				else Object.defineProperty(proto, name, descriptor);
+			}
+		}
 	});
 
 	it('takes a share count in the same box, with nothing under it', async () => {
@@ -3581,7 +3637,7 @@ describe('a crypto gift', () => {
 				expect(underBox(root)).toBe(COIN_PRICE_FAILED);
 				expect(quantity(root).getAttribute('aria-describedby')).toBe('amount-problem');
 				expect(said(root)).toBe(COIN_PRICE_FAILED);
-				expect(root.querySelector('.unit-figure')).toBeNull();
+				expect(one(root, '.adorn-figure').hidden).toBe(true);
 
 				await onward(root);
 
@@ -3596,7 +3652,7 @@ describe('a crypto gift', () => {
 			['retyped', (root: HTMLElement) => type(quantity(root), '30')],
 			['picked again', (root: HTMLElement) => give(root, 'coin:usdttrc20')]
 		])(
-			'drops the sentence while the amount %s is checked, and for the estimate once it prices',
+			'drops the sentence while the amount %s is checked, and says the estimate once it prices',
 			async (_, retry) => {
 				pricing(
 					() => json({ estimateMinor: null }),
@@ -3617,8 +3673,9 @@ describe('a crypto gift', () => {
 				await priced();
 
 				expect(underBox(root)).toBeNull();
-				expect(quantity(root).hasAttribute('aria-describedby')).toBe(false);
-				expect(one(root, '.unit-figure').textContent).toBe(aboutEstimate(2500, CRYPTO));
+				expect(one(root, '.adorn-figure').textContent).toBe('≈ $25.00');
+				expect(quantity(root).getAttribute('aria-describedby')).toBe('amount-estimate');
+				expect(one(root, '#amount-estimate').textContent).toBe('About $25.00 in US dollars');
 				expect(said(root)).not.toContain(COIN_PRICE_FAILED);
 			}
 		);
@@ -3687,7 +3744,8 @@ describe('a crypto gift', () => {
 		expect(one(root, '#amount-problem').textContent).toBe(
 			copy.amountProblem((figure) => formatOffer(figure, 'en-US', 'usd'), 500, 500000)
 		);
-		expect(quantity(root).getAttribute('aria-describedby')).toBe('amount-problem');
+		// the box keeps its estimate's words beside the refusal: the two stand together under it.
+		expect(quantity(root).getAttribute('aria-describedby')).toBe('amount-estimate amount-problem');
 		expect(quantity(root).getAttribute('aria-invalid')).toBe('true');
 		expect(quantity(root).closest('[part~="amount-input"]')?.getAttribute('part')).toContain(
 			'invalid'
@@ -4133,7 +4191,7 @@ describe('a crypto gift', () => {
 			)
 		);
 		expect(document.activeElement).toBe(quantity(root));
-		expect(quantity(root).getAttribute('aria-describedby')).toBe('amount-problem');
+		expect(quantity(root).getAttribute('aria-describedby')).toBe('amount-estimate amount-problem');
 		expect(quantity(root).getAttribute('aria-invalid')).toBe('true');
 
 		type(quantity(root), '50');
