@@ -3013,7 +3013,9 @@ describe('what the donor gives, on the first step', () => {
 			type(quantity(root), '1234.56789');
 			await priced();
 			expect(tray.getAttribute('data-figure')).toBe('below');
-			expect(one(root, '.unit-figure').textContent).toBe('≈ $482.10');
+			const under = one(root, '.unit-figure');
+			expect(under.textContent).toBe('≈ $482.10');
+			expect(under.getAttribute('aria-hidden')).toBe('true');
 
 			type(quantity(root), '0.005');
 			await priced();
@@ -3652,7 +3654,7 @@ describe('a crypto gift', () => {
 			['retyped', (root: HTMLElement) => type(quantity(root), '30')],
 			['picked again', (root: HTMLElement) => give(root, 'coin:usdttrc20')]
 		])(
-			'drops the sentence while the amount %s is checked, and says the estimate once it prices',
+			'drops the sentence while the amount %s is checked, and prices the estimate after it',
 			async (_, retry) => {
 				pricing(
 					() => json({ estimateMinor: null }),
