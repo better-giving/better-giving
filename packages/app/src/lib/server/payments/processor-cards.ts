@@ -108,6 +108,11 @@ export type ProcessorCard = {
 export type PaymentsScreen = {
 	readonly cards: readonly ProcessorCard[];
 	readonly others: readonly UnsetProcessor[];
+	/**
+	 * whether the sponsor takes this deployment's gifts. it is drawn as one plain card: provisioning
+	 * set its values and the sponsor holds the account, so there is nothing here to read or set up.
+	 */
+	readonly sponsored: boolean;
 };
 
 /**
@@ -133,17 +138,24 @@ export async function readPaymentsScreen(
 	// committed to this repository (AGENTS.md).
 	const origin = new URL(requestUrl).origin;
 	const asked = await walletHosts(db, requestUrl);
+	const sponsored = charging.includes('sponsor');
+	// a processor whose keys are set and to which no rail routes takes no gift here, so it is no card.
+	const routed = new Set(OFFERED_PAYMENT_METHODS.map((rail) => processors.forRail(rail).processor));
+	const drawn = charging.filter((name) => name !== 'sponsor' && routed.has(name));
 
 	return {
 		cards: await Promise.all(
-			charging.map((name) =>
+			drawn.map((name) =>
 				readCard(env, config, db, name, processors.for(name), origin, asked.hosts)
 			)
 		),
-		others: PROCESSOR_NAMES.filter((name) => !charging.includes(name)).map((processor) => ({
-			processor,
-			label: PROCESSOR_LABELS[processor]
-		}))
+		// the sponsor is provisioned and never set up by hand, and a sponsored site sets up no other.
+		others: sponsored
+			? []
+			: PROCESSOR_NAMES.filter((name) => name !== 'sponsor' && !charging.includes(name)).map(
+					(processor) => ({ processor, label: PROCESSOR_LABELS[processor] })
+				),
+		sponsored
 	};
 }
 
@@ -261,7 +273,9 @@ const NOTICES_CONFIRMED_BY: Readonly<
 	stripe: 'endpoint',
 	paypal: 'endpoint',
 	chariot: 'endpoint',
-	nowpayments: ipnHasSettledAGift
+	nowpayments: ipnHasSettledAGift,
+	// never read: the sponsor draws no card of these (`readPaymentsScreen` above).
+	sponsor: 'endpoint'
 };
 
 /**

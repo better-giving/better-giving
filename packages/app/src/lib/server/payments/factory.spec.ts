@@ -786,3 +786,55 @@ describe('a form is served only on a processor that can settle', () => {
 		expect(servedProcessors(NOWPAYMENTS_HELD).serves).toBe(true);
 	});
 });
+
+describe('the sponsor', () => {
+	const SPONSOR_HELD = {
+		SPONSOR_API_KEY: 'spk_notarealkey',
+		SPONSOR_EVENTS_SECRET: 'whsec_bm90YXJlYWxzZWNyZXQ='
+	};
+
+	it('counts a deployment holding both sponsor values as one that can charge and serve', () => {
+		expect(createPaymentProviders(SPONSOR_HELD).configured).toEqual(['sponsor']);
+		const served = servedProcessors(SPONSOR_HELD);
+		expect(served.serves).toBe(true);
+		expect(served.configured).toEqual(['sponsor']);
+	});
+
+	it.each(['SPONSOR_API_KEY', 'SPONSOR_EVENTS_SECRET'] as const)(
+		'refuses the sponsor as unconfigured without %s',
+		async (variable) => {
+			const { [variable]: _, ...short } = SPONSOR_HELD;
+			const result = await createPaymentProviders(short).for('sponsor').readSettlement('pay_1');
+
+			expect(result.ok === false && result.reason).toBe('not_configured');
+			expect(result.ok === false && result.detail).toContain(variable);
+			expect(createPaymentProviders(short).configured).toEqual([]);
+			expect(servedProcessors(short).serves).toBe(false);
+		}
+	);
+
+	it.each(['card', 'ach', 'apple_pay', 'google_pay', 'paypal', 'venmo', 'daf'] as const)(
+		'hands %s to the sponsor where it is on, whatever else is held',
+		(rail) => {
+			const held = { ...CONFIGURED, ...PAYPAL_CONFIGURED, ...CHARIOT_HELD, ...SPONSOR_HELD };
+			expect(createPaymentProviders(held).forRail(rail).processor).toBe('sponsor');
+		}
+	);
+
+	it('leaves crypto on NOWPayments where the sponsor is on', () => {
+		const held = { ...NOWPAYMENTS_HELD, ...SPONSOR_HELD };
+		expect(createPaymentProviders(held).forRail('crypto').processor).toBe('nowpayments');
+	});
+
+	it('routes nothing to the sponsor where only one of its values is set', () => {
+		const held = { ...CONFIGURED, SPONSOR_API_KEY: 'spk_notarealkey' };
+		expect(createPaymentProviders(held).forRail('card').processor).toBe('stripe');
+	});
+
+	it('names no sponsor value to a deployment that has started on no processor', () => {
+		const served = servedProcessors({});
+		expect(served.fix).not.toContain('SPONSOR_');
+		expect(served.fix).not.toContain('Better Giving');
+		expect(served.shortfall).not.toContain('SPONSOR_');
+	});
+});

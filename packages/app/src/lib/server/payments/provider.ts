@@ -7,6 +7,7 @@ import {
 } from '@better-giving/form/embed/rails';
 import type { Frequency } from '@better-giving/form/v1';
 import { LOGS_SAY_WHY } from '../../deployment-logs.ts';
+import type { PayoutReturned, PayoutSettled } from '../ledger/payouts';
 import type {
 	PaymentMethod as SettledRail,
 	PaymentProviderName,
@@ -58,7 +59,8 @@ export const PROCESSOR_NAMES = [
 	'stripe',
 	'paypal',
 	'chariot',
-	'nowpayments'
+	'nowpayments',
+	'sponsor'
 ] as const satisfies readonly PaymentProviderName[];
 export type ProcessorName = (typeof PROCESSOR_NAMES)[number];
 
@@ -78,7 +80,8 @@ export const PROCESSOR_LABELS: Readonly<Record<ProcessorName, string>> = Object.
 	stripe: 'Stripe',
 	paypal: 'PayPal',
 	chariot: 'Chariot',
-	nowpayments: 'NOWPayments'
+	nowpayments: 'NOWPayments',
+	sponsor: 'Better Giving'
 });
 
 /**
@@ -90,6 +93,8 @@ export const PROCESSOR_LABELS: Readonly<Record<ProcessorName, string>> = Object.
  * a form offers — ./recurring-provision.ts reads this before it asks any account, and a deployment
  * holding either beside a card processor offers what that processor can collect.
  *
+ * the sponsor's is not either: its adapter answers every repeating arm `unsupported` (./sponsor.ts).
+ *
  * a table total over `ProcessorName`, so a processor added without an answer is a compile error
  * rather than one joining the cadence intersection by default.
  */
@@ -97,7 +102,8 @@ const TAKES_REPEATING_GIFTS: Readonly<Record<ProcessorName, boolean>> = Object.f
 	stripe: true,
 	paypal: true,
 	chariot: false,
-	nowpayments: false
+	nowpayments: false,
+	sponsor: false
 });
 
 export function takesRepeatingGifts(name: ProcessorName): boolean {
@@ -566,6 +572,46 @@ export type IntentRequest = {
 	 * store, and a field put here is a field exported from this deployment.
 	 */
 	readonly metadata?: Readonly<Record<string, string>>;
+	/**
+	 * what the sponsor's `POST /payments` needs beside the fields above, set by ../donations/quote.ts
+	 * for the sponsor's adapter alone and read by no other. the sponsor is the donee and mails the
+	 * receipt, so it is told the donor and the gift's parts where a processor is told a pointer.
+	 */
+	readonly sponsored?: SponsoredGift;
+};
+
+/** the four parts every sponsored payment states, in minor units, which sum to what is charged. */
+export type SponsoredAmount = {
+	readonly gift: number;
+	readonly giftFeeCover: number;
+	readonly contribution: number;
+	readonly contributionFeeCover: number;
+};
+
+/** the gift as the sponsor is told of it at `POST /payments`. */
+export type SponsoredGift = {
+	/** the donation id, which is also the payment's idempotency key at the sponsor. */
+	readonly giftId: string;
+	readonly amount: SponsoredAmount;
+	/** whether the form showed the contribution row, read off the form record and never the donor. */
+	readonly contributionOffered: boolean;
+	readonly donor: {
+		readonly email: string;
+		readonly firstName?: string;
+		readonly lastName?: string;
+	};
+	readonly form: { readonly id: string; readonly name: string };
+	readonly campaign?: { readonly id: string; readonly name: string };
+	readonly program?: { readonly id: string; readonly name: string };
+	readonly tribute?: {
+		readonly kind: 'honor' | 'memory';
+		readonly honoree: string;
+		readonly notify?: { readonly name: string; readonly email: string };
+	};
+	/** the embedding page, for attribution only. */
+	readonly pageOrigin?: string;
+	/** the client address, for the sponsor's per-donor rate limit and fraud checks. */
+	readonly donorIp?: string;
 };
 
 /**
@@ -862,11 +908,20 @@ export type Arrival = {
  *                a refund or a dispute where the processor mints one, not the transaction, so it is
  *                a kind of its own with a read of its own — `readReversal`, which says which settled
  *                transaction it reverses.
+ *   payout     — the sponsor paying the organisation out, or a payout coming back. it names no gift
+ *                and has no read of its own, so it carries its body (`PayoutEvent` below), and
+ *                ../ledger/payouts.ts is what books it.
  *   ignored    — a delivery this app subscribes to nothing for. it is answered and logged rather
  *                than dropped silently, so an endpoint subscribed to more than it handles is
  *                visible instead of merely quiet.
  */
-export const PAYMENT_EVENT_KINDS = ['settlement', 'recurring', 'reversal', 'ignored'] as const;
+export const PAYMENT_EVENT_KINDS = [
+	'settlement',
+	'recurring',
+	'reversal',
+	'payout',
+	'ignored'
+] as const;
 export type PaymentEventKind = (typeof PAYMENT_EVENT_KINDS)[number];
 
 /**
@@ -971,6 +1026,18 @@ export type ReversalEvent = VerifiedDelivery & {
 	readonly delivered?: ReversalRead;
 };
 
+/**
+ * a payout, or one part of a payout returned, as the verified body states it — an exception to
+ * `VerifiedDelivery`'s rule, because the sponsor publishes no read of a payout and its `amount` is
+ * the one figure the books post.
+ */
+export type PayoutEvent = VerifiedDelivery & {
+	readonly kind: 'payout';
+	readonly payout:
+		| { readonly kind: 'settled'; readonly body: PayoutSettled }
+		| { readonly kind: 'returned'; readonly body: PayoutReturned };
+};
+
 /** a delivery this app acts on nothing for, answered and logged. */
 export type IgnoredEvent = VerifiedDelivery & {
 	readonly kind: 'ignored';
@@ -983,7 +1050,12 @@ export type IgnoredEvent = VerifiedDelivery & {
  * kind and a nullable field per kind would let a handler reach for the id of a delivery that has
  * none. narrowed on `kind`, the id a read arm needs is the only one in scope.
  */
-export type PaymentEvent = SettlementEvent | RecurringEvent | ReversalEvent | IgnoredEvent;
+export type PaymentEvent =
+	| SettlementEvent
+	| RecurringEvent
+	| ReversalEvent
+	| PayoutEvent
+	| IgnoredEvent;
 
 /**
  * what a reversal did to a settled transaction.

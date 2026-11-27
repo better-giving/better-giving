@@ -306,6 +306,16 @@ export async function settleDelivery(
 	// against it rather than correcting that one: ./reverse.ts owns it.
 	if (event.kind === 'reversal') return reverseDelivery(deps, event);
 
+	// a payout names no transaction to settle: it is booked from its own body by
+	// ../ledger/payouts.ts, which a processor's webhook route never reaches.
+	if (event.kind === 'payout') {
+		return {
+			ok: true,
+			outcome: 'ignored',
+			detail: `event ${event.id} (${event.type}) is a payout, which this delivery path does not book.`
+		};
+	}
+
 	if (event.kind === 'ignored') {
 		return {
 			ok: true,
@@ -349,7 +359,8 @@ const READ_CAPTURES: Readonly<Record<ProcessorName, boolean>> = Object.freeze({
 	stripe: false,
 	paypal: true,
 	chariot: false,
-	nowpayments: false
+	nowpayments: false,
+	sponsor: false
 });
 
 /**

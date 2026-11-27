@@ -191,7 +191,10 @@ export const HOLDING_OF: Readonly<Record<ProcessorName, HoldingRole>> = {
 	stripe: 'stripeBalance',
 	paypal: 'paypalBalance',
 	chariot: 'chariotBalance',
-	nowpayments: 'nowpaymentsBalance'
+	nowpayments: 'nowpaymentsBalance',
+	// a sponsored gift posts no income at the gift: the books take the payout when it settles
+	// (../ledger/payouts.ts), so no gift line waits in a sponsor holding.
+	sponsor: 'undepositedFunds'
 };
 
 /** which of the operator's accounts a line belongs in: income, the processor's cut, or a holding. */

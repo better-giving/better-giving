@@ -24,7 +24,9 @@ const ADDRESS: Readonly<Record<ProcessorName, (origin: string) => string>> = Obj
 	stripe: webhookEndpointUrl,
 	paypal: (origin) => `${origin}${PAYPAL_WEBHOOK_PATH}`,
 	chariot: (origin) => `${origin}${CHARIOT_WEBHOOK_PATH}`,
-	nowpayments: (origin) => `${origin}${NOWPAYMENTS_IPN_PATH}`
+	nowpayments: (origin) => `${origin}${NOWPAYMENTS_IPN_PATH}`,
+	// the path the sponsor posts every site's events to, fixed by its partner contract.
+	sponsor: (origin) => `${origin}/api/sponsor/events`
 });
 
 /** the address this deployment answers one processor's deliveries on. */
