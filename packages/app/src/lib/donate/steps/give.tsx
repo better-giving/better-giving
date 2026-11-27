@@ -9,7 +9,7 @@ import { PaymentBox } from '../payment';
 import type { Takeover } from '../takeover';
 
 // the third numbered step: the receipt, the provider's own fields, and the control that spends the
-// money.
+// money. on a coin gift it is the receipt and the press that mints the address, and no fields.
 //
 // this step shows nothing the donor typed. what closes that gap is the line standing over the
 // control that spends the money (`receiptTo` in ../copy.ts), with the step head's mark for the
@@ -34,6 +34,8 @@ export type ReceiptReading = {
 	/** the cause this gift is credited to, or `null` on a form carrying none. */
 	readonly programName: string | null;
 	readonly feeRowShown: boolean;
+	/** the fee switch's label, while the row is a decision. */
+	readonly feeSwitch: string;
 	readonly feeFigure: string;
 	/** whether this screen is the one whose press the flow answers a fee decision on. */
 	readonly changeable: boolean;
@@ -118,35 +120,6 @@ export function readReceipt(
 	const declined = api.feeToggle.declinedFee ?? null;
 	const org = config.orgLegalName;
 
-	// the column holds what the donor pays. a declined fee adds nothing to that and so states nothing
-	// — the switch beside it is what says the decision was made, and the line under it prices both
-	// sides. the covered reading is blank on the same rule for the opposite cause: the rail prices the
-	// fee, and a configuration that publishes no rule for it leaves nothing to add either.
-	//
-	// a crypto gift is valued on arrival, so neither figure the card can state is what the organisation
-	// receives, and its two sentences name neither.
-	const onCrypto = state.step === 'give' && state.method === 'crypto';
-	const consequence = covering
-		? !feeShown
-			? ''
-			: onCrypto
-				? copy.feeCoveredCrypto(money(feeMinor))
-				: copy.feeCovered(org, money(feeMinor), money(fv.amountMinor))
-		: onCrypto
-			? copy.feeDeclinedCrypto(org)
-			: declined === null
-				? copy.feeDeclinedUnpriced(org, money(fv.amountMinor))
-				: copy.feeDeclined(org, money(declined.feeMinor), money(declined.netMinor));
-
-	const totalLabel = screen.totalLabel === '' ? copy.TOTAL_TODAY : screen.totalLabel;
-	// the repeat sentence is owed on the review step too, and that is a correctness requirement
-	// rather than a preference: a monthly donor whose only sight of the figure was the Donate button
-	// would be charged having never been told the gift repeats.
-	const receiptNote =
-		state.step === 'give'
-			? copy.recurringNote(money(totalMinor), fv.frequency)
-			: screen.receiptNote;
-
 	// only a choice moves this line — a pinned name is the configuration's and cannot change — and a
 	// donor who chose none is told where the gift goes rather than shown a blank, because choosing
 	// none is an answer.
@@ -158,11 +131,59 @@ export function readReceipt(
 				: (config.program.options.find((option) => option.id === fv.programId)?.name ??
 					NO_PROGRAM_LABEL);
 
+	// a coin gift's review step is worded whole by the projection, every figure "about" because the
+	// coin is valued when it arrives. it promises no receipt now (the address screen says where one
+	// goes), and its press mints the address.
+	const coin = state.step === 'give' ? state.coinReview : undefined;
+	if (coin !== undefined) {
+		return {
+			giftLabel: coin.giftLabel,
+			giftFigure: coin.gift,
+			programName,
+			feeRowShown: true,
+			feeSwitch: coin.feeSwitch,
+			feeFigure: coin.fee ?? '',
+			changeable: true,
+			covering,
+			consequence: coin.feeLine ?? '',
+			totalLabel: coin.totalLabel,
+			totalFigure: coin.total,
+			totalShown: true,
+			receiptNote: '',
+			corrected: false,
+			words: `${coin.totalLabel} is ${coin.total}.`,
+			submitLabel: coin.action,
+			receiptTo: ''
+		};
+	}
+
+	// the column holds what the donor pays. a declined fee adds nothing to that and so states nothing
+	// — the switch beside it is what says the decision was made, and the line under it prices both
+	// sides. the covered reading is blank on the same rule for the opposite cause: the rail prices the
+	// fee, and a configuration that publishes no rule for it leaves nothing to add either.
+	const consequence = covering
+		? !feeShown
+			? ''
+			: copy.feeCovered(org, money(feeMinor), money(fv.amountMinor))
+		: declined === null
+			? copy.feeDeclinedUnpriced(org, money(fv.amountMinor))
+			: copy.feeDeclined(org, money(declined.feeMinor), money(declined.netMinor));
+
+	const totalLabel = screen.totalLabel === '' ? copy.TOTAL_TODAY : screen.totalLabel;
+	// the repeat sentence is owed on the review step too, and that is a correctness requirement
+	// rather than a preference: a monthly donor whose only sight of the figure was the Donate button
+	// would be charged having never been told the gift repeats.
+	const receiptNote =
+		state.step === 'give'
+			? copy.recurringNote(money(totalMinor), fv.frequency)
+			: screen.receiptNote;
+
 	return {
 		giftLabel: copy.giftRow(FREQUENCY_LABELS[fv.frequency]),
 		giftFigure: money(fv.amountMinor),
 		programName,
 		feeRowShown: !pledging && (feeShown || changeable),
+		feeSwitch: copy.FEE_TOGGLE_LABEL,
 		feeFigure: feeShown ? `+ ${money(feeMinor)}` : '',
 		changeable,
 		covering,
@@ -208,7 +229,7 @@ export function Receipt({ reading, onFee, feeRef }: ReceiptProps) {
 					{copy.FEE_ROW_LABEL}
 				</span>
 				<label className="fee-decision" hidden={!reading.changeable}>
-					<span className="row-label">{copy.FEE_TOGGLE_LABEL}</span>
+					<span className="row-label">{reading.feeSwitch}</span>
 					<span className="switch">
 						{/*
 						 * Enter here submits the form the box sits in, and on this step the form's default
@@ -321,6 +342,8 @@ export function GiveStep({
 }: GiveStepProps) {
 	const busy = api.submitButton['aria-busy'];
 	const offered = oneTimeOffer !== '';
+	// a coin gift's rail is its coin, so the box and its method rows stand aside for it too.
+	const reviewsCoin = api.state.step === 'give' && api.state.coinReview !== undefined;
 	return (
 		<section className="step step-give" hidden={hidden}>
 			{head}
@@ -330,7 +353,7 @@ export function GiveStep({
 				prepared={paymentPrepared}
 				rows={paymentRows}
 				words={paymentWords}
-				aside={offered}
+				aside={offered || reviewsCoin}
 			/>
 			{/* `attention` rather than `message`: nothing went wrong with anything the donor did, and
 			    the sentence is a task — the markup `oneTimeGroup` in @better-giving/form's views.ts draws. */}

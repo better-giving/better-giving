@@ -1,8 +1,16 @@
 import { currencySymbol, formatOffer, parseMinor } from '@better-giving/form/money';
 import { part, partWhen, REGISTRY_CLASS } from '@better-giving/form/parts';
 import type { AmountDecision } from '@better-giving/form/value';
+import type { UnitMark, UnitPill } from '@better-giving/form/unit';
 import type { FormConfig } from '@better-giving/form/v1';
-import { useEffect, useLayoutEffect, useRef, type ReactNode, type RefObject } from 'react';
+import {
+	useEffect,
+	useLayoutEffect,
+	useRef,
+	useState,
+	type ReactNode,
+	type RefObject
+} from 'react';
 import { Choice } from '../choice';
 import * as copy from '../copy';
 import type { ReactApi } from '../normalize';
@@ -17,9 +25,18 @@ import type { ReactApi } from '../normalize';
 // what is this file's own is the drawn state the flow has no opinion about: which of the two ways
 // into an amount the donor is using, and where the chip on the cadence track stands.
 
-/** where a refused press on this step can put the caret, one per decision that has a control. */
+/**
+ * where a refused press on this step can put the caret, one per decision that has a control, and
+ * the three nodes the unit panel stands against (../unit-panel.ts).
+ */
 export type AmountRefs = {
 	readonly entry: RefObject<HTMLInputElement | null>;
+	/** the one box a coin amount or a share count is typed in. */
+	readonly quantity: RefObject<HTMLInputElement | null>;
+	readonly pill: RefObject<HTMLButtonElement | null>;
+	/** the How much line the pill stands at the end of. */
+	readonly line: RefObject<HTMLDivElement | null>;
+	readonly group: RefObject<HTMLFieldSetElement | null>;
 	readonly note: RefObject<HTMLTextAreaElement | null>;
 	readonly honoree: RefObject<HTMLInputElement | null>;
 	readonly notifyName: RefObject<HTMLInputElement | null>;
@@ -36,10 +53,21 @@ export type AmountStepProps = {
 	readonly missing: readonly AmountDecision[];
 	readonly amountProblem: string;
 	/**
-	 * a coin's refusal of the amount a crypto gift was quoted at, `''` where there is none. it stands
-	 * where the bounds do and gives way to them: a figure outside the form's own bounds no coin takes.
+	 * a coin gift's refusal as the quote answered it (`coinRefusalSentence` in
+	 * @better-giving/form/unit), `''` where there is none. it stands where the bounds do and gives way
+	 * to them: a figure outside the form's own bounds no coin takes.
 	 */
 	readonly refusal: string;
+	/**
+	 * a coin amount's failed price check (`COIN_PRICE_FAILED` in @better-giving/form/unit), `''` where
+	 * there is none or where the bounds or a refusal outrank it. it stands in the same place.
+	 */
+	readonly unpriced: string;
+	/** whether that refusal is of the amount, which marks the box the amount was typed in. */
+	readonly refusedAmount: boolean;
+	/** whether the unit panel is open, which the pill says. */
+	readonly unitOpen: boolean;
+	readonly onPill: () => void;
 	/** the free entry's own text, which is the view's answer rather than the flow's. */
 	readonly entry: string;
 	readonly onEntry: (text: string) => void;
@@ -83,6 +111,10 @@ export function AmountStep({
 	missing,
 	amountProblem,
 	refusal,
+	unpriced,
+	refusedAmount,
+	unitOpen,
+	onPill,
 	entry,
 	onEntry,
 	onPreset,
@@ -107,10 +139,21 @@ export function AmountStep({
 	const noteAsked = api.noteToggle.pressed === true;
 	const noteShown = api.notePublicToggle.pressed === true;
 	const noteAnonymous = api.noteAnonymousToggle.pressed === true;
-	const amountWords = missingAmount ? amountProblem : refusal;
+	const amountWords = missingAmount ? amountProblem : refusal !== '' ? refusal : unpriced;
 	const amountDescribed = amountWords === '' ? undefined : 'amount-problem';
-	// a refusal sends the caret to the control holding the figure, so that control is described by it.
-	const figureProblem = refusal === '' ? undefined : 'amount-problem';
+	// what the donor gives, as `connect` words it: a coin or a share count takes one box in the tiles'
+	// place (`unitEntry` is null on a gift in the currency), and a refusal of its amount is marked on
+	// that box the way a missing one is. a missing one is marked with no sentence, and a coin amount
+	// priced outside the bounds with the bounds sentence, which is the currency's (`AmountDecision` in
+	// @better-giving/form/value). a coin amount whose price check failed is described by `unpriced`.
+	const { pill, entry: unitEntry, cadenceNote, next } = api.unit;
+	const quantityRefused =
+		unitEntry !== null && (missing.includes('quantity') || missingAmount || refusedAmount);
+	// a coin the account no longer takes is fixed on the pill, where its arrival puts the caret.
+	const coinRefused =
+		api.state.step === 'amount' && api.state.coinRefusal?.code === 'coin_not_accepted';
+	/** the Continue toward the payment step, or `null` on a gift in kind, which chooses no method. */
+	const toPayment = next.case === 'in-kind' ? null : next;
 
 	// a deployment offering one cadence draws no control: one option is not a choice, and a track
 	// holding it asks a donor to decide something already decided. what a control would have sent is
@@ -218,17 +261,28 @@ export function AmountStep({
 								}}
 								part={partWhen('frequency-option', { selected: option.checked })}
 							>
+								{/*
+								 * a repeating cadence a gift in kind does not take is still a control: it keeps
+								 * its place and its press, which the flow refuses, and says why through the note.
+								 */}
 								<input
 									type="radio"
 									name={api.frequencyGroup.name}
 									value={String(option.value)}
 									checked={option.checked}
+									aria-disabled={option.unavailable === true ? true : undefined}
+									aria-describedby={option.unavailable === true ? 'cadence-note' : undefined}
 									onChange={option.onChange}
 								/>
 								<span>{option.label ?? String(option.value)}</span>
 							</label>
 						))}
 					</div>
+					{cadenceNote === null ? null : (
+						<p className="unit-note" id="cadence-note">
+							{cadenceNote}
+						</p>
+					)}
 				</fieldset>
 			) : null}
 
@@ -244,106 +298,166 @@ export function AmountStep({
 			 */}
 			<fieldset
 				className="group"
+				ref={refs.group}
+				aria-labelledby="amount-label"
 				aria-describedby={amountDescribed}
 				onKeyDown={() => {
 					pointed.current = false;
 				}}
 			>
-				<legend part={part('label')}>{copy.HOW_MUCH}</legend>
-				<div className={tiled ? 'tiles' : 'tiles bare'}>
-					{tiled
-						? api.amountGroup.options.map((option) => (
+				{/*
+				 * the How much line: the words at its start and what the donor gives at its end — the unit
+				 * pill, or the currency's code as plain text where it is the one unit offered. a line of
+				 * its own rather than the fieldset's legend, which would take the pill's words into the
+				 * group's name; the group is named by the words alone. the unit panel's host is placed
+				 * after the pill once the card is live (../unit-panel.ts).
+				 */}
+				<div className="amount-head" ref={refs.line}>
+					<span part={part('label')} id="amount-label">
+						{copy.HOW_MUCH}
+					</span>
+					{pill.state === 'text' ? (
+						<span className="unit-text">{pill.code}</span>
+					) : (
+						<UnitPillButton
+							pill={pill}
+							open={unitOpen}
+							onPress={onPill}
+							buttonRef={refs.pill}
+							describedBy={coinRefused && amountWords !== '' ? 'amount-problem' : undefined}
+						/>
+					)}
+				</div>
+				{unitEntry !== null ? (
+					<>
+						<div className="tiles bare">
+							<div
+								part={partWhen('amount-input', { invalid: quantityRefused })}
+								className="tile entry"
+							>
+								<input
+									{...api.quantityField.box}
+									id="quantity-entry"
+									ref={refs.quantity}
+									type="text"
+									inputMode="decimal"
+									autoComplete="off"
+									aria-invalid={quantityRefused ? true : undefined}
+									aria-describedby={amountDescribed}
+								/>
+								{/* hidden as the code is; the box's name (`UnitEntry.name`) says what it counts. */}
+								<span className="adorn-trail" aria-hidden="true">
+									{unitEntry.unitLabel}
+								</span>
+							</div>
+						</div>
+						<label part={part('label')} className="vh" htmlFor="quantity-entry">
+							{unitEntry.name}
+						</label>
+						{unitEntry.estimate === null && unitEntry.note === null ? null : (
+							<div className="unit-estimate">
+								{unitEntry.estimate === null ? null : (
+									<p className="unit-figure">{unitEntry.estimate}</p>
+								)}
+								{unitEntry.note === null ? null : <p className="unit-note">{unitEntry.note}</p>}
+							</div>
+						)}
+					</>
+				) : (
+					<>
+						<div className={tiled ? 'tiles' : 'tiles bare'}>
+							{tiled
+								? api.amountGroup.options.map((option) => (
+										<label
+											key={String(option.value)}
+											part={partWhen('amount-option', {
+												selected: option.checked && !otherHolds,
+												invalid: missingAmount
+											})}
+										>
+											<input
+												type="radio"
+												name={api.amountGroup.name}
+												value={String(option.value)}
+												checked={option.checked && !otherHolds}
+												onChange={() => {
+													// the amount is one decision, so the press writes its own figure into the
+													// box below: the tiles and the box are two views of one number.
+													onPreset(Number(option.value));
+													option.onChange();
+												}}
+											/>
+											<span>{offer(Number(option.value))}</span>
+											{amountLabels?.[String(option.value)] ? (
+												<span className="amount-label">{amountLabels[String(option.value)]}</span>
+											) : null}
+										</label>
+									))
+								: null}
+							{tiled ? (
 								<label
-									key={String(option.value)}
-									part={partWhen('amount-option', {
-										selected: option.checked && !otherHolds,
-										invalid: missingAmount
-									})}
+									className="other"
+									part={partWhen('amount-option', { selected: otherHolds, invalid: missingAmount })}
+									onPointerDown={() => {
+										pointed.current = true;
+									}}
 								>
 									<input
 										type="radio"
 										name={api.amountGroup.name}
-										value={String(option.value)}
-										checked={option.checked && !otherHolds}
-										aria-describedby={figureProblem}
+										value=""
+										checked={otherHolds}
 										onChange={() => {
-											// the amount is one decision, so the press writes its own figure into the
-											// box below: the tiles and the box are two views of one number.
-											onPreset(Number(option.value));
-											option.onChange();
+											const via = pointed.current ? 'pointer' : 'keyboard';
+											pointed.current = false;
+											onOther(via);
 										}}
 									/>
-									<span>{offer(Number(option.value))}</span>
-									{amountLabels?.[String(option.value)] ? (
-										<span className="amount-label">{amountLabels[String(option.value)]}</span>
-									) : null}
+									<span>{copy.OTHER}</span>
 								</label>
-							))
-						: null}
-					{tiled ? (
-						<label
-							className="other"
-							part={partWhen('amount-option', { selected: otherHolds, invalid: missingAmount })}
-							onPointerDown={() => {
-								pointed.current = true;
-							}}
-						>
-							<input
-								type="radio"
-								name={api.amountGroup.name}
-								value=""
-								checked={otherHolds}
-								aria-describedby={figureProblem}
-								onChange={() => {
-									const via = pointed.current ? 'pointer' : 'keyboard';
-									pointed.current = false;
-									onOther(via);
-								}}
-							/>
-							<span>{copy.OTHER}</span>
+							) : null}
+							<div
+								className="tile entry"
+								hidden={tiled && !otherHolds}
+								part={partWhen('amount-input', {
+									selected: typed && (!tiled || otherHolds),
+									invalid: missingAmount
+								})}
+							>
+								{symbol === code ? null : (
+									<span className="adorn-lead" aria-hidden="true">
+										{symbol}
+									</span>
+								)}
+								{/*
+								 * a numeric keypad with a decimal separator on it rather than `type="number"`, whose
+								 * spinner and scroll-wheel stepping both change a gift by accident. it is described
+								 * only while the sentence under the group stands — a missing or out-of-range figure:
+								 * a description written here otherwise would be read whether the sentence is on
+								 * screen or not, which tells every donor their amount is wrong before they type one.
+								 */}
+								<input
+									id="amount-entry"
+									ref={refs.entry}
+									type="text"
+									inputMode="decimal"
+									autoComplete="off"
+									placeholder={copy.AMOUNT}
+									value={entry}
+									aria-invalid={missingAmount ? true : undefined}
+									aria-describedby={amountDescribed}
+									onChange={(event) => onEntry(event.currentTarget.value)}
+								/>
+								<span className="adorn-trail" aria-hidden="true">
+									{code}
+								</span>
+							</div>
+						</div>
+						<label part={part('label')} className="vh" htmlFor="amount-entry">
+							{copy.AMOUNT}
 						</label>
-					) : null}
-					<div
-						className="tile entry"
-						hidden={tiled && !otherHolds}
-						part={partWhen('amount-input', {
-							selected: typed && (!tiled || otherHolds),
-							invalid: missingAmount
-						})}
-					>
-						{symbol === code ? null : (
-							<span className="adorn-lead" aria-hidden="true">
-								{symbol}
-							</span>
-						)}
-						{/*
-						 * a numeric keypad with a decimal separator on it rather than `type="number"`, whose
-						 * spinner and scroll-wheel stepping both change a gift by accident. it is described
-						 * only while the sentence under the group stands — a missing or out-of-range figure,
-						 * or a coin's refusal: a description written here otherwise would be read whether the
-						 * sentence is on screen or not, which tells every donor their amount is wrong before
-						 * they type one.
-						 */}
-						<input
-							id="amount-entry"
-							ref={refs.entry}
-							type="text"
-							inputMode="decimal"
-							autoComplete="off"
-							placeholder={copy.AMOUNT}
-							value={entry}
-							aria-invalid={missingAmount ? true : undefined}
-							aria-describedby={amountDescribed}
-							onChange={(event) => onEntry(event.currentTarget.value)}
-						/>
-						<span className="adorn-trail" aria-hidden="true">
-							{code}
-						</span>
-					</div>
-				</div>
-				<label part={part('label')} className="vh" htmlFor="amount-entry">
-					{copy.AMOUNT}
-				</label>
+					</>
+				)}
 				<p className="message" id="amount-problem" hidden={amountWords === ''}>
 					{amountWords}
 				</p>
@@ -544,17 +658,116 @@ export function AmountStep({
 				</div>
 			</div>
 
-			<button
-				part={partWhen('action', { busy })}
-				className={REGISTRY_CLASS.action}
-				type={submits ? 'submit' : 'button'}
-				aria-busy={busy}
-				onClick={onContinue}
-			>
-				<span className="action-label">{copy.CONTINUE}</span>
-				<span className="ds-spinner" aria-hidden="true" />
-			</button>
+			{/*
+			 * the Continue's case (`continueCase` in @better-giving/form/unit): toward the payment step it
+			 * is headed by the eyebrow, named for where it goes and described by the methods there; a gift
+			 * in kind, a coin or a stock, chooses no payment method and it is a plain Continue. the wrapper
+			 * stands the eyebrow over the button, the inside step apart (`.next` in
+			 * packages/form/src/styles/layout.css).
+			 */}
+			<div className="next">
+				{toPayment === null ? null : <p className="eyebrow">{toPayment.eyebrow}</p>}
+				<button
+					part={partWhen('action', { busy })}
+					className={REGISTRY_CLASS.action}
+					type={submits ? 'submit' : 'button'}
+					aria-busy={busy}
+					aria-label={toPayment?.name}
+					aria-describedby={toPayment === null ? undefined : 'continue-methods'}
+					data-next={toPayment === null ? undefined : 'payment'}
+					onClick={onContinue}
+				>
+					<span className="action-label">{next.label}</span>
+					{/* where the payment methods' circles stand once they are decided; empty, so hidden. */}
+					<span className="method-marks" aria-hidden="true" hidden />
+					<span className="ds-spinner" aria-hidden="true" />
+				</button>
+				{toPayment === null ? null : (
+					<span className="vh" id="continue-methods">
+						{toPayment.description}
+					</span>
+				)}
+			</div>
 		</section>
+	);
+}
+
+/**
+ * the unit pill: the code, then the marks of what it stands for in the registry's 14px avatar stack
+ * (avatar-css.usage.md, `ds-avatar-xs` in a `ds-avatar-group`), decorative inside a control named
+ * by its own `aria-label` (`unitPill` in @better-giving/form/unit). drawn as the element draws it
+ * (`unitPillButton` in packages/form/src/views.ts), so its look is that file's sheets'.
+ */
+function UnitPillButton({
+	pill,
+	open,
+	onPress,
+	buttonRef,
+	describedBy
+}: {
+	readonly pill: UnitPill;
+	readonly open: boolean;
+	readonly onPress: () => void;
+	readonly buttonRef: RefObject<HTMLButtonElement | null>;
+	readonly describedBy: string | undefined;
+}) {
+	return (
+		<button
+			ref={buttonRef}
+			type="button"
+			className="unit-pill"
+			aria-haspopup="dialog"
+			aria-expanded={open}
+			aria-label={pill.name}
+			aria-describedby={describedBy}
+			onClick={onPress}
+		>
+			<span className="unit-code">{pill.code}</span>
+			{pill.marks.length === 0 ? null : (
+				<span className="ds-avatar-group" aria-hidden="true">
+					{pill.marks.map((mark) => (
+						<UnitDisc key={mark.src} mark={mark} />
+					))}
+				</span>
+			)}
+		</button>
+	);
+}
+
+/**
+ * a 14px disc holding one mark. a coin's logo is the processor's, so it is fetched lazily and with no
+ * referrer, as the panel fetches it. xs draws no letter (avatar-css.usage.md), so an image that fails
+ * takes its disc with it — including one that failed in the server render, before hydration put
+ * the `error` listener on it. `decode()` rejects for a broken image whenever it broke, where
+ * `naturalWidth` is no test: an SVG with no intrinsic size reads 0 once loaded.
+ */
+function UnitDisc({ mark }: { readonly mark: UnitMark }) {
+	const [failed, setFailed] = useState(false);
+	const image = useRef<HTMLImageElement | null>(null);
+	useEffect(() => {
+		let mounted = true;
+		image.current?.decode().catch(() => {
+			if (mounted) setFailed(true);
+		});
+		return () => {
+			mounted = false;
+		};
+	}, []);
+	if (failed) return null;
+	const remote = mark.mark === 'logo';
+	return (
+		<span className="ds-avatar ds-avatar-xs">
+			<img
+				ref={image}
+				className="ds-avatar-img"
+				alt=""
+				decoding="async"
+				src={mark.src}
+				loading={remote ? 'lazy' : undefined}
+				referrerPolicy={remote ? 'no-referrer' : undefined}
+				onError={() => setFailed(true)}
+			/>
+		</span>
 	);
 }
 

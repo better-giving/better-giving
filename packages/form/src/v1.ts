@@ -850,6 +850,24 @@ export type StockPledgeRequest = Omit<
 };
 
 /**
+ * one row of `GET /api/v1/forms/:id/tickers?q=` — a listed ticker a stock pledge may name, best match
+ * first, at most eight. `name` is `null` on a mutual fund. a form whose stock rail is off answers `[]`.
+ */
+export type TickerMatch = {
+	readonly symbol: string;
+	readonly name: string | null;
+};
+
+/**
+ * `GET /api/v1/forms/:id/estimate?coin=&amount=` — what `amount` of `coin` (`PayableCoin.coin`,
+ * decimal text) is worth in minor units of the form's currency, `null` where it cannot be priced.
+ * no price is kept: the processor states the rate the quote is made at.
+ */
+export type EstimateAnswer = {
+	readonly estimateMinor: number | null;
+};
+
+/**
  * `POST /api/v1/forms/:id/donations/:pledgeId/told` — the donor saying they have asked their broker
  * or custodian to send the gift ("I’ve contacted my broker", "I’ve asked my custodian"). no body.
  *

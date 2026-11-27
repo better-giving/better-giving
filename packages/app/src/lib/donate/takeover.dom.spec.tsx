@@ -1,5 +1,6 @@
 import type { EmployerAsk, State } from '@better-giving/form/connect';
 import { formatMinor } from '@better-giving/form/money';
+import { CHANGE_WHAT_YOU_GIVE } from '@better-giving/form/unit';
 import type { FeeRules, FormConfig, Pledge, Quote } from '@better-giving/form/v1';
 import type { FormValue } from '@better-giving/form/value';
 import { readFileSync } from 'node:fs';
@@ -349,13 +350,13 @@ const AWAITING = {
 	closed: false
 } as const;
 
-it('states where and how much to send a crypto gift, with a way back to the coin', () => {
+it('states where and how much to send a crypto gift, with a way back to what is given', () => {
 	const screen = takeoverFor(AWAITING, COINS, money);
 
 	expect(screen.heading).toBe('Send your gift');
 	expect(screen.receipt).toBe('none');
 	expect(screen.primary).toBe(null);
-	expect(screen.secondary).toEqual({ label: 'Use a different coin' });
+	expect(screen.secondary).toEqual({ label: CHANGE_WHAT_YOU_GIVE });
 	// the way out is what makes this line the one screen that writes one: the details are in the
 	// donor's inbox, which is the whole reason they may close the page.
 	expect(screen.secondaryNote).toBe('Also sent to donor@example.org.');

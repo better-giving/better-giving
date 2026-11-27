@@ -615,6 +615,10 @@ export function createChariotProvider(credentials: ChariotCredentials): PaymentP
 		listPayableCoins: async () =>
 			unsupported(
 				'A grant is made in dollars, so there is no coin list to read. Nothing was asked of Chariot.'
+			),
+		estimateCoinValue: async () =>
+			unsupported(
+				'A grant is made in dollars, so there is no coin to price. Nothing was asked of Chariot.'
 			)
 	};
 }

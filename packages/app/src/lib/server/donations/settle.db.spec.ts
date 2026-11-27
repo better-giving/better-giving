@@ -261,6 +261,9 @@ function provider(
 		},
 		async listPayableCoins() {
 			throw new Error('listPayableCoins is not part of the settlement path');
+		},
+		async estimateCoinValue() {
+			throw new Error('estimateCoinValue is not part of the settlement path');
 		}
 	};
 }

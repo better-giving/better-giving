@@ -23,7 +23,6 @@
 import { createActor, type Actor } from 'xstate';
 import {
 	checkoutMachine,
-	cryptoIsOffered,
 	fundIsOffered,
 	openFund,
 	pledgeIsOffered,
@@ -45,7 +44,8 @@ import {
 	put
 } from './views';
 import type { FundReports } from './ports';
-import type { FormConfig, Frequency, PaymentMethod } from './v1';
+import type { FormConfig, Frequency, PaymentMethod, TickerMatch } from './v1';
+import avatarStyles from './registry/styles/avatar-css.css?inline';
 import buttonStyles from './registry/styles/button-css.css?inline';
 import checkboxStyles from './registry/styles/checkbox-css.css?inline';
 import fieldStyles from './registry/styles/field-css.css?inline';
@@ -56,6 +56,11 @@ import partStyles from './styles/parts.css?inline';
 import layoutStyles from './styles/layout.css?inline';
 import motionStyles from './styles/motion.css?inline';
 import { brandCss, brandSeedOf, seedWatch } from './styles/brand';
+
+/** the Stocks search on a runtime that answers none: every search fails, and the panel says so. */
+function noTickerSearch(): Promise<readonly TickerMatch[]> {
+	return Promise.reject(new Error('this runtime answers no ticker search'));
+}
 
 /** the tag, and it is permanent: a breaking change ships as a second element beside this one. */
 export const DONATE_FORM_TAG = 'bg-donate-form';
@@ -112,13 +117,6 @@ export type FormCheckout = {
 	 */
 	readonly offerFund: (offered: boolean) => void;
 	/**
-	 * whether the payment box lists the crypto option, told on every reading.
-	 *
-	 * `cryptoIsOffered` in ./checkout.machine.ts is the answer; the option stands the coin list the
-	 * card built (`coins` on `CardView` in ./views.ts) in a row of its own.
-	 */
-	readonly offerCrypto: (offered: boolean) => void;
-	/**
 	 * whether the payment box lists the Venmo option, told on every reading.
 	 *
 	 * `venmoIsOffered` in ./checkout.machine.ts is the answer; PayPal's own option is not narrowed.
@@ -137,10 +135,16 @@ export type FormCheckout = {
 	 * absent on every runtime a deployment serves.
 	 *
 	 * the dev page's stock pledge is the one such control (packages/form/dev): no screen sends
-	 * `PLEDGE_STOCK`, and the stock screens are drawn from the element itself rather than from a copy
-	 * of it.
+	 * `PLEDGE_STOCK`, because a stock picked on the first step is saved by the details step's own
+	 * press, and the stock screens are drawn from the element itself rather than from a copy of it.
 	 */
 	readonly steer?: (send: (event: CheckoutEvent) => void) => void;
+	/**
+	 * the unit panel's Stocks search (`createTickerRead` in ./embed/api.ts); absent on a runtime that
+	 * answers none, whose every search the panel states as failed (`STOCK_SEARCH_FAILED` in
+	 * ./unit.ts). asked only where the flow offers stock (`unitsOffered` in ./checkout.machine.ts).
+	 */
+	readonly searchTickers?: (query: string, signal: AbortSignal) => Promise<readonly TickerMatch[]>;
 	/**
 	 * how many options the payment box lists, handed to `listener` now and on every change.
 	 *
@@ -276,11 +280,12 @@ export type FormRuntime = {
 	 * above it travels the other way. `FundReports` in ./ports.ts says why its first answer is given
 	 * in the same call as the press.
 	 *
-	 * `coins` is the coin list a `crypto` gift is chosen in, which the card built and keeps patched.
+	 * `ira` is the IRA (QCD) option's box and benefits panel, which the card built and keeps patched.
 	 * handed over rather than built by the runtime, for the reason `mount` is passed: the card owns
-	 * what the list says and where a refusal about the coin sends the caret, and the runtime only
-	 * stands it in the payment box. `ira` is the IRA (QCD) option's box and benefits panel, handed over
-	 * for the same reason; a caller handing none is one whose payment box draws no IRA (QCD) option.
+	 * what the box says and where a refusal about the custodian sends the caret, and the runtime only
+	 * stands it in the payment box. a caller handing none is one whose payment box draws no IRA (QCD)
+	 * option. a coin is picked on the first step (`unitsOffered` in ./checkout.machine.ts), so the
+	 * payment box lists no crypto option.
 	 */
 	readonly checkout: (
 		config: FormConfig,
@@ -289,7 +294,6 @@ export type FormRuntime = {
 		onUnavailable: (failure: Failure) => void,
 		boot: FormBoot,
 		fund: FundReports,
-		coins: HTMLElement,
 		ira?: HTMLElement
 	) => FormCheckout;
 
@@ -421,7 +425,9 @@ function sheetsFor(doc: Document): readonly CSSStyleSheet[] {
 	// placed.
 	const shadow = [
 		build(tokens),
-		build(`${buttonStyles}\n${fieldStyles}\n${checkboxStyles}\n${spinnerStyles}\n${noticeStyles}`),
+		build(
+			`${buttonStyles}\n${fieldStyles}\n${checkboxStyles}\n${spinnerStyles}\n${noticeStyles}\n${avatarStyles}`
+		),
 		build(partStyles),
 		build(layoutStyles),
 		build(motionStyles)
@@ -1217,11 +1223,15 @@ export function donateFormClass(runtime: FormRuntime): CustomElementConstructor 
 			// into a region as new as the sentence, which is a screen nobody is told about. the card is
 			// handed the saying rather than the node for the same reason it is handed `restart`: what a
 			// sentence has to wait for to be heard outlives every card (`#announce` above).
+			// through a holder for the reason `report` below gives: the runtime that answers the search
+			// is asked for after the card is built.
+			let searchTickers: NonNullable<FormCheckout['searchTickers']> = noTickerSearch;
 			const view = createCard(
 				this.ownerDocument,
 				config,
 				() => this.#bootAgain(),
-				(words, again) => this.#announce(words, again)
+				(words, again) => this.#announce(words, again),
+				(query, signal) => searchTickers(query, signal)
 			);
 			// what this card holds on the host page's own `window`, so `#stop` can let go of it. it is
 			// latched before the card is shown because from here on every path out of this method ends
@@ -1264,10 +1274,10 @@ export function donateFormClass(runtime: FormRuntime): CustomElementConstructor 
 					approved: (authorization) => fundSays({ type: 'FUND_APPROVED', ...authorization }),
 					closed: () => fundSays({ type: 'FUND_CLOSED' })
 				},
-				view.coins,
 				view.ira
 			);
 			this.#checkout = checkout;
+			if (checkout.searchTickers !== undefined) searchTickers = checkout.searchTickers;
 			checkout.rows((count) => view.paymentRows(count));
 			const actor = createActor(checkoutMachine, { input: checkout.input });
 			report = (method) => actor.send({ type: 'SET_METHOD', method });
@@ -1303,7 +1313,6 @@ export function donateFormClass(runtime: FormRuntime): CustomElementConstructor 
 				const api = connect(snapshot, actor.send, domPropTypes);
 				checkout.cadence(committedFrequency(api.state));
 				checkout.offerFund(fundIsOffered(snapshot));
-				checkout.offerCrypto(cryptoIsOffered(snapshot));
 				checkout.offerVenmo(venmoIsOffered(snapshot));
 				checkout.offerIra?.(pledgeIsOffered(snapshot, 'ira_qcd'));
 				view.update(api);
@@ -1329,12 +1338,13 @@ export function donateFormClass(runtime: FormRuntime): CustomElementConstructor 
 					);
 				}
 
-				// a press held for a token while the widget asks the donor to solve something. the
-				// widget is in the details step's box, which is hidden here, so it is drawn afresh in
-				// the review step's, beside the press. a redraw into the box it is already in does
-				// nothing, so this is said on every reading of that state.
+				// a press held for a token while the widget asks the donor to solve something, which a
+				// widget in a hidden box cannot do. so it is drawn on the step the held press is projected
+				// on: the details step's own box for a stock gift, which has no review step (`holding` in
+				// ./connect.ts), the review step's beside the press for every other. a redraw into the
+				// box it is already in does nothing, so this is said on every reading of that state.
 				if (snapshot.value === 'holding' && snapshot.context.challengeInteractive) {
-					this.#challenge?.redraw?.(view.heldChallenge);
+					this.#challenge?.redraw?.(step === 'details' ? view.challenge : view.heldChallenge);
 				}
 				// and the same for a lost pledge's save made again, which waits on the pledge screen.
 				if (

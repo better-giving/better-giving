@@ -112,7 +112,8 @@ describe('refusing', () => {
 			provider.replaceWebhookEndpoint('we_1', 'https://example.org/api/stripe/webhook'),
 			provider.listWalletDomains(),
 			provider.registerWalletDomain('donate.example.org'),
-			provider.listPayableCoins()
+			provider.listPayableCoins(),
+			provider.estimateCoinValue({ coin: 'btc', coinAmount: '0.005', currency: 'USD' })
 		]);
 
 		for (const result of results) {
@@ -199,7 +200,8 @@ function throwing(): PaymentProvider {
 		replaceWebhookEndpoint: fault,
 		listWalletDomains: fault,
 		registerWalletDomain: fault,
-		listPayableCoins: fault
+		listPayableCoins: fault,
+		estimateCoinValue: fault
 	};
 }
 
@@ -235,7 +237,12 @@ describe('sealed', () => {
 		],
 		['listWalletDomains', (p: PaymentProvider) => p.listWalletDomains()],
 		['registerWalletDomain', (p: PaymentProvider) => p.registerWalletDomain('donate.example.org')],
-		['listPayableCoins', (p: PaymentProvider) => p.listPayableCoins()]
+		['listPayableCoins', (p: PaymentProvider) => p.listPayableCoins()],
+		[
+			'estimateCoinValue',
+			(p: PaymentProvider) =>
+				p.estimateCoinValue({ coin: 'btc', coinAmount: '0.005', currency: 'USD' })
+		]
 	])('turns a throw out of %s into a refusal', async (_name, call) => {
 		vi.spyOn(console, 'error').mockImplementation(() => {});
 

@@ -1,4 +1,4 @@
-// what the card's zag machines (./select.ts, ./coin-picker.ts, driven through `@zag-js/vanilla`)
+// what the card's zag machines (./select.ts, ./unit-panel.ts, driven through `@zag-js/vanilla`)
 // share about the page they land on: where the machine looks its nodes up, how its props reach a
 // node, and how its open list is shown.
 //
@@ -21,7 +21,7 @@
 // takes back. the first list to open on a page runs `@zag-js/focus-visible`'s global setup: it
 // wraps the host window's `HTMLElement.prototype.focus`, and adds keydown, keyup, click and pointer
 // capture listeners on the host document and focus and blur listeners on its window. it runs once
-// per window, and zag undoes it only on `beforeunload`. and while the coin list is open on an Apple
+// per window, and zag undoes it only on `beforeunload`. and while the unit panel is open on an Apple
 // platform, `@zag-js/combobox` announces each highlighted row through
 // `<span id="__live-region__" role="alert">` appended to the host's `document.body`; on close, on
 // any platform, it removes whatever element in that document carries the id.
@@ -60,7 +60,7 @@ export function spread(node: HTMLElement | SVGElement, props: Props, scope: stri
 
 /**
  * the node a machine looks its parts up in and tests an outside press against: the root `anchor`
- * stands in — the card's shadow root, or the coin list's own — rather than the host's document.
+ * stands in — the card's shadow root, or the unit panel's own — rather than the host's document.
  *
  * a control not yet on a page has an element for its root, which has no `getElementById`; the
  * document stands in until the control is placed.

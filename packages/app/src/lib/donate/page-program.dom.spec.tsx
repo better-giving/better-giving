@@ -188,7 +188,9 @@ function type(root: HTMLElement, selector: string, value: string): void {
 }
 
 const CHOOSER = '[data-area="chooser"]';
-const CONTINUE = 'section.step:not([hidden]) > button[part~="action"]';
+// the first step's Continue stands in `.next` under its eyebrow, the other steps' on the step.
+const CONTINUE =
+	'section.step:not([hidden]) > button[part~="action"], section.step:not([hidden]) > .next > button[part~="action"]';
 
 /** a chooser card's radio, found by the words it shows. */
 function chooserCard(root: HTMLElement, name: string): HTMLInputElement {

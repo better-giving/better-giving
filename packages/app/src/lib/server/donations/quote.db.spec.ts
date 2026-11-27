@@ -231,6 +231,9 @@ function provider(
 		},
 		async listPayableCoins() {
 			throw new Error('listPayableCoins is not part of the quote path');
+		},
+		async estimateCoinValue() {
+			throw new Error('estimateCoinValue is not part of the quote path');
 		}
 	};
 	return { port, requests, gifts };

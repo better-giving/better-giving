@@ -3,6 +3,13 @@
   "dir": "packages/form/src/registry",
   "registryVersion": "4.7.0",
   "items": {
+    "avatar-css": {
+      "version": "1.2.0",
+      "files": {
+        "styles/avatar-css.css": "f42974a13226e7a17bcbcd973edea2ad3b72e96df541fb16f7c52fadd6a2770e",
+        "styles/avatar-css.usage.md": "a67f6e5aa62f720de4ca896a90930d2bf5b7539d29ac93938e35809090ac2a49"
+      }
+    },
     "badge-css": {
       "version": "1.2.1",
       "files": {
@@ -24,6 +31,13 @@
         "styles/checkbox-css.usage.md": "034d2e293fb6efe1944d1e48b08eb70812594eb85d77297fa6b8b790064270f5"
       }
     },
+    "combobox-css": {
+      "version": "1.0.0",
+      "files": {
+        "styles/combobox-css.css": "f45f8e4ee0b494fdd1effe00e8e5ed806d0dd9f832e2a134faae0db25d36d4de",
+        "styles/combobox-css.usage.md": "344b287be421250030e70eb7be2a637c90c55ebfef1aef83b15ff9415424bcec"
+      }
+    },
     "field-css": {
       "version": "1.5.0",
       "files": {
@@ -43,6 +57,13 @@
       "files": {
         "styles/radio-css.css": "f5e33b41a5a3089d59d6124faa156de4dd3f3eac3b0656155d4b849e1f4b5d2a",
         "styles/radio-css.usage.md": "19745a47a5648028b09d894b2e145503a39fa0c164b3f6c37b098029db12348c"
+      }
+    },
+    "select-css": {
+      "version": "1.1.2",
+      "files": {
+        "styles/select-css.css": "69d01ccae954586421970d1be8ffe22eba411c0c72a0b496ad9d7d2caafcfc85",
+        "styles/select-css.usage.md": "9f0f9f6421cf3085cdf1d6bc20051f65f5c8cc1838db4571971b11cf1c0f6a1a"
       }
     },
     "spinner-css": {

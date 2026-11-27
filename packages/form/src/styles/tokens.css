@@ -36,9 +36,11 @@
  * a control whose ground is transparent at rest takes 3 under the pointer and 4 under the press,
  * which is the one variation the radix page the registry's scales come from states.
  *
- * the button, the text box, the box a donor ticks, the network badge, the busy ring and a saved
- * pledge's notice card are the registry's own controls (`ds-btn`, `ds-field-input`, `ds-checkbox`,
- * `ds-badge`, `ds-spinner`, `ds-notice-card`), drawn by its copied component sheets; ./parts.css
+ * the button, the text box, the box a donor ticks, the busy ring, a saved pledge's notice card and
+ * the unit pill's discs are the registry's own controls (`ds-btn`, `ds-field-input`, `ds-checkbox`,
+ * `ds-spinner`, `ds-notice-card`, `ds-avatar`), drawn by its copied component sheets, and so is the
+ * What you give panel, a coin's network badge included (`ds-combobox` on select-css's `ds-option`
+ * rows, in its own shadow root: ../unit-panel.ts and ./units.css); ./parts.css
  * draws the controls the registry has none of — the amount tiles and chips, the cadence tray, the
  * floating-label name boxes, the fee switch, the step marks — from the aliases below.
  *
@@ -88,7 +90,7 @@
  * own, so a host that set `html { font-size: 62.5% }` must not be able to render the card at 10px,
  * while a reader's own browser zoom still moves type and spacing together. the registry's component
  * sheets read their `rem` figures through its `--ds-rem`, which the `:host` block below sets to the
- * clamped root, so every registry control on the card draws off it. ten things the registry
+ * clamped root, so every registry control on the card draws off it. eleven things the registry
  * states that the form cannot take as stated, each a registry gap, the first three listed and the
  * rest numbered in the paragraphs after:
  *
@@ -99,7 +101,10 @@
  *     control needs to keep iOS Safari from zooming a page this card is a guest on: held at 16px
  *     (`.ds-field-input` in ./parts.css).
  *   - its badge's type is `0.75` of the base, 11.25px at the clamp's floor, under the 12px floor the
- *     card's small print keeps: held at 12px (`.ds-badge` in ./parts.css).
+ *     card's small print keeps: `.ds-badge` in ./parts.css holds badge-css's badge at 12px, and the
+ *     card draws none. the What you give panel's network badge is combobox-css's own
+ *     (`.ds-combobox-badge`), which declares that step on its own class in the panel's shadow root,
+ *     where ./parts.css does not reach, and is drawn at it.
  *
  * the registry states its large button's height on its class alone (`--ds-btn-size` on `.ds-btn-lg`),
  * so the skeleton's placeholder for it restates the figure (`.skeleton-action` in ./parts.css) — a
@@ -109,13 +114,12 @@
  * a press that is still checking a card is a lie about somebody's money: the card keeps it turning,
  * slowed (`--_dur-spin` below, and ./motion.css) — a fifth.
  *
- * the registry's `select-css` is not copied. its trigger is the text box the closed choices already
- * carry (`ds-field-input`, at the field's height), and what it adds the card cannot take: its list is
- * a floating layer on `--shadow-floating` at the card corner with the chosen row on an accent ground,
- * where this card's open list is flat at the inner corner and says the chosen row by its tick alone
- * (`[part~='select-list']` in ./parts.css) — the one list the closed choices and the coin list share,
- * and the coin list is a combobox `select-css` has no class for — and its chevron turns over
- * `--duration-fast`, which the registry declares on `:root` and a shadow tree has none of. a sixth.
+ * the registry's `select-css` is copied for the What you give panel's rows (../unit-panel.ts), and
+ * the card's own select (../select.ts) does not take it. that select's trigger is the text box the
+ * closed choices already carry (`ds-field-input`, at the field's height), and what `select-css` adds
+ * the card cannot take: its list is a floating layer on `--shadow-floating` at the card corner with
+ * the chosen row on an accent ground, where this card's open list is flat at the inner corner and
+ * says the chosen row by its tick alone (`[part~='select-list']` in ./parts.css) — a sixth.
  *
  * the registry states its busy ring's size on its class alone, five of its spacing steps
  * (`.ds-spinner` in ../registry/styles/spinner-css.css), as no variable a rule placing it can read,
@@ -140,6 +144,16 @@
  * ./layout.css; the lead, the details' labels and the benefits panel's gaps and leadings in
  * ./parts.css) — a tenth.
  *
+ * the registry declares `--shadow-floating` and `--duration-fast` on `:root` alone
+ * (../registry/styles/variables.css), not on `[data-theme]` beside its scales, and a shadow tree has
+ * no `:root`: inside the card the What you give panel, which reads both through combobox-css and
+ * select-css, would draw flat, or at whatever shadow and speed the host page gives those names. the
+ * colour layer below restates both on the card's root node at the registry's figures, with the
+ * registry's reduced-motion collapse of the duration — an eleventh. the deployment's own page links
+ * this file into its document, so the registry's `:root` block reaches its panel already; the
+ * restatement sits on the node under `[data-donate-root]` as well, so the panel reads one
+ * declaration in either tree.
+ *
  * no shade is ever made with alpha. a translucent fill takes on whatever the host's page put behind
  * it, and this component is painted onto a page it cannot see; the registry's alpha steps
  * (`--accent-a*`, `--gray-a*`) are copied with its theme and read by nothing here. the one
@@ -148,7 +162,9 @@
  *
  * flat, with one named exception: nothing on this card casts a shadow but the chosen option on the
  * protected amount tray — the chosen amount tile and the chip under the chosen cadence — which is
- * raised by `--_lift` below. not the card, not the open list, not any other box. a `box-shadow` this
+ * raised by `--_lift` below. not the card, not the open list, not any other box. the What you give
+ * panel is the registry's floating layer and casts the registry's `--shadow-floating`, from its own
+ * sheets in its own shadow root, and is no box this card draws. a `box-shadow` this
  * card writes is otherwise a ring with no offset and no blur, the way a refused control's second
  * line is drawn. "the one cast shadow" in ../element.dom.spec.ts holds both halves.
  *
@@ -359,7 +375,7 @@
 	 * step and the height together rather than copying the product, so it follows the type it was
 	 * derived from (`.step-dots` in ./layout.css, `.qr svg` in ./parts.css).
 	 *
-	 * the unitless `1` and `0` in ./coins.css and ./parts.css are neither of these and are not a
+	 * the unitless `1` and `0` in ./units.css and ./parts.css are neither of these and are not a
 	 * pick between them. each is one line standing alone in a box whose height is set by something
 	 * other than that line — the letter standing in for a coin's missing logo, the figure a donor
 	 * types in a field the surface's own floor holds open, and the drawn code, which takes `0`
@@ -671,14 +687,14 @@
 	 * rather than what it depicts.
 	 *
 	 * `--_glyph-among` is the line's own `em`: a mark set among the words and read as one of them —
-	 * the chevron and the search mark inside the coin field (`.glyph` in ./coins.css), where a mark
-	 * a shade over the line would be the one shape in that box drawn larger than the ticker beside
-	 * it.
+	 * the chevron inside a closed choice's box (`[data-part='trigger']` in ./parts.css), where a
+	 * mark a shade over the line would be the one shape in that box drawn larger than the words
+	 * beside it.
 	 *
 	 * `--_glyph-beside` is a shade over that line: a mark standing beside the words rather than in
 	 * them, and the shade is what keeps it from reading small against them. every other mark this
-	 * card draws takes it — the coin's round mark and the tick that says which coin is chosen
-	 * (./coins.css), the deposit screen's copy, caution and outcome marks together with the cells
+	 * card draws takes it — a stock's mark in the What you give panel (./units.css), the deposit
+	 * screen's copy, caution and outcome marks together with the cells
 	 * they are centred in (./parts.css), and the mark that says which rail a payment row is
 	 * (./rows.css). a mount sizing a cell around one of them reads this token and not `--_box`,
 	 * which is what keeps the sentence below true where the two lengths are equal.
@@ -892,6 +908,19 @@
 		0 1px 1px oklch(from var(--shadow-ink) l c h / 0.06);
 
 	/*
+	 * the registry's floating shadow and fast duration, which its combobox-css and select-css read
+	 * and ../registry/styles/variables.css declares on `:root` alone, copied at its figures (the
+	 * head of this file says why). here and not on `:host`: the shadow mixes `--shadow-ink`, which the
+	 * registry's `[data-theme]` declares on this node, and a page rule naming the element outranks a
+	 * `:host` one. "restates the floating shadow and the fast duration on the card node at the
+	 * registry’s values" in ../unit-panel.dom.spec.ts holds the copy to the registry's.
+	 */
+	--shadow-floating:
+		0 10px 15px -3px color-mix(in oklch, var(--shadow-ink) 10%, transparent),
+		0 4px 6px -4px color-mix(in oklch, var(--shadow-ink) 10%, transparent);
+	--duration-fast: 150ms;
+
+	/*
 	 * two corners for the whole component, the registry's pair: `--_r` is the card, which is a plane,
 	 * and `--_r-in` is every control and box drawn on it — `--radius-card` and `--radius`, the control
 	 * corner the registry's own controls read (`--radius-control` under its tailwind name). these are
@@ -989,5 +1018,11 @@
 		--_dur-fast: 0ms;
 		--_dur-screen: 0ms;
 		--_dur-spin: 2.4s;
+	}
+
+	/* the registry's own collapse of the fast duration restated above (../registry/styles/variables.css). */
+	:host > *,
+	[data-donate-root] > * {
+		--duration-fast: 0.01ms;
 	}
 }

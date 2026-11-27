@@ -235,7 +235,8 @@ function provider(
 		replaceWebhookEndpoint: refuse('replaceWebhookEndpoint'),
 		listWalletDomains: refuse('listWalletDomains'),
 		registerWalletDomain: refuse('registerWalletDomain'),
-		listPayableCoins: refuse('listPayableCoins')
+		listPayableCoins: refuse('listPayableCoins'),
+		estimateCoinValue: refuse('estimateCoinValue')
 	} as PaymentProvider;
 }
 

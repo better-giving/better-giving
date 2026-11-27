@@ -68,7 +68,7 @@ describe('the shipped bytes carry no face', () => {
 	 * sits a few KB over the runtime as measured inside vitest, and a face inlined as a data URL adds
 	 * tens of KB, so it trips on one.
 	 */
-	const RUNTIME_GZIP_CEILING = 135_000;
+	const RUNTIME_GZIP_CEILING = 145_000;
 
 	for (const mode of ['runtime', 'loader'] as const) {
 		it(`carries no face and emits no file beside the ${mode}`, async () => {

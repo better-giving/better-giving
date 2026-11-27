@@ -1,3 +1,4 @@
+import registryAvatar from '@better-giving/form/registry/styles/avatar-css.css?url';
 import registryButton from '@better-giving/form/registry/styles/button-css.css?url';
 import registryCheckbox from '@better-giving/form/registry/styles/checkbox-css.css?url';
 import registryField from '@better-giving/form/registry/styles/field-css.css?url';
@@ -34,7 +35,8 @@ import { MAIN_ID, SiteNav } from './site-nav';
  * cascade order for the equal-specificity rules they are almost entirely made of: its tokens, the
  * registry's button, text box and tick box the card's controls carry the classes of
  * (`REGISTRY_CLASS` in packages/form/src/parts.ts), its busy ring and the notice card a pledge's
- * screens carry, then its parts, layout and motion. the busy ring and the notice card are the
+ * screens carry, the avatar stack the unit pill draws its marks in, then its parts, layout and
+ * motion. the busy ring and the notice card are the
  * operator package's copies of spinner-css and notice-card-css, the same files as the form's,
  * because the form's `exports` map names neither sheet. the faces sit
  * after them and before the page, and their place orders nothing: the sheet
@@ -55,6 +57,7 @@ export function donorPageLinks(registry: readonly string[] = []) {
 		registryCheckbox,
 		registrySpinner,
 		registryNoticeCard,
+		registryAvatar,
 		formParts,
 		formLayout,
 		formMotion,

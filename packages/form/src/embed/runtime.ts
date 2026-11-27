@@ -28,9 +28,11 @@ import { defineDonateForm, type FormBoot, type FormRuntime } from '../element';
 import {
 	apiWords,
 	createEmployerWrite,
+	createEstimateRead,
 	createPledgeTold,
 	createQuote,
 	createStatusRead,
+	createTickerRead,
 	EmbedFailure,
 	readJson
 } from './api';
@@ -139,6 +141,7 @@ export function createFormRuntime(origin: string | null, doc: Document): FormRun
 	// itself — a payment SDK is initialised with the publishable key it carries.
 	const post = createQuote(origin);
 	const status = createStatusRead(origin);
+	const estimate = createEstimateRead(origin);
 	const employer = createEmployerWrite(origin);
 	const pledgeTold = createPledgeTold(origin);
 
@@ -192,7 +195,7 @@ export function createFormRuntime(origin: string | null, doc: Document): FormRun
 
 	return {
 		loadConfig: createLoadConfig(origin),
-		checkout: (config, mount, onRail, onUnavailable, boot, fund, coins, ira) => {
+		checkout: (config, mount, onRail, onUnavailable, boot, fund, ira) => {
 			// the return this gift is resuming, where this form is the one that sent the donor away.
 			// read here rather than where `post` is built, because the answer is per form and per
 			// boot, and neither is known until an element asks.
@@ -208,7 +211,6 @@ export function createFormRuntime(origin: string | null, doc: Document): FormRun
 				onRail,
 				onUnavailable,
 				fund,
-				coins,
 				undefined,
 				ira
 			);
@@ -223,6 +225,7 @@ export function createFormRuntime(origin: string | null, doc: Document): FormRun
 						confirm: surface.confirm,
 						resume: surface.resume,
 						status,
+						estimate,
 						now: () => Date.now(),
 						employer,
 						// a pledge's save is the press's own write with a pledge's body, told to no payment
@@ -237,9 +240,7 @@ export function createFormRuntime(origin: string | null, doc: Document): FormRun
 				cadence: surface.cadence,
 				// the fund's reading, passed straight through for the reason the cadence is.
 				offerFund: surface.offerFund,
-				// the crypto, Venmo and IRA (QCD) options' readings, passed straight through for the fund's
-				// reason.
-				offerCrypto: surface.offerCrypto,
+				// the Venmo and IRA (QCD) options' readings, passed straight through for the fund's reason.
 				offerVenmo: surface.offerVenmo,
 				offerIra: surface.offerIra,
 				// the count the card heads the payment box from, passed straight through.
@@ -247,6 +248,7 @@ export function createFormRuntime(origin: string | null, doc: Document): FormRun
 				// what the processors still up can take, passed straight through as the count is.
 				repeatingUnavailable: surface.repeatingUnavailable,
 				claimSuccess: () => claimSuccess(resumeToken),
+				searchTickers: createTickerRead(origin, config.formId),
 				// the card letting go of the surface built for this configuration, and it is this
 				// surface's own: a second gift is a second call here, so a door shared between them
 				// would stop the live one on the orphan's behalf.

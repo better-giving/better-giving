@@ -1,9 +1,9 @@
 // the reading of the coin list a surface drawing it needs: which coins a typed search shows and in
 // what order.
 //
-// it is a reading of the list `coinSelect` projects (./connect.ts) and of what the donor has typed,
-// and nothing else: no DOM, so the element's list (./coin-picker.ts) and any other surface drawing
-// the same choice order the same coins the same way.
+// it is a reading of the coins `unitSelect` projects (./connect.ts) and of what the donor has typed,
+// and nothing else: no DOM, so the element's unit panel (./unit-panel.ts) and any other surface
+// drawing the same choice order the same coins the same way.
 //
 // the search is the whole of how the list is narrowed: there is no second narrowing beside it, so
 // what the list holds while a donor types is a reading of the typed text alone.

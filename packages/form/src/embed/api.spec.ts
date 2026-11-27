@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createEmployerWrite, createPledgeTold, createQuote, createStatusRead } from './api';
+import {
+	createEmployerWrite,
+	createEstimateRead,
+	createPledgeTold,
+	createQuote,
+	createStatusRead,
+	createTickerRead
+} from './api';
 
 // the write both surfaces spend, asserted where it lives rather than through either of them.
 //
@@ -386,5 +393,66 @@ describe('a pledge’s save and its told press', () => {
 
 		expect(failure.message).toContain('502');
 		expect((failure as { code?: string }).code).toBeUndefined();
+	});
+});
+
+describe('the estimate a coin amount is priced at', () => {
+	const read = () =>
+		createEstimateRead(DEPLOYMENT)(
+			{ formId: 'frm a', coin: 'usdttrc20', amount: '0.005' },
+			new AbortController().signal
+		);
+
+	it('asks for the coin and the amount, credentials left out, and answers the minor units', async () => {
+		const fetched = stubFetch(json({ estimateMinor: 48_210 }));
+
+		expect(await read()).toBe(48_210);
+		expect(fetched).toHaveBeenCalledWith(
+			'https://donate.example/api/v1/forms/frm%20a/estimate?coin=usdttrc20&amount=0.005',
+			expect.objectContaining({ credentials: 'omit', signal: expect.any(AbortSignal) })
+		);
+	});
+
+	it('answers null where the deployment cannot price it, or answers something else', async () => {
+		stubFetch(json({ estimateMinor: null }));
+		expect(await read()).toBeNull();
+		stubFetch(json({ estimateMinor: 12.5 }));
+		expect(await read()).toBeNull();
+	});
+
+	it('refuses an answer that is not a 200', async () => {
+		stubFetch(json({ error: 'not_found' }, 404));
+		await expect(read()).rejects.toThrow('404');
+	});
+});
+
+describe('the ticker search the stock group makes', () => {
+	const read = (query: string) =>
+		createTickerRead(DEPLOYMENT, 'frm a')(query, new AbortController().signal);
+
+	it('asks for the typed text and answers the listed rows', async () => {
+		const fetched = stubFetch(
+			json([
+				{ symbol: 'AAPL', name: 'Apple Inc.' },
+				{ symbol: 'VFIAX', name: null }
+			])
+		);
+
+		expect(await read('a&b')).toEqual([
+			{ symbol: 'AAPL', name: 'Apple Inc.' },
+			{ symbol: 'VFIAX', name: null }
+		]);
+		expect(fetched).toHaveBeenCalledWith(
+			'https://donate.example/api/v1/forms/frm%20a/tickers?q=a%26b',
+			expect.objectContaining({ credentials: 'omit', signal: expect.any(AbortSignal) })
+		);
+	});
+
+	it('drops a row that is not one, and refuses an answer that is not a list', async () => {
+		stubFetch(json([{ symbol: 'AAPL', name: 'Apple Inc.' }, { symbol: 7 }, null]));
+		expect(await read('aa')).toEqual([{ symbol: 'AAPL', name: 'Apple Inc.' }]);
+
+		stubFetch(json({ rows: [] }));
+		await expect(read('aa')).rejects.toThrow();
 	});
 });

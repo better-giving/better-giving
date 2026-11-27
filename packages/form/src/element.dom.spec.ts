@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import {
 	CONFIG_DEADLINE_MS,
 	defineDonateForm,
@@ -6,6 +6,7 @@ import {
 	DONATE_FORM_TAG,
 	OBSERVED_ATTRIBUTES,
 	type FormBoot,
+	type FormCheckout,
 	type FormRuntime
 } from './element';
 import manifestText from '../custom-elements.json?raw';
@@ -14,6 +15,7 @@ import type { CheckoutPorts, FundReports } from './ports';
 import {
 	type CheckoutEvent,
 	DEPOSIT_POLL_MS,
+	ESTIMATE_DEBOUNCE_MS,
 	type Failure,
 	PORT_TIMEOUT_MS
 } from './checkout.machine';
@@ -29,7 +31,10 @@ import {
 } from './v1';
 import { DEFAULT_SHAPE } from './views';
 import { EMPLOYER_CLASS } from './employer-ask';
+import { TICKER_DEBOUNCE_MS } from './ticker-search';
+import { COIN_PRICE_FAILED, COIN_REFUSED } from './unit';
 import { createFormRuntime } from './embed/runtime';
+import { createPaymentSurface, type PaymentSeams, quoteThrough } from './embed/surface';
 import { APPEARANCE_INPUTS } from './styles/appearance';
 import partStyles from './styles/parts.css?inline';
 import layoutStyles from './styles/layout.css?inline';
@@ -40,7 +45,7 @@ import buttonStyles from './registry/styles/button-css.css?inline';
 import checkboxStyles from './registry/styles/checkbox-css.css?inline';
 import fieldStyles from './registry/styles/field-css.css?inline';
 import rowStyles from './styles/rows.css?inline';
-import coinStyles from './styles/coins.css?inline';
+import unitStyles from './styles/units.css?inline';
 
 // the dom pool. what a lightweight DOM can prove about a custom element is structure, attributes,
 // events, slots and the upgrade lifecycle, and that is the whole of what is asserted here. layout,
@@ -196,14 +201,20 @@ type Options = {
 	readonly cadences?: (frequency: Frequency | undefined) => void;
 	/** every reading of whether a fund is offered, in the order the card told the payment surface. */
 	readonly offers?: (offered: boolean) => void;
-	/** every reading of whether crypto is offered, in the order the card told the payment surface. */
-	readonly cryptoOffers?: (offered: boolean) => void;
 	/** every reading of whether Venmo is offered, in the order the card told the payment surface. */
 	readonly venmoOffers?: (offered: boolean) => void;
 	/** every reading of whether IRA (QCD) is offered, in the order the card told the payment surface. */
 	readonly iraOffers?: (offered: boolean) => void;
+	/** the unit panel's Stocks search, as the runtime answers it; none where unsaid. */
+	readonly searchTickers?: FormCheckout['searchTickers'];
 	/** how many options the payment box lists when the card first asks; one where unsaid. */
 	readonly rowCount?: number;
+	/**
+	 * the processors' scripts, as ./embed/runtime.ts's payment surface would load them. where given,
+	 * the checkout is that surface (`createPaymentSurface` in ./embed/surface.ts) rather than a stand-in,
+	 * and `rail`, `unavailable`, `rows` and `repeatingUnavailable` above are what it reports.
+	 */
+	readonly seams?: PaymentSeams;
 	readonly attributes?: Readonly<Record<string, string>>;
 	readonly children?: string;
 	/** where the element is put; the document's body where unsaid. */
@@ -264,11 +275,36 @@ async function mount(options: Options = {}): Promise<Mounted> {
 					redraw: (node) => options.redraws?.(node)
 				};
 			},
-			checkout: (config, mount, onRail, onUnavailable, boot, fund, coins, ira) => {
+			checkout: (config, mount, onRail, onUnavailable, boot, fund, ira) => {
 				reports = fund;
-				// stood in the payment node the way the crypto and IRA (QCD) options stand them, so each
-				// is in the document and can hold the caret.
-				mount.appendChild(coins);
+				if (options.seams !== undefined) {
+					options.boots?.(boot);
+					const ports = { ...PORTS, ...options.ports };
+					const surface = createPaymentSurface(
+						config,
+						mount,
+						onRail,
+						onUnavailable,
+						fund,
+						options.seams,
+						ira
+					);
+					return {
+						...surface,
+						input: {
+							config,
+							ports: {
+								...ports,
+								quote: quoteThrough(surface, ports.quote),
+								confirm: surface.confirm,
+								resume: surface.resume
+							}
+						},
+						...(options.searchTickers === undefined ? {} : { searchTickers: options.searchTickers })
+					};
+				}
+				// stood in the payment node the way the IRA (QCD) option stands it, so it is in the
+				// document and can hold the caret.
 				if (ira !== undefined) mount.appendChild(ira);
 				options.mounted?.(mount);
 				options.boots?.(boot);
@@ -282,7 +318,6 @@ async function mount(options: Options = {}): Promise<Mounted> {
 					},
 					cadence: (frequency) => options.cadences?.(frequency),
 					offerFund: (offered) => options.offers?.(offered),
-					offerCrypto: (offered) => options.cryptoOffers?.(offered),
 					offerVenmo: (offered) => options.venmoOffers?.(offered),
 					offerIra: (offered) => options.iraOffers?.(offered),
 					steer: (send) => {
@@ -295,12 +330,27 @@ async function mount(options: Options = {}): Promise<Mounted> {
 					repeatingUnavailable: (listener) => {
 						repeating = listener;
 					},
+					...(options.searchTickers === undefined ? {} : { searchTickers: options.searchTickers }),
 					stop: () => options.torn?.()
 				};
 			}
 		},
 		tag
 	);
+	// the custom element registry holds every tag's class, and each class holds its runtime, for the
+	// rest of the file. so the listeners the card handed this runtime are dropped as the case ends, or
+	// every card the file mounts stays reachable through them and the file runs out of heap.
+	onTestFinished(() => {
+		report = () => {};
+		stop = () => {};
+		minted = () => {};
+		unchallengeable = () => {};
+		interacting = () => {};
+		reports = null;
+		counted = () => {};
+		repeating = () => {};
+		steering = () => {};
+	});
 	const host = document.createElement(tag);
 	for (const [name, value] of Object.entries(options.attributes ?? { form: 'frm_a8x2k9' })) {
 		host.setAttribute(name, value);
@@ -388,7 +438,6 @@ function placed(attributes: Readonly<Record<string, string>> = { form: 'frm_a8x2
 							input: { config, ports: PORTS },
 							cadence: () => {},
 							offerFund: () => {},
-							offerCrypto: () => {},
 							offerVenmo: () => {},
 							rows: () => {},
 							repeatingUnavailable: () => {},
@@ -1095,7 +1144,6 @@ describe('the live region', () => {
 					input: { config, ports: PORTS },
 					cadence: () => {},
 					offerFund: () => {},
-					offerCrypto: () => {},
 					offerVenmo: () => {},
 					rows: () => {},
 					repeatingUnavailable: () => {},
@@ -1359,7 +1407,7 @@ describe('the amount step', () => {
 
 		expect(card.all('[part~="amount-option"]')).toHaveLength(5);
 		expect(card.all('[part~="amount-option"]')[4]?.textContent).toBe('Other');
-		expect(card.all('[part~="amount-input"]')).toHaveLength(1);
+		expect(card.all('.tiles:not([hidden]) > [part~="amount-input"]')).toHaveLength(1);
 		// the entry is the other tile's to show: closed until that tile is chosen.
 		expect(card.find('[part~="amount-input"]').hidden).toBe(true);
 	});
@@ -2431,7 +2479,7 @@ describe('the gift the donor dedicates', () => {
 	});
 
 	// and what leaves for the endpoint carries the dedication and no recipient. blank on both is
-	// what `settle` (../value.ts) reads as `notify: null`, and `flatTribute` in ./checkout.machine.ts
+	// what `settle` (./value.ts) reads as `notify: null`, and `flatTribute` in ./checkout.machine.ts
 	// sends the two fields only where that is not null — so a name still in the draft would arrive
 	// on the request whatever the screen was showing.
 	it('sends the dedication and no recipient once the pair is taken back', async () => {
@@ -2578,7 +2626,7 @@ describe('the gift the donor dedicates', () => {
 	});
 
 	it('holds each box to the cap the endpoint holds it to', async () => {
-		// the caps are the app's own `MAX_NAME` and `MAX_EMAIL`, restated in ../value.ts because
+		// the caps are the app's own `MAX_NAME` and `MAX_EMAIL`, restated in ./value.ts because
 		// this package imports nothing from that app. set as the attribute, so a paste is truncated
 		// where it happens rather than refused after the donor has moved on.
 		const card = await withTributeOpened();
@@ -2682,7 +2730,7 @@ describe('the cause a gift is credited to', () => {
 			'field-row program',
 			'disclosure note',
 			'disclosure tribute',
-			'ds-btn ds-btn-primary ds-btn-lg'
+			'next'
 		]);
 	});
 
@@ -5235,11 +5283,11 @@ describe('the stylesheets', () => {
 	const still = `${declarations(partStyles)}\n${declarations(layoutStyles)}`;
 	const moving = declarations(motionStyles);
 	const css = `${still}\n${moving}`;
-	// the two sheets the card's own three do not cover: the coin list's (../coin-picker.ts) and the
-	// payment rows' (../embed/rows.ts). they are adopted into shadow roots of their own rather than
+	// the two sheets the card's own three do not cover: the unit panel's (./unit-panel.ts) and the
+	// payment rows' (./embed/rows.ts). they are adopted into shadow roots of their own rather than
 	// into the card's, which is why they are not in `css` above — and why a token spent only in one
 	// of them is still a token this element spends.
-	const adopted = `${css}\n${declarations(coinStyles)}\n${declarations(rowStyles)}`;
+	const adopted = `${css}\n${declarations(unitStyles)}\n${declarations(rowStyles)}`;
 	// kept out of `css` above rather than folded into it: the token file is where every colour
 	// literal in this component is authored, so a sheet holding the ramp cannot be swept by the
 	// case below that refuses one.
@@ -5459,7 +5507,7 @@ describe('the stylesheets', () => {
 		expect(own.match(/oklch\(from var\(--shadow-ink\) l c h \/ 0\.\d+\)/g)).toHaveLength(2);
 	});
 
-	// every sheet in the styles directory, read off the directory rather than listed: a sixth one
+	// every sheet in the styles directory, read off the directory rather than listed: a new one
 	// written there is swept by existing, where a list held here would leave it swept by nobody
 	// while every case in this block stayed green.
 	const styleSheets = import.meta.glob<string>('./styles/*.css', {
@@ -5473,15 +5521,15 @@ describe('the stylesheets', () => {
 
 	it('takes every length from a token, and says so at the ones it takes from nowhere', async () => {
 		// the directory is named here as well as swept, because the other cases in this block reach
-		// their sheets by a named import: a sixth file is swept for lengths the moment it lands and
+		// their sheets by a named import: a new file is swept for lengths the moment it lands and
 		// has to be carried into the colour cases by hand, and this is what says so.
 		expect(drawnFrom.map(([name]) => name)).toEqual([
-			'coins.css',
 			'layout.css',
 			'motion.css',
 			'parts.css',
 			'rows.css',
-			'tokens.css'
+			'tokens.css',
+			'units.css'
 		]);
 
 		// the token file is left out of the sweep for the reason it is left out of the colour sweep
@@ -5496,8 +5544,8 @@ describe('the stylesheets', () => {
 	it('spells a duration as a token in every sheet the motion case does not read', async () => {
 		// `reads every duration from a token` above reads ./styles/motion.css, the one sheet that
 		// moves. the rest are swept here. `declares no transition and no animation outside the
-		// motion sheet` holds ./styles/parts.css and ./styles/layout.css, and the coin list's own
-		// colour case holds ./styles/coins.css to the same — but ./styles/rows.css is held by
+		// motion sheet` holds ./styles/parts.css and ./styles/layout.css, and the unit panel's own
+		// colour case holds ./styles/units.css to the same — but ./styles/rows.css is held by
 		// neither, and it is adopted into a shadow root of its own, so the collapse under `reduce`
 		// reaches it only through the tokens a rule there spells.
 		//
@@ -5770,13 +5818,13 @@ describe('the stylesheets', () => {
 		}
 	});
 
-	// the coin list inside the crypto option carries a sheet of its own (./coin-picker.ts), held to it too.
-	it('derives every colour in the coin list from a token too', async () => {
-		const list = declarations(coinStyles);
-		expect(list.length).toBeGreaterThan(300);
-		expect(list).not.toMatch(/#[0-9a-f]{3,8}\b/i);
-		expect(list).not.toMatch(/\b(rgb|rgba|hsl|oklch)\(/);
-		expect(list).not.toMatch(/\btransition\b|\banimation\b|!important/);
+	// the unit panel carries a sheet of its own (./unit-panel.ts), held to it too.
+	it('derives every colour in the unit panel from a token too', async () => {
+		const panel = declarations(unitStyles);
+		expect(panel.length).toBeGreaterThan(300);
+		expect(panel).not.toMatch(/#[0-9a-f]{3,8}\b/i);
+		expect(panel).not.toMatch(/\b(rgb|rgba|hsl|oklch)\(/);
+		expect(panel).not.toMatch(/\btransition\b|\banimation\b|!important|font-family/);
 	});
 
 	// the payment rows drawn outside the provider's frame carry a sheet of their own
@@ -5882,11 +5930,10 @@ describe('the stylesheets', () => {
 		expect(moving).not.toMatch(/var\(--_ease-/);
 	});
 
-	// a registry control that brings its own transition moves at the registry's duration, which is
-	// `--duration-fast` on the registry's `:root` (./registry/styles/variables.css): a shadow tree has
-	// no `:root`, so inside the card that name is the host page's, and the `reduce` collapse in
-	// ./styles/tokens.css never reaches it. its class also outweighs the zero-weight list in
-	// ./styles/motion.css, so the part loses the movements that sheet gives it. each such part is
+	// a registry control that brings its own transition moves at the registry's `--duration-fast`
+	// (restated on the card's colour layer in ./styles/tokens.css) rather than on the card's own
+	// `--_move-*` tokens, and its class outweighs the zero-weight list in ./styles/motion.css, so the
+	// part loses the movements that sheet gives it. each such part is
 	// restated there at its registry class, so what it moves is the motion sheet's.
 	it('restates the motion of every registry control that brings its own', () => {
 		// innermost blocks only, so a rule inside `@media (hover: hover)` is read under its own
@@ -6363,33 +6410,25 @@ describe('where a payment provider paints', () => {
 			expect(card.text('[role="status"]')).toBe('This is now a one-time gift.');
 		});
 
-		it('offers the crypto option once the gift is made one-time', async () => {
-			const cryptoOffers: boolean[] = [];
-			const coins = [
-				{ coin: 'btc', ticker: 'btc', name: 'Bitcoin', network: 'Bitcoin', memoRequired: false }
-			];
+		// a Donate press with no custodian named is answered by the custodian box, where the caret
+		// lands; the sentence the offer's press said is not that answer and is not read out again
+		// beside it.
+		it('says nothing it was keeping on an IRA (QCD) press with no custodian named', async () => {
 			const card = await atMonthlyReview(
-				{ paymentMethods: ['card', 'crypto'], coins },
-				{ cryptoOffers: (offered) => void cryptoOffers.push(offered) }
+				{ paymentMethods: ['card', 'ira_qcd'] },
+				{
+					ports: {
+						pledges: {
+							id: () => 'pledge-1',
+							save: async () => ({ paymentToken: 'pledge-1', feeMinor: 0, totalMinor: 2500 }),
+							told: async () => {}
+						}
+					}
+				}
 			);
 			card.repeatingUnavailable();
-			expect(cryptoOffers.at(-1)).toBe(false);
-
 			makeOneTime(card).click();
-
-			expect(cryptoOffers.at(-1)).toBe(true);
-		});
-
-		// a Donate press with no coin picked is answered by the coin list, where the caret lands; the
-		// sentence the offer's press said is not that answer and is not read out again beside it.
-		it('says nothing it was keeping on a crypto press with no coin picked', async () => {
-			const coins = [
-				{ coin: 'btc', ticker: 'btc', name: 'Bitcoin', network: 'Bitcoin', memoRequired: false }
-			];
-			const card = await atMonthlyReview({ paymentMethods: ['card', 'crypto'], coins });
-			card.repeatingUnavailable();
-			makeOneTime(card).click();
-			card.rail('crypto');
+			card.rail('ira_qcd');
 			await settle();
 			expect(card.text('[role="status"]')).toBe('This is now a one-time gift.');
 
@@ -6839,6 +6878,759 @@ describe('a donor-advised fund’s window', () => {
 	});
 });
 
+/**
+ * hooks for a block whose cases open the unit panel the pill mounts.
+ *
+ * the panel's machine moves the caret a frame after it opens, and a frame landing on a root already
+ * taken down throws inside happy-dom (./unit-panel.dom.spec.ts), so each case waits a frame out.
+ *
+ * and happy-dom 20.11 throws reading a shadow root's `activeElement` while the caret stands in a root
+ * around it: its walk up past the hosts reaches the document and reads `host` off it. an engine
+ * answers `null` there (https://dom.spec.whatwg.org/#dom-documentorshadowroot-activeelement), and the
+ * panel's machine reads its own root's on a frame after a pick has put the caret on the pill. the
+ * getter answers so for the cases of the block that calls this alone, put back after each one.
+ */
+function opensTheUnitPanel(): void {
+	const activeElementOf = Object.getOwnPropertyDescriptor(ShadowRoot.prototype, 'activeElement');
+	beforeEach(() => {
+		Object.defineProperty(ShadowRoot.prototype, 'activeElement', {
+			configurable: true,
+			get(this: ShadowRoot) {
+				try {
+					return activeElementOf?.get?.call(this) ?? null;
+				} catch (error) {
+					if (error instanceof TypeError) return null;
+					throw error;
+				}
+			}
+		});
+	});
+	afterEach(async () => {
+		await settle();
+		if (activeElementOf !== undefined) {
+			Object.defineProperty(ShadowRoot.prototype, 'activeElement', activeElementOf);
+		}
+	});
+}
+
+/** the unit pill on the How much line. */
+const pill = (card: Mounted) => card.find('.amount-head > button');
+
+/** the What you give panel the pill opens, in its own root inside the card. */
+const unitPanel = (card: Mounted): ShadowRoot => {
+	const host = [...card.shadow.querySelectorAll('*')].find((node) =>
+		node.shadowRoot?.querySelector('[role="dialog"]')
+	);
+	if (host?.shadowRoot == null) throw new Error('the card mounted no unit panel');
+	return host.shadowRoot;
+};
+
+/** the donor opening the panel and picking the row keyed `value` (`unitKey` in ./unit.ts). */
+async function give(card: Mounted, value: string): Promise<void> {
+	pill(card).click();
+	await settle();
+	(unitPanel(card).querySelector(`[role="option"][data-value="${value}"]`) as HTMLElement).click();
+	await settle();
+}
+
+/** the one box a coin amount or a share count is typed in. */
+const quantity = (card: Mounted) => card.find('#quantity-entry') as HTMLInputElement;
+
+/** past the estimate's debounce (`ESTIMATE_DEBOUNCE_MS` in ./checkout.machine.ts) and its answer. */
+const priced = () => new Promise((resolve) => setTimeout(resolve, ESTIMATE_DEBOUNCE_MS + 20));
+
+/** the details step given and pressed on, from whichever first step the card is on. */
+async function throughDetails(card: Mounted): Promise<void> {
+	proceed(card);
+	type(card.find('#email'), 'donor@example.org');
+	type(card.find('#first-name'), 'Ada');
+	type(card.find('#last-name'), 'Lovelace');
+	proceed(card);
+	await settle();
+}
+
+describe('what the donor gives, on the first step', () => {
+	const COINS: NonNullable<FormConfig['coins']> = [
+		{
+			coin: 'btc',
+			ticker: 'btc',
+			name: 'Bitcoin',
+			network: 'Bitcoin',
+			memoRequired: false,
+			logo: 'https://processor.example/btc.svg'
+		},
+		{ coin: 'eth', ticker: 'eth', name: 'Ethereum', network: 'Ethereum', memoRequired: false }
+	];
+	const WITH_CRYPTO: FormConfig = {
+		...CONFIG,
+		paymentMethods: ['card', 'ach', 'crypto'],
+		coins: COINS
+	};
+	const WITH_EVERYTHING: FormConfig = {
+		...WITH_CRYPTO,
+		paymentMethods: [...PAYMENT_METHODS]
+	};
+	/** a surface that can price a coin and save a pledge, which is what offers each on this step. */
+	const UNIT_PORTS: Partial<CheckoutPorts> = {
+		estimate: async () => 48_210,
+		pledges: {
+			id: () => 'pledge_1',
+			save: async () => ({ paymentToken: 'pledge_1', feeMinor: 0, totalMinor: 0 }),
+			told: async () => {}
+		}
+	};
+	const amountHead = (card: Mounted) => card.find('.amount-head');
+
+	opensTheUnitPanel();
+
+	it('draws the unit as plain text where the deployment offers its currency alone', async () => {
+		const card = await mount();
+		const head = amountHead(card);
+
+		expect(head.querySelector('button')).toBeNull();
+		expect(head.querySelector('.unit-text')?.textContent).toBe('USD');
+		expect(head.querySelector('[role="button"]')).toBeNull();
+	});
+
+	/** the image each disc in the pill draws, in the order they stack. */
+	const discs = (card: Mounted) =>
+		[...pill(card).querySelectorAll('.ds-avatar-group > .ds-avatar')].map(
+			(disc) => disc.querySelector('img')?.getAttribute('src') ?? ''
+		);
+
+	it('draws a pill naming the currency and only the other kinds the deployment takes', async () => {
+		const crypto = await mount({ config: WITH_CRYPTO, ports: UNIT_PORTS });
+		const button = pill(crypto);
+
+		expect(button.getAttribute('type')).toBe('button');
+		expect(button.getAttribute('aria-haspopup')).toBe('dialog');
+		expect(button.getAttribute('aria-expanded')).toBe('false');
+		expect(button.getAttribute('aria-label')).toBe('Currency: USD. Also crypto');
+		expect(button.querySelector('.unit-code')?.textContent).toBe('USD');
+		expect(button.querySelector('.ds-avatar-group')?.getAttribute('aria-hidden')).toBe('true');
+		expect(
+			[...button.querySelectorAll('.ds-avatar')].every((disc) =>
+				disc.classList.contains('ds-avatar-xs')
+			)
+		).toBe(true);
+		const [flag, coin] = discs(crypto);
+		expect(discs(crypto)).toHaveLength(2);
+		expect(flag).toMatch(/^data:image\/svg\+xml,/);
+		expect(coin).toBe('https://processor.example/btc.svg');
+		crypto.host.remove();
+
+		const everything = await mount({ config: WITH_EVERYTHING, ports: UNIT_PORTS });
+		expect(pill(everything).getAttribute('aria-label')).toBe(
+			'Currency: USD. Also crypto and stocks'
+		);
+		expect(discs(everything)).toHaveLength(3);
+	});
+
+	// where the caret ends is ./element.browser.spec.ts's: the panel's machine puts it back in its
+	// box a frame after a pick, which an engine refuses on a panel no longer shown and happy-dom,
+	// which shows no popover, does not. what is asserted here is that the card puts it on the pill.
+	it('opens the panel from the pill, and puts the caret back on the pill after a pick', async () => {
+		const card = await mount({ config: WITH_CRYPTO, ports: UNIT_PORTS });
+		const dialog = unitPanel(card).querySelector('[role="dialog"]') as HTMLElement;
+		expect(dialog.getAttribute('aria-label')).toBe('What you give');
+
+		pill(card).click();
+		await settle();
+		expect(pill(card).getAttribute('aria-expanded')).toBe('true');
+		expect(unitPanel(card).activeElement).toBe(unitPanel(card).querySelector('[role="combobox"]'));
+		let focused = 0;
+		pill(card).addEventListener('focus', () => {
+			focused += 1;
+		});
+
+		(
+			unitPanel(card).querySelector('[role="option"][data-value="coin:btc"]') as HTMLElement
+		).click();
+		await settle();
+
+		expect(pill(card).getAttribute('aria-expanded')).toBe('false');
+		expect(pill(card).getAttribute('aria-label')).toBe('Crypto: BTC');
+		expect(pill(card).querySelector('.unit-code')?.textContent).toBe('BTC');
+		expect(discs(card)).toEqual(['https://processor.example/btc.svg']);
+		expect(focused).toBe(1);
+	});
+
+	it('closes the panel on a second press of the pill', async () => {
+		const card = await mount({ config: WITH_CRYPTO, ports: UNIT_PORTS });
+		pill(card).click();
+		await settle();
+
+		pill(card).click();
+		await settle();
+
+		expect(pill(card).getAttribute('aria-expanded')).toBe('false');
+		expect(pill(card).getAttribute('aria-label')).toBe('Currency: USD. Also crypto');
+	});
+
+	/** a card on the everything deployment with AAPL picked, as a donor searches for it. */
+	const giveStock = async (options: Options = {}) => {
+		const card = await mount({
+			config: WITH_EVERYTHING,
+			ports: UNIT_PORTS,
+			searchTickers: async () => [{ symbol: 'AAPL', name: 'Apple Inc.' }],
+			...options
+		});
+		pill(card).click();
+		await settle();
+		const box = unitPanel(card).querySelector('[role="combobox"]') as HTMLInputElement;
+		type(box, 'aa');
+		await new Promise((resolve) => setTimeout(resolve, TICKER_DEBOUNCE_MS + 20));
+		(
+			unitPanel(card).querySelector('[role="option"][data-value="stock:AAPL"]') as HTMLElement
+		).click();
+		await settle();
+		return card;
+	};
+
+	/** whether the currency's tiles are on the step. */
+	const tilesShown = (card: Mounted) =>
+		card.all('[part~="amount-option"]').every((tile) => tile.closest('[hidden]') === null);
+	const trail = (card: Mounted) =>
+		quantity(card).closest('[part~="amount-input"]')?.querySelector('.adorn-trail')?.textContent;
+
+	it('takes a coin amount in one box named Amount, with the estimate and the note under it', async () => {
+		const card = await mount({ config: WITH_CRYPTO, ports: UNIT_PORTS });
+		await give(card, 'coin:btc');
+
+		expect(tilesShown(card)).toBe(false);
+		expect(card.find(`label[for="quantity-entry"]`).textContent).toBe('Amount');
+		expect(trail(card)).toBe('BTC');
+		expect(shows(card, '.unit-estimate .unit-figure')).toBe('');
+		expect(shows(card, '.unit-estimate')).toBe(
+			'Your gift is valued in US dollars when it arrives.'
+		);
+
+		type(quantity(card), '0.005');
+		await priced();
+
+		expect(shows(card, '.unit-estimate')).toBe(
+			'About $482.10Your gift is valued in US dollars when it arrives.'
+		);
+	});
+
+	it('takes a share count in the same box, with nothing under it', async () => {
+		const card = await giveStock();
+		type(quantity(card), '50');
+		await priced();
+
+		expect(tilesShown(card)).toBe(false);
+		expect(card.find(`label[for="quantity-entry"]`).textContent).toBe('Number of shares');
+		expect(trail(card)).toBe('shares');
+		expect(shows(card, '.unit-estimate')).toBe('');
+		expect(pill(card).getAttribute('aria-label')).toBe('Stock: AAPL');
+	});
+
+	const cadences = (card: Mounted) =>
+		card.all('[part~="frequency-option"] input') as HTMLInputElement[];
+
+	it('holds a coin gift to one-time, saying so under the track, with every cadence a real control', async () => {
+		const card = await mount({ config: WITH_CRYPTO, ports: UNIT_PORTS });
+		expect(cadences(card).map((input) => input.getAttribute('aria-disabled'))).toEqual([
+			null,
+			null,
+			null
+		]);
+		expect(shows(card, '#cadence-note')).toBe('');
+
+		await give(card, 'coin:btc');
+		const [oneTime, monthly, yearly] = cadences(card);
+
+		expect(shows(card, '#cadence-note')).toBe('Crypto gifts are one-time only.');
+		for (const repeating of [monthly, yearly]) {
+			expect(repeating?.getAttribute('aria-disabled')).toBe('true');
+			expect(repeating?.getAttribute('aria-describedby')).toBe('cadence-note');
+			expect(repeating?.disabled).toBe(false);
+		}
+		expect(oneTime?.hasAttribute('aria-disabled')).toBe(false);
+
+		press(monthly as HTMLElement);
+
+		expect(oneTime?.checked).toBe(true);
+		expect(monthly?.checked).toBe(false);
+	});
+
+	it('says a stock gift is one-time only', async () => {
+		const card = await giveStock();
+
+		expect(shows(card, '#cadence-note')).toBe('Stock gifts are one-time only.');
+		expect(cadences(card)[1]?.getAttribute('aria-disabled')).toBe('true');
+	});
+
+	/** the amount step's Continue, and the eyebrow standing over it. */
+	const next = (card: Mounted) => card.find('.next > [part~="action"]');
+	const eyebrow = (card: Mounted) => shows(card, '.next > .eyebrow');
+	const described = (card: Mounted) =>
+		card.shadow.getElementById(next(card).getAttribute('aria-describedby') ?? '')?.textContent;
+
+	it('heads Continue with the next step and names the methods there, where several are offered', async () => {
+		const card = await mount({ config: WITH_CRYPTO, ports: UNIT_PORTS });
+		const button = next(card);
+
+		expect(eyebrow(card)).toBe('Next: payment');
+		expect(button.previousElementSibling?.classList.contains('eyebrow')).toBe(true);
+		expect(button.getAttribute('aria-label')).toBe('Continue to payment');
+		expect(button.querySelector('.action-label')?.textContent).toBe('Continue');
+		expect(described(card)).toBe('Payment methods on the next step: Card, Bank account');
+		expect(card.find('.step').querySelectorAll('[part~="action"]')).toHaveLength(1);
+	});
+
+	it('keeps the eyebrow over a deployment with one method, and names that one', async () => {
+		const card = await mount({ config: { ...CONFIG, paymentMethods: ['card'] } });
+
+		expect(eyebrow(card)).toBe('Next: payment');
+		expect(next(card).getAttribute('aria-label')).toBe('Continue to payment');
+		expect(described(card)).toBe('Payment methods on the next step: Card');
+	});
+
+	it('is a plain Continue once a coin is picked, which skips the payment step', async () => {
+		const card = await mount({ config: WITH_CRYPTO, ports: UNIT_PORTS });
+		await give(card, 'coin:btc');
+
+		expect(eyebrow(card)).toBe('');
+		expect(next(card).hasAttribute('aria-label')).toBe(false);
+		expect(next(card).hasAttribute('aria-describedby')).toBe(false);
+		expect(next(card).querySelector('.action-label')?.textContent).toBe('Continue');
+	});
+
+	// the slot the payment methods' circles mount in stands empty and draws nothing.
+	it('holds an empty, hidden slot for the method circles inside Continue', async () => {
+		const card = await mount({ config: WITH_EVERYTHING, ports: UNIT_PORTS });
+		const slot = next(card).querySelector('.method-marks') as HTMLElement;
+
+		expect(slot.hidden).toBe(true);
+		expect(slot.getAttribute('aria-hidden')).toBe('true');
+		expect(slot.childNodes).toHaveLength(0);
+	});
+
+	const BTC_QUOTE: Quote = {
+		paymentToken: 'don_btc',
+		feeMinor: 0,
+		totalMinor: 48_210,
+		deposit: {
+			address: 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4',
+			memo: null,
+			coin: 'btc',
+			network: 'Bitcoin',
+			coinAmount: '0.005',
+			giftCoinAmount: '0.005',
+			validUntil: '2023-11-21T12:00:00.000Z',
+			qr: { rows: ['110', '011', '101'] }
+		}
+	};
+
+	it('goes from a coin picked on step 1 through the details and the review to its address', async () => {
+		const quotes: QuoteRequest[] = [];
+		const steps: string[] = [];
+		const card = await mount({
+			config: WITH_CRYPTO,
+			ports: {
+				...UNIT_PORTS,
+				quote: async (request) => {
+					quotes.push(request);
+					return BTC_QUOTE;
+				}
+			}
+		});
+		await give(card, 'coin:btc');
+		type(quantity(card), '0.005');
+		await priced();
+		// every screen the card shows on the way, read as each patch lands.
+		const watch = new MutationObserver(() => {
+			const shown = card.all('.step, .takeover').find((node) => !node.hidden);
+			const name = shown?.classList.contains('step-give') ? 'give' : (shown?.className ?? '');
+			if (steps.at(-1) !== name) steps.push(name);
+		});
+		watch.observe(card.shadow, { attributes: true, subtree: true, attributeFilter: ['hidden'] });
+		onTestFinished(() => watch.disconnect());
+
+		await throughDetails(card);
+		card.find('.step-give [part~="submit"]').click();
+		await settle();
+
+		expect(steps.slice(-2)).toEqual(['give', 'step takeover']);
+		expect(card.text('.takeover [part~="heading"]')).toBe('Send your gift');
+		expect(quotes.map((request) => [request.method, request.coin])).toEqual([['crypto', 'btc']]);
+	});
+
+	it('goes back to step 1 from the address on Change what you give, with the caret on the pill', async () => {
+		const card = await mount({
+			config: WITH_CRYPTO,
+			ports: { ...UNIT_PORTS, quote: async () => BTC_QUOTE }
+		});
+		await give(card, 'coin:btc');
+		type(quantity(card), '0.005');
+		await priced();
+		await throughDetails(card);
+		card.find('.step-give [part~="submit"]').click();
+		await settle();
+		const back = card.find('.takeover > .foot > [part~="action-quiet"]');
+		expect(back.textContent).toBe('Change what you give');
+
+		back.click();
+		await settle();
+
+		expect(card.find('.step').hidden).toBe(false);
+		expect(card.shadow.activeElement).toBe(pill(card));
+		expect(pill(card).getAttribute('aria-label')).toBe('Crypto: BTC');
+		expect(quantity(card).value).toBe('0.005');
+	});
+
+	it('goes from a stock picked on step 1 through the details to the stock pending screen', async () => {
+		const saved: unknown[] = [];
+		const card = await giveStock({
+			ports: {
+				...UNIT_PORTS,
+				pledges: {
+					id: () => 'pledge_1',
+					save: async (request) => {
+						saved.push(request);
+						return {
+							paymentToken: 'pledge_1',
+							feeMinor: 0,
+							totalMinor: 0,
+							pledge: {
+								id: 'pledge_1',
+								method: 'stock',
+								reference: 'ACME-AAPL-7Q2D',
+								receiptTo: 'donor@example.org',
+								ticker: 'AAPL',
+								shares: '50',
+								deliverTo: 'Harbor Street Securities',
+								dtcNumber: '0164',
+								accountNumber: 'Z12-345678',
+								accountName: 'Acme Relief Fund'
+							}
+						};
+					},
+					told: async () => {}
+				}
+			}
+		});
+		type(quantity(card), '50');
+		// a stock gift has no review step, so the review step is never shown on the way.
+		let reviewed = false;
+		const watch = new MutationObserver(() => {
+			if (!card.find('.step-give').hidden) reviewed = true;
+		});
+		watch.observe(card.shadow, { attributes: true, subtree: true, attributeFilter: ['hidden'] });
+		onTestFinished(() => watch.disconnect());
+
+		await throughDetails(card);
+
+		expect(reviewed).toBe(false);
+		expect(card.find('.step-give').hidden).toBe(true);
+		expect(card.text('.takeover [part~="heading"]')).toBe('Your stock gift is pending');
+		expect(saved).toHaveLength(1);
+	});
+
+	describe('a stock press held on a widget asking the donor', () => {
+		const AAPL_PLEDGE = (id: string): Quote => ({
+			paymentToken: id,
+			feeMinor: 0,
+			totalMinor: 0,
+			pledge: {
+				id,
+				method: 'stock',
+				reference: 'ACME-AAPL-7Q2D',
+				receiptTo: 'donor@example.org',
+				ticker: 'AAPL',
+				shares: '50',
+				deliverTo: 'Harbor Street Securities',
+				dtcNumber: '0164',
+				accountNumber: 'Z12-345678',
+				accountName: 'Acme Relief Fund'
+			}
+		});
+		/** the details step's own challenge box, where the widget is first drawn. */
+		const detailsBox = (card: Mounted) => card.find('.step-details .challenge');
+
+		// a stock gift has no review step, so the review step's box beside its press is hidden.
+		it('draws the puzzle in the details step’s own box, and saves once on the token it mints', async () => {
+			const drawn: HTMLElement[] = [];
+			const saves: (QuoteRequest | StockPledgeRequest)[] = [];
+			const card = await giveStock({
+				mints: false,
+				redraws: (node) => void drawn.push(node),
+				ports: {
+					...UNIT_PORTS,
+					pledges: {
+						id: () => 'pledge_1',
+						save: async (request) => {
+							saves.push(request);
+							return AAPL_PLEDGE('pledge_1');
+						},
+						told: async () => {}
+					}
+				}
+			});
+			type(quantity(card), '50');
+			await throughDetails(card);
+
+			card.interactive(true);
+			await settle();
+
+			expect(card.find('.step-details').hidden).toBe(false);
+			expect(drawn.length).toBeGreaterThan(0);
+			expect(drawn.every((node) => node === detailsBox(card))).toBe(true);
+			expect(detailsBox(card).closest('[hidden]')).toBeNull();
+			expect(saves).toEqual([]);
+
+			card.token('tk_solved');
+			await settle();
+
+			expect(saves.map((save) => save.turnstileToken)).toEqual(['tk_solved']);
+			expect(card.text('.takeover [part~="heading"]')).toBe('Your stock gift is pending');
+		});
+
+		// the puzzle is in the card interior and is what the donor acts on, so the interior drops the
+		// busy flag while it asks, as the review step's does, and the press keeps it.
+		it('takes the busy flag off the card interior while the donor is solving, leaving it on Continue', async () => {
+			const card = await giveStock({ mints: false });
+			type(quantity(card), '50');
+			await throughDetails(card);
+			expect(card.find('.card-body').getAttribute('aria-busy')).toBe('true');
+
+			card.interactive(true);
+			await settle();
+
+			expect(card.find('.card-body').hasAttribute('aria-busy')).toBe(false);
+			expect(card.find('.step-details [part~="action"]').getAttribute('aria-busy')).toBe('true');
+
+			card.interactive(false);
+			await settle();
+
+			expect(card.find('.card-body').getAttribute('aria-busy')).toBe('true');
+		});
+
+		// the press is held, not refused: the caret stays put, nothing says the card is working while
+		// the puzzle waits on the donor, and a box typed in meanwhile is what the save sends.
+		it('keeps the caret, the boxes and the silence while the donor solves the puzzle', async () => {
+			const saves: StockPledgeRequest[] = [];
+			const card = await giveStock({
+				mints: false,
+				ports: {
+					...UNIT_PORTS,
+					pledges: {
+						id: () => 'pledge_1',
+						save: async (request) => {
+							saves.push(request as StockPledgeRequest);
+							return AAPL_PLEDGE('pledge_1');
+						},
+						told: async () => {}
+					}
+				}
+			});
+			type(quantity(card), '50');
+			await throughDetails(card);
+			card.interactive(true);
+			await settle();
+
+			expect(card.shadow.activeElement).not.toBe(card.find('#email'));
+			expect(card.text('[role="status"]')).not.toBe('Working on your gift.');
+
+			type(card.find('#email'), 'ada@example.org');
+			expect((card.find('#email') as HTMLInputElement).value).toBe('ada@example.org');
+			card.token('tk_solved');
+			await settle();
+			expect(saves).toMatchObject([{ email: 'ada@example.org' }]);
+		});
+
+		it('presses a failed save again on Try again, with its puzzle in the details step', async () => {
+			const drawn: HTMLElement[] = [];
+			const saves: (QuoteRequest | StockPledgeRequest)[] = [];
+			let resets = 0;
+			const card = await giveStock({
+				mints: false,
+				redraws: (node) => void drawn.push(node),
+				resets: () => void (resets += 1),
+				ports: {
+					...UNIT_PORTS,
+					pledges: {
+						id: () => 'pledge_1',
+						save: async (request) => {
+							saves.push(request);
+							if (saves.length === 1) throw new TypeError('Failed to fetch');
+							return AAPL_PLEDGE('pledge_1');
+						},
+						told: async () => {}
+					}
+				}
+			});
+			type(quantity(card), '50');
+			await throughDetails(card);
+			card.token('tk_first');
+			await settle();
+			expect(primary(card).textContent).toBe('Try again');
+			const resetBeforeRetry = resets;
+
+			primary(card).click();
+			await settle();
+			card.interactive(true);
+			await settle();
+
+			expect(card.find('.takeover').hidden).toBe(true);
+			expect(card.find('.step-details').hidden).toBe(false);
+			const shown = card
+				.all('button')
+				.filter((button) => button.closest('[hidden]') === null)
+				.map((button) => button.textContent ?? '');
+			expect(shown.some((words) => words.startsWith('Donate'))).toBe(false);
+			expect(resetBeforeRetry).toBeGreaterThan(0);
+			expect(resets).toBe(resetBeforeRetry);
+			expect(drawn.length).toBeGreaterThan(0);
+			expect(drawn.every((node) => node === detailsBox(card))).toBe(true);
+			expect(detailsBox(card).closest('[hidden]')).toBeNull();
+
+			card.token('tk_solved');
+			await settle();
+
+			expect(saves.map((save) => save.turnstileToken)).toEqual(['tk_first', 'tk_solved']);
+			expect(card.text('.takeover [part~="heading"]')).toBe('Your stock gift is pending');
+		});
+	});
+
+	it('keeps the tiles and Other for the currency, and no box for a quantity', async () => {
+		const card = await mount({ config: WITH_CRYPTO, ports: UNIT_PORTS });
+
+		expect(tilesShown(card)).toBe(true);
+		expect(card.all('[part~="amount-option"]').at(-1)?.textContent).toBe('Other');
+		expect(quantity(card).closest('[part~="amount-input"]')?.closest('[hidden]')).not.toBeNull();
+	});
+
+	// the card box carries money alone, so on a form whose first step offers a coin its failure to
+	// come up is held rather than said (`paymentUnavailable` in ./checkout.machine.ts).
+	const BOX_DOWN = { message: 'This form cannot take a payment right now.', fix: 'Check the key.' };
+
+	it('keeps the first step when the card box never came up, and still gives a coin', async () => {
+		const card = await mount({
+			config: WITH_CRYPTO,
+			ports: { ...UNIT_PORTS, quote: async () => BTC_QUOTE }
+		});
+		card.unavailable(BOX_DOWN);
+		await settle();
+		expect(card.find('.step').hidden).toBe(false);
+		expect(card.find('.takeover').hidden).toBe(true);
+
+		await give(card, 'coin:btc');
+		type(quantity(card), '0.005');
+		await priced();
+		await throughDetails(card);
+		card.find('.step-give [part~="submit"]').click();
+		await settle();
+
+		expect(card.text('.takeover [part~="heading"]')).toBe('Send your gift');
+	});
+
+	it('refuses a gift of money with the box’s words at Review, and Try again goes to step 1', async () => {
+		const card = await mount({ config: WITH_CRYPTO, ports: UNIT_PORTS });
+		card.unavailable(BOX_DOWN);
+		await settle();
+		press(card.all('[part~="amount-option"] input')[0] as HTMLElement);
+
+		await throughDetails(card);
+
+		expect(shows(card, '.takeover .message')).toBe(BOX_DOWN.message);
+		expect(card.text('.takeover')).not.toContain('Check the key');
+		expect(primary(card).textContent).toBe('Try again');
+
+		primary(card).click();
+		await settle();
+
+		expect(card.find('.step').hidden).toBe(false);
+		expect(card.find('.takeover').hidden).toBe(true);
+	});
+
+	// the same, from the card processor's script failing to load behind the real payment surface
+	// rather than from a report handed in: the surface says the card is down (`sayWhatIsLeft` in
+	// ./embed/surface.ts), and the flow decides what that leaves.
+	describe('with the card processor’s script failing to load', () => {
+		const STRIPE_DOWN: PaymentSeams = {
+			stripe: { load: () => Promise.resolve(null), delay: () => () => {} }
+		};
+		/** the sentence ./embed/stripe.ts says when its fields never came up. */
+		const NO_FIELDS =
+			'The payment details on this form did not load, and nothing was charged. Reload the page ' +
+			'to try again.';
+		const CARD_AND_CRYPTO: FormConfig = { ...WITH_CRYPTO, paymentMethods: ['card', 'crypto'] };
+
+		it('keeps the first step and gives a coin through to its address', async () => {
+			const card = await mount({
+				config: CARD_AND_CRYPTO,
+				ports: { ...UNIT_PORTS, quote: async () => BTC_QUOTE },
+				seams: STRIPE_DOWN
+			});
+			expect(card.find('.step').hidden).toBe(false);
+			expect(card.find('.takeover').hidden).toBe(true);
+
+			await give(card, 'coin:btc');
+			type(quantity(card), '0.005');
+			await priced();
+			await throughDetails(card);
+			card.find('.step-give [part~="submit"]').click();
+			await settle();
+
+			expect(card.text('.takeover [part~="heading"]')).toBe('Send your gift');
+		});
+
+		it('refuses a gift of money with the card’s sentence once it reaches the payment step', async () => {
+			const card = await mount({ config: CARD_AND_CRYPTO, ports: UNIT_PORTS, seams: STRIPE_DOWN });
+			press(card.all('[part~="amount-option"] input')[0] as HTMLElement);
+
+			await throughDetails(card);
+
+			expect(shows(card, '.takeover .message')).toBe(NO_FIELDS);
+		});
+
+		it('gives a stock through to the pending screen', async () => {
+			const card = await giveStock({
+				config: { ...CONFIG, paymentMethods: ['card', 'stock'] },
+				ports: {
+					...UNIT_PORTS,
+					pledges: {
+						id: () => 'pledge_1',
+						save: async () => ({
+							paymentToken: 'pledge_1',
+							feeMinor: 0,
+							totalMinor: 0,
+							pledge: {
+								id: 'pledge_1',
+								method: 'stock',
+								reference: 'ACME-AAPL-7Q2D',
+								receiptTo: 'donor@example.org',
+								ticker: 'AAPL',
+								shares: '50',
+								deliverTo: 'Harbor Street Securities',
+								dtcNumber: '0164',
+								accountNumber: 'Z12-345678',
+								accountName: 'Acme Relief Fund'
+							}
+						}),
+						told: async () => {}
+					}
+				},
+				seams: STRIPE_DOWN
+			});
+			type(quantity(card), '50');
+
+			await throughDetails(card);
+
+			expect(card.text('.takeover [part~="heading"]')).toBe('Your stock gift is pending');
+		});
+
+		it('goes unavailable with the card’s sentence where the form offers its processor’s rails alone', async () => {
+			const card = await mount({ config: CONFIG, ports: UNIT_PORTS, seams: STRIPE_DOWN });
+
+			expect(card.find('.step').hidden).toBe(true);
+			expect(shows(card, '.takeover .message')).toBe(NO_FIELDS);
+		});
+	});
+});
+
 describe('a crypto gift', () => {
 	const CRYPTO: FormConfig = {
 		...CONFIG,
@@ -6885,35 +7677,36 @@ describe('a crypto gift', () => {
 		}
 	};
 
-	/** the coin list's own root, standing in the payment node. */
-	const coins = (card: Mounted): ShadowRoot => {
-		const host = [...card.host.querySelectorAll('*')].find((node) =>
-			node.shadowRoot?.querySelector('[role="combobox"]')
-		);
-		if (host?.shadowRoot == null) throw new Error('no coin list was handed to the runtime');
-		return host.shadowRoot;
+	/** each coin's key in the unit list, by the ticker a donor reads (`unitKey` in ./unit.ts). */
+	const KEYS: Readonly<Record<string, string>> = {
+		BTC: 'coin:btc',
+		USDT: 'coin:usdttrc20',
+		XRP: 'coin:xrp'
 	};
-	const combobox = (card: Mounted) => coins(card).querySelector('input') as HTMLInputElement;
-	/** the donor picking a coin in the list, by its ticker. */
-	const pick = async (card: Mounted, ticker: string) => {
-		(coins(card).querySelector('.picker') as HTMLElement).click();
-		await settle();
-		const option = [...coins(card).querySelectorAll<HTMLElement>('[role="option"]')].find(
-			(node) => node.querySelector('.coin-ticker')?.textContent === ticker
-		);
-		option?.click();
-		await settle();
-	};
-	/** the review step of a one-time gift with the crypto option open. */
-	const onCrypto = async (options: Options = {}) => {
-		const card = await atReviewBeforeRail({ config: CRYPTO, ...options });
-		card.rail('crypto');
+	/** the coin's amount priced at the gift's $25.00, the figure every quote below states. */
+	const PRICED: Partial<CheckoutPorts> = { estimate: async () => 2500 };
+	/** the first step with a coin picked from the pill's panel, by its ticker, and an amount typed. */
+	const onCoin = async (ticker = 'USDT', options: Options = {}) => {
+		const card = await mount({
+			config: CRYPTO,
+			...options,
+			ports: { ...PRICED, ...options.ports }
+		});
+		await give(card, KEYS[ticker] ?? '');
+		type(quantity(card), '25');
+		await priced();
 		return card;
 	};
-	/** the address screen, for `quote`. */
+	/** the details given and the review step's Continue pressed, which sends the quote. */
+	const throughReview = async (card: Mounted) => {
+		await throughDetails(card);
+		action(card).click();
+		await settle();
+	};
+	/** the address screen, for `quote`: the coin picked on the first step and both later steps passed. */
 	const atAddress = async (quote: Quote = USDT, ticker = 'USDT', options: Options = {}) => {
 		const quotes: QuoteRequest[] = [];
-		const card = await onCrypto({
+		const card = await onCoin(ticker, {
 			...options,
 			ports: {
 				quote: async (request) => {
@@ -6923,54 +7716,44 @@ describe('a crypto gift', () => {
 				...options.ports
 			}
 		});
-		await pick(card, ticker);
-		card.find('[part~="submit"]').click();
-		await settle();
+		await throughReview(card);
 		return { card, quotes };
 	};
 	const heading = (card: Mounted) => card.text('.takeover [part~="heading"]');
 	const region = (card: Mounted) => card.text('[role="status"]');
+	/** the review step's one press, which on a coin gift mints the address. */
+	const action = (card: Mounted) => card.find('.step-give [part~="submit"]');
+	/** whether a node is on screen: neither it nor anything over it is `hidden`. */
+	const drawn = (node: Element) => node.closest('[hidden]') === null;
 
-	afterEach(() => {
-		vi.useRealTimers();
-	});
+	opensTheUnitPanel();
 
-	it('lists the account’s coins by ticker and sends the one the donor picks', async () => {
-		const card = await onCrypto();
+	it('reaches step 3 with the receipt and the fee switch, and no payment method', async () => {
+		const card = await onCoin();
+		await throughDetails(card);
+		const step = card.find('.step-give');
+
+		expect(step.hidden).toBe(false);
+		expect(card.text('.step-give h2')).toBe('Review');
 		expect(
-			[...coins(card).querySelectorAll('[role="option"] .coin-ticker')].map(
-				(node) => node.textContent
+			[...step.querySelectorAll('.step-dot')].findIndex(
+				(dot) => dot.getAttribute('aria-current') === 'step'
 			)
-		).toEqual(['BTC', 'USDT', 'XRP']);
-
-		const { quotes } = await atAddress();
-
-		expect(quotes[0]?.coin).toBe('usdttrc20');
-	});
-
-	it('tells the card which way crypto is offered as the cadence moves', async () => {
-		const offers: boolean[] = [];
-		const card = await onCrypto({ cryptoOffers: (offered) => offers.push(offered) });
-		expect(offers.at(-1)).toBe(true);
-
-		dot(card, 1).click();
-		press(card.all('[part~="frequency-option"] input')[1] as HTMLElement);
-		expect(offers.at(-1)).toBe(false);
-	});
-
-	it('says what the fee does to a gift valued on arrival', async () => {
-		const card = await onCrypto();
-		expect(card.text('.fee-note')).toBe('You add about $0.26 toward the processing fee.');
-
-		press(card.find('.row.fee [part~="checkbox"]'));
-		expect(card.text('.fee-note')).toBe(
-			'Acme Relief Fund pays the processing fee out of your gift.'
+		).toBe(2);
+		expect(card.text('.step-give [part~="summary"] .row:first-child')).toBe(
+			'One-time giftAbout $25.00'
 		);
+		expect(drawn(card.find('.fee-decision'))).toBe(true);
+		expect(card.find('.fee-decision').textContent).toBe('Cover the processing fee');
+		expect(drawn(card.find('[part~="payment"]'))).toBe(false);
+		expect(drawn(card.find('#payment-heading'))).toBe(false);
+		expect(drawn(card.find('.step-give .aside'))).toBe(false);
+		expect(action(card).textContent).toBe('Continue');
 	});
 
-	it('asks for a coin on a press with none picked, and puts the caret in the list', async () => {
+	it('mints the address on the review step’s Continue, and not before', async () => {
 		const quotes: QuoteRequest[] = [];
-		const card = await onCrypto({
+		const card = await onCoin('USDT', {
 			ports: {
 				quote: async (request) => {
 					quotes.push(request);
@@ -6978,28 +7761,320 @@ describe('a crypto gift', () => {
 				}
 			}
 		});
-		expect(coins(card).getElementById('coin-problem')?.hidden).toBe(true);
+		await throughDetails(card);
+		expect(quotes).toEqual([]);
 
-		card.find('[part~="submit"]').click();
+		action(card).click();
+		await settle();
 
-		expect(quotes).toHaveLength(0);
-		expect(coins(card).getElementById('coin-problem')?.textContent).toBe('Choose a coin');
-		expect(coins(card).activeElement).toBe(combobox(card));
-		expect(card.find('#payment-problem').hidden).toBe(true);
+		expect(heading(card)).toBe('Send your gift');
+		expect(quotes.map((request) => [request.method, request.coin])).toEqual([
+			['crypto', 'usdttrc20']
+		]);
 	});
 
-	// the coin list states its own refusal where the caret lands, and the region says nothing that
-	// press chose — so the total a fee flip said before it is not the press's answer to read out again.
-	it('says no total it was keeping on a press with no coin picked', async () => {
-		const card = await onCrypto();
-		press(card.find('.row.fee [part~="checkbox"]'));
-		await settle();
-		expect(region(card)).toMatch(/^Total today is /);
+	it.each([
+		[0, true],
+		[1, false],
+		[2, true]
+	])('sends the switch as it stands after %i presses', async (presses, covers) => {
+		const quotes: QuoteRequest[] = [];
+		const card = await onCoin('USDT', {
+			ports: {
+				quote: async (request) => {
+					quotes.push(request);
+					return USDT;
+				}
+			}
+		});
+		await throughDetails(card);
+		const box = card.find('.fee-decision input') as HTMLInputElement;
+		for (let at = 0; at < presses; at += 1) box.click();
+		expect(box.checked).toBe(covers);
 
-		card.find('[part~="submit"]').click();
+		action(card).click();
 		await settle();
 
-		expect(region(card)).toBe('');
+		expect(quotes.map((request) => request.coversFee)).toEqual([covers]);
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it('lists the account’s coins by ticker and sends the one the donor picks', async () => {
+		const card = await mount({ config: CRYPTO, ports: PRICED });
+		expect(
+			[...unitPanel(card).querySelectorAll('[role="option"] .ds-option-label')].map(
+				(node) => node.textContent
+			)
+		).toEqual(['USD', 'BTC', 'USDT', 'XRP']);
+		card.host.remove();
+
+		const { quotes } = await atAddress();
+
+		expect(quotes[0]?.coin).toBe('usdttrc20');
+	});
+
+	// a coin gift is one-time only, so a coin picked over a repeating cadence takes the gift to
+	// one-time, which is the cadence the address is quoted for.
+	it('makes the gift one-time as a coin is picked over a repeating cadence', async () => {
+		const card = await mount({ config: CRYPTO, ports: PRICED });
+		press(card.all('[part~="frequency-option"] input')[1] as HTMLElement);
+
+		await give(card, KEYS.USDT ?? '');
+
+		expect(
+			(card.all('[part~="frequency-option"] input') as HTMLInputElement[]).map(
+				(input) => input.checked
+			)
+		).toEqual([true, false, false]);
+	});
+
+	// the bounds sentence is the currency's, and no sentence names a missing coin amount, so the box
+	// is marked alone (`AmountDecision` in ./value.ts).
+	it('marks an empty box on a Continue, with the caret in it and no sentence', async () => {
+		const card = await mount({ config: CRYPTO, ports: PRICED });
+		await give(card, KEYS.USDT ?? '');
+
+		proceed(card);
+
+		const box = quantity(card).closest('[part~="amount-input"]') as HTMLElement;
+		expect(card.find('.step').hidden).toBe(false);
+		expect(shows(card, '#amount-problem')).toBe('');
+		expect(card.shadow.activeElement).toBe(quantity(card));
+		expect(quantity(card).getAttribute('aria-invalid')).toBe('true');
+		expect(box.getAttribute('part')).toContain('invalid');
+		expect(quantity(card).hasAttribute('aria-describedby')).toBe(false);
+
+		type(quantity(card), '25');
+		await priced();
+
+		expect(quantity(card).hasAttribute('aria-invalid')).toBe(false);
+		expect(box.getAttribute('part')).not.toContain('invalid');
+	});
+
+	// a coin amount priced outside the form's bounds is refused as the currency's is, so it says why
+	// with the currency's sentence rather than marking the box alone.
+	it('names the bounds beside the box for an amount priced outside them, until one prices inside', async () => {
+		const prices: Record<string, number> = { '0.00001': 95, '0.005': 2500 };
+		const card = await mount({
+			config: CRYPTO,
+			ports: { estimate: async ({ amount }) => prices[amount] ?? null }
+		});
+		await give(card, KEYS.USDT ?? '');
+		type(quantity(card), '0.00001');
+		await priced();
+
+		proceed(card);
+
+		expect(card.find('.step').hidden).toBe(false);
+		expect(shows(card, '#amount-problem')).toBe('Enter an amount between $5 and $50,000');
+		expect(card.shadow.activeElement).toBe(quantity(card));
+		expect(quantity(card).getAttribute('aria-invalid')).toBe('true');
+		expect(quantity(card).getAttribute('aria-describedby')).toBe('amount-problem');
+
+		type(quantity(card), '0.005');
+		expect(shows(card, '#amount-problem')).toBe('Enter an amount between $5 and $50,000');
+		await priced();
+
+		expect(shows(card, '#amount-problem')).toBe('');
+		expect(quantity(card).hasAttribute('aria-describedby')).toBe(false);
+		expect(quantity(card).hasAttribute('aria-invalid')).toBe(false);
+	});
+
+	it('says beside the box that the price could not be checked, until a retry is out or it prices', async () => {
+		let answer: () => Promise<number | null> = () =>
+			Promise.reject(new TypeError('Failed to fetch'));
+		const card = await mount({ config: CRYPTO, ports: { estimate: () => answer() } });
+		await give(card, KEYS.USDT ?? '');
+		type(quantity(card), '0.005');
+		expect(shows(card, '#amount-problem')).toBe('');
+		await priced();
+
+		expect(shows(card, '#amount-problem')).toBe(COIN_PRICE_FAILED);
+		expect(quantity(card).getAttribute('aria-describedby')).toBe('amount-problem');
+		expect(card.text('[role="status"]')).toBe(COIN_PRICE_FAILED);
+
+		answer = () => new Promise(() => {});
+		type(quantity(card), '0.006');
+		expect(shows(card, '#amount-problem')).toBe('');
+		expect(quantity(card).hasAttribute('aria-describedby')).toBe(false);
+		expect(card.text('[role="status"]')).toBe('');
+
+		answer = async () => 2500;
+		type(quantity(card), '0.005');
+		await priced();
+		expect(shows(card, '#amount-problem')).toBe('');
+		expect(shows(card, '.unit-estimate .unit-figure')).toBe('About $25.00');
+	});
+
+	// the two never stand together: the bounds are said of an amount that priced, this of one that did not.
+	it('says the bounds or the failed check beside the box, never both, and nothing for an empty box', async () => {
+		let answer: () => Promise<number | null> = async () => 95;
+		const card = await mount({ config: CRYPTO, ports: { estimate: () => answer() } });
+		await give(card, KEYS.USDT ?? '');
+		type(quantity(card), '0.00001');
+		await priced();
+		proceed(card);
+		expect(shows(card, '#amount-problem')).toBe('Enter an amount between $5 and $50,000');
+
+		answer = async () => null;
+		type(quantity(card), '0.00002');
+		await priced();
+		expect(shows(card, '#amount-problem')).toBe(COIN_PRICE_FAILED);
+		expect(card.all('.message').filter((node) => node.closest('[hidden]') === null)).toHaveLength(
+			1
+		);
+
+		type(quantity(card), '');
+		await priced();
+		proceed(card);
+		expect(shows(card, '#amount-problem')).toBe('');
+		expect(quantity(card).getAttribute('aria-invalid')).toBe('true');
+		expect(quantity(card).hasAttribute('aria-describedby')).toBe(false);
+	});
+
+	// a failed price check is never kept as the answer, so picking the same coin again from the panel
+	// asks again; once it priced, the same pick asks nothing and moves nothing.
+	it('asks for the price again when the same coin is picked after a failed check, and not once it priced', async () => {
+		let answer: () => Promise<number | null> = () =>
+			Promise.reject(new TypeError('Failed to fetch'));
+		const asked: string[] = [];
+		const card = await mount({
+			config: CRYPTO,
+			ports: {
+				estimate: ({ amount }) => {
+					asked.push(amount);
+					return answer();
+				}
+			}
+		});
+		await give(card, KEYS.USDT ?? '');
+		type(quantity(card), '0.005');
+		await priced();
+		expect(asked).toEqual(['0.005']);
+		expect(shows(card, '.unit-estimate .unit-figure')).toBe('');
+
+		answer = async () => 2500;
+		await give(card, KEYS.USDT ?? '');
+		expect(card.find('.step').hidden).toBe(false);
+		expect(quantity(card).value).toBe('0.005');
+		expect(card.shadow.activeElement?.closest('h1, h2, h3, [part~="heading"]')).toBeNull();
+		await priced();
+
+		expect(asked).toEqual(['0.005', '0.005']);
+		expect(shows(card, '.unit-estimate .unit-figure')).toBe('About $25.00');
+
+		const estimate = shows(card, '.unit-estimate');
+		const named = pill(card).getAttribute('aria-label');
+		await give(card, KEYS.USDT ?? '');
+		await priced();
+
+		expect(asked).toEqual(['0.005', '0.005']);
+		expect(quantity(card).value).toBe('0.005');
+		expect(shows(card, '.unit-estimate')).toBe(estimate);
+		expect(pill(card).getAttribute('aria-label')).toBe(named);
+
+		proceed(card);
+		expect(card.find('.step').hidden).toBe(true);
+	});
+
+	it('changes nothing when the currency already picked is picked again from the panel', async () => {
+		const asked: string[] = [];
+		const card = await mount({
+			config: CRYPTO,
+			ports: {
+				estimate: async ({ amount }) => {
+					asked.push(amount);
+					return 2500;
+				}
+			}
+		});
+		const cadences = () =>
+			(card.all('[part~="frequency-option"] input') as HTMLInputElement[]).map(
+				(input) => input.checked
+			);
+		const tiles = () =>
+			(card.all('[part~="amount-option"] input') as HTMLInputElement[]).map(
+				(input) => input.checked
+			);
+		await give(card, 'currency');
+		press(card.all('[part~="frequency-option"] input')[1] as HTMLElement);
+		press(card.all('[part~="amount-option"] input')[0] as HTMLElement);
+		await throughDetails(card);
+		const fee = card.find('.fee-decision input') as HTMLInputElement;
+		fee.click();
+		const covers = fee.checked;
+		(card.find('.step-give').querySelector('button.step-dot') as HTMLElement).click();
+		await settle();
+		const before = {
+			cadences: cadences(),
+			tiles: tiles(),
+			pill: pill(card).getAttribute('aria-label')
+		};
+		expect(card.find('.step').hidden).toBe(false);
+
+		await give(card, 'currency');
+		await priced();
+
+		expect(card.find('.step').hidden).toBe(false);
+		expect({
+			cadences: cadences(),
+			tiles: tiles(),
+			pill: pill(card).getAttribute('aria-label')
+		}).toEqual(before);
+		expect(shows(card, '#amount-problem')).toBe('');
+		proceed(card);
+		proceed(card);
+		await settle();
+		expect((card.find('.fee-decision input') as HTMLInputElement).checked).toBe(covers);
+		expect(asked).toEqual([]);
+	});
+
+	it('changes nothing when the stock already picked is picked again from the panel', async () => {
+		const asked: string[] = [];
+		const card = await mount({
+			config: { ...CRYPTO, paymentMethods: ['card', 'crypto', 'stock'] },
+			ports: {
+				estimate: async ({ amount }) => {
+					asked.push(amount);
+					return 2500;
+				},
+				pledges: {
+					id: () => 'pledge_1',
+					save: async () => ({ paymentToken: 'pledge_1', feeMinor: 0, totalMinor: 0 }),
+					told: async () => {}
+				}
+			},
+			searchTickers: async () => [{ symbol: 'AAPL', name: 'Apple Inc.' }]
+		});
+		const pickAapl = async () => {
+			pill(card).click();
+			await settle();
+			type(unitPanel(card).querySelector('[role="combobox"]') as HTMLInputElement, 'aa');
+			await new Promise((resolve) => setTimeout(resolve, TICKER_DEBOUNCE_MS + 20));
+			(
+				unitPanel(card).querySelector('[role="option"][data-value="stock:AAPL"]') as HTMLElement
+			).click();
+			await settle();
+		};
+		const cadences = () =>
+			(card.all('[part~="frequency-option"] input') as HTMLInputElement[]).map(
+				(input) => input.checked
+			);
+		await pickAapl();
+		type(quantity(card), '50');
+		const before = { cadences: cadences(), pill: pill(card).getAttribute('aria-label') };
+		expect(before.pill).toBe('Stock: AAPL');
+
+		await pickAapl();
+		await priced();
+
+		expect(card.find('.step').hidden).toBe(false);
+		expect(quantity(card).value).toBe('50');
+		expect({ cadences: cadences(), pill: pill(card).getAttribute('aria-label') }).toEqual(before);
+		expect(asked).toEqual([]);
 	});
 
 	it('shows what is being sent and where, in the order a donor reads it', async () => {
@@ -7055,7 +8130,7 @@ describe('a crypto gift', () => {
 		expect(block.querySelector('.qr path')?.getAttribute('d')).toBe(
 			'M0 0h2v1h-2zM1 1h2v1h-2zM0 2h1v1h-1zM2 2h1v1h-1z'
 		);
-		expect(shows(card, '.takeover > .foot > [part~="action-quiet"]')).toBe('Use a different coin');
+		expect(shows(card, '.takeover > .foot > [part~="action-quiet"]')).toBe('Change what you give');
 		// the way out and the line that makes taking it safe, as one pair under the card's own voice.
 		expect(card.text('.takeover > .foot > .aside')).toBe('Also sent to donor@example.org.');
 		expect(card.find('.receipt-slot').hidden).toBe(true);
@@ -7310,7 +8385,7 @@ describe('a crypto gift', () => {
 		expect(region(card)).toBe('');
 	});
 
-	it('puts the caret on the heading when the address expires under Use a different coin', async () => {
+	it('puts the caret on the heading when the address expires under Change what you give', async () => {
 		vi.useFakeTimers({ shouldAdvanceTime: true });
 		const { card } = await atAddress(USDT, 'USDT', {
 			ports: { status: async () => ({ state: 'expired' }) }
@@ -7432,10 +8507,13 @@ describe('a crypto gift', () => {
 		expect(region(card)).toBe('Checking for your gift.');
 	});
 
-	it('offers a new address once the server says this one expired, and starts again at the coin', async () => {
+	// the coin stays picked, so Start again lands on the review step and its Continue mints a fresh
+	// address for the same coin (`depositExpired` in ./checkout.machine.ts).
+	it('offers a new address once the server says this one expired, and starts again on the coin', async () => {
 		vi.useFakeTimers({ shouldAdvanceTime: true });
-		const { card } = await atAddress(USDT, 'USDT', {
-			ports: { status: async () => ({ state: 'expired' }) }
+		let state: 'waiting' | 'expired' = 'expired';
+		const { card, quotes } = await atAddress(USDT, 'USDT', {
+			ports: { status: async () => ({ state }) }
 		});
 		await vi.advanceTimersByTimeAsync(DEPOSIT_POLL_MS);
 
@@ -7443,42 +8521,46 @@ describe('a crypto gift', () => {
 		expect(card.text('.takeover .prose')).toBe(
 			'The address for this gift closed before anything arrived. Do not send to it now.'
 		);
+		state = 'waiting';
 		primary(card).click();
+		await settle();
 
 		expect(card.find('.step-give').hidden).toBe(false);
-		expect(coins(card).activeElement).toBe(combobox(card));
-		expect(coins(card).querySelector('.chosen')?.textContent).toBe('USDTTron');
+		expect(action(card).textContent).toBe('Continue');
+		action(card).click();
+		await settle();
+
+		expect(heading(card)).toBe('Send your gift');
+		expect(quotes.map((request) => request.coin)).toEqual(['usdttrc20', 'usdttrc20']);
 	});
 
-	it('goes back to the coin list for a different coin', async () => {
+	it('goes back to the first step for a different coin, with the caret on the pill', async () => {
 		const { card } = await atAddress();
 
 		secondary(card).click();
 
-		expect(card.find('.step-give').hidden).toBe(false);
-		expect(coins(card).activeElement).toBe(combobox(card));
+		expect(card.find('.step').hidden).toBe(false);
+		expect(card.shadow.activeElement).toBe(pill(card));
 	});
 
-	it('lands a gift below the coin’s minimum on the amount step, naming the minimum', async () => {
-		const card = await onCrypto({
+	it('lands a gift below the coin’s minimum on the first step, naming the minimum', async () => {
+		const card = await onCoin('USDT', {
 			ports: {
 				quote: () =>
 					Promise.reject({ code: 'below_minimum', message: 'too small', minAmountMinor: 1200 })
 			}
 		});
-		await pick(card, 'USDT');
-		card.find('[part~="submit"]').click();
-		await settle();
+		await throughReview(card);
 
 		expect(card.find('.step').hidden).toBe(false);
 		expect(card.text('#amount-problem')).toBe(
 			'Enter at least $12 in Tether USD (Tron), or choose another coin'
 		);
-		const focused = card.shadow.activeElement as HTMLElement;
-		expect(focused.getAttribute('aria-describedby')).toBe('amount-problem');
+		expect(card.shadow.activeElement).toBe(quantity(card));
+		expect(quantity(card).getAttribute('aria-describedby')).toBe('amount-problem');
 		expect(card.shadow.querySelector('[role="alert"]')).toBeNull();
 
-		type(card.find('#amount-entry'), '50');
+		type(quantity(card), '50');
 		expect(card.find('#amount-problem').hidden).toBe(true);
 	});
 
@@ -7492,58 +8574,68 @@ describe('a crypto gift', () => {
 			'Enter a smaller amount for Tether USD (Tron), or choose another coin'
 		]
 	])('words a refusal with no figure: %o', async (refusal, words) => {
-		const card = await onCrypto({
+		const card = await onCoin('USDT', {
 			ports: { quote: () => Promise.reject({ ...refusal, message: 'refused' }) }
 		});
-		await pick(card, 'USDT');
-		card.find('[part~="submit"]').click();
-		await settle();
+		await throughReview(card);
 
 		expect(card.text('#amount-problem')).toBe(words);
 	});
 
-	// a coin's refusal is a refused amount like the bounds are, so it is marked the way theirs is:
-	// the `invalid` token on every tile and the entry, which is what draws the tray's one red edge
-	// (`.tiles:not(.bare):has(> [part~='invalid'])` in ./styles/parts.css), and `aria-invalid` on the
-	// free entry's text box alone.
+	// a coin's refusal is a refused amount like the bounds are, so it is marked the way theirs is: the
+	// `invalid` token on the box the amount was typed in, which on a bare tray is the box's own edge
+	// (`.bare > [part~='amount-input'][part~='invalid']` in ./styles/parts.css), and `aria-invalid` on
+	// its text box alone.
 	it('marks the amount it refused the way a refused press marks it, and clears with it', async () => {
-		const card = await onCrypto({
+		const card = await onCoin('USDT', {
 			ports: { quote: () => Promise.reject({ code: 'above_maximum', message: 'refused' }) }
 		});
-		await pick(card, 'USDT');
-		card.find('[part~="submit"]').click();
-		await settle();
-		const tiles = card.all('[part~="amount-option"]');
+		await throughReview(card);
+		const box = quantity(card).closest('[part~="amount-input"]') as HTMLElement;
 
-		expect(tiles.length).toBeGreaterThan(1);
-		expect(tiles.map((tile) => tile.getAttribute('part')?.split(' ').includes('invalid'))).toEqual(
-			tiles.map(() => true)
-		);
-		expect(card.find('[part~="amount-input"]').getAttribute('part')).toContain('invalid');
-		expect(card.find('#amount-entry').getAttribute('aria-invalid')).toBe('true');
-		expect(card.all('[aria-invalid="true"]').map((node) => node.id)).toEqual(['amount-entry']);
+		expect(box.getAttribute('part')).toContain('invalid');
+		expect(quantity(card).getAttribute('aria-invalid')).toBe('true');
+		expect(card.all('[aria-invalid="true"]').map((node) => node.id)).toEqual(['quantity-entry']);
+		expect(card.all('[part~="amount-option"][part~="invalid"]')).toEqual([]);
 
-		type(card.find('#amount-entry'), '50');
+		type(quantity(card), '50');
 
-		expect(card.all('[part~="invalid"]')).toEqual([]);
-		expect(card.find('#amount-entry').hasAttribute('aria-invalid')).toBe(false);
+		expect(box.getAttribute('part')).not.toContain('invalid');
+		expect(quantity(card).hasAttribute('aria-invalid')).toBe(false);
 	});
 
-	it('lands a coin the account no longer takes back in the list, marked', async () => {
-		const card = await onCrypto({
+	// the coin's row was drawn, allowed, when the donor picked it, so the refusal reaches a row that
+	// already stands, and the row has to say why it is passed over as well as be passed over. the
+	// machine keeps a refused coin refused for the visit (`refusedCoins` in ./checkout.machine.ts), so
+	// nothing here lifts it.
+	it('lands a coin the account no longer takes back on the pill, the coin marked in the list', async () => {
+		const card = await onCoin('USDT', {
 			ports: { quote: () => Promise.reject({ code: 'coin_not_accepted', message: 'refused' }) }
 		});
-		await pick(card, 'USDT');
-		card.find('[part~="submit"]').focus();
-		card.find('[part~="submit"]').click();
-		await settle();
+		await throughReview(card);
 
-		expect(card.find('.step-give').hidden).toBe(false);
-		expect(coins(card).getElementById('coin-problem')?.textContent).toBe('Choose another coin');
-		expect(coins(card).activeElement).toBe(combobox(card));
-		expect(coins(card).querySelector('[aria-disabled="true"] .coin-ticker')?.textContent).toBe(
-			'USDT'
-		);
+		expect(card.find('.step').hidden).toBe(false);
+		expect(card.text('#amount-problem')).toBe('Tether USD (Tron) is no longer accepted');
+		expect(card.shadow.activeElement).toBe(pill(card));
+		// the caret lands on the pill, so the pill is what says why.
+		expect(pill(card).getAttribute('aria-describedby')).toBe('amount-problem');
+
+		// and the sentence stands once the amount is retyped, since no amount of the coin is taken.
+		type(quantity(card), '60');
+		await settle();
+		expect(card.text('#amount-problem')).toBe('Tether USD (Tron) is no longer accepted');
+
+		pill(card).click();
+		await settle();
+		const row = unitPanel(card).querySelector(
+			'[role="option"][data-value="coin:usdttrc20"]'
+		) as HTMLElement;
+
+		expect(row.getAttribute('aria-disabled')).toBe('true');
+		expect([...row.querySelectorAll('.ds-option-meta')].map((line) => line.textContent)).toEqual([
+			'Tether USD (Tron)',
+			COIN_REFUSED
+		]);
 	});
 });
 
@@ -7599,7 +8691,6 @@ describe('the events a host page hears', () => {
 					input: { config, ports: PORTS },
 					cadence: () => {},
 					offerFund: () => {},
-					offerCrypto: () => {},
 					offerVenmo: () => {},
 					rows: () => {},
 					repeatingUnavailable: () => {},
@@ -7892,8 +8983,8 @@ describe('the events a host page hears', () => {
 			{
 				loadConfig: async () => CONFIG,
 				challenge: () => ({ reset: () => {}, stop: () => {} }),
-				checkout: (config, mount, onRail, onUnavailable, boot, fund, coins) => {
-					const real = shipped.checkout(config, mount, onRail, onUnavailable, boot, fund, coins);
+				checkout: (config, mount, onRail, onUnavailable, boot, fund) => {
+					const real = shipped.checkout(config, mount, onRail, onUnavailable, boot, fund);
 					return {
 						...real,
 						input: {
@@ -7902,7 +8993,6 @@ describe('the events a host page hears', () => {
 						},
 						cadence: () => {},
 						offerFund: () => {},
-						offerCrypto: () => {},
 						offerVenmo: () => {},
 						rows: () => {},
 						repeatingUnavailable: () => {}
@@ -9247,6 +10337,8 @@ describe('a stock or IRA (QCD) pledge', () => {
 		const matched = (card: Mounted) =>
 			pending.filter((selector) => card.shadow.querySelector(selector) !== null);
 
+		opensTheUnitPanel();
+
 		const ONE_COIN: FormConfig = {
 			...CONFIG,
 			paymentMethods: ['card', 'crypto'],
@@ -9269,22 +10361,17 @@ describe('a stock or IRA (QCD) pledge', () => {
 				qr: { rows: ['110', '011', '101'] }
 			}
 		};
-		/** the crypto address screen, its one coin picked in the coin list's own root. */
+		/** the crypto address screen: the coin picked on the first step, then details and the review step's press. */
 		const atDeposit = async (status: CheckoutPorts['status']) => {
-			const card = await atReviewBeforeRail({
+			const card = await mount({
 				config: ONE_COIN,
-				ports: { quote: async () => BTC, status }
+				ports: { estimate: async () => 2500, quote: async () => BTC, status }
 			});
-			card.rail('crypto');
-			const list = [...card.host.querySelectorAll('*')].find((node) =>
-				node.shadowRoot?.querySelector('[role="combobox"]')
-			)?.shadowRoot;
-			if (list == null) throw new Error('no coin list was handed to the runtime');
-			(list.querySelector('.picker') as HTMLElement).click();
-			await settle();
-			(list.querySelector('[role="option"]') as HTMLElement).click();
-			await settle();
-			card.find('[part~="submit"]').click();
+			await give(card, 'coin:btc');
+			type(quantity(card), '25');
+			await priced();
+			await throughDetails(card);
+			card.find('.step-give [part~="submit"]').click();
 			await settle();
 			return card;
 		};

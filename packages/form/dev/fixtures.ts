@@ -67,8 +67,9 @@ type ServedConfig = {
  * the provider set every fixture carries.
  *
  * the key is a shape and not a credential: `checkout` below builds a payment surface for `crypto`
- * alone, and hands that one's Stripe half a loader that answers nothing, so no SDK reads this and
- * nothing is initialised with it. one processor, which is what a deployment holding one serves.
+ * and `pledges` alone, and hands its Stripe half a loader that answers nothing, so no SDK reads
+ * this and nothing is initialised with it. one processor, which is what a deployment holding one
+ * serves.
  */
 const PROVIDERS: readonly Provider[] = [{ name: 'stripe', publishableKey: 'pk_live_x' }];
 
@@ -307,7 +308,10 @@ const QR_ROWS = [
 	'1111111001111111111111101'
 ] as const;
 
-/** card and crypto, on both cadences, so the monthly one shows the crypto row leaving the box. */
+/**
+ * card, with coins on the first step, on both cadences, so picking a coin shows Monthly refused
+ * under the one-time note.
+ */
 const CRYPTO: ServedConfig = {
 	...DEFAULT,
 	formId: 'frm_crypto',
@@ -316,9 +320,10 @@ const CRYPTO: ServedConfig = {
 };
 
 /**
- * card beside both pledge rails. IRA (QCD) is a row on the review step; stock is saved from the
- * details step by the panel's Pledge stock, the one sender of that event, since no screen sends it
- * (`steer` in ../src/element.ts).
+ * card beside both pledge rails. IRA (QCD) is a row on the review step; a stock is picked in the
+ * first step's What you give panel and saved by the details step's Continue, with no review step.
+ * the dev page's Pledge stock (./main.ts) saves 50 AAPL from the details step whatever the first
+ * step picked, as the one sender of `PLEDGE_STOCK` (`steer` in ../src/element.ts).
  */
 const PLEDGES: ServedConfig = {
 	...DEFAULT,
@@ -482,7 +487,7 @@ export type ToldAnswer = (typeof TOLD_ANSWERS)[number];
 /** the flow's `send`, held from the last checkout that handed it over (`steer` below). */
 let steering: ((event: CheckoutEvent) => void) | null = null;
 
-/** the panel's Pledge stock: 50 shares of AAPL, saved from the details step the flow is on. */
+/** the dev page's Pledge stock: 50 shares of AAPL, saved from the details step the flow is on. */
 export function pledgeStock(): void {
 	steering?.({ type: 'PLEDGE_STOCK', ticker: 'AAPL', shares: '50' });
 }
@@ -635,6 +640,11 @@ function ports(
 			if (ending === 'late' || read <= READINGS_BEFORE_ENDING) return { state: 'waiting' };
 			return { state: ending };
 		},
+		// without this port the flow offers no coin on the first step (`unitsOffered` in
+		// ../src/checkout.machine.ts) and so refuses a card that never came up instead of holding the
+		// report. `fail` is priced at a dollar a coin, so its quote's refusal is still the step it lands on.
+		estimate: async ({ coin, amount }) =>
+			Math.round(Number(amount) * (WALLETS[coin]?.priceMinor ?? 100)),
 		now: () => Date.now(),
 		employer: async () => {
 			await after(EMPLOYER_WRITE_MS, undefined);
@@ -670,11 +680,12 @@ function ports(
  * through.
  *
  * `crypto` and `pledges` are the exceptions, composed the way ../src/embed/runtime.ts composes them
- * so the coin row and the IRA (QCD) row, what each holds and the monthly cadence taking them away
- * are the shipped code. the Stripe half is handed a loader that answers nothing, which that adapter
- * reads as fields that never came up and ../src/embed/surface.ts withholds, since the other half
- * never reports the same — so the card row is counted in the box's header and never drawn. `pledges`
- * also hands the panel its hold on the flow (`steer`), which is how Pledge stock reaches it.
+ * so the payment box beside a first step offering a coin or stock is the shipped code, and on
+ * `pledges` so are the IRA (QCD) row, what it holds and the monthly cadence taking it away.
+ * the Stripe half is handed a loader that answers nothing, which that adapter reads as fields that
+ * never came up, and the flow holds that report on a form whose first step offers a coin or stock
+ * (`paymentUnavailable` in ../src/checkout.machine.ts) — so a gift in kind goes on. `pledges`
+ * also hands the dev page its hold on the flow (`steer`), which is how Pledge stock reaches it.
  */
 export function devRuntime(
 	ending: DepositEnding,
@@ -692,7 +703,7 @@ export function devRuntime(
 			}
 			return fixture.load();
 		},
-		checkout: (config, mount, onRail, onUnavailable, _boot, fund, coins, ira) => {
+		checkout: (config, mount, onRail, onUnavailable, _boot, fund, ira) => {
 			if (config.formId === CRYPTO.formId || config.formId === PLEDGES.formId) {
 				const surface = createPaymentSurface(
 					config,
@@ -700,7 +711,6 @@ export function devRuntime(
 					onRail,
 					onUnavailable,
 					fund,
-					coins,
 					{ stripe: { load: async () => null } },
 					ira
 				);
@@ -717,7 +727,6 @@ export function devRuntime(
 					},
 					cadence: surface.cadence,
 					offerFund: surface.offerFund,
-					offerCrypto: surface.offerCrypto,
 					offerVenmo: surface.offerVenmo,
 					offerIra: surface.offerIra,
 					steer: (send) => {
@@ -735,7 +744,6 @@ export function devRuntime(
 				input: { config, ports: ports(config, ending, employer, told) },
 				cadence: () => {},
 				offerFund: () => {},
-				offerCrypto: () => {},
 				offerVenmo: () => {},
 				// no provider draws here, so the box is headed as though every offered rail were a row.
 				rows: (listener) => listener(config.paymentMethods.length),

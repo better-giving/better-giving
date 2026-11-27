@@ -13,4 +13,9 @@ describe('the glyph set', () => {
 			'M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z'
 		]);
 	});
+
+	it("carries lucide's trending-up as the unit list's stock row draws it", () => {
+		// a pin, as play's above: the paths of https://lucide.dev/icons/trending-up, checked by eye.
+		expect(GLYPHS['trending-up']).toEqual(['M16 7h6v6', 'm22 7-8.5 8.5-5-5L2 17']);
+	});
 });

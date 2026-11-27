@@ -19,6 +19,7 @@ import {
 } from '@better-giving/operator/stripe/webhook-endpoint';
 import type {
 	AccountChargeability,
+	CoinValue,
 	DeliveredAttempt,
 	FailedCollection,
 	RailCapabilityState,
@@ -2643,6 +2644,15 @@ export function createStripeProvider(
 				reason: 'unsupported',
 				detail:
 					'Stripe takes no payment in a coin, so there is no coin list to read. Nothing was asked of Stripe.'
+			};
+		},
+
+		async estimateCoinValue(): Promise<PaymentResult<CoinValue>> {
+			return {
+				ok: false,
+				reason: 'unsupported',
+				detail:
+					'Stripe takes no payment in a coin, so there is no coin to price. Nothing was asked of Stripe.'
 			};
 		}
 	};

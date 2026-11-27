@@ -208,7 +208,9 @@ function sent(): Record<string, unknown>[] {
 	return bodies;
 }
 
-const CONTINUE = 'section.step:not([hidden]) > button[part~="action"]';
+// the first step's Continue stands in `.next` under its eyebrow, the other steps' on the step.
+const CONTINUE =
+	'section.step:not([hidden]) > button[part~="action"], section.step:not([hidden]) > .next > button[part~="action"]';
 
 async function donate(root: HTMLElement): Promise<void> {
 	press(one(root, '.tiles > label:nth-of-type(2)'));

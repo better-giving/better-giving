@@ -47,9 +47,10 @@ export type PaymentBoxProps = {
 	/** what the box says about itself: a refused press, or the reason a rail gave for the last try. */
 	readonly words: string;
 	/**
-	 * whether the box stands aside for the offer of a one-time gift (`oneTimeInstead` in
-	 * @better-giving/form/connect), which leaves nothing in it to choose. hidden rather than
-	 * unmounted: the provider's fields are painted into the node and are not painted twice.
+	 * whether the box stands aside, for the offer of a one-time gift (`oneTimeInstead` in
+	 * @better-giving/form/connect) or a coin gift's review (`coinReview` there), either of which
+	 * leaves nothing in it to choose. hidden rather than unmounted: the provider's fields are painted
+	 * into the node and are not painted twice.
 	 */
 	readonly aside: boolean;
 };

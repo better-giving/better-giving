@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
-import { cdp, userEvent } from 'vitest/browser';
-import { createCoinPicker } from './coin-picker';
+import { cdp, page, userEvent } from 'vitest/browser';
 import { PRE_UPGRADE_RESERVATION_CSS, RESERVED_MIN_HEIGHT } from './embed/reservation';
 import { defineDonateForm, DONATE_FORM_TAG } from './element';
 import type { CheckoutPorts } from './ports';
@@ -97,7 +96,6 @@ async function mount(config: FormConfig = CONFIG, options: Mounting = {}): Promi
 					},
 					cadence: () => {},
 					offerFund: () => {},
-					offerCrypto: () => {},
 					offerVenmo: () => {},
 					rows: () => {},
 					repeatingUnavailable: () => {},
@@ -247,7 +245,6 @@ describe('the box a host page holds before the element upgrades', () => {
 					input: { config, ports: PORTS },
 					cadence: () => {},
 					offerFund: () => {},
-					offerCrypto: () => {},
 					offerVenmo: () => {},
 					rows: () => {},
 					repeatingUnavailable: () => {},
@@ -600,39 +597,6 @@ describe('the closed choices on the amount step', () => {
 				box.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
 			};
 			return { page: host, root, box, press };
-		},
-		'the open coin list': async () => {
-			const picker = createCoinPicker(document);
-			onTestFinished(() => picker.stop());
-			const page = document.createElement('div');
-			page.appendChild(picker.host);
-			document.body.appendChild(page);
-			planted.push(page);
-			picker.update(
-				{
-					value: '',
-					options: [
-						{ value: 'btc', label: 'BTC', name: 'Bitcoin', network: 'Bitcoin', refused: false },
-						{ value: 'sol', label: 'SOL', name: 'Solana', network: 'Solana', refused: false }
-					],
-					onChange: () => {}
-				},
-				''
-			);
-			// a task first, as `mount` waits one: the case before leaves its element with a list open,
-			// and an element tears down a task after it leaves (`#leaving` in ./element.ts). pressed
-			// before then, this list does not open.
-			await settle();
-			const root = shadow(picker.host);
-			const box = root.querySelector<HTMLElement>('.picker');
-			if (box === null) throw new Error('no coin box');
-			const input = box.querySelector('input');
-			if (input === null) throw new Error('no coin search');
-			const press = () => {
-				input.focus();
-				input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
-			};
-			return { page, root, box, press };
 		}
 	};
 
@@ -1489,4 +1453,235 @@ describe('the brand scale the element generates', () => {
 		expect(luma(bytes(host, '--accent-12'))).toBeLessThan(0.3);
 		expect(luma(bytes(host, '--accent-1'))).toBeGreaterThan(0.9);
 	});
+});
+
+describe('the first step’s unit pill and Continue', () => {
+	/** a deployment taking its currency and stock, on a surface that saves a pledge. */
+	const WITH_STOCK: FormConfig = { ...CONFIG, paymentMethods: ['card', 'ach', 'stock'] };
+	const PLEDGES: Partial<CheckoutPorts> = {
+		pledges: {
+			id: () => 'pledge-1',
+			save: async () => ({ paymentToken: 'pledge-1', feeMinor: 0, totalMinor: 0 }),
+			told: async () => {}
+		}
+	};
+	const pillOf = (root: ShadowRoot) => {
+		const node = root.querySelector<HTMLElement>('.amount-head > .unit-pill');
+		if (node === null) throw new Error('no unit pill');
+		return node;
+	};
+	const panelOf = (root: ShadowRoot) => {
+		for (const node of root.querySelectorAll('*')) {
+			if (node.shadowRoot?.querySelector('[role="dialog"]') != null) return node.shadowRoot;
+		}
+		throw new Error('no unit panel');
+	};
+	/** a deployment taking its currency and a coin, on a surface that can price the coin. */
+	const WITH_CRYPTO: FormConfig = {
+		...CONFIG,
+		paymentMethods: ['card', 'crypto'],
+		coins: [
+			{ coin: 'btc', ticker: 'btc', name: 'Bitcoin', network: 'Bitcoin', memoRequired: false }
+		]
+	};
+	const PRICED: Partial<CheckoutPorts> = { ...PLEDGES, estimate: async () => 48_210 };
+	/** two frames, which is when the panel's machine moves the caret after a pick. */
+	const frames = () =>
+		new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
+	// the panel's machine puts the caret back in its own box a frame after a pick; the panel is no
+	// longer shown by then, so the caret stays where the card put it.
+	it('leaves the caret on the pill after a pick', async () => {
+		const root = shadow(await mount(WITH_STOCK, { ports: PLEDGES }));
+		await userEvent.click(pillOf(root));
+		await frames();
+		const usd = panelOf(root).querySelector<HTMLElement>('[role="option"][data-value="currency"]');
+		if (usd === null) throw new Error('no currency row');
+
+		await userEvent.click(usd);
+		await frames();
+
+		expect(root.activeElement).toBe(pillOf(root));
+		expect(pillOf(root).getAttribute('aria-expanded')).toBe('false');
+	});
+
+	// the case ./element.dom.spec.ts leaves here: a pick of another unit redraws the pill, and the
+	// caret the card puts on it is still there once the panel's machine has had its frame.
+	it('leaves the caret on the pill after a pick of another unit', async () => {
+		const root = shadow(await mount(WITH_CRYPTO, { ports: PRICED }));
+		await userEvent.click(pillOf(root));
+		await frames();
+		const btc = panelOf(root).querySelector<HTMLElement>('[role="option"][data-value="coin:btc"]');
+		if (btc === null) throw new Error('no bitcoin row');
+
+		await userEvent.click(btc);
+		await frames();
+
+		expect(pillOf(root).getAttribute('aria-label')).toBe('Crypto: BTC');
+		expect(root.activeElement).toBe(pillOf(root));
+		expect(pillOf(root).getAttribute('aria-expanded')).toBe('false');
+	});
+
+	// a host page may put the form inside a closed shadow root of its own. a press there reaches a
+	// listener on the document with a path that stops at that root's host, short of the panel.
+	it('keeps the panel open on a press in its box and picks a row, inside a closed shadow root', async () => {
+		const outer = document.createElement('div');
+		document.body.appendChild(outer);
+		planted.push(outer);
+		const closedRoot = outer.attachShadow({ mode: 'closed' });
+		const root = shadow(await mount(WITH_CRYPTO, { ports: PRICED, parent: closedRoot }));
+		// a locator cannot reach into a closed root, so the press is a real one at the node's centre,
+		// aimed through the page's root element, and the engine's hit test finds the node.
+		const press = async (node: HTMLElement) => {
+			const at = node.getBoundingClientRect();
+			const origin = document.documentElement.getBoundingClientRect();
+			await page.elementLocator(document.documentElement).click({
+				position: {
+					x: at.left + at.width / 2 - origin.left,
+					y: at.top + at.height / 2 - origin.top
+				}
+			});
+			await frames();
+		};
+		const dialog = () => {
+			const node = panelOf(root).querySelector<HTMLElement>('[role="dialog"]');
+			if (node === null) throw new Error('no unit panel dialog');
+			return node;
+		};
+
+		await press(pillOf(root));
+		expect(dialog().matches(':popover-open')).toBe(true);
+		const box = panelOf(root).querySelector<HTMLElement>('input');
+		if (box === null) throw new Error('no search box');
+		await press(box);
+
+		expect(dialog().matches(':popover-open')).toBe(true);
+		expect(pillOf(root).getAttribute('aria-expanded')).toBe('true');
+
+		const btc = panelOf(root).querySelector<HTMLElement>('[role="option"][data-value="coin:btc"]');
+		if (btc === null) throw new Error('no bitcoin row');
+		await press(btc);
+
+		expect(pillOf(root).getAttribute('aria-label')).toBe('Crypto: BTC');
+		expect(pillOf(root).getAttribute('aria-expanded')).toBe('false');
+		expect(dialog().matches(':popover-open')).toBe(false);
+	});
+
+	it('draws the pill 28px tall, centred in the 36px line, its discs 14px a quarter over each other', async () => {
+		const root = shadow(await mount(WITH_STOCK, { ports: PLEDGES }));
+		const pill = pillOf(root).getBoundingClientRect();
+		const line = (root.querySelector('.amount-head') as HTMLElement).getBoundingClientRect();
+		const discs = [...root.querySelectorAll<HTMLElement>('.unit-pill .ds-avatar')].map((disc) =>
+			disc.getBoundingClientRect()
+		);
+
+		expect(pill.height).toBe(28);
+		expect(line.height).toBe(36);
+		expect(pill.top - line.top).toBe(line.bottom - pill.bottom);
+		expect(Math.round(line.right)).toBe(Math.round(pill.right));
+		expect(discs).toHaveLength(2);
+		for (const disc of discs) expect([disc.width, disc.height]).toEqual([14, 14]);
+		const [flag, apple] = discs as [DOMRect, DOMRect];
+		expect(flag.right - apple.left).toBe(3.5);
+	});
+
+	// the panel's host is the line's last child, after the pill (`howMuchLine` in ./views.ts), and
+	// takes no box there (`:host` in ./styles/units.css): the shut panel draws nothing and the open
+	// one stands in the top layer, so neither is a flex item that would take the line's end.
+	for (const [width, height] of [
+		[1440, 900],
+		[375, 812]
+	] as const) {
+		it(`keeps the pill at the How much line’s end at ${width}px, the panel shut and open`, async () => {
+			await page.viewport(width, height);
+			// vitest's own default viewport, which every other case in this file runs at.
+			onTestFinished(() => page.viewport(414, 896));
+			const root = shadow(await mount(WITH_CRYPTO, { ports: PRICED }));
+			const line = root.querySelector('.amount-head') as HTMLElement;
+			const dialog = panelOf(root).querySelector('[role="dialog"]') as HTMLElement;
+			const ends = () =>
+				[line.getBoundingClientRect().right, pillOf(root).getBoundingClientRect().right].map(
+					Math.round
+				);
+
+			expect(document.documentElement.clientWidth).toBe(width);
+			expect(line.lastElementChild?.shadowRoot).toBe(panelOf(root));
+			const [lineEnd, pillEnd] = ends();
+			expect(pillEnd).toBe(lineEnd);
+
+			await userEvent.click(pillOf(root));
+			await frames();
+
+			expect(dialog.matches(':popover-open')).toBe(true);
+			expect(ends()).toEqual([lineEnd, lineEnd]);
+		});
+	}
+
+	it('stands the eyebrow 6px over a full-width 52px Continue whose label leads', async () => {
+		const root = shadow(await mount(WITH_STOCK, { ports: PLEDGES }));
+		const eyebrow = (root.querySelector('.next > .eyebrow') as HTMLElement).getBoundingClientRect();
+		const button = root.querySelector('.next > [part~="action"]') as HTMLElement;
+		const box = button.getBoundingClientRect();
+		const label = (button.querySelector('.action-label') as HTMLElement).getBoundingClientRect();
+		const step = (root.querySelector('.step') as HTMLElement).getBoundingClientRect();
+
+		expect(box.top - eyebrow.bottom).toBe(6);
+		expect(box.height).toBe(52);
+		expect(Math.round(box.width)).toBe(Math.round(step.width));
+		expect(label.left - box.left).toBeLessThan(box.right - label.right);
+	});
+
+	// a coin gift's review step is the receipt, its fee switch and one Continue (`coinReview` in
+	// ./connect.ts): the switch row and the press stand inside the card at both frame widths, and no
+	// payment method is drawn between them.
+	for (const [width, height] of [
+		[1440, 900],
+		[375, 812]
+	] as const) {
+		it(`draws a coin gift’s switch row and Continue inside the card at ${width}px`, async () => {
+			await page.viewport(width, height);
+			onTestFinished(() => page.viewport(414, 896));
+			const root = shadow(await mount(WITH_CRYPTO, { ports: PRICED }));
+			await userEvent.click(pillOf(root));
+			await frames();
+			await userEvent.click(
+				panelOf(root).querySelector<HTMLElement>(
+					'[role="option"][data-value="coin:btc"]'
+				) as HTMLElement
+			);
+			await frames();
+			await userEvent.fill(root.querySelector('#quantity-entry') as HTMLInputElement, '0.005');
+			const forward = () =>
+				root
+					.querySelector<HTMLElement>('.step:not([hidden]) [part~="action"]:not([part~="submit"])')
+					?.click();
+			await vi.waitFor(() => {
+				forward();
+				if (root.querySelector<HTMLElement>('.step-details')?.hidden !== false)
+					throw new Error('the coin amount is not priced yet');
+			});
+			await userEvent.fill(root.querySelector('#email') as HTMLInputElement, 'donor@example.org');
+			await userEvent.fill(root.querySelector('#first-name') as HTMLInputElement, 'Ada');
+			await userEvent.fill(root.querySelector('#last-name') as HTMLInputElement, 'Lovelace');
+			forward();
+			await frames();
+
+			const card = (root.querySelector("[part~='card']") as HTMLElement).getBoundingClientRect();
+			const row = root.querySelector('.step-give .fee-decision') as HTMLElement;
+			const toggle = root.querySelector('.step-give .fee-decision .switch') as HTMLElement;
+			const press = root.querySelector('.step-give [part~="submit"]') as HTMLElement;
+			const inside = (node: HTMLElement) => {
+				const box = node.getBoundingClientRect();
+				return box.left >= card.left && box.right <= card.right && box.bottom <= card.bottom;
+			};
+
+			expect(row.checkVisibility()).toBe(true);
+			expect(toggle.checkVisibility()).toBe(true);
+			expect(press.checkVisibility()).toBe(true);
+			expect(press.textContent).toBe('Continue');
+			expect([row, toggle, press].map(inside)).toEqual([true, true, true]);
+			expect(root.querySelector<HTMLElement>('[part~="payment"]')?.checkVisibility()).toBe(false);
+			expect(press.getBoundingClientRect().top).toBeGreaterThan(row.getBoundingClientRect().bottom);
+		});
+	}
 });

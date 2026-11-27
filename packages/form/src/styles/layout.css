@@ -471,6 +471,29 @@ form {
 }
 
 /*
+ * the How much line (`howMuchLine` in ../views.ts): its words at the start and what the donor gives
+ * at the end, centred on one line, which is the design's 36px wherever the pill stands in it.
+ */
+.amount-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--_sp3);
+}
+
+.amount-head:has(> .unit-pill) {
+	/* raw-length-ok: the design's 36px How much line the 28px pill centres in. */
+	min-block-size: 36px;
+}
+
+/* the eyebrow directly over Continue, the inside step apart. */
+.next {
+	display: flex;
+	flex-direction: column;
+	gap: var(--_gap-inside);
+}
+
+/*
  * the frequency control: equal columns, one row, every option at the interactive floor. three
  * frequencies on a card too narrow for them wrap into a second row rather than shrinking an
  * option under it. the track is a query container so the lines between its

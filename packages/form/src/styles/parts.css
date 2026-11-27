@@ -183,7 +183,7 @@
 
 /*
  * a text box the form draws itself: the element's floating-label pair (`.floating` below, `textField`
- * in ../views.ts) and the coin search's box (../coin-picker.ts). every other box is the registry's
+ * in ../views.ts). every other box is the registry's
  * text box, `.ds-field-input` (../registry/styles/field-css.css), which this rule does not reach: a
  * box labelled over the top on the element, and every box on the deployment's own donor page, whose
  * react card (packages/app/src/lib/donate) puts the registry's class on its floating pair too; the two
@@ -254,8 +254,8 @@ textarea[part~='field'] {
  * which is the anatomy `@ark-ui/react`'s `Select` writes too, so a page drawing that component is
  * dressed by these rules without a class of its own.
  *
- * the chevron is `--_glyph-among` in the quiet ink, as the coin list's box draws its own
- * (./coins.css), and the open box takes the ring a box holding the caret takes: the caret is in the
+ * the chevron is `--_glyph-among` in the quiet ink, and the open box takes the ring a box holding
+ * the caret takes: the caret is in the
  * list while it is open, and the ring says which box the list belongs to.
  */
 [data-scope='select'][data-part='trigger'] {
@@ -297,8 +297,7 @@ textarea[part~='field'] {
 /*
  * the list's positioner is a popover in the top layer, and every property the UA sheet gives a
  * popover is taken back here: the box is zag's to place (`top`, `left` and the translate it writes
- * inline), so a UA inset, margin or border would move it off the box it is measured against. the
- * coin list's (./coins.css) is one too, and this sheet is the one both roots adopt.
+ * inline), so a UA inset, margin or border would move it off the box it is measured against.
  */
 [data-scope='select'][data-part='positioner'],
 [data-scope='combobox'][data-part='positioner'] {
@@ -312,7 +311,7 @@ textarea[part~='field'] {
 }
 
 /*
- * the open list, the closed choices' and the coin list's alike: the card's own ground inside a
+ * the open list of a closed choice: the card's own ground inside a
  * step-6 edge — the border radix gives a surface nothing operates, because the list is no box a
  * donor finds — at the inner radius, and flat like everything else on the card: the edge and the
  * step-1 face are what set it over the card it stands in front of. it stands in the top layer
@@ -1353,7 +1352,7 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * and the opacity, which is what keeps it that rung on screen. an engine fades a placeholder of
  * its own accord, and the fade is over the ink rather than instead of it, so left at the default
  * the rung a donor reads is one nothing here chose — and which engine a pasted embed runs in is not
- * ours to pick. `.picker input::placeholder` in ./coins.css declares it for the same reason.
+ * ours to pick.
  */
 [part~='amount-input'] input::placeholder {
 	color: var(--_n11);
@@ -1903,6 +1902,110 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 [part~='action'] > .ds-spinner {
 	position: absolute;
 	inset-inline-end: var(--_sp4);
+}
+
+/*
+ * toward the payment step the label leads at the start of the action, where its method marks will
+ * stand at the end (`methodMarks` in ../views.ts); a gift in kind's plain Continue keeps the
+ * registry's centre.
+ */
+[part~='action'][data-next='payment'] {
+	justify-content: space-between;
+	text-align: start;
+}
+
+/* the line over Continue naming the step it goes to. */
+.eyebrow {
+	margin: 0;
+	color: var(--_n11);
+	font-size: var(--_t-xs);
+	font-weight: var(--_w-bold);
+	/* raw-length-ok: the design's 16px line under its 12px words. */
+	line-height: 16px;
+	letter-spacing: var(--_tracking);
+}
+
+/*
+ * the unit pill (`unitPillButton` in ../views.ts): a control on a control's grounds — 3 at rest, 4
+ * under the pointer, 5 pressed — with its edge on 7 and 8, and the marks in the registry's avatar
+ * stack, whose ring is the pill's own ground in each state (avatar-css.usage.md). the press nudge is
+ * ./motion.css's.
+ *
+ * the words are set off the card's base, which is what every step and inset here is read against,
+ * so the code alone takes the smaller size.
+ */
+.unit-pill {
+	--ds-avatar-ring-on: var(--_n3);
+	display: inline-flex;
+	align-items: center;
+	flex: none;
+	gap: var(--_gap-inside);
+	/* raw-length-ok: the design's 28px pill, centred in the 36px How much line. */
+	block-size: 28px;
+	padding-block: 0;
+	padding-inline: var(--_sp3) var(--_sp2);
+	border: var(--_border) solid var(--_n7);
+	/* raw-length-ok: fully round, as the registry's own avatar writes its circle. */
+	border-radius: calc(infinity * 1px);
+	background: var(--_n3);
+	color: var(--_n12);
+	cursor: pointer;
+}
+
+.unit-pill:hover {
+	--ds-avatar-ring-on: var(--_n4);
+	background: var(--_n4);
+	border-color: var(--_n8);
+}
+
+.unit-pill:active {
+	--ds-avatar-ring-on: var(--_n5);
+	background: var(--_n5);
+	border-color: var(--_n8);
+}
+
+.unit-pill:focus-visible {
+	outline: var(--_border-strong) solid var(--_focus-ring);
+	outline-offset: var(--_border-strong);
+	box-shadow: none;
+}
+
+.unit-code {
+	font-size: var(--_t-xs);
+	font-weight: var(--_w-bold);
+}
+
+/* the currency's code where it is the one unit offered: words, not a control. */
+.unit-text {
+	color: var(--_n11);
+	font-size: var(--_t-sm);
+	font-weight: var(--_w-bold);
+}
+
+/*
+ * the lines under the cadence track and under a coin amount's box: the estimate at full ink, and the
+ * notes beside it at the quiet one.
+ */
+.unit-figure,
+.unit-note {
+	margin: 0;
+	font-size: var(--_t-sm);
+}
+
+.unit-figure {
+	color: var(--_n12);
+}
+
+.unit-note {
+	color: var(--_n11);
+}
+
+/*
+ * a repeating cadence a gift in kind does not take: still a control, so it keeps its place and its
+ * press, and says it is not taken now by the pointer it shows; the note under the track says why.
+ */
+.segment > label:has(> input[aria-disabled='true']) {
+	cursor: not-allowed;
 }
 
 /*

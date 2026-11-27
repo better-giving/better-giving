@@ -1,10 +1,11 @@
 import { createActor } from 'xstate';
 import { describe, expect, it } from 'vitest';
-import { checkoutMachine } from './checkout.machine';
+import { checkoutMachine, ESTIMATE_DEBOUNCE_MS } from './checkout.machine';
+import { COIN_PRICE_FAILED, VALUED_IN_USD } from './unit';
 import type { CheckoutEvent } from './checkout.machine';
 import { connect, TOP_LEVEL_STATES, type PropTypes } from './connect';
 import type { CheckoutPorts } from './ports';
-import { PAYMENT_METHODS, type FormConfig, type PaymentMethod } from './v1';
+import { PAYMENT_METHODS, type FormConfig, type PaymentMethod, type QuoteRequest } from './v1';
 
 // node pool, and that is the point of the seam: prop getters are plain objects until a
 // framework's `normalize` turns them into props, so the projection is testable with no DOM at
@@ -663,89 +664,104 @@ describe('the crypto projection', () => {
 		validUntil: '2026-09-24T15:42:00.000Z',
 		qr: { rows: ['1'] }
 	};
-	const onCrypto = (coin: string | null) => (send: (event: never) => void) => {
-		readyToSubmit(send);
-		send({ type: 'SET_METHOD', method: 'crypto' } as never);
-		send({ type: 'SET_COIN', coin } as never);
-	};
-	type Coins = {
-		readonly value: string;
-		readonly options: readonly {
-			value: string;
-			label: string;
-			name: string;
-			network: string;
-			logo?: string;
-			refused: boolean;
-		}[];
-		readonly onChange: (value: string) => void;
-	};
+	/** a gift of 19 XRP priced at $19.00, at its review step with the details given. */
+	async function atReview(ports: Partial<CheckoutPorts> = {}, token = true) {
+		const h = api(undefined, { config: CRYPTO, ports: { estimate: async () => 1900, ...ports } });
+		h.actor.send({ type: 'SET_UNIT', unit: { kind: 'coin', coin: 'xrp' } });
+		h.actor.send({ type: 'SET_QUANTITY', quantity: '19' });
+		await new Promise((resolve) => setTimeout(resolve, ESTIMATE_DEBOUNCE_MS + 20));
+		h.actor.send({ type: 'CONTINUE' });
+		h.actor.send({
+			type: 'SET_CONTACT',
+			email: 'donor@example.org',
+			firstName: 'Ada',
+			lastName: 'Lovelace'
+		});
+		if (token) h.actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'tk_ready' });
+		h.actor.send({ type: 'CONTINUE' });
+		return h;
+	}
+	const press = (get: () => { submitButton: unknown }) =>
+		(get().submitButton as { onClick: () => void }).onClick();
 
-	it('lists the account’s coins by ticker, each under its ticker upper-cased and its name', () => {
-		const { get } = api(onCrypto(null), { config: CRYPTO });
-		const coins = get().coinSelect as Coins;
+	it('projects a coin gift’s review step as the receipt and fee switch, on the coin’s rail', async () => {
+		const { get } = await atReview();
 
-		expect(coins.value).toBe('');
-		expect(coins.options).toEqual([
-			{
-				value: 'btc',
-				label: 'BTC',
-				name: 'Bitcoin',
-				network: 'Bitcoin',
-				refused: false
-			},
-			{
-				value: 'usdttrc20',
-				label: 'USDT',
-				name: 'Tether USD (Tron)',
-				network: 'Tron',
-				logo: 'https://example.test/coins/usdt.svg',
-				refused: false
-			},
-			{
-				value: 'xrp',
-				label: 'XRP',
-				name: 'Ripple',
-				network: 'XRP Ledger',
-				refused: false
-			}
-		]);
-	});
-
-	it('sends the coin a donor picks, and an emptied choice as none', () => {
-		const { actor, get } = api(onCrypto(null), { config: CRYPTO });
-		(get().coinSelect as Coins).onChange('xrp');
-		expect(actor.getSnapshot().context.payerDraft.coin).toBe('xrp');
-		(get().coinSelect as Coins).onChange('');
-		expect(actor.getSnapshot().context.payerDraft.coin).toBeUndefined();
-	});
-
-	it('marks a coin the account refused, and refuses the press for it', async () => {
-		const { get } = api(onCrypto('xrp'), {
-			config: CRYPTO,
-			ports: {
-				quote: () => Promise.reject({ code: 'coin_not_accepted', message: 'no longer accepted' })
+		expect(get().state).toMatchObject({
+			step: 'give',
+			method: 'crypto',
+			payerComplete: true,
+			coinReview: {
+				heading: 'Review',
+				gift: 'About $19.00',
+				fee: '+ about $0.20',
+				feeLine: 'You add about $0.20 toward the processing fee.',
+				total: 'About $19.20',
+				action: 'Continue'
 			}
 		});
-		(get().submitButton as { onClick: () => void }).onClick();
+		expect(get().feeToggle).toMatchObject({ pressed: true });
+		expect(get().submitButton).toMatchObject({ totalMinor: 1920 });
+	});
+
+	it('restates the receipt and the quote off the switch', async () => {
+		const quotes: QuoteRequest[] = [];
+		const { get } = await atReview({
+			quote: async (request) => {
+				quotes.push(request as QuoteRequest);
+				return { paymentToken: 'don_1', feeMinor: 0, totalMinor: 1900, deposit: DEPOSIT };
+			}
+		});
+		(get().feeToggle as { onClick: () => void }).onClick();
+
+		expect(get().state).toMatchObject({
+			coinReview: {
+				fee: null,
+				feeLine: 'Acme Relief Fund pays the processing fee out of your gift.',
+				total: 'About $19.00'
+			}
+		});
+		press(get);
+		await settle();
+		expect(quotes).toMatchObject([{ method: 'crypto', coin: 'xrp', coversFee: false }]);
+	});
+
+	it('keeps the review step on screen, its press busy, while the press waits on a token', async () => {
+		const { get } = await atReview({}, false);
+		press(get);
+
+		expect(get().state).toMatchObject({ step: 'give', coinReview: { action: 'Continue' } });
+		expect(get().submitButton).toMatchObject({ 'aria-busy': true });
+	});
+
+	it('projects no coin review on a money gift’s review step', () => {
+		const { get } = api(readyToSubmit);
+		expect(get().state.step).toBe('give');
+		expect(get().state).not.toHaveProperty('coinReview');
+	});
+
+	it('marks a coin the account refused, and refuses the press for it on the first step', async () => {
+		const { get } = await atReview({
+			quote: () => Promise.reject({ code: 'coin_not_accepted', message: 'no longer accepted' })
+		});
+		press(get);
 		await settle();
 
-		const coins = get().coinSelect as Coins;
-		expect(coins.options.find((option) => option.value === 'xrp')?.refused).toBe(true);
-		const state = get().state;
-		if (state.step !== 'give') throw new Error(`expected the give step, got ${state.step}`);
-		expect(state.payerComplete).toBe(false);
+		const units = get().unitSelect as { options: { value: string; refused?: boolean }[] };
+		expect(units.options.find((option) => option.value === 'coin:xrp')?.refused).toBe(true);
+		expect(get().state).toMatchObject({
+			step: 'amount',
+			missing: ['quantity'],
+			coinRefusal: { code: 'coin_not_accepted', coin: 'xrp' }
+		});
 	});
 
 	it('carries a refusal of the amount onto the amount step', async () => {
-		const { get } = api(onCrypto('xrp'), {
-			config: CRYPTO,
-			ports: {
-				quote: () =>
-					Promise.reject({ code: 'below_minimum', message: 'too small', minAmountMinor: 1200 })
-			}
+		const { get } = await atReview({
+			quote: () =>
+				Promise.reject({ code: 'below_minimum', message: 'too small', minAmountMinor: 1200 })
 		});
-		(get().submitButton as { onClick: () => void }).onClick();
+		press(get);
 		await settle();
 
 		const state = get().state;
@@ -754,31 +770,231 @@ describe('the crypto projection', () => {
 	});
 
 	it('hands the address screen the deposit, the total, the receipt address, how long is left and whether it closed', async () => {
-		const { get } = api(onCrypto('xrp'), {
-			config: CRYPTO,
-			ports: {
-				quote: async () => ({
-					paymentToken: 'don_1',
-					feeMinor: 25,
-					totalMinor: 2525,
-					deposit: DEPOSIT
-				})
-			}
+		const { get } = await atReview({
+			quote: async () => ({
+				paymentToken: 'don_1',
+				feeMinor: 20,
+				totalMinor: 1920,
+				deposit: DEPOSIT
+			})
 		});
-		(get().submitButton as { onClick: () => void }).onClick();
+		const shown = (get().submitButton as { totalMinor: number }).totalMinor;
+		press(get);
 		await settle();
 
+		// the review step's total today is the figure the address screen states the coin is worth.
+		expect(shown).toBe(1920);
 		expect(get().state).toEqual({
 			step: 'awaitingDeposit',
 			deposit: DEPOSIT,
-			totalMinor: 2525,
+			totalMinor: 1920,
 			// the fee the donor covered, which the screen states as an entry of its own.
-			feeMinor: 25,
+			feeMinor: 20,
 			email: 'donor@example.org',
 			// the send-by less this device's clock, which is `PORTS.now` above and years behind it.
 			expiresIn: Date.parse(DEPOSIT.validUntil) - 1_700_000_000_000,
 			closed: false
 		});
+	});
+});
+
+describe('what the donor gives, projected', () => {
+	const UNITS: FormConfig = {
+		...CONFIG,
+		paymentMethods: ['card', 'ach', 'crypto', 'stock'],
+		coins: [
+			{ coin: 'btc', ticker: 'btc', name: 'Bitcoin', network: 'Bitcoin', memoRequired: false }
+		]
+	};
+	const PRICED: Partial<CheckoutPorts> = {
+		estimate: async () => 48_210,
+		pledges: {
+			id: () => 'p1',
+			save: async () => ({ paymentToken: 'p1', feeMinor: 0, totalMinor: 0 }),
+			told: async () => {}
+		}
+	};
+	/** waits out the estimate's debounce and lets its answer land. */
+	const priced = () => new Promise((resolve) => setTimeout(resolve, ESTIMATE_DEBOUNCE_MS + 20));
+
+	it('draws the initial pill, then the picked one, off the flow', () => {
+		const { actor, get } = api(undefined, { config: UNITS, ports: PRICED });
+		expect(get().unit.pill).toMatchObject({
+			state: 'initial',
+			name: 'Currency: USD. Also crypto and stocks'
+		});
+
+		actor.send({ type: 'SET_UNIT', unit: { kind: 'coin', coin: 'btc' } });
+		expect(get().unit.pill).toMatchObject({ state: 'picked', code: 'BTC', name: 'Crypto: BTC' });
+	});
+
+	it('states a coin’s estimate and the valuation note, and nothing under a share count', async () => {
+		const { actor, get } = api(undefined, { config: UNITS, ports: PRICED });
+		actor.send({ type: 'SET_UNIT', unit: { kind: 'coin', coin: 'btc' } });
+		(get().quantityField as { onChange: (text: string) => void }).onChange('0.005');
+		expect(get().unit.entry).toEqual({
+			name: 'Amount',
+			unitLabel: 'BTC',
+			estimate: null,
+			note: VALUED_IN_USD,
+			unpriced: null
+		});
+
+		await priced();
+		expect(get().unit.entry).toEqual({
+			name: 'Amount',
+			unitLabel: 'BTC',
+			estimate: 'About $482.10',
+			note: 'Your gift is valued in US dollars when it arrives.',
+			unpriced: null
+		});
+
+		actor.send({ type: 'SET_UNIT', unit: { kind: 'stock', ticker: 'AAPL' } });
+		expect(get().unit.entry).toEqual({
+			name: 'Number of shares',
+			unitLabel: 'shares',
+			estimate: null,
+			note: null,
+			unpriced: null
+		});
+		expect(get().quantityField).toMatchObject({ value: '', inputMode: 'decimal' });
+	});
+
+	it('says the price could not be checked once a read fails or prices nothing, and only then', async () => {
+		let answer: () => Promise<number | null> = () =>
+			Promise.reject(new TypeError('Failed to fetch'));
+		const { actor, get } = api(undefined, {
+			config: UNITS,
+			ports: { ...PRICED, estimate: () => answer() }
+		});
+		const typeIn = (text: string) =>
+			(get().quantityField as { onChange: (text: string) => void }).onChange(text);
+		actor.send({ type: 'SET_UNIT', unit: { kind: 'coin', coin: 'btc' } });
+		typeIn('0.005');
+		expect(get().unit.entry?.unpriced).toBeNull();
+
+		await priced();
+		expect(get().unit.entry?.unpriced).toBe(COIN_PRICE_FAILED);
+
+		answer = async () => null;
+		typeIn('0.006');
+		expect(get().unit.entry?.unpriced).toBeNull();
+		await priced();
+		expect(get().unit.entry?.unpriced).toBe(COIN_PRICE_FAILED);
+
+		answer = async () => 48_210;
+		typeIn('0.005');
+		await priced();
+		expect(get().unit.entry).toMatchObject({ estimate: 'About $482.10', unpriced: null });
+
+		answer = async () => null;
+		actor.send({ type: 'SET_UNIT', unit: { kind: 'stock', ticker: 'AAPL' } });
+		typeIn('50');
+		await priced();
+		expect(get().unit.entry?.unpriced).toBeNull();
+	});
+
+	it('flags Monthly unavailable with the one-time note while a coin or stock is picked', () => {
+		const { actor, get } = api(undefined, { config: UNITS, ports: PRICED });
+		const options = () =>
+			(get().frequencyGroup as { options: { value: string; unavailable: boolean }[] }).options;
+		expect(options().every((option) => !option.unavailable)).toBe(true);
+		expect(get().unit.cadenceNote).toBeNull();
+
+		actor.send({ type: 'SET_UNIT', unit: { kind: 'stock', ticker: 'AAPL' } });
+		expect(options()).toMatchObject([
+			{ value: 'one_time', unavailable: false },
+			{ value: 'monthly', unavailable: true }
+		]);
+		expect(get().unit.cadenceNote).toBe('Stock gifts are one-time only.');
+	});
+
+	it('names the payment step on Continue for money, and says nothing of it for a coin', () => {
+		const { actor, get } = api(undefined, { config: UNITS, ports: PRICED });
+		expect(get().unit.next).toMatchObject({
+			case: 'methods',
+			description: 'Payment methods on the next step: Card, Bank account'
+		});
+
+		actor.send({ type: 'SET_UNIT', unit: { kind: 'coin', coin: 'btc' } });
+		expect(get().unit.next).toEqual({ case: 'in-kind', label: 'Continue' });
+	});
+
+	it('lists the currency and the coins under one choice, and sends a pick off its key', () => {
+		const { actor, get } = api(undefined, { config: UNITS, ports: PRICED });
+		const list = get().unitSelect as {
+			value: string;
+			search: string;
+			options: unknown[];
+			stocks: boolean;
+			onChange: (value: string) => void;
+		};
+
+		expect(list).toEqual({
+			name: 'unit',
+			value: '',
+			search: 'Search currency, crypto or stock',
+			options: [
+				{ group: 'currency', value: 'currency', label: 'USD', name: 'US dollar', country: 'us' },
+				{
+					group: 'coin',
+					value: 'coin:btc',
+					label: 'BTC',
+					name: 'Bitcoin',
+					network: 'Bitcoin',
+					refused: false
+				}
+			],
+			stocks: true,
+			onChange: expect.any(Function)
+		});
+
+		list.onChange('stock:AAPL');
+		expect(actor.getSnapshot().context.draft.unit).toEqual({ kind: 'stock', ticker: 'AAPL' });
+		expect((get().unitSelect as { value: string }).value).toBe('stock:AAPL');
+	});
+
+	it('asks the pill to be focused once the donor comes back to change what they give', async () => {
+		const { actor, get } = api(undefined, {
+			config: UNITS,
+			ports: {
+				...PRICED,
+				quote: async () => ({
+					paymentToken: 'don_1',
+					feeMinor: 0,
+					totalMinor: 48_210,
+					deposit: {
+						address: 'bc1q',
+						memo: null,
+						coin: 'btc',
+						network: 'btc',
+						coinAmount: '0.005',
+						validUntil: '2999-01-01T00:00:00.000Z',
+						qr: { rows: ['1'] }
+					}
+				})
+			}
+		});
+		actor.send({ type: 'SET_UNIT', unit: { kind: 'coin', coin: 'btc' } });
+		actor.send({ type: 'SET_QUANTITY', quantity: '0.005' });
+		await priced();
+		actor.send({ type: 'CONTINUE' });
+		actor.send({
+			type: 'SET_CONTACT',
+			email: 'donor@example.org',
+			firstName: 'Ada',
+			lastName: 'Lovelace'
+		});
+		actor.send({ type: 'SET_TURNSTILE_TOKEN', token: 'tk' });
+		actor.send({ type: 'CONTINUE' });
+		actor.send({ type: 'SUBMIT' });
+		await settle();
+		expect(get().state.step).toBe('awaitingDeposit');
+		expect(get().unit.returned).toBe(false);
+
+		(get().backButton as { onClick: () => void }).onClick();
+		expect(get().state.step).toBe('amount');
+		expect(get().unit.returned).toBe(true);
 	});
 });
 

@@ -1,7 +1,5 @@
-import { createCoinPicker, type CoinPicker } from '@better-giving/form/coin-picker';
 import {
 	checkoutMachine,
-	cryptoIsOffered,
 	fundIsOffered,
 	openFund,
 	pledgeIsOffered,
@@ -58,7 +56,10 @@ export type Opening = NonNullable<CheckoutInput['opening']>;
  * starting an actor on inert ports and reading one snapshot off it is a value rather than an effect.
  *
  * the ports never settle rather than rejecting. nothing reaches them on the way to `amount`, and a
- * rejection would be an outcome this snapshot could be built holding.
+ * rejection would be an outcome this snapshot could be built holding. `estimate` and `pledges` are
+ * held as the live ports are (./ports.ts), because their presence is what offers a coin and a stock
+ * on the first step (`unitsOffered` in @better-giving/form/machine): left out, the server would draw
+ * the currency as plain text where the client draws the unit pill.
  */
 export function initialSnapshot(config: FormConfig, opening?: Opening): CheckoutSnapshot {
 	const inert = (): Promise<never> => new Promise<never>(() => {});
@@ -67,7 +68,9 @@ export function initialSnapshot(config: FormConfig, opening?: Opening): Checkout
 		confirm: inert,
 		resume: inert,
 		status: inert,
-		now: () => 0
+		estimate: inert,
+		now: () => 0,
+		pledges: { id: () => '', save: inert, told: inert }
 	};
 	const actor = createActor(checkoutMachine, {
 		input: { config, ports, ...(opening === undefined ? {} : { opening }) }
@@ -86,7 +89,7 @@ export type CheckoutMounts = {
 	readonly challengeMount: HTMLElement;
 	/**
 	 * the review step's node for the same challenge, beside the press, which it is drawn afresh into
-	 * only while a press is held on it and it is asking the donor to solve something.
+	 * only while a press is held on that step and it is asking the donor to solve something.
 	 */
 	readonly heldChallengeMount: HTMLElement;
 	/**
@@ -109,15 +112,9 @@ export type CheckoutMounts = {
 export type Checkout = {
 	readonly actor: Actor<typeof checkoutMachine>;
 	/**
-	 * the coin list a `crypto` gift is chosen in, which the crypto option stands in its row in the
-	 * payment box. built here because the surface takes it before the actor exists; what it lists and
-	 * says, and when the caret goes into it, are the card's.
-	 */
-	readonly coins: CoinPicker;
-	/**
 	 * the node the IRA (QCD) option stands in its row in the payment box, for the card to draw the
-	 * custodian box and the benefits panel into. built here for `coins`' reason; a plain node, since
-	 * this page's own sheets are the only ones in its document.
+	 * custodian box and the benefits panel into. built here because the surface takes it before the
+	 * actor exists; a plain node, since this page's own sheets are the only ones in its document.
 	 */
 	readonly ira: HTMLElement;
 	/**
@@ -249,7 +246,6 @@ export function startCheckout(
 	let opened: FundReports['opened'] = () => null;
 	let stopped: () => void = () => {};
 
-	const coins = createCoinPicker(paymentMount.ownerDocument);
 	const ira = paymentMount.ownerDocument.createElement('div');
 
 	const surface = createPaymentSurface(
@@ -262,7 +258,6 @@ export function startCheckout(
 			approved: (authorization) => fundSays({ type: 'FUND_APPROVED', ...authorization }),
 			closed: () => fundSays({ type: 'FUND_CLOSED' })
 		},
-		coins.host,
 		seams?.payment,
 		ira
 	);
@@ -320,7 +315,6 @@ export function startCheckout(
 		// said, and the surface is where a reading that changes nothing stops.
 		surface.cadence('fv' in state ? state.fv?.frequency : undefined);
 		surface.offerFund(fundIsOffered(snapshot));
-		surface.offerCrypto(cryptoIsOffered(snapshot));
 		surface.offerVenmo(venmoIsOffered(snapshot));
 		surface.offerIra(pledgeIsOffered(snapshot, 'ira_qcd'));
 
@@ -340,11 +334,13 @@ export function startCheckout(
 			);
 		}
 
-		// the details step's node is hidden by the time a press is held, and a widget asking for the
-		// donor inside a node with no box is one they cannot answer. a redraw into the node it is
-		// already in does nothing, so this is said on every reading of that state.
+		// a widget asking for the donor inside a hidden node is one they cannot answer, so it is drawn
+		// on the step the held press is projected on: the details step for a stock gift, which has no
+		// review step (`holding` in @better-giving/form's connect.ts), the review step for every other.
+		// a redraw into the node it is already in does nothing, so this is said on every reading of
+		// that state.
 		if (snapshot.value === 'holding' && snapshot.context.challengeInteractive) {
-			challenge?.redraw?.(heldChallengeMount);
+			challenge?.redraw?.(state.step === 'details' ? challengeMount : heldChallengeMount);
 		}
 		// and the same for a lost pledge's save made again, which waits on the pledge screen.
 		if (
@@ -375,7 +371,6 @@ export function startCheckout(
 
 	return {
 		actor,
-		coins,
 		ira,
 		rows: (listener) => surface.rows(listener),
 		stopped: (listener) => {

@@ -1,5 +1,5 @@
-// the IRA (QCD) option in the payment box, beside ./stripe.ts, ./paypal.ts, ./chariot.ts and
-// ./nowpayments.ts and presented to the flow by ./surface.ts.
+// the IRA (QCD) option in the payment box, beside ./stripe.ts, ./paypal.ts and ./chariot.ts and
+// presented to the flow by ./surface.ts.
 //
 // what it collects is `ira_qcd`, one of `PLEDGE_RAILS` in ./rails.ts, and no processor stands behind
 // it: the donor's custodian sends the gift later and the organisation's staff mark it received, so
@@ -8,9 +8,11 @@
 // (`pledgeIsOffered` in ../checkout.machine.ts, told through `offer`), holding the custodian box and
 // the benefits panel the card built (`ira` on `CardView` in ../views.ts).
 //
-// opening the row is choosing the rail, as the crypto option's is (./nowpayments.ts): the box inside
-// is the rest of the choice. `stock`, the other pledge rail, has no row, and no screen in this
-// package sends a stock pledge (`steer` in ../element.ts).
+// opening the row is choosing the rail, where the rows beside it choose by their own button: the box
+// inside is the rest of the choice. so the rail is reported when the row opens and taken back when it
+// closes, whoever closes it. `stock`, the other pledge rail, has no row: its ticker is picked in the
+// first step's What you give panel and its pledge saved by the details step's Continue
+// (`givesStockFromHere` in ../checkout.machine.ts), with no review step.
 
 import type { CheckoutPorts } from '../ports';
 import { PAYMENT_METHOD_LABELS, type PaymentMethod } from '../v1';

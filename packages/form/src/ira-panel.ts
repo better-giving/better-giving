@@ -3,7 +3,7 @@
 //
 // the card draws it (`ira` on `CardView` in ./views.ts) and the option stands it in its row in the
 // payment box (./embed/pledge.ts), which is a light-DOM node for the reason ./embed/rows.ts gives. so
-// it carries a shadow root of its own, as the coin list does (./coin-picker.ts): a host page's
+// it carries a shadow root of its own, as the unit panel does (./unit-panel.ts): a host page's
 // `input { … }` rule would otherwise reach the box. the label, the box and the sentence under it are
 // all inside that root, which is what lets one reference the other.
 //

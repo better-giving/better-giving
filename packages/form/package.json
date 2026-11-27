@@ -14,7 +14,9 @@
 		"./money": "./src/money.ts",
 		"./parts": "./src/parts.ts",
 		"./glyph": "./src/glyph.ts",
-		"./coin-picker": "./src/coin-picker.ts",
+		"./unit-panel": "./src/unit-panel.ts",
+		"./unit": "./src/unit.ts",
+		"./ticker-search": "./src/ticker-search.ts",
 		"./deposit": "./src/deposit.ts",
 		"./embed/reservation": "./src/embed/reservation.ts",
 		"./embed/rails": "./src/embed/rails.ts",
@@ -35,7 +37,8 @@
 		"./styles/motion.css": "./src/styles/motion.css",
 		"./registry/styles/button-css.css": "./src/registry/styles/button-css.css",
 		"./registry/styles/field-css.css": "./src/registry/styles/field-css.css",
-		"./registry/styles/checkbox-css.css": "./src/registry/styles/checkbox-css.css"
+		"./registry/styles/checkbox-css.css": "./src/registry/styles/checkbox-css.css",
+		"./registry/styles/avatar-css.css": "./src/registry/styles/avatar-css.css"
 	},
 	"scripts": {
 		"dev": "vite",

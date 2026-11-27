@@ -1,0 +1,80 @@
+/*
+ * the "What you give" panel (../unit-panel.ts): the registry's combobox, adopted before this sheet,
+ * draws the panel's surface, the search box, the headings, the rows, the badge and the tick
+ * (../registry/styles/combobox-css.css on select-css's rows). what is here is what it leaves to the
+ * page: where the panel stands, and what stands in a row's 32px mark slot.
+ *
+ * the tokens arrive the way every inherited property does, from where the caller places the host
+ * (inside the card), so nothing here or in the registry's sheets names a face: the panel is set in
+ * whatever face the card is. nothing here moves.
+ */
+
+/* the host is only where the panel is attached: the panel itself stands in the top layer. */
+:host {
+	display: contents;
+}
+
+/*
+ * a popover's own box, taken back: the machine writes where the panel stands (`positioning` in
+ * ../unit-panel.ts), and the registry's surface is the whole of its look. `inset: auto` rather than
+ * the popover's `0`, which would hold the panel to the viewport's far edges; the list scrolls inside
+ * it, so the panel itself never does.
+ */
+.unit-panel {
+	box-sizing: border-box;
+	margin: 0;
+	inset: auto;
+	overflow: visible;
+	color: var(--_n12);
+}
+
+/*
+ * a row's mark: a round disc on the control's resting ground, the letter it falls back to, and the
+ * image or the stock glyph over it.
+ */
+.unit-mark {
+	display: grid;
+	place-items: center;
+	inline-size: 100%;
+	block-size: 100%;
+	border-radius: 50%;
+	overflow: hidden;
+	background: var(--_n3);
+	color: var(--_n12);
+}
+
+/* the letter and the image share the one cell, so the mark is one size whichever of them is up. */
+.unit-mark > * {
+	grid-area: 1 / 1;
+}
+
+.unit-letter {
+	font-size: var(--_t-sm);
+	font-weight: var(--_w-bold);
+	line-height: 1;
+}
+
+/*
+ * the image fills the disc it stands on. the letter is hidden rather than dropped while an image is
+ * there: a logo drawn on its own transparency over a visible letter is two marks in one circle. a
+ * failed image is taken out (`markNode` in ../unit-panel.ts), and the letter comes back.
+ */
+.unit-image {
+	inline-size: 100%;
+	block-size: 100%;
+	object-fit: contain;
+}
+
+.unit-mark:has(.unit-image) .unit-letter {
+	visibility: hidden;
+}
+
+.unit-glyph {
+	inline-size: var(--_glyph-beside);
+	block-size: var(--_glyph-beside);
+}
+
+/* last, so an element's own `display` above never outranks the attribute that takes it off screen. */
+[hidden] {
+	display: none;
+}

@@ -4,6 +4,8 @@ import {
 	GIFT_MINOR_METADATA_KEY,
 	type AccountChargeability,
 	type Arrival,
+	type CoinValue,
+	type CoinValueRequest,
 	type Intent,
 	type IntentRequest,
 	type PayableCoin,
@@ -36,8 +38,8 @@ import type { PaymentStatus } from '../db/schema';
 // ./provider.ts); the donor sends from their own wallet, and NOWPayments posts an IPN to the address
 // named on that payment.
 //
-// **it answers** `createIntent`, `verifyEvent`, `readSettlement`, `readReversal`, `listPayableCoins`
-// and the two account reads, and refuses everything else as `unsupported`: a gift that repeats (a
+// **it answers** `createIntent`, `verifyEvent`, `readSettlement`, `readReversal`, `listPayableCoins`,
+// `estimateCoinValue` and the two account reads, and refuses everything else as `unsupported`: a gift that repeats (a
 // payment is one deposit — `takesRepeatingGifts` in ./provider.ts keeps NOWPayments out of every
 // repeating-gift read), the listener arms (no endpoint is registered on the account; each payment
 // carries its own callback), and the wallet arms. no payout, conversion or sub-partner call is made
@@ -134,6 +136,9 @@ const TIMEOUT_MS = 12_000;
  * it also bounds a crypto quote: the lists (asked once per request, by the config load or the create,
  * whichever is first), then the minimum and the estimate together, then the create — 4s + 12s + 12s
  * of NOWPayments at worst, under the form's 30-second wait.
+ *
+ * and it bounds `estimateCoinValue`, whose answer is a line under a coin amount a donor is typing:
+ * an estimate later than this is one the form draws nothing for.
  */
 const LIST_TIMEOUT_MS = 4_000;
 
@@ -280,6 +285,33 @@ export function createNowpaymentsProvider(credentials: NowpaymentsCredentials): 
 			if (!accepted.ok) return accepted;
 			if (!accepted.value.known.has(outcome)) return outcomeUnknown(outcome);
 			return { ok: true, value: [...accepted.value.payable.values()] };
+		},
+
+		/** `GET /v1/estimate` from the coin into dollars, one call. */
+		async estimateCoinValue(request: CoinValueRequest): Promise<PaymentResult<CoinValue>> {
+			if (request.currency !== 'USD') {
+				return {
+					ok: false,
+					reason: 'invalid_request',
+					detail: `A crypto gift is priced in USD, and this request named ${request.currency}. Nothing was asked of NOWPayments.`
+				};
+			}
+			const coinAmount = TYPED_DECIMAL.test(request.coinAmount)
+				? canonicalDecimal(request.coinAmount)
+				: null;
+			if (coinAmount === null) {
+				return {
+					ok: false,
+					reason: 'invalid_request',
+					detail: `${JSON.stringify(request.coinAmount.slice(0, 40))} is not a positive decimal amount of a coin. Nothing was asked of NOWPayments.`
+				};
+			}
+			const valued = await estimateInDollars(coinAmount, request.coin, {
+				timeoutMs: LIST_TIMEOUT_MS,
+				unvalued: 'so the donation form shows no figure for it.'
+			});
+			if (!valued.ok) return valued;
+			return { ok: true, value: { amountMinor: centsRounded(valued.value) } };
 		},
 
 		/**
@@ -552,12 +584,15 @@ export function createNowpaymentsProvider(credentials: NowpaymentsCredentials): 
 	/**
 	 * what an amount of a coin is worth in dollars, at NOWPayments' current rate.
 	 *
-	 * a refusal here is retryable whatever NOWPayments answered: it values money that already moved,
-	 * and the IPN that asked is sent again. a refusal is not kept, so the next ask is a new call.
+	 * a refusal here is retryable whatever NOWPayments answered: on the settlement path it values money
+	 * that already moved, and the IPN that asked is sent again. `estimateCoinValue` hands a refusal on
+	 * as it is, and the estimate read answers every one as no figure
+	 * (src/routes/api.v1.forms.$id.estimate.ts). a refusal is not kept, so the next ask is a new call.
 	 */
 	async function estimateInDollars(
 		coinAmount: string,
-		coin: string
+		coin: string,
+		{ timeoutMs = TIMEOUT_MS, unvalued = SETTLEMENT_UNVALUED } = {}
 	): Promise<PaymentResult<string>> {
 		const arrival = `${coinAmount} ${coin}`;
 		const known = dollarValues.get(arrival);
@@ -567,7 +602,7 @@ export function createNowpaymentsProvider(credentials: NowpaymentsCredentials): 
 			currency_from: coin,
 			currency_to: 'usd'
 		});
-		const answer = await call('GET', `/v1/estimate?${query}`);
+		const answer = await call('GET', `/v1/estimate?${query}`, undefined, timeoutMs);
 		if ('ok' in answer) return answer;
 		const valued = answer.status === 200 ? decimalField(answer.body, 'estimated_amount') : null;
 		if (valued !== null) {
@@ -578,8 +613,8 @@ export function createNowpaymentsProvider(credentials: NowpaymentsCredentials): 
 			ok: false,
 			reason: 'provider_error',
 			detail:
-				`NOWPayments did not value ${coinAmount} ${coin.toUpperCase()} in dollars, so nothing was ` +
-				`settled. The read made again is worth making. NOWPayments said: ${quoteProblem(answer.body)}`
+				`NOWPayments did not value ${coinAmount} ${coin.toUpperCase()} in dollars, ${unvalued} ` +
+				`NOWPayments said: ${quoteProblem(answer.body)}`
 		};
 	}
 
@@ -614,6 +649,12 @@ const NO_LISTENER_ARMS =
 	'NOWPayments registers no webhook endpoint on the account: each payment carries the address it notifies. Nothing was asked of NOWPayments.';
 const NO_WALLETS =
 	'NOWPayments draws no wallet, so there is no hostname to register. Nothing was asked of NOWPayments.';
+
+/** how a refusal from `estimateInDollars` ends on the settlement path. */
+const SETTLEMENT_UNVALUED = 'so nothing was settled. The read made again is worth making.';
+
+/** digits with at most one point, as a donor types an amount; `canonicalDecimal` alone takes `1e3`. */
+const TYPED_DECIMAL = /^(\d+(\.\d*)?|\.\d+)$/;
 
 const SIGNATURE_HEADER = 'x-nowpayments-sig';
 

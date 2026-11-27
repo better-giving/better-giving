@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+	canonicalDecimal,
 	completeAmount,
 	completePayer,
 	missingAmountDecisions,
@@ -413,5 +414,31 @@ describe('a wallet rail', () => {
 		// one the provider's box never draws, so a draft naming it is a report from nowhere.
 		const noWallets = { ...withWallets, paymentMethods: ['card', 'ach'] } as FormConfig;
 		expect(completePayer({ ...filled, method: 'apple_pay' }, noWallets)).toBeNull();
+	});
+});
+
+describe('canonicalDecimal', () => {
+	// a phone keypad in a decimal-comma locale offers `,` and no `.`, so a coin amount or a share
+	// count with a fraction can only arrive that way.
+	it('reads a lone decimal comma as the decimal point', () => {
+		expect(canonicalDecimal('0,01')).toBe('0.01');
+		expect(canonicalDecimal('12,5')).toBe('12.5');
+		expect(canonicalDecimal(' 0,0050 ')).toBe('0.005');
+		expect(canonicalDecimal(',5')).toBe('0.5');
+	});
+
+	it('refuses a comma that could be a thousands group, and any mix of separators', () => {
+		expect(canonicalDecimal('1,000')).toBeNull();
+		expect(canonicalDecimal('12,345')).toBeNull();
+		expect(canonicalDecimal('1,234.5')).toBeNull();
+		expect(canonicalDecimal('1.234,5')).toBeNull();
+		expect(canonicalDecimal('1,2,3')).toBeNull();
+		expect(canonicalDecimal('0,000')).toBeNull();
+	});
+
+	it('keeps the point it always read', () => {
+		expect(canonicalDecimal(' .0050 ')).toBe('0.005');
+		expect(canonicalDecimal('012.50')).toBe('12.5');
+		expect(canonicalDecimal('0')).toBeNull();
 	});
 });

@@ -153,7 +153,9 @@ function type(root: HTMLElement, selector: string, value: string): void {
 	});
 }
 
-const CONTINUE = 'section.step:not([hidden]) > button[part~="action"]';
+// the first step's Continue stands in `.next` under its eyebrow, the other steps' on the step.
+const CONTINUE =
+	'section.step:not([hidden]) > button[part~="action"], section.step:not([hidden]) > .next > button[part~="action"]';
 
 /**
  * whether a rule reaches one element, asked of the document rather than of the element.
