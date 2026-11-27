@@ -640,6 +640,11 @@ function ports(
 			if (ending === 'late' || read <= READINGS_BEFORE_ENDING) return { state: 'waiting' };
 			return { state: ending };
 		},
+		// without this port the flow offers no coin on the first step (`unitsOffered` in
+		// ../src/checkout.machine.ts) and so refuses a card that never came up instead of holding the
+		// report. `fail` is priced at a dollar a coin, so its quote's refusal is still the step it lands on.
+		estimate: async ({ coin, amount }) =>
+			Math.round(Number(amount) * (WALLETS[coin]?.priceMinor ?? 100)),
 		now: () => Date.now(),
 		employer: async () => {
 			await after(EMPLOYER_WRITE_MS, undefined);
