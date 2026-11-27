@@ -15,6 +15,8 @@ import {
 	type PaymentFailureReason,
 	type PaymentProvider,
 	type PaymentResult,
+	type ReversalEvent,
+	type ReversalRead,
 	type SettledRail,
 	type Settlement,
 	type SponsoredGift,
@@ -28,12 +30,11 @@ import {
 // network — and the events signature is WebCrypto's HMAC, so ./sole-importer.spec.ts has nothing to
 // guard here.
 //
-// **it answers the one-off payment, the payment read and the events, and refuses everything else**
-// as `unsupported`: a gift that repeats, the reversal read (so a reversal `verifyEvent` names is
-// refused at its read, not booked), the account and rail reads (the sponsor's readiness is not
-// asked per request), the webhook endpoint arms (provisioning sets `SPONSOR_EVENTS_SECRET`, so
-// there is no endpoint to register), the wallet arms and the coin list (crypto does not route to
-// the sponsor).
+// **it answers the one-off payment, the payment and reversal reads and the events, and refuses
+// everything else** as `unsupported`: a gift that repeats, the account and rail reads (the
+// sponsor's readiness is not asked per request), the webhook endpoint arms (provisioning sets
+// `SPONSOR_EVENTS_SECRET`, so there is no endpoint to register), the wallet arms, and the coin
+// list and estimate (crypto does not route to the sponsor).
 
 /** the sponsor's partner API. */
 export const SPONSOR_API_URL = 'https://better.giving/api/partner/v1';
@@ -140,7 +141,16 @@ export function createSponsorProvider(credentials: SponsorCredentials): PaymentP
 		createRecurringGift: async () => unsupported(NO_REPEATING_GIFTS),
 		cancelRecurringGift: async () => unsupported(NO_REPEATING_GIFTS),
 		readRecurringGift: async () => unsupported(NO_REPEATING_GIFTS),
-		readReversal: async () => unsupported(NO_REVERSAL_READ),
+		/** `GET /reversals/{id}`, for the reversal a refund or dispute event names. */
+		async readReversal(event: ReversalEvent): Promise<PaymentResult<ReversalRead>> {
+			const answer = await call('GET', `/reversals/${encodeURIComponent(event.providerNoticeId)}`);
+			if ('ok' in answer) return answer;
+			if (answer.status !== 200) return refusal(answer);
+			const reversal = reversalOf(answer.body);
+			return reversal === null
+				? unreadable(`reversal ${event.providerNoticeId}`)
+				: { ok: true, value: reversal };
+		},
 		readAccountChargeability: async () => unsupported(NO_ACCOUNT_READ),
 		readRailSwitchboard: async () => unsupported(NO_ACCOUNT_READ),
 		listWebhookEndpoints: async () => unsupported(NO_ENDPOINT),
@@ -149,13 +159,12 @@ export function createSponsorProvider(credentials: SponsorCredentials): PaymentP
 		replaceWebhookEndpoint: async () => unsupported(NO_ENDPOINT),
 		listWalletDomains: async () => unsupported(NO_WALLETS),
 		registerWalletDomain: async () => unsupported(NO_WALLETS),
-		listPayableCoins: async () => unsupported(NO_COINS)
+		listPayableCoins: async () => unsupported(NO_COINS),
+		estimateCoinValue: async () => unsupported(NO_COINS)
 	};
 }
 
 const NO_REPEATING_GIFTS = 'This release takes no gift that repeats through the sponsor.';
-const NO_REVERSAL_READ =
-	'This release reads no reversal from the sponsor, so a refund or dispute it reports is not booked here.';
 const NO_ACCOUNT_READ =
 	'The sponsor’s readiness is not read per request by this release, so it has no account read.';
 const NO_ENDPOINT =
@@ -315,6 +324,72 @@ function settlementOf(payment: unknown): Settlement | null {
 			? { alsoRefunded: { providerReversalId: reversalId, occurredAt: refundedAt } }
 			: {})
 	};
+}
+
+/**
+ * a sponsor *Reversal* as ../donations/reverse.ts reads one.
+ *
+ * the money is `gift + gift_fee_cover`, as `settlementOf` reads a payment's, so a reversal of the
+ * contribution and its cover alone moves nothing here. the sponsor states no dispute fee and links no
+ * dashboard: it bears the one and answers the other itself.
+ */
+function reversalOf(body: unknown): ReversalRead | null {
+	const providerReversalId = stringField(body, 'id');
+	const reversedTxnId = stringField(body, 'payment_id');
+	const giftId = stringField(body, 'gift_id');
+	const kind = stringField(body, 'kind');
+	const currency = stringField(body, 'currency');
+	const occurredAt = dateOf(stringField(body, 'occurred_at'));
+	const amount = field(body, 'amount');
+	const gift = field(amount, 'gift');
+	const giftFeeCover = field(amount, 'gift_fee_cover');
+	if (providerReversalId === null) return null;
+	if (kind === 'nothing_moved') return { kind, providerReversalId };
+	if (
+		reversedTxnId === null ||
+		giftId === null ||
+		currency === null ||
+		occurredAt === null ||
+		!isMinor(gift) ||
+		!isMinor(giftFeeCover)
+	) {
+		return null;
+	}
+	const facts = {
+		reversedTxnId,
+		providerReversalId,
+		occurredAt,
+		reversedMetadata: { [DONATION_METADATA_KEY]: giftId }
+	};
+	const amountMinor = gift + giftFeeCover;
+	if (
+		amountMinor === 0 &&
+		(kind === 'refund' || kind === 'dispute_opened' || kind === 'dispute_lost')
+	) {
+		return { kind: 'nothing_moved', providerReversalId };
+	}
+	const money = { amountMinor, currency: currency.toUpperCase() };
+	const dispute = { feeMinor: null, reason: stringField(body, 'reason'), dashboardUrl: null };
+	switch (kind) {
+		case 'refund':
+			return { ...facts, ...money, kind, feeReturnedMinor: null };
+		case 'refund_failed':
+			return { ...facts, kind };
+		case 'dispute_opened':
+			return {
+				...facts,
+				...money,
+				...dispute,
+				kind,
+				respondBy: dateOf(stringField(body, 'respond_by'))
+			};
+		case 'dispute_won':
+			return { ...facts, kind, feeReturnedMinor: null, feeKeptMinor: null };
+		case 'dispute_lost':
+			return { ...facts, ...money, ...dispute, kind };
+		default:
+			return null;
+	}
 }
 
 function isStatus(word: string): word is PaymentStatus {

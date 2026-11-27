@@ -28,9 +28,11 @@ import { readOrgProfile } from '../org/queries';
 import {
 	DONATION_METADATA_KEY,
 	isRetryable,
+	paidOutByDonee,
 	takesRepeatingGifts,
 	type PaymentFailure,
 	type PayableCoin,
+	type PaymentEvent,
 	type PaymentFailureReason,
 	type ProcessorName,
 	type Settlement,
@@ -294,8 +296,15 @@ export async function settleDelivery(
 		if (verified.reason !== 'internal_error') await unreadableDelivery(deps, verified.detail);
 		return { ok: true, outcome: 'unactionable', detail: verified.detail };
 	}
-	const event = verified.value;
+	return settleEvent(deps, verified.value);
+}
 
+/**
+ * deals with one event this app already trusts: a delivery `settleDelivery` verified, or one read
+ * from a feed its key authenticates. re-read, correct, post, then tell people, with
+ * `settleDelivery`'s answers and its rule that nothing here throws.
+ */
+export async function settleEvent(deps: SettleDeps, event: PaymentEvent): Promise<SettleResult> {
 	// a delivery about a repeating gift is somebody else's write: this module settles one
 	// transaction against the payment row a quote minted, and a collection under a commitment has
 	// neither, so it is an insert of both plus a posting rather than an update. ./collect.ts owns
@@ -463,6 +472,10 @@ async function settleTarget(
 	settlement: Settlement,
 	stoodInForRead: boolean
 ): Promise<SettleResult> {
+	// a gift whose donee is the sponsor posts nothing: its income is booked at the payout.
+	if (paidOutByDonee(deps.provider.processor) && settlement.status === 'succeeded') {
+		return settleForDonee(deps, target, settlement);
+	}
 	// what the gift's own lines say this money is for — read only where money moved, since a
 	// settlement that did not succeed posts nothing and its read would be a query spent on nothing.
 	const recognition =
@@ -563,6 +576,59 @@ async function settleTarget(
 		ok: true,
 		outcome: 'posted',
 		detail: `payment ${target.payment.id} settled and posted.`
+	};
+}
+
+/**
+ * a settled gift whose donee is the sponsor (`paidOutByDonee` in ../payments/provider.ts): the row is
+ * corrected to `succeeded`, which is what counts it as raised, and nothing is posted or queued. the
+ * sponsor mails the receipt and the tribute notice, so staff's new-gift notice is the one mail.
+ *
+ * the correction is guarded on the row not being settled already, so a repeat matches no row,
+ * answers `already_posted` and tells nobody.
+ */
+async function settleForDonee(
+	deps: SettleDeps,
+	target: Target,
+	settlement: Settlement
+): Promise<SettleResult> {
+	const written = await write(deps.db, target, settlement, null);
+	if (written === 'failed') {
+		return {
+			ok: false,
+			reason: 'incomplete',
+			detail: `the settlement of payment ${target.payment.id} could not be written.`
+		};
+	}
+	if (written !== 'written') {
+		return {
+			ok: true,
+			outcome: 'already_posted',
+			detail: `payment ${target.payment.id} is already settled; this event changed nothing.`
+		};
+	}
+	if (settlement.alsoRefunded === undefined) {
+		try {
+			await sendSettledNotice(deps, {
+				amountMinor: settlement.amountMinor,
+				currency: settlement.currency,
+				donorName: target.donorName,
+				donorEmail: target.donorEmail,
+				formName: target.formName,
+				repeating: 'none',
+				// the sponsor receipts the donor, and nothing here knows whether it reached them.
+				receipt: 'not_sent',
+				note: target.donation.note,
+				tribute: projectTribute(target.donation.tributeKind, target.donation.tributeHonoree)
+			});
+		} catch (error) {
+			await tellingFault(deps, target, 'your new-gift email', error);
+		}
+	}
+	return {
+		ok: true,
+		outcome: 'updated',
+		detail: `payment ${target.payment.id} settled; the sponsor took it, so nothing was posted.`
 	};
 }
 

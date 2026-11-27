@@ -19,6 +19,7 @@ import { stopRecurringGift, type StopOutcome } from '../recurring/stop';
 import {
 	DONATION_METADATA_KEY,
 	isRetryable,
+	paidOutByDonee,
 	type PaymentFailure,
 	type ProcessorName,
 	type Reversal,
@@ -80,7 +81,8 @@ import { sendRefundNotice } from './refund-notice';
 // deliveries carry no ordering, so a refund can arrive before the settlement that put its gift in
 // the books — a collection under a repeating gift has no row at all until ./collect.ts writes it.
 // a refund of a charge whose row is `pending`, or with no row whose metadata names a gift recorded
-// here (`chargeNotHere` below), is answered `incomplete` and the processor delivers it again. a
+// here (`chargeNotHere` below), is answered `incomplete` and the processor delivers it again — the
+// sponsor's is answered `not_yet` (`notYet` below), which it sends again. a
 // charge whose row ended `failed` or `cancelled`, or whose metadata names a gift that is not here,
 // never becomes one: it is answered 200 and told to staff. a charge naming no gift is another
 // integration's on the same account, answered 200 and left.
@@ -148,6 +150,10 @@ import { sendRefundNotice } from './refund-notice';
 // refund that tells its donor is written with `notice_owed_since` set and every other row with it
 // null. a notice that fails is told to staff, stays owed for a later run to send, and never
 // changes the answer.
+//
+// a withdrawal of a gift whose donee is the sponsor (`paidOutByDonee` in ../payments/provider.ts)
+// is its row alone: no group, no notice owed and none sent, since the sponsor mails the notice and
+// books the money at the payout. the row is what reads the gift as refunded.
 //
 // ---------------------------------------------------------------------------
 // a reversal, its settle-up included, owes QuickBooks a row only where the group it answers holds
@@ -246,11 +252,10 @@ export async function recordReversal(
 	const reversed = await findPayment(deps.db, processor, reversal.reversedTxnId);
 	if (reversed === null) return chargeNotHere(deps, reversal, eventId);
 	if (reversed.status === 'pending') {
-		return {
-			ok: false,
-			reason: 'incomplete',
-			detail: `transaction ${reversal.reversedTxnId} names a gift of this deployment’s that has not settled here yet, so reversal ${reversal.providerReversalId} (event ${eventId}) was not written and is worth delivering again.`
-		};
+		return notYet(
+			deps,
+			`transaction ${reversal.reversedTxnId} names a gift of this deployment’s that has not settled here yet, so reversal ${reversal.providerReversalId} (event ${eventId}) was not written and is worth delivering again.`
+		);
 	}
 	if (reversed.status !== 'succeeded') return chargeNeverSettled(deps, reversal, reversed);
 	switch (reversal.kind) {
@@ -339,14 +344,17 @@ async function withdraw(
 	}
 
 	const refundId = uuidv7();
-	const charge = await findEntryGroup(deps.db, 'payment', reversed.id);
+	const paidOut = paidOutByDonee(deps.provider.processor);
+	const tellsDonor = reversal.kind === 'refund' && notice === 'send' && !paidOut;
+	const charge = paidOut ? null : await findEntryGroup(deps.db, 'payment', reversed.id);
 	const giftFee = charge === null ? null : await findEntryGroup(deps.db, 'fee', reversed.id);
 	const feeBack =
 		reversal.kind === 'refund' && charge !== null
 			? await feeGivenBack(deps.db, reversal, reversed.id, giftFee?.lines ?? [])
 			: null;
-	const posting =
-		charge === null
+	const posting = paidOut
+		? null
+		: charge === null
 			? `payment ${reversed.id} settled and was never posted, so the books hold none of this gift unless somebody posted it by hand.`
 			: reversalWrites(
 					deps.db,
@@ -387,7 +395,7 @@ async function withdraw(
 			occurredAt: reversal.occurredAt,
 			parentPaymentId: reversed.id,
 			// owed by a refund that tells its donor, until ./refund-notice.ts clears it.
-			noticeOwedSince: reversal.kind === 'refund' && notice === 'send' ? new Date() : null
+			noticeOwedSince: tellsDonor ? new Date() : null
 		}),
 		// a refund or a dispute recorded lost that leaves nothing of the gift closes the gift's
 		// employer match in the batch that writes it; a partial one and a dispute opened do not,
@@ -407,7 +415,7 @@ async function withdraw(
 						? [disputeLostVoidStatement(deps.db, reversed.donationId, refundId, new Date())]
 						: [])
 				]),
-		...(typeof posting === 'string' ? [] : posting)
+		...(posting === null || typeof posting === 'string' ? [] : posting)
 	]);
 	// the row appeared between the read above and this batch: another delivery of the same reversal.
 	// a loss answers it `incomplete`, so its next delivery closes the dispute that delivery opened.
@@ -440,20 +448,23 @@ async function withdraw(
 		);
 		return (
 			stopHeldOpen(stop, reversal) ??
-			(problem === null
-				? {
-						ok: true,
-						outcome: 'posted',
-						detail: `dispute ${reversal.providerReversalId} withdrew ${amountMinor} ${reversal.currency} as refund ${refundId}.`
-					}
-				: {
-						ok: true,
-						outcome: 'unactionable',
-						detail: `dispute ${reversal.providerReversalId} was recorded as refund ${refundId} and not posted: ${problem}`
-					})
+			(posting === null
+				? recordedForDonee(reversal, refundId)
+				: problem === null
+					? {
+							ok: true,
+							outcome: 'posted',
+							detail: `dispute ${reversal.providerReversalId} withdrew ${amountMinor} ${reversal.currency} as refund ${refundId}.`
+						}
+					: {
+							ok: true,
+							outcome: 'unactionable',
+							detail: `dispute ${reversal.providerReversalId} was recorded as refund ${refundId} and not posted: ${problem}`
+						})
 		);
 	}
-	if (notice === 'send') {
+	if (posting === null) return recordedForDonee(reversal, refundId);
+	if (tellsDonor) {
 		await sendRefundNotice(deps, {
 			giftPaymentId: reversed.id,
 			donationId: reversed.donationId,
@@ -476,6 +487,15 @@ async function withdraw(
 		);
 	}
 	return { ok: true, outcome: 'posted', detail: `refund ${refundId} posted.` };
+}
+
+/** a withdrawal of a gift whose donee is the sponsor, written as its row alone. */
+function recordedForDonee(reversal: WithdrawalRead, refundId: string): SettleResult {
+	return {
+		ok: true,
+		outcome: 'updated',
+		detail: `${reversal.kind === 'refund' ? 'refund' : 'dispute'} ${reversal.providerReversalId} was recorded as refund ${refundId}; the sponsor took the gift, so nothing was posted.`
+	};
 }
 
 /**
@@ -1549,6 +1569,17 @@ async function tellStaff(deps: SettleDeps, input: Parameters<typeof alert>[1]): 
 }
 
 /**
+ * a reversal of a gift that has not settled here yet, which nothing was written for. the sponsor's
+ * is `not_yet`, which it sends again; every other processor's is `incomplete`, the non-2xx its
+ * webhook redelivers on.
+ */
+function notYet(deps: SettleDeps, detail: string): SettleResult {
+	return paidOutByDonee(deps.provider.processor)
+		? { ok: true, outcome: 'not_yet', detail }
+		: { ok: false, reason: 'incomplete', detail };
+}
+
+/**
  * a reversal of a charge recorded here as `failed` or `cancelled`, which no redelivery settles:
  * nothing is written, and staff are told, because the processor reports money moving on a charge
  * this deployment reads as having taken none.
@@ -1608,11 +1639,10 @@ async function chargeNotHere(
 		.from(donation)
 		.where(eq(donation.id, named));
 	if (gift !== undefined) {
-		return {
-			ok: false,
-			reason: 'incomplete',
-			detail: `transaction ${reversal.reversedTxnId} names gift ${named}, which has not settled here yet, so reversal ${reversal.providerReversalId} (event ${eventId}) was not written and is worth delivering again.`
-		};
+		return notYet(
+			deps,
+			`transaction ${reversal.reversedTxnId} names gift ${named}, which has not settled here yet, so reversal ${reversal.providerReversalId} (event ${eventId}) was not written and is worth delivering again.`
+		);
 	}
 	const processor = processorLabel(deps);
 	await tellStaff(deps, {

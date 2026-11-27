@@ -284,6 +284,124 @@ describe('readSettlement', () => {
 	});
 });
 
+describe('readReversal', () => {
+	const REVERSAL = {
+		id: 'rev_1',
+		payment_id: 'pay_1',
+		gift_id: GIFT_ID,
+		amount: { gift: 10_000, gift_fee_cover: 330, contribution: 1_500, contribution_fee_cover: 50 },
+		currency: 'usd',
+		occurred_at: '2026-11-28T10:00:00Z'
+	};
+	const event = {
+		kind: 'reversal',
+		id: 'evt_2',
+		type: 'payment.refunded',
+		occurredAt: new Date('2026-11-28T10:00:00Z'),
+		providerNoticeId: 'rev_1'
+	} as const;
+	const facts = {
+		reversedTxnId: 'pay_1',
+		providerReversalId: 'rev_1',
+		occurredAt: new Date('2026-11-28T10:00:00Z'),
+		reversedMetadata: { donation_id: GIFT_ID }
+	};
+
+	it('reads the reversal the event names, as the site’s gift and its cover', async () => {
+		const { fetch, calls } = scripted([{ status: 200, json: { ...REVERSAL, kind: 'refund' } }]);
+		const result = await provider(fetch).readReversal(event);
+
+		expect(calls[0]?.method).toBe('GET');
+		expect(calls[0]?.url).toBe('https://better.giving/api/partner/v1/reversals/rev_1');
+		expect(result).toEqual({
+			ok: true,
+			value: {
+				...facts,
+				kind: 'refund',
+				amountMinor: 10_330,
+				currency: 'USD',
+				feeReturnedMinor: null
+			}
+		});
+	});
+
+	it.each([
+		['refund_failed', { kind: 'refund_failed' }],
+		[
+			'dispute_opened',
+			{
+				kind: 'dispute_opened',
+				amountMinor: 10_330,
+				currency: 'USD',
+				feeMinor: null,
+				reason: 'fraudulent',
+				dashboardUrl: null,
+				respondBy: new Date('2026-12-10T00:00:00Z')
+			}
+		],
+		['dispute_won', { kind: 'dispute_won', feeReturnedMinor: null, feeKeptMinor: null }],
+		[
+			'dispute_lost',
+			{
+				kind: 'dispute_lost',
+				amountMinor: 10_330,
+				currency: 'USD',
+				feeMinor: null,
+				reason: 'fraudulent',
+				dashboardUrl: null
+			}
+		]
+	])('reads %s', async (kind, read) => {
+		const { fetch } = scripted([
+			{
+				status: 200,
+				json: { ...REVERSAL, kind, reason: 'fraudulent', respond_by: '2026-12-10T00:00:00Z' }
+			}
+		]);
+		const result = await provider(fetch).readReversal(event);
+		expect(result).toEqual({ ok: true, value: { ...facts, ...read } });
+	});
+
+	it('reads nothing_moved as money that has not moved', async () => {
+		const { fetch } = scripted([{ status: 200, json: { ...REVERSAL, kind: 'nothing_moved' } }]);
+		const result = await provider(fetch).readReversal(event);
+		expect(result).toEqual({
+			ok: true,
+			value: { kind: 'nothing_moved', providerReversalId: 'rev_1' }
+		});
+	});
+
+	it('reads a refund of the contribution alone as nothing moved on the site', async () => {
+		const { fetch } = scripted([
+			{
+				status: 200,
+				json: {
+					...REVERSAL,
+					kind: 'refund',
+					amount: { gift: 0, gift_fee_cover: 0, contribution: 1_500, contribution_fee_cover: 50 }
+				}
+			}
+		]);
+		const result = await provider(fetch).readReversal(event);
+		expect(result).toEqual({
+			ok: true,
+			value: { kind: 'nothing_moved', providerReversalId: 'rev_1' }
+		});
+	});
+
+	it('answers a reversal the sponsor does not hold as not_found', async () => {
+		const { fetch } = scripted([{ status: 404, json: { code: 'not_found' } }]);
+		const result = await provider(fetch).readReversal(event);
+		expect(result.ok ? null : result.reason).toBe('not_found');
+	});
+
+	it('answers a reversal it cannot read as provider_error', async () => {
+		const { fetch } = scripted([{ status: 200, json: { ...REVERSAL, kind: 'chargeback' } }]);
+		const result = await provider(fetch).readReversal(event);
+		expect(result.ok ? null : result.reason).toBe('provider_error');
+	});
+});
+
 describe('what an event is about', () => {
 	const envelope = (type: string, data: unknown) => ({ ...SETTLED, type, data });
 

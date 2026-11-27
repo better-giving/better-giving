@@ -111,6 +111,27 @@ export function takesRepeatingGifts(name: ProcessorName): boolean {
 }
 
 /**
+ * whether a donee other than the organisation takes the gifts this processor settles: the sponsor,
+ * which mails the receipt, the refund notice and the tribute notice, and pays the organisation out.
+ * such a gift is recorded and counted as raised here and posts no income: income is booked at the
+ * payout (../ledger/payouts.ts). an event about a gift it has not settled here yet is answered
+ * `not_yet` (../donations/delivery.ts), which the sponsor sends again.
+ *
+ * total over `ProcessorName`, for `TAKES_REPEATING_GIFTS`'s reason.
+ */
+const PAID_OUT_BY_DONEE: Readonly<Record<ProcessorName, boolean>> = Object.freeze({
+	stripe: false,
+	paypal: false,
+	chariot: false,
+	nowpayments: false,
+	sponsor: true
+});
+
+export function paidOutByDonee(name: ProcessorName): boolean {
+	return PAID_OUT_BY_DONEE[name];
+}
+
+/**
  * which processor a rail is quoted and settled on.
  *
  * the rail-to-processor table is the per-processor lists in packages/form/src/embed/rails.ts and

@@ -63,6 +63,10 @@ import { PROCESSOR_LABELS, type PayableCoin, type PaymentProvider } from '../pay
  *                    because a collection has no row waiting for it to correct, and the rail's own
  *                    retry schedule is what tries again.
  *   stopped        — a commitment recorded as having stopped: cancelled, or given up on.
+ *   not_yet        — a sponsor's event naming a gift that has not settled here yet, like a refund
+ *                    before its payment. nothing was written; the sponsor sends it again
+ *                    (`paidOutByDonee` in ../payments/provider.ts). every other processor's is the
+ *                    `incomplete` failure below, which its webhook redelivers on.
  */
 export const SETTLE_OUTCOMES = [
 	'ignored',
@@ -73,7 +77,8 @@ export const SETTLE_OUTCOMES = [
 	'unactionable',
 	'unnamed',
 	'uncollected',
-	'stopped'
+	'stopped',
+	'not_yet'
 ] as const;
 export type SettleOutcome = (typeof SETTLE_OUTCOMES)[number];
 
