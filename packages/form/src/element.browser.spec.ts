@@ -1684,4 +1684,64 @@ describe('the first step’s unit pill and Continue', () => {
 			expect(press.getBoundingClientRect().top).toBeGreaterThan(row.getBoundingClientRect().bottom);
 		});
 	}
+
+	/** a card at `width` with BTC picked, `amount` typed and priced at `minor`. */
+	async function pricedAt(width: number, amount: string, minor: number): Promise<ShadowRoot> {
+		await page.viewport(width, 812);
+		onTestFinished(() => page.viewport(414, 896));
+		const root = shadow(
+			await mount(WITH_CRYPTO, { ports: { ...PLEDGES, estimate: async () => minor } })
+		);
+		await userEvent.click(pillOf(root));
+		await frames();
+		await userEvent.click(
+			panelOf(root).querySelector<HTMLElement>(
+				'[role="option"][data-value="coin:btc"]'
+			) as HTMLElement
+		);
+		await frames();
+		await userEvent.fill(root.querySelector('#quantity-entry') as HTMLInputElement, amount);
+		await vi.waitFor(() => {
+			if (root.querySelector<HTMLElement>('.adorn-figure')?.hidden !== false)
+				throw new Error('the coin amount is not priced yet');
+		});
+		return root;
+	}
+
+	// the estimate's seat is measured off the laid-out box (`placeFigure` in ./views.ts), so only a
+	// real layout shows the typed amount whole beside it, or the estimate under the box instead.
+	it('draws a short coin amount and its estimate in one box, the estimate before the unit', async () => {
+		const root = await pricedAt(375, '0.005', 30_500);
+		const box = root.querySelector('#quantity-entry') as HTMLInputElement;
+		const figure = (root.querySelector('.adorn-figure') as HTMLElement).getBoundingClientRect();
+		const unit = (root.querySelector('.adorn-unit') as HTMLElement).getBoundingClientRect();
+
+		expect(root.querySelector('.tiles.bare')?.getAttribute('data-figure')).toBe('inside');
+		expect(figure.width).toBeGreaterThan(0);
+		expect(box.getBoundingClientRect().right).toBeLessThanOrEqual(figure.left);
+		expect(figure.right).toBeLessThanOrEqual(unit.left);
+		expect(box.scrollWidth).toBeLessThanOrEqual(box.clientWidth);
+		expect(root.querySelector<HTMLElement>('.unit-figure')?.checkVisibility()).toBe(false);
+	});
+
+	it('moves the estimate under the box, against its end, where a long amount needs the room', async () => {
+		const root = await pricedAt(320, '12345.67890123', 123_456_789);
+		const box = root.querySelector('#quantity-entry') as HTMLInputElement;
+		const tile = (box.closest('[part~="amount-input"]') as HTMLElement).getBoundingClientRect();
+		const under = root.querySelector('.unit-figure') as HTMLElement;
+		const words = document.createRange();
+		words.selectNodeContents(under);
+		const line = words.getBoundingClientRect();
+		const unit = (root.querySelector('.adorn-unit') as HTMLElement).getBoundingClientRect();
+
+		expect(root.querySelector('.tiles.bare')?.getAttribute('data-figure')).toBe('below');
+		expect(box.scrollWidth).toBeLessThanOrEqual(box.clientWidth);
+		expect((root.querySelector('.adorn-figure') as HTMLElement).checkVisibility()).toBe(false);
+		expect(under.checkVisibility()).toBe(true);
+		expect(under.textContent).toBe('≈ $1,234,567.89');
+		expect(line.top).toBeGreaterThanOrEqual(tile.bottom);
+		expect(Math.round(line.right)).toBe(Math.round(tile.right));
+		expect(unit.right).toBeLessThanOrEqual(tile.right);
+		expect(unit.width).toBeGreaterThan(0);
+	});
 });

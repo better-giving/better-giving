@@ -1739,51 +1739,82 @@ export function createCard(
 
 	// the entry for a gift in kind (`unitEntry` in ./unit.ts): one box for a coin amount or a share
 	// count, the unit at its end and the tiles off the step while it stands, drawn as the free entry
-	// on a bare tray is. its mark at the end is hidden as the currency's code is, so the box's name
-	// (`UnitEntry.name`) says what it counts.
+	// on a bare tray is. its marks at the end — a priced coin amount's estimate, then the unit — are
+	// hidden as the currency's code is, so the box's name (`UnitEntry.name`) says what it counts and
+	// `#quantity-estimate` says the estimate in words.
 	const quantityInput = make(doc, 'input', {
 		id: 'quantity-entry',
 		type: 'text',
 		inputmode: 'decimal',
 		autocomplete: 'off'
 	});
-	const quantityTrail = make(doc, 'span', { class: 'adorn-trail', 'aria-hidden': 'true' });
-	const quantityTray = make(doc, 'div', { class: 'tiles bare', hidden: true }, [
-		make(doc, 'div', { part: part('amount-input'), class: 'tile entry' }, [
-			quantityInput,
-			quantityTrail
+	const quantityFigure = make(doc, 'span', { class: 'adorn-figure', hidden: true });
+	const quantityUnit = make(doc, 'span', { class: 'adorn-unit' });
+	const quantityTile = make(doc, 'div', { part: part('amount-input'), class: 'tile entry' }, [
+		quantityInput,
+		make(doc, 'span', { class: 'adorn-trail', 'aria-hidden': 'true' }, [
+			quantityFigure,
+			quantityUnit
 		])
 	]);
+	// the estimate again, under the box, for where the typed amount and the estimate cannot share
+	// it; the tray's `data-figure` says which of the two is drawn (`placeFigure` below).
+	const figureBelow = make(doc, 'p', { class: 'unit-figure', 'aria-hidden': 'true', hidden: true });
+	const quantityTray = make(doc, 'div', { class: 'tiles bare', hidden: true }, [
+		quantityTile,
+		figureBelow
+	]);
+	// the box's description while the estimate is drawn: the visible marks are hidden from a
+	// screen reader, so this is how it hears the estimate.
+	const quantityEstimate = make(doc, 'span', { class: 'vh', id: 'quantity-estimate' });
 	const quantityLabel = make(
 		doc,
 		'label',
 		{ part: part('label'), class: 'vh', for: 'quantity-entry' },
 		['Amount']
 	);
-	// a coin's estimate once one is priced and the note on how it is valued, under the box; nothing
-	// under a share count.
-	const unitEstimate = make(doc, 'p', { class: 'unit-figure' });
-	const unitValued = make(doc, 'p', { class: 'unit-note' });
-	const estimateLines = make(doc, 'div', { class: 'unit-estimate', hidden: true }, [
-		unitEstimate,
-		unitValued
-	]);
 	quantityInput.addEventListener('input', () => now().quantityField.onChange(quantityInput.value));
+	// the marks at the end take no pointer, and with the estimate drawn they stand beside the input
+	// rather than over it, so a press on them is passed on to the box.
+	quantityTile.addEventListener('click', (event) => {
+		if (event.target !== quantityInput) quantityInput.focus();
+	});
+
+	/**
+	 * the estimate inside the box before the unit, or under the box where the typed amount would not
+	 * fit beside it — the amount a donor typed is never cut short or covered.
+	 *
+	 * measured rather than declared: no CSS selector reads the width of a value in a box. the estimate
+	 * is put inside first, so every check measures the same layout whichever way the last one went, and
+	 * the box overflowing then is the answer. the attribute is written and read in one task, so a
+	 * frame never paints the trial. placed on every patch and on the window changing size, and not by
+	 * a `ResizeObserver`, for the reason the cadence chip is not (`placeThumb` below).
+	 */
+	function placeFigure(): void {
+		if (quantityFigure.hidden) {
+			toggleAttribute(quantityTray, 'data-figure', null);
+			return;
+		}
+		quantityTray.setAttribute('data-figure', 'inside');
+		if (quantityInput.scrollWidth > quantityInput.clientWidth) {
+			quantityTray.setAttribute('data-figure', 'below');
+		}
+	}
 
 	function updateUnitEntry(api: DomApi): void {
 		const { entry } = api.unit;
 		setHidden(amountTiles, entry !== null);
 		setHidden(quantityTray, entry === null);
 		setText(quantityLabel, entry?.name ?? 'Amount');
-		setText(quantityTrail, entry?.unitLabel ?? '');
+		setText(quantityUnit, entry?.unitLabel ?? '');
 		setValue(quantityInput, api.quantityField.value);
 		const estimate = entry?.estimate ?? null;
-		const note = entry?.note ?? null;
-		setText(unitEstimate, estimate ?? '');
-		setHidden(unitEstimate, estimate === null);
-		setText(unitValued, note ?? '');
-		setHidden(unitValued, note === null);
-		setHidden(estimateLines, estimate === null && note === null);
+		for (const figure of [quantityFigure, figureBelow]) {
+			setText(figure, estimate ?? '');
+			setHidden(figure, estimate === null);
+		}
+		setText(quantityEstimate, entry?.estimateDescription ?? '');
+		placeFigure();
 	}
 
 	// the bounds are the configuration's, so the sentence is built once here rather than written
@@ -1908,7 +1939,7 @@ export function createCard(
 		entryLabel,
 		quantityTray,
 		quantityLabel,
-		estimateLines,
+		quantityEstimate,
 		amountMessage
 	]);
 
@@ -3293,7 +3324,8 @@ export function createCard(
 	}
 
 	/**
-	 * the window changing size, answered on the next paint rather than in the handler.
+	 * the window changing size, answered on the next paint rather than in the handler: the chip is
+	 * placed again, and so is a coin amount's estimate (`placeFigure` above).
 	 *
 	 * a `resize` fires at the frame rate of a drag, and the work here reads layout and writes back
 	 * into it — done inline that is a forced reflow per event on a page this element does not own.
@@ -3308,11 +3340,11 @@ export function createCard(
 	let repositioning = 0;
 	const view = doc.defaultView;
 	const rewrapped = (): void => {
-		if (!chooses || view === null || repositioning !== 0 || amountStep.offsetParent === null)
-			return;
+		if (view === null || repositioning !== 0 || amountStep.offsetParent === null) return;
 		repositioning = view.requestAnimationFrame(() => {
 			repositioning = 0;
-			placeThumb(true);
+			if (chooses) placeThumb(true);
+			placeFigure();
 		});
 	};
 	view?.addEventListener('resize', rewrapped);
@@ -3488,11 +3520,13 @@ export function createCard(
 			);
 		}
 		toggleAttribute(entryInput, 'aria-describedby', tilesRefused ? 'amount-problem' : null);
-		toggleAttribute(
-			quantityInput,
-			'aria-describedby',
-			inKind && amountWords !== '' ? 'amount-problem' : null
-		);
+		// the box is described by its estimate in words while one is drawn, and by the refusal beside
+		// it; a bound refuses an amount that priced, so the two can stand together.
+		const quantityWords = [
+			...((api.unit.entry?.estimateDescription ?? null) === null ? [] : ['quantity-estimate']),
+			...(inKind && amountWords !== '' ? ['amount-problem'] : [])
+		].join(' ');
+		toggleAttribute(quantityInput, 'aria-describedby', quantityWords === '' ? null : quantityWords);
 		toggleAttribute(quantityInput, 'aria-invalid', inKind && amountRefused ? 'true' : null);
 		// a coin the account no longer takes is fixed on the pill, where its arrival puts the caret.
 		toggleAttribute(
@@ -3501,7 +3535,7 @@ export function createCard(
 			coinRefusal?.code === 'coin_not_accepted' && amountWords !== '' ? 'amount-problem' : null
 		);
 		toggleAttribute(
-			quantityTray.firstElementChild as HTMLElement,
+			quantityTile,
 			'part',
 			partWhen('amount-input', { invalid: inKind && amountRefused })
 		);

@@ -1411,6 +1411,32 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 }
 
 /*
+ * a coin amount's estimate, drawn in the box before the unit while the tray says it fits
+ * (`placeFigure` in ../views.ts). the two marks then stand in the box's row rather than over it, so
+ * the input stops short of the whole group and its end padding is the gap between the typed figure
+ * and the estimate; the group keeps the unit where it stood. the estimate takes the unit's ink and
+ * size, and not its tracking, which is set for capitals.
+ */
+[data-figure='inside'] .adorn-trail {
+	position: static;
+	flex: none;
+	gap: var(--_sp2);
+	padding-inline-end: var(--_adorn-trail-inset);
+}
+
+[data-figure='inside'] [part~='amount-input'] input {
+	padding-inline-end: var(--_sp2);
+}
+
+.adorn-figure {
+	letter-spacing: normal;
+}
+
+[data-figure='below'] .adorn-figure {
+	display: none;
+}
+
+/*
  * a group that could not proceed says which decision is missing, in a sentence rather than in a
  * colour: the control the sentence names takes the danger edge — its border where it has one and an
  * inset shadow where it does not, and no fill anywhere — this line renders under the group, and
@@ -1998,21 +2024,24 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 }
 
 /*
- * the lines under the cadence track and under a coin amount's box: the estimate at full ink, and the
- * notes beside it at the quiet one.
+ * the note under the cadence track, and a coin amount's estimate under its box where the typed
+ * amount leaves it no room inside (`[data-figure='inside']` above): one line at the quiet ink, the
+ * estimate across the tray and against the box's trailing edge, where it stood inside.
  */
 .unit-figure,
 .unit-note {
 	margin: 0;
+	color: var(--_n11);
 	font-size: var(--_t-sm);
 }
 
-.unit-figure {
-	color: var(--_n12);
+.tiles > .unit-figure {
+	grid-column: 1 / -1;
+	text-align: end;
 }
 
-.unit-note {
-	color: var(--_n11);
+.tiles:not([data-figure='below']) > .unit-figure {
+	display: none;
 }
 
 /*

@@ -45,16 +45,27 @@ export const SHARES = 'shares';
 /** the name of a share count's box; a coin amount's is `Amount`, as the currency's is. */
 export const SHARE_COUNT = 'Number of shares';
 
-/** the line under a coin amount the estimate priced, as `About $482.10`. */
+/** a figure the estimate priced, as the review step states it: `About $482.10`. */
 export function aboutEstimate(minor: number, config: Pick<FormConfig, 'locale' | 'currency'>) {
 	return `About ${formatMinor(minor, config.locale, config.currency)}`;
 }
 
 /**
- * the note under a coin amount, on a deployment in US dollars. it is worded for that currency alone,
- * so a deployment in any other states no note.
+ * a coin amount the estimate priced, twice: `figure` as drawn in the box before the unit
+ * (`≈ $482.10`), and `description` as the box is described to a screen reader, which reads no
+ * `≈` the same way twice (`About $482.10 in US dollars`). the currency is named on a deployment in
+ * US dollars alone, the one currency these words are written for.
  */
-export const VALUED_IN_USD = 'Your gift is valued in US dollars when it arrives.';
+export function estimateWords(
+	minor: number,
+	config: Pick<FormConfig, 'locale' | 'currency'>
+): { readonly figure: string; readonly description: string } {
+	const usd = currencyOf(config.currency, config.locale).code === 'USD';
+	return {
+		figure: `≈ ${formatMinor(minor, config.locale, config.currency)}`,
+		description: `${aboutEstimate(minor, config)}${usd ? ' in US dollars' : ''}`
+	};
+}
 
 /** the sentence beside a coin amount whose price could not be checked: its read failed or answered none. */
 export const COIN_PRICE_FAILED =
@@ -314,9 +325,9 @@ export function unitPill(
 }
 
 /**
- * the entry for a gift in kind: the unit at the end of its one box, and the lines under it — a coin's
- * estimate once one is priced and its valuation note, nothing under a share count. `null` on a gift
- * in the currency, which the amount tiles take.
+ * the entry for a gift in kind: the unit at the end of its one box and, once a coin amount is priced,
+ * its estimate before the unit (`estimateWords`); a share count has none. `null` on a gift in the
+ * currency, which the amount tiles take.
  *
  * `unpriced` is `COIN_PRICE_FAILED` while the price check of the coin amount in the box has failed,
  * and `null` otherwise: while a read is out, once it prices, on an empty box and under a share count.
@@ -325,8 +336,10 @@ export type UnitEntry = {
 	/** the box's accessible name. the unit at its end is hidden, so the name says what it counts. */
 	readonly name: string;
 	readonly unitLabel: string;
+	/** the figure drawn in the box, hidden from a screen reader as the unit is. */
 	readonly estimate: string | null;
-	readonly note: string | null;
+	/** the same figure in words, which the box is described by while it is drawn. */
+	readonly estimateDescription: string | null;
 	readonly unpriced: string | null;
 };
 
@@ -336,14 +349,21 @@ export function unitEntry(
 	estimate: ReturnType<typeof coinEstimate>
 ): UnitEntry | null {
 	if (picked?.kind === 'stock') {
-		return { name: SHARE_COUNT, unitLabel: SHARES, estimate: null, note: null, unpriced: null };
+		return {
+			name: SHARE_COUNT,
+			unitLabel: SHARES,
+			estimate: null,
+			estimateDescription: null,
+			unpriced: null
+		};
 	}
 	if (picked?.kind !== 'coin') return null;
+	const words = estimate?.status === 'priced' ? estimateWords(estimate.minor, config) : null;
 	return {
 		name: 'Amount',
 		unitLabel: unitPill(config, { coin: true, stock: false }, picked).code,
-		estimate: estimate?.status === 'priced' ? aboutEstimate(estimate.minor, config) : null,
-		note: currencyOf(config.currency, config.locale).code === 'USD' ? VALUED_IN_USD : null,
+		estimate: words?.figure ?? null,
+		estimateDescription: words?.description ?? null,
 		unpriced: estimate?.status === 'unpriced' ? COIN_PRICE_FAILED : null
 	};
 }

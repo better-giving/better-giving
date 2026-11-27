@@ -1,7 +1,7 @@
 import { createActor } from 'xstate';
 import { describe, expect, it } from 'vitest';
 import { checkoutMachine, ESTIMATE_DEBOUNCE_MS } from './checkout.machine';
-import { COIN_PRICE_FAILED, VALUED_IN_USD } from './unit';
+import { COIN_PRICE_FAILED } from './unit';
 import type { CheckoutEvent } from './checkout.machine';
 import { connect, TOP_LEVEL_STATES, type PropTypes } from './connect';
 import type { CheckoutPorts } from './ports';
@@ -828,7 +828,7 @@ describe('what the donor gives, projected', () => {
 		expect(get().unit.pill).toMatchObject({ state: 'picked', code: 'BTC', name: 'Crypto: BTC' });
 	});
 
-	it('states a coin’s estimate and the valuation note, and nothing under a share count', async () => {
+	it('states a coin’s estimate once it prices, and none for a share count', async () => {
 		const { actor, get } = api(undefined, { config: UNITS, ports: PRICED });
 		actor.send({ type: 'SET_UNIT', unit: { kind: 'coin', coin: 'btc' } });
 		(get().quantityField as { onChange: (text: string) => void }).onChange('0.005');
@@ -836,7 +836,7 @@ describe('what the donor gives, projected', () => {
 			name: 'Amount',
 			unitLabel: 'BTC',
 			estimate: null,
-			note: VALUED_IN_USD,
+			estimateDescription: null,
 			unpriced: null
 		});
 
@@ -844,8 +844,8 @@ describe('what the donor gives, projected', () => {
 		expect(get().unit.entry).toEqual({
 			name: 'Amount',
 			unitLabel: 'BTC',
-			estimate: 'About $482.10',
-			note: 'Your gift is valued in US dollars when it arrives.',
+			estimate: '≈ $482.10',
+			estimateDescription: 'About $482.10 in US dollars',
 			unpriced: null
 		});
 
@@ -854,7 +854,7 @@ describe('what the donor gives, projected', () => {
 			name: 'Number of shares',
 			unitLabel: 'shares',
 			estimate: null,
-			note: null,
+			estimateDescription: null,
 			unpriced: null
 		});
 		expect(get().quantityField).toMatchObject({ value: '', inputMode: 'decimal' });
@@ -885,7 +885,7 @@ describe('what the donor gives, projected', () => {
 		answer = async () => 48_210;
 		typeIn('0.005');
 		await priced();
-		expect(get().unit.entry).toMatchObject({ estimate: 'About $482.10', unpriced: null });
+		expect(get().unit.entry).toMatchObject({ estimate: '≈ $482.10', unpriced: null });
 
 		answer = async () => null;
 		actor.send({ type: 'SET_UNIT', unit: { kind: 'stock', ticker: 'AAPL' } });
