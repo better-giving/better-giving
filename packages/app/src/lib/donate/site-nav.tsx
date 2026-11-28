@@ -13,11 +13,10 @@ import type { PageLogo } from './page-view';
 
 // the top of every donor page, and of the supporter's own screens: the registry's site-nav
 // (packages/operator/src/registry/styles/site-nav-css.usage.md), its skip link first in the tab
-// order and the organisation's logo and name as the home link, then, on every page but the
-// Donation page, the nav's one link, Donate, to `/`. `/` is the Donation page itself, so there,
-// and on its draft preview, it draws no Donate link. the menu button and its panel are drawn only
-// where there is a link or an action to fold into them, so the Donation page, which no caller
-// gives actions, is the home link alone at both widths.
+// order and the organisation's logo and name as the home link, then the nav's one link, Donate, to
+// `/`. `/` is the Donation page itself, so that page, and its draft preview, draws no Donate link.
+// the menu button and its panel are drawn only where there is a link or an action to fold into
+// them, so the Donation page, which no caller gives actions, is the home link alone at both widths.
 //
 // the registry hides the bar's links under 40rem, so where they are drawn they fold behind the
 // registry's menu button and its panel.

@@ -462,21 +462,21 @@ textarea[part~='field'] {
  *
  * floated, the first letter of the name stands at the box's own inline-start edge, at the same
  * inset as the group's own legend over the pair. the band starts `--_focus-width` further out than
- * that letter, past the edge: the ring, the refused ring and the outline forced colours paint are
- * each drawn that wide outside the border box, so a band starting at the edge would leave the leg
- * of each standing beside or above the first letter. the start of the edge is knocked out from the
- * ring's outer line inward, at the top-start corner as well, so under every corner the box takes
- * the leg of the edge ends at the band's lower side. the other end keeps `--_label-inset`'s inset
- * (./tokens.css), which is where a name too long for its box is cut.
+ * that letter, past the edge: the ring, the refused ring and the outline painted under forced
+ * colours are each drawn that wide outside the border box, so a band starting at the edge would
+ * leave the leg of each standing beside or above the first letter. the start of the edge is
+ * knocked out from the ring's outer line inward, at the top-start corner as well, so whatever
+ * corner the box takes, the edge's leg ends at the band's lower side. the other end keeps
+ * `--_label-inset`'s inset (./tokens.css), which is where a name too long for its box is cut.
  *
  * the band is a notch and nothing more: the edge runs into it at the corner and picks up a little
  * past the name (`.label-words` below), and nothing of the edge is drawn over, beside or under the
  * words. it is the same notch in every state the edge takes — at rest, under the pointer, with the
  * caret in it, refused — so a refused box's red line breaks around the name as the resting hairline
  * does. the band is centred on the box's top and half a line deep either side of it, which clears
- * the ring above the box and the border and the refusal's mark inside it, so no part of any of them
- * runs through the words. half a line is shallower than `round`'s corner, so there the arc's lower
- * part stays drawn below the band, within a pixel of the box's start side.
+ * the ring outside the border box as well as the border and the refusal's mark inside it, so no
+ * part of any of them runs through the words. half a line is shallower than `round`'s corner, so
+ * there the arc's lower part stays drawn below the band, within a pixel of the box's start side.
  *
  * the label's rise is transitioned and nothing else about the move is (./motion.css): the band is painted
  * from the first frame rather than fading in over it, and that costs nothing, because for the length

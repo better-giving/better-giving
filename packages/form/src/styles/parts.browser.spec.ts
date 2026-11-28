@@ -1179,11 +1179,10 @@ describe('the free entry as laid out', () => {
  * a floating label is a label that moved, so what is measured is where its words are drawn rather
  * than whether a rule declaring it exists: resting they sit on the box's own middle, and once the
  * box has the caret or a value they sit on its top edge with the border knocked out behind them, at
- * a step smaller than they rested at and starting at the box's own inline-start edge, the knockout
- * reaching past that edge by the ring's width. the refusal the
- * box is carrying is no part of that — it stands under the box, where every other row on the card
- * stands its own. a lightweight DOM lays out none of it, and a rule that floated nothing would read
- * as a fix.
+ * a step smaller than they rested at, starting at the box's own inline-start edge with the knockout
+ * reaching past that edge by the ring's width. the refusal the box is carrying is no part of that —
+ * it stands under the box, where every other row on the card stands its own. a lightweight DOM lays
+ * out none of it, and a rule that floated nothing would read as a fix.
  */
 describe('the labels on the pair under the name', () => {
 	/**
@@ -1243,7 +1242,7 @@ describe('the labels on the pair under the name', () => {
 		};
 	}
 
-	/** the corner the box is drawn with. */
+	/** the used radius of the box's start-start corner, in pixels; 0 under `square`. */
 	function corner(box: HTMLElement): number {
 		return parseFloat(getComputedStyle(box).borderStartStartRadius);
 	}
@@ -1789,9 +1788,8 @@ describe('the labels on the pair under the name', () => {
 		});
 	});
 
-	// and the name stands at the box's own edge and the band picks up a little past the last letter:
-	// the name lines up with the group's legend, and the room is kept at the end where the edge
-	// picks up again.
+	// and the name starts at the box's own edge, in line with the group's legend, with room kept
+	// past its last letter, where the edge picks up again.
 	it('keeps the name at the start of the gap and clear of its end, in every state the edge takes', async () => {
 		await throughEveryEdge((state, box, words) => {
 			const span = words.getBoundingClientRect();
@@ -1871,10 +1869,10 @@ describe('the labels on the pair under the name', () => {
 		);
 	});
 
-	// the refusal is regular, and none of the details step's boxes leaves it bold: measured under the
-	// pair's labels inside their boxes and under the email's label over its box, where a label is
-	// drawn at a label's weight. the registry's in-flow refusal (`.ds-field-err` in
-	// `../registry/styles/field-css.css`) states no weight of its own.
+	// the refusal is drawn at the regular weight under every box on the details step: the pair's,
+	// whose labels stand inside them, and the email's, whose label stands over it at a label's
+	// weight. the registry's in-flow refusal (`.ds-field-err` in `../registry/styles/field-css.css`)
+	// states no weight of its own.
 	it('draws the details step\u2019s refusals at the regular weight, under a label over the box and one inside it', async () => {
 		const { shadow } = await mount();
 		await atDetails(shadow);
