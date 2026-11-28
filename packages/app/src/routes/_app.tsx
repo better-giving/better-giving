@@ -23,6 +23,7 @@ import { imageSrc } from '$lib/page/image-src';
 import { STAFF_USER_ID } from '$lib/server/auth';
 import { staffGate } from '$lib/server/auth/gate';
 import { readSetupState } from '$lib/server/config/setup-state';
+import { identityMissing } from '$lib/server/org/identity';
 import { database, platform, staff } from '../context';
 import { UnframedError } from '../unframed-error';
 import type { Route } from './+types/_app';
@@ -54,14 +55,15 @@ const SIGN_OUT_PATH = '/admin/sign-out';
 
 /** the published home page at the deployment's own address (./_index.tsx), opened from the rail's
  *   head as a document load, since it is a donor's page outside this frame
- *   ($lib/server/pages/view.ts), and from the top bar and the account menu. */
+ *   ($lib/server/pages/view.ts). */
 const HOME_PAGE = '/' as const;
 
 /** where the mark at the head of the rail goes, and the name it is read by. */
 const HOME = { href: HOME_PAGE, label: 'Open home page' } as const;
 
-/** the home page's editor, in the account menu. */
-const DONATION_PAGE_EDITOR = '/admin/donation-page';
+/** the same mark while `/` cannot show the page: the dashboard, where `/` itself sends a press
+ *   (./_index.tsx). */
+const DASHBOARD = { href: '/admin', label: 'Dashboard' } as const;
 
 // the sheet every screen beneath this layout wears, linked once here rather than by each of them.
 export const links = operatorLinks;
@@ -77,7 +79,8 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 	// screens that explain a database which is not answering, on exactly the deployment that needs
 	// them.
 	const state = await readSetupState(context.get(database), context.get(platform).env);
-	const logo = state?.profile?.logoImageId ?? null;
+	const profile = state?.profile ?? null;
+	const logo = profile?.logoImageId ?? null;
 	const user = context.get(staff);
 
 	// an explicit projection, because everything returned here is serialized into the page: a
@@ -94,10 +97,15 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 	// back to the browser's own zone, or to UTC where this runtime cannot write in that one
 	// (`LocalTime`).
 	//
+	// `homePage` is whether `/` shows the page or sends a visitor to the dashboard
+	// (`identityMissing`, the question ./_index.tsx asks), so the rail's head goes where a press can
+	// arrive. no row, or a read that did not land, is the dashboard: `/` answers the same way.
+	//
 	// `railCollapsed` is the rail as the shell's own cookie left it (@better-giving/operator's
 	// rail-preference.ts), so the server draws it that way and the first client render matches.
 	return {
-		orgName: state?.profile?.legalName ?? null,
+		homePage: identityMissing(profile).length === 0,
+		orgName: profile?.legalName ?? null,
 		// the logo at the address the app serves every image from (./image.$id.ts).
 		orgLogo: logo === null ? null : imageSrc(logo),
 		staff: { name: user.name, email: user.email },
@@ -138,12 +146,10 @@ function Frame({ data, children }: { readonly data: LayoutData; readonly childre
 			// screen's tab title, which falls back to the same one ($lib/admin/screen-title.ts).
 			orgName={data.orgName ?? APP_NAME}
 			orgLogo={data.orgLogo ?? undefined}
-			home={HOME}
+			home={data.homePage ? HOME : DASHBOARD}
 			groups={destinationGroupsFor(data.deployer)}
 			current={currentDestination(pathname)}
 			staff={data.staff}
-			donationPage={HOME_PAGE}
-			editDonationPage={DONATION_PAGE_EDITOR}
 			// a form post and not a call: writes are actions in this app (AGENTS.md → Boundaries). the
 			// action is a route of its own (./_app.admin.sign-out.ts) because the way out is on every
 			// screen and only one of them would have it.

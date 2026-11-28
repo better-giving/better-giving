@@ -133,10 +133,28 @@ describe('the Home page edit page', () => {
 		const banner = document.querySelector('.adm-banner') as HTMLElement;
 		expect(banner.textContent).toContain('Your Home page is public');
 		expect(banner.textContent).not.toContain('Donation page');
-		expect([...banner.querySelectorAll('button, a')].map((one) => one.textContent?.trim())).toEqual(
+		expect([...banner.querySelectorAll('button')].map((one) => one.textContent?.trim())).toEqual(
 			[]
 		);
 		expect(banner.textContent).toContain('Donors can see it at give.example.org/.');
+	});
+
+	// this screen is the one place that opens the live home page: the top bar and the account menu
+	// carry no press for it, and the rail's head goes to the dashboard until the page can show.
+	it.each([
+		['public', 'public', false],
+		['waiting on saved changes', 'changed', true]
+	])('offers Open donation page in its banner while it is %s', async (_, state, hasEdits) => {
+		drawn = fixture(state as BannerState, hasEdits);
+		await screen();
+
+		const banner = document.querySelector('.adm-banner') as HTMLElement;
+		const links = [...banner.querySelectorAll('a')].map((one) => [
+			one.textContent?.trim(),
+			one.getAttribute('href'),
+			one.getAttribute('target')
+		]);
+		expect(links).toEqual([['Open donation page', '/', '_blank']]);
 	});
 
 	it('is titled Home page, heading and tab alike', async () => {
@@ -151,13 +169,15 @@ describe('the Home page edit page', () => {
 		]);
 	});
 
-	it('offers no View live page while saved changes wait, only the sentence naming the address', async () => {
+	it('offers no View live page while saved changes wait, only Open donation page', async () => {
 		drawn = fixture('changed', true);
 		await screen();
 
 		const banner = document.querySelector('.adm-banner') as HTMLElement;
 		expect(banner.textContent).toContain('Changes not public yet');
-		expect([...banner.querySelectorAll('a')].map((one) => one.textContent?.trim())).toEqual([]);
+		expect([...banner.querySelectorAll('a')].map((one) => one.textContent?.trim())).toEqual([
+			'Open donation page'
+		]);
 		expect(
 			[...banner.querySelectorAll('button')].map((one) => one.textContent?.trim())
 		).not.toContain('View live page');

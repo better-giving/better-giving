@@ -146,7 +146,7 @@ export default function CampaignEditPage({ loaderData }: Route.ComponentProps) {
 				preview={banner.preview}
 				unpublishable={banner.unpublishable}
 				undoable={banner.undoable}
-				liveLink
+				liveLink="View live page"
 			/>
 			{loaderData.unreadable ? (
 				<>

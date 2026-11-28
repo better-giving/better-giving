@@ -54,13 +54,10 @@ import { RouteProgress } from './RouteProgress.jsx';
  *   sidebar's head, its rail and the drawer's head. absent, the head draws the organisation's
  *   initials (`initials` below) in the registry's avatar instead, so the name is never a text link.
  * @property {{ href: string; label: string }} home where the mark goes as a document load, and the
- *   name it is read by.
+ *   name it is read by: the home page, or the dashboard while the home page cannot show.
  * @property {readonly NavGroup[]} groups
  * @property {ShellCurrent | undefined} [current]
  * @property {{ name: string; email: string }} staff who is signed in.
- * @property {string} donationPage the public donation page, opened as a document load: it is a
- *   donor's page and outside this shell.
- * @property {string} editDonationPage the donation page editor, on this surface.
  * @property {() => void} onSignOut
  * @property {boolean | undefined} [navigating] a navigation is running; draws the route-progress
  *   line across the top bar.
@@ -87,7 +84,7 @@ const WIDE = '(width >= 48rem)';
 
 /* the operator shell, drawn with app-shell-css 2.0.0 and the sheets it reads: the sidebar (mark,
    destinations, account), the top bar (menu button on a phone, rail toggle from 48rem, the
-   organisation's name, the donation page), the page, and on a phone the same destinations in a
+   organisation's name), the page, and on a phone the same destinations in a
    modal `<dialog>` drawer. no script ships with the registry item; what its note asks the page to
    wire is here: the toggle and its storage, the drawer, the account menu, the rail's tooltip and a
    parent's flyout.
@@ -105,8 +102,6 @@ export function Shell({
 	groups,
 	current,
 	staff,
-	donationPage,
-	editDonationPage,
 	onSignOut,
 	navigating,
 	link,
@@ -177,16 +172,7 @@ export function Shell({
 		return () => wide.removeEventListener('change', widened);
 	}, [drawerOpen]);
 
-	const account = (
-		<Account
-			orgName={orgName}
-			staff={staff}
-			donationPage={donationPage}
-			editDonationPage={editDonationPage}
-			onSignOut={onSignOut}
-			link={link}
-		/>
-	);
+	const account = <Account orgName={orgName} staff={staff} onSignOut={onSignOut} link={link} />;
 
 	const mark = (
 		<div className="ds-shell-mark">
@@ -250,14 +236,6 @@ export function Shell({
 						<Mark name="panel-left" />
 					</button>
 					<p className="ds-topbar-title">{orgName}</p>
-				</div>
-				<div className="ds-topbar-actions">
-					<div className="ds-topbar-secondary">
-						<a className="ds-btn ds-btn-secondary" href={donationPage}>
-							<Mark name="eye" />
-							Open donation page
-						</a>
-					</div>
 				</div>
 			</header>
 			<main ref={main} className="ds-shell-main" id={mainId} tabIndex={-1}>
@@ -687,28 +665,20 @@ function HeadMark({ orgLogo, orgName, rail }) {
  * @typedef {object} AccountProps
  * @property {string} orgName
  * @property {{ name: string; email: string }} staff
- * @property {string} donationPage
- * @property {string} editDonationPage
  * @property {() => void} onSignOut
  * @property {ComponentType<ShellLinkProps> | undefined} link
  */
 
 /* the sidebar's foot: who is signed in, opening the account menu above it, starts aligned. */
 /** @param {AccountProps} props */
-function Account({ orgName, staff, donationPage, editDonationPage, onSignOut, link }) {
+function Account({ orgName, staff, onSignOut, link }) {
 	return (
 		<div className="ds-shell-account">
 			<ActionMenu
 				placement="above-start"
 				link={link}
 				header={{ title: staff.name, meta: staff.email }}
-				runs={[
-					[
-						{ label: 'Edit donation page', mark: 'globe', href: editDonationPage, internal: true },
-						{ label: 'Open donation page', mark: 'eye', href: donationPage }
-					],
-					[{ label: 'Sign out', mark: 'log-out', onSelect: onSignOut }]
-				]}
+				runs={[[{ label: 'Sign out', mark: 'log-out', onSelect: onSignOut }]]}
 				trigger={
 					<button type="button" className="ds-shell-account-btn">
 						<span className="ds-avatar" aria-hidden="true">
@@ -726,12 +696,11 @@ function Account({ orgName, staff, donationPage, editDonationPage, onSignOut, li
 	);
 }
 
-/** the first letters of a name's first two words, which the avatar draws uppercase. */
+/** the first letter of a name's first and last word, which the avatar draws uppercase
+ *   (avatar-css.usage.md); one word gives one letter, and a name with no word gives none. */
 export function initials(/** @type {string} */ name) {
-	return name
-		.trim()
-		.split(/\s+/)
-		.slice(0, 2)
-		.map((word) => word.charAt(0))
-		.join('');
+	const words = name.trim().split(/\s+/).filter(Boolean);
+	const first = words[0] ?? '';
+	const last = words[words.length - 1] ?? '';
+	return first.charAt(0) + (words.length > 1 ? last.charAt(0) : '');
 }

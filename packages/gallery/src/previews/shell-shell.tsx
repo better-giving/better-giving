@@ -62,8 +62,6 @@ const common = {
 	home: { href: '/admin', label: 'Dashboard' },
 	groups,
 	staff: { name: 'Amara Lindqvist', email: 'amara@greenfieldfoodbank.org' },
-	donationPage: '/donate',
-	editDonationPage: '/admin/donation-page',
 	onSignOut: () => {},
 	navigating: true
 } satisfies Partial<ShellProps>;

@@ -52,8 +52,6 @@ const props = (over: Partial<ShellProps> = {}): ShellProps => ({
 	home: { href: '/admin', label: 'Dashboard' },
 	groups,
 	staff: { name: 'Amara Lindqvist', email: 'amara@greenfieldfoodbank.org' },
-	donationPage: '/donate',
-	editDonationPage: '/admin/donation-page',
 	onSignOut: () => {},
 	children: <h1>Gifts</h1>,
 	...over
@@ -334,26 +332,24 @@ describe('the phone’s drawer', () => {
 			return root;
 		}
 
-		it('closes when a link row is chosen from the keyboard', async () => {
+		// the drawer shuts on a link row's own click (the capture handler above), not on the menu's
+		// selection, so a row that runs something and follows nothing is held to what it does.
+		it('runs its one row from the keyboard', async () => {
 			const root = await accountOpened();
-			expect(drawer(root).querySelector('[data-highlighted]')?.textContent).toBe(
-				'Edit donation page'
-			);
+			expect(drawer(root).querySelector('[data-highlighted]')?.textContent).toBe('Sign out');
 
 			await press('Enter');
 
-			expect(drawer(root).open).toBe(false);
+			expect(drawer(root).open).toBe(true);
 		});
 
-		it('closes when a link row is pressed', async () => {
+		it('runs its one row on a press', async () => {
 			const root = await accountOpened();
-			const open = [...drawer(root).querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
-				(item) => item.textContent === 'Open donation page'
-			);
+			const out = drawer(root).querySelector<HTMLElement>('[role="menuitem"]');
 
-			await act(async () => open?.click());
+			await act(async () => out?.click());
 
-			expect(drawer(root).open).toBe(false);
+			expect(drawer(root).open).toBe(true);
 		});
 	});
 
@@ -433,13 +429,9 @@ describe('the account menu', () => {
 		);
 		const rows = [...(panel(root)?.querySelectorAll('[role="menuitem"]') ?? [])];
 		expect(rows.map((item) => [item.textContent, item.getAttribute('href')])).toEqual([
-			['Edit donation page', '/admin/donation-page'],
-			['Open donation page', '/donate'],
 			['Sign out', null]
 		]);
-		expect(panel(root)?.querySelector('[data-highlighted]')?.textContent).toBe(
-			'Edit donation page'
-		);
+		expect(panel(root)?.querySelector('[data-highlighted]')?.textContent).toBe('Sign out');
 	});
 
 	it('signs out from the keyboard and hands focus back to the button', async () => {
@@ -486,13 +478,11 @@ describe('the shell around the page', () => {
 		expect(document.activeElement).toBe(main);
 	});
 
-	it('names the organisation in the top bar and opens the donation page from it', () => {
+	it('names the organisation in the top bar, and the bar opens nothing of its own', () => {
 		const root = render(Shell, props());
 
 		expect(root.querySelector('.ds-topbar-title')?.textContent).toBe('Greenfield Food Bank');
-		const open = root.querySelector('.ds-topbar-secondary a');
-		expect(open?.textContent).toBe('Open donation page');
-		expect(open?.getAttribute('href')).toBe('/donate');
+		expect(root.querySelector('.ds-topbar a')).toBeNull();
 	});
 
 	it('draws no trail of its own in the top bar, which the page header owns', () => {
@@ -529,28 +519,34 @@ describe('the shell around the page', () => {
 		const without = render(Shell, props({ orgLogo: undefined }));
 		const head = sidebar(without).querySelector('.ds-shell-mark a');
 		const initialsMark = head?.querySelector('.ds-avatar');
-		expect(initialsMark?.textContent).toBe('GF');
-		expect(head?.textContent).toBe('GF');
+		expect(initialsMark?.textContent).toBe('GB');
+		expect(head?.textContent).toBe('GB');
 		expect(sidebar(without).querySelector('.ds-shell-mark-rail .ds-avatar')?.textContent).toBe(
-			'GF'
+			'GB'
 		);
 	});
 
-	it('opens the home page from the head and the rail as a document load, named for the home page, for a logo and for initials', () => {
-		for (const orgLogo of ['/logo.png', undefined]) {
-			const root = render(Shell, props({ orgLogo }));
-			for (const selector of [
-				'.ds-shell-mark > a',
-				'.ds-shell-mark-rail > a',
-				'.ds-shell-drawer .ds-shell-mark > a'
-			]) {
-				const link = root.querySelector(selector);
-				expect(link?.getAttribute('href')).toBe('/admin');
-				expect(link?.getAttribute('aria-label')).toBe('Dashboard');
-				expect(link?.querySelector('.ds-avatar') !== null).toBe(orgLogo === undefined);
+	it.each([
+		['the home page', { href: '/', label: 'Open home page' }],
+		['the dashboard', { href: '/admin', label: 'Dashboard' }]
+	])(
+		'opens %s from the head and the rail as a document load, named for it, for a logo and for initials',
+		(_, home) => {
+			for (const orgLogo of ['/logo.png', undefined]) {
+				const root = render(Shell, props({ orgLogo, home }));
+				for (const selector of [
+					'.ds-shell-mark > a',
+					'.ds-shell-mark-rail > a',
+					'.ds-shell-drawer .ds-shell-mark > a'
+				]) {
+					const link = root.querySelector(selector);
+					expect(link?.getAttribute('href')).toBe(home.href);
+					expect(link?.getAttribute('aria-label')).toBe(home.label);
+					expect(link?.querySelector('.ds-avatar') !== null).toBe(orgLogo === undefined);
+				}
 			}
 		}
-	});
+	);
 
 	// app-shell-css's rail box is 1.75rem wide; avatar-css's bare 32px tile would clip in it.
 	it('draws the initials at the small size in the rail and at the default size in the heads', () => {
@@ -589,9 +585,12 @@ describe('the shell around the page', () => {
 });
 
 describe('initials', () => {
-	it('are the first letters of the first two words', () => {
+	// avatar-css.usage.md: the first letter of the first and the last word.
+	it('are the first letter of the first and the last word, and one letter for one word', () => {
 		expect(initials('Amara Lindqvist')).toBe('AL');
-		expect(initials('  Priya  Nair Rao ')).toBe('PN');
+		expect(initials('Greenfield Food Bank')).toBe('GB');
+		expect(initials('  Priya  Nair Rao ')).toBe('PR');
 		expect(initials('Madonna')).toBe('M');
+		expect(initials('   ')).toBe('');
 	});
 });

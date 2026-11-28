@@ -9,6 +9,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { STAFF_USER_EMAIL } from '$lib/server/auth';
 import { createDb, type Db } from '$lib/server/db/client';
 import { putLogo } from '$lib/server/org/logo.testing';
+import { writeOrgRow } from '$lib/server/org/org-row.testing';
 import { createDeferredWork } from '$lib/server/runtime/deferred';
 import { readEnv } from '$lib/server/runtime/env';
 import { specRateLimiters } from '$lib/server/runtime/rate-limiter.testing';
@@ -171,6 +172,30 @@ describe('the identity band', () => {
 		expect(page.loaderData.app).toMatchObject({ orgLogo: `/image/${logo}` });
 	});
 
+	// until both are saved, / redirects to the dashboard (./_index.tsx, through `identityMissing`,
+	// which counts a blank as missing), so the layout asks the same question: its head goes to the
+	// dashboard while the page cannot show, and to the home page once it can.
+	it.each([
+		['a registered name and an EIN', { tax_id: '12-3456789' }, { homePage: true }],
+		['a registered name and no EIN', {}, { homePage: false }],
+		['neither', undefined, { homePage: false }]
+	])('asks the same question of a profile with %s', async (_, columns, expected) => {
+		if (columns !== undefined) await writeOrgRow(client, columns);
+		const cookie = await signInAsDeployer(db, DEPLOYMENT);
+
+		const page = await drawn(cookie);
+
+		expect(page.loaderData.app).toMatchObject(expected);
+	});
+
+	it('asks it of a deployment with no profile', async () => {
+		const cookie = await signInAsDeployer(db, DEPLOYMENT);
+
+		const page = await drawn(cookie);
+
+		expect(page.loaderData.app).toMatchObject({ homePage: false });
+	});
+
 	it('loses the name and not the page when the row cannot be read', async () => {
 		const cookie = await signInAsDeployer(db, DEPLOYMENT);
 		const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -178,7 +203,13 @@ describe('the identity band', () => {
 		const page = await drawn(cookie, profileUnreadable());
 
 		expect(page.statusCode).toBe(200);
-		expect(page.loaderData.app).toMatchObject({ orgName: null, orgLogo: null, deployer: true });
+		// a read that did not land is no proof the page can show, so the head goes to the dashboard too.
+		expect(page.loaderData.app).toMatchObject({
+			orgName: null,
+			orgLogo: null,
+			deployer: true,
+			homePage: false
+		});
 		expect(errors).toHaveBeenCalledOnce();
 	});
 });
@@ -191,6 +222,7 @@ describe('who is signed in', () => {
 		const page = await drawn(member);
 
 		expect(page.loaderData.app).toEqual({
+			homePage: false,
 			orgName: null,
 			orgLogo: null,
 			staff: { name: 'Nadia Hart', email: 'nadia@riverbanktrust.org' },

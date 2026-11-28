@@ -38,8 +38,17 @@ function glyphDrawing(name: ComponentProps<typeof Mark>['name']): string {
 	return drawing;
 }
 
-/** what the layout's loader answers, for the deployer or a member, with the rail as the cookie left it. */
-const drawnFor = (deployer: boolean, railCollapsed = false, orgLogo: string | null = null) => ({
+type Drawn = Parameters<typeof ProtectedLayout>[0]['loaderData'];
+
+/** what the layout's loader answers, for the deployer or a member, with the rail as the cookie left it
+ *   and the home page showing, which is the set-up deployment the other specs are not about. */
+const drawnFor = (
+	deployer: boolean,
+	railCollapsed = false,
+	orgLogo: string | null = null,
+	homePage = true
+): Drawn => ({
+	homePage,
 	orgName: 'Riverbank Trust',
 	orgLogo,
 	staff: { name: 'Nadia Hart', email: 'nadia@riverbanktrust.org' },
@@ -66,9 +75,13 @@ function layoutRoute(drawn: ReturnType<typeof drawnFor>, children: object[]) {
 }
 
 /** the layout, set up and named, over a list screen and a screen under it. */
-function frameAt(at: string, deployer = true): Promise<HTMLElement> {
+function frameAt(
+	at: string,
+	deployer = true,
+	drawn: ReturnType<typeof drawnFor> = drawnFor(deployer)
+): Promise<HTMLElement> {
 	const Stub = createRoutesStub([
-		layoutRoute(drawnFor(deployer), [
+		layoutRoute(drawn, [
 			{ path: '/admin/forms', Component: () => <p>the list</p> },
 			{ path: '/admin/members/password', Component: () => <h1>Your password</h1> },
 			{ path: '/admin/donation-page', Component: () => <p>the Donation page</p> },
@@ -124,18 +137,16 @@ it.each([
 	expect(root.querySelector('.ds-shell')?.getAttribute('data-collapsed')).toBe(marked);
 });
 
-// / is public, so the link to it is every operator's and not one of the deployer's
-// destinations ($lib/admin/destinations.ts).
+// the top bar is its title and the menu controls. the home page is opened from the rail's head (the
+// specs below) and from the banner of its own editor, where the draft is worked on.
 it.each([
 	['the deployer', true],
 	['a member', false]
-])('gives %s the top bar link to the published donation page', async (_, deployer) => {
+])('draws %s a top bar that opens nothing', async (_, deployer) => {
 	const root = await frameAt('/admin/forms', deployer);
-	const links = [...root.querySelectorAll('.ds-topbar-secondary a')];
 
-	expect(links.map((a) => [a.getAttribute('href'), a.textContent])).toEqual([
-		['/', 'Open donation page']
-	]);
+	expect(root.querySelector('.ds-topbar')?.textContent).toContain('Riverbank Trust');
+	expect([...root.querySelectorAll('.ds-topbar a')].map((a) => a.textContent)).toEqual([]);
 });
 
 // the rail's deployer rows: every page behind them answers a member with not-found, and
@@ -144,13 +155,46 @@ it.each([
 
 // the head of the rail opens the home page, for the logo and for the organisation's initials alike,
 // as a document load: / is a donor's page and outside this shell ($lib/admin/destinations.ts).
+//
+// until the organisation's registered name and EIN are saved, / redirects to the dashboard
+// (./_index.tsx, through `identityMissing`), so the head goes where a press can arrive: the
+// dashboard, named for it. the layout reads that question once (`homePage` on its own loader,
+// held against the same profile in ./_app.db.spec.ts), so the rows below are its answers.
+it.each([
+	[
+		'a saved profile',
+		{ orgName: 'Riverbank Trust', homePage: true, profile: undefined },
+		'/',
+		'Open home page'
+	],
+	['a profile with no EIN', { orgName: 'Riverbank Trust', homePage: false }, '/admin', 'Dashboard'],
+	['a profile with no registered name', { orgName: null, homePage: false }, '/admin', 'Dashboard'],
+	[
+		'a profile of blank spaces',
+		{ orgName: 'Riverbank Trust', homePage: false },
+		'/admin',
+		'Dashboard'
+	],
+	['no profile', { orgName: null, homePage: false }, '/admin', 'Dashboard']
+])('opens the rail head under %s to %s, named %s', async (_, over, href, label) => {
+	const root = await frameAt('/admin/forms', true, { ...drawnFor(true), ...over });
+	for (const selector of [
+		'.ds-shell-mark > a',
+		'.ds-shell-mark-rail > a',
+		'.ds-shell-drawer .ds-shell-mark > a'
+	]) {
+		const link = root.querySelector(selector);
+		expect(link?.getAttribute('href')).toBe(href);
+		expect(link?.getAttribute('aria-label')).toBe(label);
+	}
+});
 it.each([
 	['the logo', '/logo.png'],
 	['the initials', null]
 ])('opens / from the rail head drawing %s, named for the home page', async (_, logo) => {
 	const orgLogo = logo as string | null;
 	const Stub = createRoutesStub([
-		layoutRoute(drawnFor(true, false, orgLogo), [
+		layoutRoute({ ...drawnFor(true, false, orgLogo), homePage: true }, [
 			{ path: '/admin/forms', Component: () => <p>the list</p> }
 		]) as never
 	]);

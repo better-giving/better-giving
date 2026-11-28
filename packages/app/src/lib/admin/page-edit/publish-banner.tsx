@@ -21,8 +21,9 @@ import { formRefusal, useScreenAnswer, useScreenWrite } from './section-card';
 // public is the done tone; the others are the attention tone, since something stands between the
 // draft and donors. the home page is always public and has no Unpublish. the presses post to the
 // screen's action ($lib/server/pages/publish.ts's `answerPublishPress`) against the version drawn.
-// `liveLink` is off for the home page alone: its banner carries no View live page, since the shell's
-// top bar opens it, and the sentence alone carries the address.
+// `liveLink` is the word on the link to `livePath`: View live page for a campaign, and Open
+// donation page in the home page's banner, the one place on the dashboard that opens `/`
+// (@better-giving/operator's Shell.jsx carries none).
 
 type PublishBannerProps = {
 	readonly state: BannerState;
@@ -40,8 +41,8 @@ type PublishBannerProps = {
 	readonly unpublishable: boolean;
 	/** Undo publish is offered: a Publish replaced an earlier live page, which Undo puts back. */
 	readonly undoable: boolean;
-	/** View live page is offered: where false, the sentence alone names the address. */
-	readonly liveLink: boolean;
+	/** whether the link to the live page is offered, and its word. */
+	readonly liveLink: false | string;
 };
 
 const WORDS: Record<BannerState, (noun: PublishBannerProps['noun']) => string> = {
@@ -104,8 +105,8 @@ export function PublishBanner({
 		actions.push(press(UNDO_FORM_ID, 'Undo publish', 'default'));
 	}
 	if (unpublishable) actions.push(press(UNPUBLISH_FORM_ID, 'Unpublish', 'default'));
-	if (liveLink && (state === 'public' || state === 'changed') && livePath !== null) {
-		actions.push(open(livePath, 'View live page'));
+	if (liveLink !== false && (state === 'public' || state === 'changed') && livePath !== null) {
+		actions.push(open(livePath, liveLink));
 	}
 
 	return (
