@@ -43,7 +43,8 @@ beforeEach(async () => {
 		'payment',
 		'donation',
 		'contact',
-		'form'
+		'form',
+		'org_profile'
 	]) {
 		await run(stmt(`delete from ${table}`));
 	}
@@ -121,12 +122,16 @@ function feed(events: readonly Envelope[], pageSize = 2) {
 
 type Feed = (after: number) => Promise<PaymentResult<SponsorFeed>>;
 
-function deps(provider: ReturnType<typeof partnerApi>['provider'], sponsorFeed: Feed) {
+function deps(
+	provider: ReturnType<typeof partnerApi>['provider'],
+	sponsorFeed: Feed,
+	email: EmailProvider = mailer().port
+) {
 	return {
 		db: createDb(client),
 		provider,
 		processors: soleProcessor(provider),
-		email: mailer().port,
+		email,
 		sponsorFeed
 	};
 }
@@ -161,6 +166,64 @@ function settled(payoutId: string, seq: number): Envelope {
 		}
 	};
 	return { seq, payload };
+}
+
+function returned(returnId: string, seq: number): Envelope {
+	const payload = {
+		id: `evt_${returnId}`,
+		created_at: '2026-11-27T10:30:00Z',
+		type: 'payout.returned',
+		data: {
+			return_id: returnId,
+			payout_id: 'po_returned_of',
+			amount: 2_000,
+			currency: 'usd',
+			returned_at: '2026-11-27T09:30:00Z'
+		}
+	};
+	return { seq, payload };
+}
+
+/** a payout the ledger refuses: `data` is the settled body with `refused` laid over it. */
+function refusedPayout(payoutId: string, seq: number, refused: Record<string, unknown>): Envelope {
+	const { payload } = settled(payoutId, seq);
+	return { seq, payload: { ...payload, data: { ...(payload.data as object), ...refused } } };
+}
+
+/** `payment.settled` for `pay_unsettled`, the one payment the specs below hold back. */
+function settlementOfHeld(seq: number): Envelope {
+	return envelope(seq, {
+		id: `evt_settled_held_${seq}`,
+		created_at: '2026-11-27T10:00:00Z',
+		type: 'payment.settled',
+		data: { id: 'pay_unsettled' }
+	});
+}
+
+/** the sponsor's `GET /payments/pay_unsettled`, in the `status` it reads now. */
+function heldPayment(giftId: string, status: 'pending' | 'succeeded') {
+	return {
+		id: 'pay_unsettled',
+		gift_id: giftId,
+		status,
+		method: 'card',
+		amount: { gift: 9_670, gift_fee_cover: 330, contribution: 0, contribution_fee_cover: 0 },
+		currency: 'usd',
+		occurred_at: '2026-11-27T09:00:00Z'
+	};
+}
+
+async function payoutGroups(): Promise<number> {
+	const row = await first<{ groups: number }>(
+		stmt(`select count(*) as groups from entry_group where source_type = 'payout'`)
+	);
+	return row?.groups ?? -1;
+}
+
+async function paymentStatus(providerTxnId: string): Promise<unknown> {
+	return (
+		await first(stmt(`select status from payment where provider_txn_id = ?`, providerTxnId))
+	)?.status;
 }
 
 /** a gift recorded at authorization, its payment row `pending` under `providerTxnId`. */
@@ -290,6 +353,134 @@ describe('pullSponsorEvents()', () => {
 		).toBe('pending');
 	});
 
+	it('applies nothing after an event held back, and carries on from it once the sponsor reads it settled', async () => {
+		const giftId = crypto.randomUUID();
+		await pendingGift(giftId, 'frm_pull_held', 'pay_unsettled');
+		const events = [settled('po_held_1', 1), settlementOfHeld(2), settled('po_held_3', 3)];
+
+		await pullSponsorEvents(
+			deps(partnerApi([heldPayment(giftId, 'pending')]).provider, feed(events, 5).sponsorFeed),
+			NOW
+		);
+
+		expect(await cursor()).toBe(1);
+		expect(await payoutLines('settled:po_held_1')).toHaveLength(2);
+		expect(await payoutLines('settled:po_held_3')).toEqual([]);
+		expect(await paymentStatus('pay_unsettled')).toBe('pending');
+
+		const resumed = feed(events, 5);
+		await pullSponsorEvents(
+			deps(partnerApi([heldPayment(giftId, 'succeeded')]).provider, resumed.sponsorFeed),
+			NOW
+		);
+
+		expect(resumed.asked).toEqual([1]);
+		expect(await cursor()).toBe(3);
+		expect(await paymentStatus('pay_unsettled')).toBe('succeeded');
+		expect(await payoutLines('settled:po_held_1')).toHaveLength(2);
+		expect(await payoutLines('settled:po_held_3')).toHaveLength(2);
+	});
+
+	it('holds the cursor at an event whose settlement the sponsor could not be asked for, and resumes there', async () => {
+		const giftId = crypto.randomUUID();
+		await pendingGift(giftId, 'frm_pull_down', 'pay_unsettled');
+		const events = [settled('po_down_1', 1), settlementOfHeld(2), settled('po_down_3', 3)];
+		const down = createSponsorProvider({
+			apiKey: 'spk_test',
+			eventsSecret: SECRET,
+			fetch: async () => Response.json({ code: 'provider_error' }, { status: 502 })
+		});
+
+		await pullSponsorEvents(deps(down, feed(events, 5).sponsorFeed), NOW);
+
+		expect(await cursor()).toBe(1);
+		expect(await payoutLines('settled:po_down_3')).toEqual([]);
+		expect(await paymentStatus('pay_unsettled')).toBe('pending');
+
+		await pullSponsorEvents(
+			deps(partnerApi([heldPayment(giftId, 'succeeded')]).provider, feed(events, 5).sponsorFeed),
+			NOW
+		);
+
+		expect(await cursor()).toBe(3);
+		expect(await paymentStatus('pay_unsettled')).toBe('succeeded');
+		expect(await payoutLines('settled:po_down_3')).toHaveLength(2);
+	});
+
+	it('pages through a feed of five events, asking after the last sequence of each page', async () => {
+		const events = [1, 2, 3, 4, 5].map((seq) => settled(`po_page_${seq}`, seq));
+		const { sponsorFeed, asked } = feed(events, 2);
+
+		await pullSponsorEvents(deps(partnerApi().provider, sponsorFeed), NOW);
+
+		expect(asked).toEqual([0, 2, 4]);
+		expect(await cursor()).toBe(5);
+		expect(await payoutLines('settled:po_page_5')).toHaveLength(2);
+	});
+
+	it('stops after ten pages of a backlog and reads the rest on the next run', async () => {
+		const events = Array.from({ length: 11 }, (_, at) => settled(`po_backlog_${at + 1}`, at + 1));
+		const firstRun = feed(events, 1);
+
+		await pullSponsorEvents(deps(partnerApi().provider, firstRun.sponsorFeed), NOW);
+
+		expect(firstRun.asked).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+		expect(await cursor()).toBe(10);
+		expect(await payoutLines('settled:po_backlog_11')).toEqual([]);
+
+		const nextRun = feed(events, 1);
+		await pullSponsorEvents(deps(partnerApi().provider, nextRun.sponsorFeed), NOW);
+
+		expect(nextRun.asked).toEqual([10]);
+		expect(await cursor()).toBe(11);
+		expect(await payoutLines('settled:po_backlog_11')).toHaveLength(2);
+	});
+
+	it('books a returned payout under its return id, and a pull of it again changes nothing', async () => {
+		const event = returned('ret_pull_1', 1);
+
+		await pullSponsorEvents(deps(partnerApi().provider, feed([event]).sponsorFeed), NOW);
+		await run(stmt(`delete from sponsor_event_cursor`));
+		await pullSponsorEvents(deps(partnerApi().provider, feed([event]).sponsorFeed), NOW);
+
+		const lines = await payoutLines('returned:ret_pull_1');
+		expect(lines).toHaveLength(2);
+		expect(lines).toEqual(
+			expect.arrayContaining([
+				{ account_id: postableId('grantIncome'), amount_minor: 2_000 },
+				{ account_id: postableId('bankCash'), amount_minor: -2_000 }
+			])
+		);
+		expect(await cursor()).toBe(1);
+	});
+
+	it.each([
+		['a currency the ledger refuses', { currency: 'us' }, 'bad_currency'],
+		['an amount of nothing', { amount: 0 }, 'zero_amount']
+	])(
+		'tells staff of a payout with %s, posts nothing, and passes it in the pull',
+		async (_, refused, code) => {
+			await run(
+				stmt(`insert into org_profile (id, legal_name, notification_email, created_at, updated_at)
+				 values ('default', 'Hope Foundation', 'ops@hope.example', 0, 0)`)
+			);
+			const mail = mailer();
+			const events = [refusedPayout('po_refused', 1, refused), settled('po_after_refused', 2)];
+
+			await pullSponsorEvents(
+				deps(partnerApi().provider, feed(events, 5).sponsorFeed, mail.port),
+				NOW
+			);
+
+			expect(await payoutLines('settled:po_refused')).toEqual([]);
+			expect(await payoutGroups()).toBe(1);
+			expect(await cursor()).toBe(2);
+			expect(await payoutLines('settled:po_after_refused')).toHaveLength(2);
+			expect(mail.sent.map((message) => message.to)).toEqual(['ops@hope.example']);
+			expect(mail.sent[0]?.text).toContain(code);
+		}
+	);
+
 	it('changes nothing when the pull returns an event a delivery already applied', async () => {
 		const event = settled('po_pushed', 1);
 		const { provider } = partnerApi();
@@ -366,7 +557,98 @@ describe('POST /api/sponsor/events', () => {
 			{ account_id: postableId('bankCash'), amount_minor: 50_000 },
 			{ account_id: postableId('grantIncome'), amount_minor: -50_000 }
 		]);
+		// only the pull moves the cursor, from the feed's own sequence.
+		expect(await cursor()).toBeNull();
 	});
+
+	it('books a returned payout under its return id, and the same delivery sent again changes nothing', async () => {
+		const body = JSON.stringify(returned('ret_delivered', 1).payload);
+		const once = await deliver(body);
+		const again = await deliver(body, SECRET, Math.floor(Date.now() / 1000) + 1);
+
+		expect(once.status).toBe(200);
+		expect(again.status).toBe(200);
+		expect((await again.json()) as Record<string, unknown>).toMatchObject({
+			outcome: 'already_posted'
+		});
+		const lines = await payoutLines('returned:ret_delivered');
+		expect(lines).toHaveLength(2);
+		expect(lines).toEqual(
+			expect.arrayContaining([
+				{ account_id: postableId('grantIncome'), amount_minor: 2_000 },
+				{ account_id: postableId('bankCash'), amount_minor: -2_000 }
+			])
+		);
+	});
+
+	it('answers 200 unactionable and posts nothing for a payout the ledger refuses', async () => {
+		const response = await deliver(
+			JSON.stringify(refusedPayout('po_refused_route', 1, { currency: 'us' }).payload)
+		);
+
+		expect(response.status).toBe(200);
+		expect((await response.json()) as Record<string, unknown>).toMatchObject({
+			outcome: 'unactionable',
+			message: expect.stringContaining('bad_currency')
+		});
+		expect(await payoutGroups()).toBe(0);
+	});
+
+	it.each([
+		['pretty-printed', (payload: object) => JSON.stringify(payload, null, 2)],
+		[
+			'key-reordered',
+			(payload: object) => JSON.stringify(Object.fromEntries(Object.entries(payload).reverse()))
+		],
+		[
+			'\\u-escaped',
+			(payload: object) => JSON.stringify(payload).replace('payout.settled', 'payout\\u002esettled')
+		]
+	] as const)('accepts a %s body signed exactly as it was sent', async (name, write) => {
+		const payoutId = `po_shape_${name.replace(/\W/g, '')}`;
+		const payload = settled(payoutId, 1).payload;
+		const body = write(payload);
+		expect(body).not.toBe(JSON.stringify(payload));
+
+		const response = await deliver(body);
+
+		expect(response.status).toBe(200);
+		expect(await payoutLines(`settled:${payoutId}`)).toHaveLength(2);
+	});
+
+	it('refuses a body other than the one that was signed, and posts neither', async () => {
+		const signed = JSON.stringify(settled('po_signed_a', 1).payload);
+		const sent = JSON.stringify(settled('po_sent_b', 1).payload);
+		const headers = new Headers(deliveryHeaders(SECRET, signed, Math.floor(Date.now() / 1000)));
+
+		const response = await route(
+			new Request(ADDRESS, { method: 'POST', headers, body: sent }),
+			{ env: configured() }
+		);
+
+		expect(response.status).toBe(400);
+		expect(await payoutLines('settled:po_sent_b')).toEqual([]);
+		expect(await payoutLines('settled:po_signed_a')).toEqual([]);
+	});
+
+	it.each(['webhook-id', 'webhook-timestamp', 'webhook-signature'])(
+		'refuses a delivery with no %s header, and posts nothing',
+		async (missing) => {
+			const body = JSON.stringify(settled('po_headerless', 1).payload);
+			const headers = new Headers(deliveryHeaders(SECRET, body, Math.floor(Date.now() / 1000)));
+			headers.delete(missing);
+
+			const response = await route(new Request(ADDRESS, { method: 'POST', headers, body }), {
+				env: configured()
+			});
+
+			expect(response.status).toBe(400);
+			expect((await response.json()) as Record<string, unknown>).toMatchObject({
+				message: expect.stringContaining('carried no')
+			});
+			expect(await payoutLines('settled:po_headerless')).toEqual([]);
+		}
+	);
 
 	it('books the same payout once when the same delivery is sent again', async () => {
 		const body = JSON.stringify(settled('po_twice', 1).payload);
@@ -446,6 +728,7 @@ describe('POST /api/sponsor/events — a gift the sponsor took', () => {
 		expect(
 			(await first(stmt(`select status from payment where provider_txn_id = 'pay_held'`)))?.status
 		).toBe('pending');
+		expect(await cursor()).toBeNull();
 	});
 
 	it('settles a sponsored gift on its delivery and posts no income of its own', async () => {
@@ -486,5 +769,6 @@ describe('POST /api/sponsor/events — a gift the sponsor took', () => {
 			stmt(`select count(*) as groups from entry_group where source_type <> 'payout'`)
 		);
 		expect(posted?.groups).toBe(0);
+		expect(await cursor()).toBeNull();
 	});
 });

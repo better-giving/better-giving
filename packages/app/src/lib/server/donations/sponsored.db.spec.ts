@@ -112,7 +112,11 @@ async function pendingGift(): Promise<string> {
  * the sponsor reads the reversal as now: its read is live, so every event naming a dispute reads
  * the dispute's current state.
  */
-function sponsor(giftId: string, reversalKind: string) {
+function sponsor(
+	giftId: string,
+	reversalKind: string,
+	reversalFacts: Record<string, unknown> = {}
+) {
 	const payment = {
 		id: PAYMENT_ID,
 		gift_id: giftId,
@@ -130,7 +134,8 @@ function sponsor(giftId: string, reversalKind: string) {
 		kind: reversalKind,
 		amount: { gift: 9_670, gift_fee_cover: 330, contribution: 0, contribution_fee_cover: 0 },
 		currency: 'usd',
-		occurred_at: '2026-11-28T10:00:00Z'
+		occurred_at: '2026-11-28T10:00:00Z',
+		...reversalFacts
 	};
 	const fetch: typeof globalThis.fetch = async (input) => {
 		const path = new URL(new Request(input).url).pathname;
@@ -152,8 +157,13 @@ function mailer() {
 	return { port, sent };
 }
 
-function deps(giftId: string, email: EmailProvider, reversalKind = 'refund') {
-	const provider = sponsor(giftId, reversalKind);
+function deps(
+	giftId: string,
+	email: EmailProvider,
+	reversalKind = 'refund',
+	reversalFacts: Record<string, unknown> = {}
+) {
+	const provider = sponsor(giftId, reversalKind, reversalFacts);
 	return { db, provider, processors: soleProcessor(provider), email };
 }
 
@@ -259,6 +269,45 @@ describe('settleEvent() — a refund of a gift the sponsor took', () => {
 		expect(again).toMatchObject({ ok: true, outcome: 'already_posted' });
 		expect(mail.sent).toEqual([]);
 		expect(await counts()).toEqual({ groups: 0, owed: 0, refunds: 1 });
+	});
+
+	it('records a partial refund as its row alone, owing no notice and mailing nobody', async () => {
+		const giftId = await pendingGift();
+		await settleEvent(deps(giftId, mailer().port), SETTLED());
+		const mail = mailer();
+		const partial = { gift: 4_000, gift_fee_cover: 0, contribution: 0, contribution_fee_cover: 0 };
+
+		const result = await settleEvent(
+			deps(giftId, mail.port, 'refund', { amount: partial }),
+			REFUNDED()
+		);
+
+		expect(result).toMatchObject({ ok: true, outcome: 'updated' });
+		const refund = await first<{ amount_minor: number; notice_owed_since: number | null }>(
+			stmt(`select amount_minor, notice_owed_since from payment where provider_txn_id = 'rev_1'`)
+		);
+		expect(refund).toEqual({ amount_minor: 4_000, notice_owed_since: null });
+		expect(await counts()).toEqual({ groups: 0, owed: 0, refunds: 1 });
+		expect(mail.sent).toEqual([]);
+		const later = mailer();
+		await sendOwedRefundNotices({ db, email: later.port }, new Date('2026-12-31T00:00:00Z'));
+		expect(later.sent).toEqual([]);
+	});
+
+	it('tells staff and writes no refund for a refund naming a gift this site never recorded', async () => {
+		const mail = mailer();
+
+		const result = await settleEvent(
+			deps(crypto.randomUUID(), mail.port, 'refund', {
+				payment_id: 'pay_elsewhere',
+				gift_id: 'gift_never_recorded'
+			}),
+			REFUNDED()
+		);
+
+		expect(result).toMatchObject({ ok: true, outcome: 'unmatched' });
+		expect(mail.sent.map((message) => message.to)).toEqual(['ops@hope.example']);
+		expect(await counts()).toEqual({ groups: 0, owed: 0, refunds: 0 });
 	});
 
 	it('answers not_yet and writes nothing for a refund before its payment settled', async () => {

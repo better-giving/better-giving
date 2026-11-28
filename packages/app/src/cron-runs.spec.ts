@@ -28,7 +28,7 @@ import type { Db } from '$lib/server/db/client';
 // $lib/server/matching/reminders.db.spec.ts, $lib/server/matching/pack.db.spec.ts,
 // $lib/server/accounting/deliver.db.spec.ts, $lib/server/zapier/deliver.db.spec.ts,
 // $lib/server/webhooks/deliver.db.spec.ts and $lib/server/donations/ticker-refresh.db.spec.ts,
-// against a real database; the hourly sponsor pull is $lib/server/payouts/pull.db.spec.ts.
+// against a real database; the hourly sponsor pull is ./routes/api.sponsor.events.db.spec.ts.
 
 vi.mock('$lib/server/donations/pending-crypto-read', () => ({
 	readPendingCryptoGifts: vi.fn(async () => {})
@@ -198,6 +198,44 @@ describe('which run an expression reaches', () => {
 			expect(sendDueEntries).not.toHaveBeenCalled();
 		}
 	);
+
+	it('pulls the sponsor’s events on the hour, through the sponsor provider and a reader of its feed', async () => {
+		await fires('0 * * * *');
+
+		expect(pullSponsorEvents).toHaveBeenCalledExactlyOnceWith(
+			{
+				db,
+				provider: expect.objectContaining({ processor: 'sponsor' }),
+				processors: expect.anything(),
+				email: expect.anything(),
+				giftOrigin: null,
+				sponsorFeed: expect.any(Function)
+			},
+			SCHEDULED_AT
+		);
+		expect(sendDueEntries).not.toHaveBeenCalled();
+	});
+
+	it('reads the feed after the cursor it is handed, with SPONSOR_API_KEY as the bearer', async () => {
+		const read = vi
+			.spyOn(globalThis, 'fetch')
+			.mockResolvedValue(Response.json({ events: [], has_more: false }));
+		await fires('0 * * * *');
+		const sponsorFeed = vi.mocked(pullSponsorEvents).mock.calls[0]?.[0].sponsorFeed;
+
+		const result = await sponsorFeed?.(7);
+
+		expect(result).toMatchObject({ ok: true, value: { events: [], next: 7, more: false } });
+		const [url, init] = read.mock.calls[0] ?? [];
+		expect(String(url)).toBe('https://better.giving/api/partner/v1/events?after=7');
+		expect(new Headers(init?.headers).get('authorization')).toBe('Bearer spk_test');
+	});
+
+	it('pulls nothing on the hour where SPONSOR_API_KEY is unset', async () => {
+		await fires('0 * * * *', {} as Env);
+
+		expect(pullSponsorEvents).not.toHaveBeenCalled();
+	});
 
 	it('sends what the books, the Zaps and the destinations are owed every minute, from the run’s own time', async () => {
 		await fires('* * * * *');

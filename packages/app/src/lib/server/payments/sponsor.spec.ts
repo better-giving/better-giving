@@ -1,5 +1,5 @@
 import { createHmac } from 'node:crypto';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { IntentRequest } from './provider';
 import { createSponsorProvider, readSponsorFeed, sponsorEvent } from './sponsor';
 
@@ -219,6 +219,94 @@ describe('verifyEvent', () => {
 			delivery(SETTLED, { at: Date.now() + offset })
 		);
 		expect(result.ok ? null : result.reason).toBe('bad_signature');
+	});
+
+	describe('inside the five-minute window', () => {
+		beforeEach(() => {
+			vi.useFakeTimers({ toFake: ['Date'] });
+			vi.setSystemTime(new Date('2026-11-27T12:00:00Z'));
+		});
+		afterEach(() => {
+			vi.useRealTimers();
+		});
+
+		it.each([
+			['four minutes old', -4 * 60_000],
+			['four minutes ahead', 4 * 60_000]
+		])('accepts a delivery stamped %s', async (_, offset) => {
+			const result = await provider(NO_FETCH).verifyEvent(
+				delivery(SETTLED, { at: Date.now() + offset })
+			);
+			expect(result.ok).toBe(true);
+		});
+	});
+
+	describe('what the signature covers', () => {
+		it('refuses the right key signing another body', async () => {
+			const sent = delivery(SETTLED);
+			const result = await provider(NO_FETCH).verifyEvent({
+				...sent,
+				body: JSON.stringify({ ...SETTLED, data: { id: 'pay_2' } })
+			});
+			expect(result.ok ? null : result.reason).toBe('bad_signature');
+		});
+
+		it('refuses the right key signing another webhook-timestamp', async () => {
+			const sent = delivery(SETTLED);
+			const result = await provider(NO_FETCH).verifyEvent({
+				...sent,
+				headers: {
+					...sent.headers,
+					'webhook-timestamp': String(Number(sent.headers['webhook-timestamp']) + 1)
+				}
+			});
+			expect(result.ok ? null : result.reason).toBe('bad_signature');
+		});
+
+		it('refuses the right key signing another webhook-id', async () => {
+			const sent = delivery(SETTLED);
+			const result = await provider(NO_FETCH).verifyEvent({
+				...sent,
+				headers: { ...sent.headers, 'webhook-id': 'msg_2' }
+			});
+			expect(result.ok ? null : result.reason).toBe('bad_signature');
+		});
+	});
+
+	describe('a signature list', () => {
+		it.each([
+			['a malformed entry', 'v1,%%%'],
+			['a v2 entry', 'v2,AAAA'],
+			['an entry with no signature', 'v1']
+		])('accepts the matching signature listed after %s', async (_, before) => {
+			const result = await provider(NO_FETCH).verifyEvent(
+				delivery(SETTLED, { signature: (signed) => `${before} ${signed}` })
+			);
+			expect(result.ok).toBe(true);
+		});
+
+		it('refuses the right signature under a version other than v1', async () => {
+			const result = await provider(NO_FETCH).verifyEvent(
+				delivery(SETTLED, { signature: (signed) => `v2${signed.slice(2)}` })
+			);
+			expect(result.ok ? null : result.reason).toBe('bad_signature');
+		});
+	});
+
+	it('names SPONSOR_EVENTS_SECRET where the secret is not a whsec_ one', async () => {
+		const unreadable = createSponsorProvider({
+			apiKey: 'spk_test',
+			eventsSecret: 'not-a-whsec-secret',
+			fetch: NO_FETCH
+		});
+
+		const result = await unreadable.verifyEvent(delivery(SETTLED));
+
+		expect(result).toMatchObject({
+			ok: false,
+			reason: 'bad_signature',
+			detail: expect.stringContaining('`SPONSOR_EVENTS_SECRET` is not a `whsec_` secret')
+		});
 	});
 });
 
