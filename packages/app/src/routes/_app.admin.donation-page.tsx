@@ -33,15 +33,18 @@ import { pageTakesGifts } from '$lib/server/pages/view';
 import { database, platform } from '../context';
 import type { Route } from './+types/_app.admin.donation-page';
 
-// the Donation page's edit page, reached from the globe beside the organisation's name: a plain
-// form of section cards — General, Videos, Donation settings, Settings — under the banner that says
-// whether donors see the draft, and Reset to default at the foot while there is something to reset.
-// the page is always at the deployment's own address (`/`) and always public, so it has no name,
-// no link and no Unpublish.
+// the home page's edit page, reached from the rail's Home page row, directly above Campaigns
+// ($lib/admin/destinations.ts): a plain form of section cards — General, Videos, Donation settings,
+// Settings — under the banner that says whether donors see the draft, and Reset to default at the
+// foot while there is something to reset. the page is always at the deployment's own address (`/`)
+// and always public, so it has no name, no link and no Unpublish. its banner's Open donation page
+// opens the live page in a new tab, the one press on this surface that does: the rail's head opens
+// it in place once it can show (./_app.tsx), and the top bar and account menu carry none
+// (@better-giving/operator's Shell.jsx).
 //
 // **the loader makes the page on first need** (`ensureDonationPage` in
-// $lib/server/pages/donation-page.ts), so on a fresh deployment the globe opens this page rather
-// than a 404, as `/` answers before anyone has opened it.
+// $lib/server/pages/donation-page.ts), so on a fresh deployment the Home page row opens this page
+// rather than a 404, as `/` answers before anyone has opened it.
 //
 // **every Save writes the draft**, a card at a time ($lib/server/pages/section-saves.ts, and the
 // Videos card's presses in $lib/server/pages/videos.ts), and donors see it only at Publish changes
@@ -55,7 +58,7 @@ import type { Route } from './+types/_app.admin.donation-page';
 // the action below is the one writer; `clientAction` only answers, as its form's refusal, a press
 // whose request never reached it ($lib/admin/unreached.ts).
 
-const SCREEN_TITLE = 'Donation page';
+const SCREEN_TITLE = 'Home page';
 
 const SCREEN_FORMS = [
 	...DONATION_PAGE_EDIT_FORM_IDS,
@@ -147,12 +150,13 @@ export default function DonationPageEditPage({ loaderData }: Route.ComponentProp
 			<PublishBanner
 				state={banner.state}
 				version={version}
-				noun="Donation page"
+				noun="Home page"
 				address={host}
 				livePath="/"
 				preview={banner.preview}
 				unpublishable={false}
 				undoable={banner.undoable}
+				liveLink="Open donation page"
 			/>
 			{takingGifts ? null : (
 				<Banner tone="attention" word="Not taking gifts">
@@ -160,11 +164,7 @@ export default function DonationPageEditPage({ loaderData }: Route.ComponentProp
 				</Banner>
 			)}
 			{loaderData.unreadable ? (
-				<UnreadableDraft
-					version={version}
-					discardable={loaderData.discardable}
-					noun="Donation page"
-				/>
+				<UnreadableDraft version={version} discardable={loaderData.discardable} noun="Home page" />
 			) : (
 				<>
 					<DonationPageGeneralCard seed={loaderData.seeds.general} version={version} />

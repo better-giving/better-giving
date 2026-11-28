@@ -50,15 +50,14 @@ import { RouteProgress } from './RouteProgress.jsx';
  *
  * @typedef {object} ShellProps
  * @property {string} orgName drawn as the top bar's title and under the staff name in the account.
- * @property {string | undefined} [orgLogo] the organisation's logo image, the sidebar's mark. absent,
- *   the head names the organisation in words and the rail's head is empty.
- * @property {{ href: string; label: string }} home where the mark goes, and the name it is read by.
+ * @property {string | undefined} [orgLogo] the organisation's logo image, drawn alone in the
+ *   sidebar's head, its rail and the drawer's head. absent, the head draws the organisation's
+ *   initials (`initials` below) in the registry's avatar instead, so the name is never a text link.
+ * @property {{ href: string; label: string }} home where the mark goes as a document load, and the
+ *   name it is read by: the home page, or the dashboard while the home page cannot show.
  * @property {readonly NavGroup[]} groups
  * @property {ShellCurrent | undefined} [current]
  * @property {{ name: string; email: string }} staff who is signed in.
- * @property {string} donationPage the public donation page, opened as a document load: it is a
- *   donor's page and outside this shell.
- * @property {string} editDonationPage the donation page editor, on this surface.
  * @property {() => void} onSignOut
  * @property {boolean | undefined} [navigating] a navigation is running; draws the route-progress
  *   line across the top bar.
@@ -85,10 +84,9 @@ const WIDE = '(width >= 48rem)';
 
 /* the operator shell, drawn with app-shell-css 2.0.0 and the sheets it reads: the sidebar (mark,
    destinations, account), the top bar (menu button on a phone, rail toggle from 48rem, the
-   organisation's name, the donation page), the page, and on a phone the same destinations in a
-   modal `<dialog>` drawer. no script ships with the registry item; what its note asks the page to
-   wire is here: the toggle and its storage, the drawer, the account menu, the rail's tooltip and a
-   parent's flyout.
+   organisation's name), the page, and on a phone the same destinations in a modal `<dialog>`
+   drawer. no script ships with the registry item; what its note asks the page to wire is here: the
+   toggle and its storage, the drawer, the account menu, the rail's tooltip and a parent's flyout.
 
    the first render, on the server and in the browser alike, draws the rail as `initialCollapsed`
    says, which the surface reads from the request's cookie with ../../rail-preference.ts: a first
@@ -103,14 +101,11 @@ export function Shell({
 	groups,
 	current,
 	staff,
-	donationPage,
-	editDonationPage,
 	onSignOut,
 	navigating,
 	link,
 	children
 }) {
-	const Link = link ?? 'a';
 	const sidebarId = useId();
 	const drawerId = useId();
 	const mainId = useId();
@@ -176,23 +171,16 @@ export function Shell({
 		return () => wide.removeEventListener('change', widened);
 	}, [drawerOpen]);
 
-	const account = (
-		<Account
-			orgName={orgName}
-			staff={staff}
-			donationPage={donationPage}
-			editDonationPage={editDonationPage}
-			onSignOut={onSignOut}
-			link={link}
-		/>
-	);
+	const account = <Account orgName={orgName} staff={staff} onSignOut={onSignOut} />;
 
 	const mark = (
 		<div className="ds-shell-mark">
-			<Link href={home.href} aria-label={orgLogo ? home.label : undefined}>
-				{/* app-shell-css's contract draws the mark 36px tall. */}
-				{orgLogo ? <img className="adm-logo" src={orgLogo} alt="" height={36} /> : orgName}
-			</Link>
+			{/* a plain anchor, never the surface's router link: `home.href` is the home page, a donor's
+			    page outside this shell that follows as a document load, or the dashboard while that
+			    page cannot show. the shell is not told which it holds, so both load as a document. */}
+			<a href={home.href} aria-label={home.label}>
+				<HeadMark orgLogo={orgLogo} orgName={orgName} rail={false} />
+			</a>
 		</div>
 	);
 
@@ -214,14 +202,11 @@ export function Shell({
 			<aside className="ds-shell-sidebar" id={sidebarId}>
 				<div className="ds-shell-head">
 					{mark}
-					{orgLogo ? (
-						<div className="ds-shell-mark-rail">
-							<Link href={home.href} aria-label={home.label}>
-								{/* the rail's box is 1.75rem wide; the canvas draws the symbol 28px. */}
-								<img className="adm-logo adm-logo--rail" src={orgLogo} alt="" height={28} />
-							</Link>
-						</div>
-					) : null}
+					<div className="ds-shell-mark-rail">
+						<a href={home.href} aria-label={home.label}>
+							<HeadMark orgLogo={orgLogo} orgName={orgName} rail />
+						</a>
+					</div>
 				</div>
 				<Nav groups={groups} current={current} link={link} rail={collapsed} />
 				{account}
@@ -252,14 +237,6 @@ export function Shell({
 					</button>
 					<p className="ds-topbar-title">{orgName}</p>
 				</div>
-				<div className="ds-topbar-actions">
-					<div className="ds-topbar-secondary">
-						<a className="ds-btn ds-btn-secondary" href={donationPage}>
-							<Mark name="eye" />
-							Open donation page
-						</a>
-					</div>
-				</div>
 			</header>
 			<main ref={main} className="ds-shell-main" id={mainId} tabIndex={-1}>
 				{children}
@@ -278,7 +255,7 @@ export function Shell({
 					if (event.target === event.currentTarget) closeDrawer();
 				}}
 				onClickCapture={(event) => {
-					// any link in it, a row or the account menu's, closes it as it is followed
+					// any link in it, the head's or a row's, closes it as it is followed
 					// (app-shell-css's note). heard in capture, so no handler inside that stops the
 					// click keeps it open; a click that opens a new tab leaves the page, and the
 					// drawer, where they are.
@@ -652,31 +629,54 @@ function ParentRow({ destination, items, current, link, sidebar }) {
 }
 
 /**
+ * what the head's link (`home`) draws, in the sidebar, the rail and the drawer's head: the
+ * organisation's logo, or its initials in the registry's avatar (avatar-css) where it has none.
+ * `rail` draws the logo in the rail's box, 28px: ../../styles/adm.css's `.adm-logo--rail`.
+ *
+ * @param {{ orgLogo: string | undefined; orgName: string; rail: boolean }} props
+ */
+function HeadMark({ orgLogo, orgName, rail }) {
+	const letters = initials(orgName);
+	return (
+		<>
+			{/* app-shell-css's contract draws the mark 36px tall, the rail's box 28px:
+			    ../../styles/adm.css sizes each on its hook. */}
+			{orgLogo === undefined ? null : rail ? (
+				<img className="adm-logo adm-logo--rail" src={orgLogo} alt="" height={28} />
+			) : (
+				<img className="adm-logo" src={orgLogo} alt="" height={36} />
+			)}
+			{/* with no logo, a name with no word in it draws no initials, and the link shows nothing
+			    but keeps its name. the rail's box is 1.75rem wide (app-shell-css.usage.md), so the
+			    32px avatar would clip there: avatar-css's `ds-avatar-sm` is 24px. */}
+			{orgLogo === undefined && letters !== '' ? (
+				<span
+					className={`ds-avatar${rail ? ' ds-avatar-sm' : ''} ds-avatar-square ds-avatar-logo`}
+					aria-hidden="true"
+				>
+					<span aria-hidden="true">{letters}</span>
+				</span>
+			) : null}
+		</>
+	);
+}
+
+/**
  * @typedef {object} AccountProps
  * @property {string} orgName
  * @property {{ name: string; email: string }} staff
- * @property {string} donationPage
- * @property {string} editDonationPage
  * @property {() => void} onSignOut
- * @property {ComponentType<ShellLinkProps> | undefined} link
  */
 
 /* the sidebar's foot: who is signed in, opening the account menu above it, starts aligned. */
 /** @param {AccountProps} props */
-function Account({ orgName, staff, donationPage, editDonationPage, onSignOut, link }) {
+function Account({ orgName, staff, onSignOut }) {
 	return (
 		<div className="ds-shell-account">
 			<ActionMenu
 				placement="above-start"
-				link={link}
 				header={{ title: staff.name, meta: staff.email }}
-				runs={[
-					[
-						{ label: 'Edit donation page', mark: 'globe', href: editDonationPage, internal: true },
-						{ label: 'Open donation page', mark: 'eye', href: donationPage }
-					],
-					[{ label: 'Sign out', mark: 'log-out', onSelect: onSignOut }]
-				]}
+				runs={[[{ label: 'Sign out', mark: 'log-out', onSelect: onSignOut }]]}
 				trigger={
 					<button type="button" className="ds-shell-account-btn">
 						<span className="ds-avatar" aria-hidden="true">
@@ -694,12 +694,11 @@ function Account({ orgName, staff, donationPage, editDonationPage, onSignOut, li
 	);
 }
 
-/** the first letters of a name's first two words, which the avatar draws uppercase. */
+/** the first character of a name's first and last word, which the avatar draws uppercase
+ *   (avatar-css.usage.md); one word gives one, and a name with no word gives none. */
 export function initials(/** @type {string} */ name) {
-	return name
-		.trim()
-		.split(/\s+/)
-		.slice(0, 2)
-		.map((word) => word.charAt(0))
-		.join('');
+	const words = name.trim().split(/\s+/).filter(Boolean);
+	const first = words[0] ?? '';
+	const last = words[words.length - 1] ?? '';
+	return first.charAt(0) + (words.length > 1 ? last.charAt(0) : '');
 }

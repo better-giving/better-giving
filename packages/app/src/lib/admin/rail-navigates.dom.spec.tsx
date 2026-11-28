@@ -1,9 +1,9 @@
 import { Shell } from '@better-giving/operator/components/shell/Shell';
 import { act, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { createRoutesStub } from 'react-router';
+import { createRoutesStub, Outlet, useLocation } from 'react-router';
 import { expect, it, onTestFinished } from 'vitest';
-import { DESTINATION_GROUPS } from './destinations';
+import { currentDestination, DESTINATION_GROUPS } from './destinations';
 import { RouterLink } from './router-link';
 
 // what a press on the rail has to do: hand the navigation to the router.
@@ -36,31 +36,39 @@ function mount(tree: ReactNode): HTMLElement {
 }
 
 const [first] = DESTINATION_GROUPS[0].destinations;
-const [second] = DESTINATION_GROUPS[1].destinations;
+const second = DESTINATION_GROUPS[1].destinations[1];
 
-/** the frame ../../routes/_app.tsx draws, standing at the first destination. */
+/**
+ * the frame ../../routes/_app.tsx draws, under a pathless layout as that route is, drawing the page
+ * that is under it. `/` is the head's address and has no page of its own.
+ */
 function stub() {
 	const Stub = createRoutesStub([
 		{
-			path: first.href,
-			Component: () => (
-				<Shell
-					orgName="Riverside Shelter"
-					home={{ href: '/admin', label: 'Dashboard' }}
-					groups={DESTINATION_GROUPS}
-					current={{ label: first.label, kind: 'page' }}
-					staff={{ name: 'Nadia Hart', email: 'nadia@riverside.example' }}
-					donationPage="/"
-					editDonationPage="/admin/donation-page"
-					onSignOut={() => {}}
-					link={RouterLink}
-				>
-					<p>the screen</p>
-				</Shell>
-			)
-		},
-		{ path: second.href, Component: () => <p>arrived</p> },
-		{ path: '/admin/donation-page', Component: () => <p>the editor</p> }
+			Component: () => {
+				const { pathname } = useLocation();
+				const here = currentDestination(pathname);
+				return (
+					<Shell
+						orgName="Riverside Shelter"
+						home={{ href: '/', label: 'Open home page' }}
+						groups={DESTINATION_GROUPS}
+						current={here}
+						staff={{ name: 'Nadia Hart', email: 'nadia@riverside.example' }}
+						onSignOut={() => {}}
+						link={RouterLink}
+					>
+						<Outlet />
+					</Shell>
+				);
+			},
+			children: [
+				{ path: '/admin', Component: () => <p>the screen</p> },
+				{ path: '/admin/campaigns', Component: () => <p>arrived</p> },
+				{ path: '/admin/supporter-pages', Component: () => <p>the supporters</p> },
+				{ path: '/admin/donation-page', Component: () => <p>the editor</p> }
+			]
+		}
 	]);
 	return mount(<Stub initialEntries={[first.href]} />);
 }
@@ -88,35 +96,14 @@ it('arrives at the destination the row names', async () => {
 	const root = stub();
 	await press(root, second.label);
 
-	expect(root.textContent).toBe('arrived');
+	expect(root.querySelector('main')?.textContent).toBe('arrived');
 });
 
-it('routes Enter on the account menu’s Edit donation page as a press would', async () => {
-	// the menu follows a link row for Enter with a click of its own; ActionMenu.jsx makes it one the
-	// router's link hears, where the machine's default reached only the document.
+it('routes a press on the Home page row as a press on any row', async () => {
+	// the Home page row is the editor's only way in from the rail, and arrives through the same
+	// link as every other row: the router's, not a full document load.
 	const root = stub();
-	const account = root.querySelector<HTMLButtonElement>('.ds-shell-sidebar .ds-shell-account-btn');
-	const key = (name: string) =>
-		act(async () => {
-			document.activeElement?.dispatchEvent(
-				new KeyboardEvent('keydown', { key: name, bubbles: true })
-			);
-		});
-	let claimed: boolean | undefined;
-	const watch = (event: Event) => {
-		if ((event.target as Element).closest('a[href="/admin/donation-page"]'))
-			queueMicrotask(() => {
-				claimed = event.defaultPrevented;
-			});
-	};
-	document.addEventListener('click', watch, true);
-	onTestFinished(() => document.removeEventListener('click', watch, true));
 
-	act(() => account?.focus());
-	await key('ArrowDown');
-	await key('Enter');
-	await act(async () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
-
-	expect(claimed).toBe(true);
-	expect(root.textContent).toBe('the editor');
+	expect(await press(root, 'Home page')).toBe(true);
+	expect(root.querySelector('main')?.textContent).toBe('the editor');
 });

@@ -216,6 +216,19 @@ const panelOf = (tab: HTMLElement) =>
 	document.getElementById(tab.getAttribute('aria-controls') ?? '') as HTMLElement;
 
 describe('the edit page as it opens', () => {
+	// a campaign's banner words its press View live page; the home page's says Open donation page
+	// ($lib/admin/page-edit/publish-banner.tsx's `liveLink`).
+	it('opens the live page from the banner while it is public', async () => {
+		drawn = fixture('public');
+		await screen();
+
+		const banner = document.querySelector('.adm-banner') as HTMLElement;
+		const live = [...banner.querySelectorAll('a')].find(
+			(one) => one.textContent?.trim() === 'View live page'
+		);
+		expect(live?.getAttribute('href')).toBe('/winter-coat-drive');
+	});
+
 	it('is a form of section cards in order, with no preview', async () => {
 		await screen();
 

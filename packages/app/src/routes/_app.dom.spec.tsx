@@ -1,4 +1,5 @@
-import { act, createElement, type ReactNode } from 'react';
+import { Mark } from '@better-giving/operator/components/status/Mark';
+import { act, type ComponentProps, createElement, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createRoutesStub, data, Link, useLoaderData } from 'react-router';
 import { expect, it, onTestFinished } from 'vitest';
@@ -27,10 +28,29 @@ async function mount(tree: ReactNode): Promise<HTMLElement> {
 	return root;
 }
 
-/** what the layout's loader answers, for the deployer or a member, with the rail as the cookie left it. */
-const drawnFor = (deployer: boolean, railCollapsed = false) => ({
+/** the inner markup of the svg `Mark` draws for `name`. */
+function glyphDrawing(name: ComponentProps<typeof Mark>['name']): string {
+	const holder = document.createElement('div');
+	const mounted = createRoot(holder);
+	act(() => mounted.render(<Mark name={name} />));
+	const drawing = holder.querySelector('svg')?.innerHTML ?? '';
+	act(() => mounted.unmount());
+	return drawing;
+}
+
+type Drawn = Parameters<typeof ProtectedLayout>[0]['loaderData'];
+
+/** what the layout's loader answers, for the deployer or a member, with the rail as the cookie left it
+ *   and the home page showing, which is the set-up deployment the other specs are not about. */
+const drawnFor = (
+	deployer: boolean,
+	railCollapsed = false,
+	orgLogo: string | null = null,
+	homePage = true
+): Drawn => ({
+	homePage,
 	orgName: 'Riverbank Trust',
-	orgLogo: null,
+	orgLogo,
 	staff: { name: 'Nadia Hart', email: 'nadia@riverbanktrust.org' },
 	deployer,
 	viewerZone: null,
@@ -55,9 +75,13 @@ function layoutRoute(drawn: ReturnType<typeof drawnFor>, children: object[]) {
 }
 
 /** the layout, set up and named, over a list screen and a screen under it. */
-function frameAt(at: string, deployer = true): Promise<HTMLElement> {
+function frameAt(
+	at: string,
+	deployer = true,
+	drawn: ReturnType<typeof drawnFor> = drawnFor(deployer)
+): Promise<HTMLElement> {
 	const Stub = createRoutesStub([
-		layoutRoute(drawnFor(deployer), [
+		layoutRoute(drawn, [
 			{ path: '/admin/forms', Component: () => <p>the list</p> },
 			{ path: '/admin/members/password', Component: () => <h1>Your password</h1> },
 			{ path: '/admin/donation-page', Component: () => <p>the Donation page</p> },
@@ -113,23 +137,113 @@ it.each([
 	expect(root.querySelector('.ds-shell')?.getAttribute('data-collapsed')).toBe(marked);
 });
 
-// / is public, so the link to it is every operator's and not one of the deployer's
-// destinations ($lib/admin/destinations.ts).
+// the top bar is its title and the menu controls. the home page is opened from the rail's head (the
+// specs below) and from the banner of its own editor, where the draft is worked on.
 it.each([
 	['the deployer', true],
 	['a member', false]
-])('gives %s the top bar link to the published donation page', async (_, deployer) => {
+])('draws %s a top bar that opens nothing', async (_, deployer) => {
 	const root = await frameAt('/admin/forms', deployer);
-	const links = [...root.querySelectorAll('.ds-topbar-secondary a')];
 
-	expect(links.map((a) => [a.getAttribute('href'), a.textContent])).toEqual([
-		['/', 'Open donation page']
-	]);
+	expect(root.querySelector('.ds-topbar')?.textContent).toContain('Riverbank Trust');
+	expect([...root.querySelectorAll('.ds-topbar a')].map((a) => a.textContent)).toEqual([]);
 });
 
 // the rail's deployer rows: every page behind them answers a member with not-found, and
 // ./_app.admin.integrations.api.db.spec.ts and ./_app.admin.integrations.zapier.db.spec.ts hold
 // the loaders' half.
+
+// the head of the rail opens the home page, for the logo and for the organisation's initials alike,
+// as a document load: / is a donor's page and outside this shell ($lib/admin/destinations.ts).
+//
+// until the organisation's registered name and EIN are saved, / redirects to the dashboard
+// (./_index.tsx, through `identityMissing`), so the head goes where a press can arrive: the
+// dashboard, named for it. the layout reads that question once (`homePage` on its own loader,
+// held against the same profile in ./_app.db.spec.ts), so the rows below are its answers.
+it.each([
+	['homePage true', { orgName: 'Riverbank Trust', homePage: true }, '/', 'Open home page'],
+	['homePage false', { orgName: 'Riverbank Trust', homePage: false }, '/admin', 'Dashboard']
+])('opens the rail head under %s to %s, named %s', async (_, over, href, label) => {
+	const root = await frameAt('/admin/forms', true, { ...drawnFor(true), ...over });
+	for (const selector of [
+		'.ds-shell-mark > a',
+		'.ds-shell-mark-rail > a',
+		'.ds-shell-drawer .ds-shell-mark > a'
+	]) {
+		const link = root.querySelector(selector);
+		expect(link?.getAttribute('href')).toBe(href);
+		expect(link?.getAttribute('aria-label')).toBe(label);
+	}
+});
+it.each([
+	['the logo', '/logo.png'],
+	['the initials', null]
+])('opens / from the rail head drawing %s, named for the home page', async (_, logo) => {
+	const orgLogo = logo as string | null;
+	const Stub = createRoutesStub([
+		layoutRoute({ ...drawnFor(true, false, orgLogo), homePage: true }, [
+			{ path: '/admin/forms', Component: () => <p>the list</p> }
+		]) as never
+	]);
+	const root = await mount(<Stub initialEntries={['/admin/forms']} />);
+	const links = [
+		'.ds-shell-mark > a',
+		'.ds-shell-mark-rail > a',
+		'.ds-shell-drawer .ds-shell-mark > a'
+	].map((selector) => root.querySelector(selector));
+
+	// the router's link prevents the default of a plain press to move in-app; a document load leaves
+	// it alone. read at the document, after the router's handler has run, then prevented here so
+	// happy-dom does not follow the address itself.
+	let prevented: boolean | undefined;
+	const observe = (event: Event) => {
+		prevented = event.defaultPrevented;
+		event.preventDefault();
+	};
+	document.addEventListener('click', observe);
+	onTestFinished(() => document.removeEventListener('click', observe));
+
+	for (const link of links) {
+		expect(link, 'a head anchor is drawn').not.toBeNull();
+		expect(link?.getAttribute('href')).toBe('/');
+		expect(link?.getAttribute('aria-label')).toBe('Open home page');
+		// a document load, not the router's own move: a press here is the browser's to follow.
+		expect(link?.getAttribute('data-discover')).toBeNull();
+		prevented = undefined;
+		await act(async () => {
+			link?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }));
+		});
+		expect(prevented).toBe(false);
+	}
+	expect(links[0]?.querySelector('.ds-avatar') !== null).toBe(orgLogo === null);
+});
+
+it.each([
+	['the deployer', true],
+	['a member', false]
+])(
+	'draws Home page directly above Campaigns for %s, current on the editor',
+	async (_, deployer) => {
+		const atEditor = await frameAt('/admin/donation-page', deployer);
+		const rows = [...atEditor.querySelectorAll('.ds-shell-sidebar .ds-nav-link')];
+		const labels = rows.map((row) => row.textContent);
+		const home = rows.find((row) => row.textContent === 'Home page');
+
+		expect(labels.indexOf('Campaigns')).toBe(labels.indexOf('Home page') + 1);
+		expect(home?.getAttribute('href')).toBe('/admin/donation-page');
+		expect(home?.getAttribute('aria-current')).toBe('page');
+		// the house glyph by its drawing, which another glyph's would not match.
+		const drawnMark = home?.querySelector('svg')?.innerHTML;
+		expect(drawnMark).toBe(glyphDrawing('house'));
+		expect(drawnMark).not.toBe(glyphDrawing('globe'));
+
+		const elsewhere = await frameAt('/admin/forms', deployer);
+		const homeElsewhere = [...elsewhere.querySelectorAll('.ds-shell-sidebar .ds-nav-link')].find(
+			(row) => row.textContent === 'Home page'
+		);
+		expect(homeElsewhere?.hasAttribute('aria-current')).toBe(false);
+	}
+);
 
 /** the sidebar's group titles and top-level rows, in the order it draws them. */
 function rail(root: HTMLElement): string[] {

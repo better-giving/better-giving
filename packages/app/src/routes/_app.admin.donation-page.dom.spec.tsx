@@ -4,9 +4,9 @@ import { createRoutesStub, useLoaderData } from 'react-router';
 import { beforeEach, describe, expect, it, onTestFinished } from 'vitest';
 import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
 import type { BannerState } from '$lib/page/edit-forms';
-import DonationPageEditPage, { clientAction } from './_app.admin.donation-page';
+import DonationPageEditPage, { clientAction, meta } from './_app.admin.donation-page';
 
-// the Donation page's edit page as the route mounts it: its three section cards under the publish
+// the Home page's edit page as the route mounts it: its three section cards under the publish
 // banner, each Save held until its card changes, no Unpublish, and Reset to default while there is
 // something to reset. the loader and the server's action are stand-ins; what the real ones do is
 // ./_app.admin.donation-page.db.spec.ts's.
@@ -124,17 +124,55 @@ async function type(box: HTMLInputElement, text: string) {
 	});
 }
 
-describe('the Donation page edit page', () => {
+describe('the Home page edit page', () => {
 	it('is a form of its cards, Videos after General, with no preview and no Unpublish', async () => {
 		await screen();
 
 		expect(document.querySelector('iframe')).toBeNull();
 		expect(headings()).toEqual(['General', 'Videos', 'Donation settings', 'Settings']);
 		const banner = document.querySelector('.adm-banner') as HTMLElement;
-		expect(banner.textContent).toContain('Your Donation page is public');
-		expect([...banner.querySelectorAll('button, a')].map((one) => one.textContent?.trim())).toEqual(
-			['View live page']
+		expect(banner.textContent).toContain('Your Home page is public');
+		expect(banner.textContent).not.toContain('Donation page');
+		expect([...banner.querySelectorAll('button')].map((one) => one.textContent?.trim())).toEqual(
+			[]
 		);
+		expect(banner.textContent).toContain('Donors can see it at give.example.org/.');
+	});
+
+	// this screen is the one place that opens the live home page in a new tab: the top bar and the
+	// account menu carry no press for it, and the rail's head opens it in place only once it can
+	// show, going to the dashboard until then.
+	//
+	// the page is made live and has no Unpublish or End (`editBanner` in
+	// $lib/server/pages/section-seeds.ts reads those off campaigns only), so public and changed are
+	// the only states this loader reaches; no other state is drawn here.
+	it.each([
+		['public', 'public', false, 'Your Home page is public'],
+		['waiting on saved changes', 'changed', true, 'Changes not public yet']
+	])('offers only Open donation page in its banner while it is %s', async (_, state, hasEdits, word) => {
+		drawn = fixture(state as BannerState, hasEdits);
+		await screen();
+
+		const banner = document.querySelector('.adm-banner') as HTMLElement;
+		expect(banner.textContent).toContain(word);
+		const links = [...banner.querySelectorAll('a')].map((one) => [
+			one.textContent?.trim(),
+			one.getAttribute('href'),
+			one.getAttribute('target')
+		]);
+		expect(links).toEqual([['Open donation page', '/', '_blank']]);
+	});
+
+	it('is titled Home page, heading and tab alike', async () => {
+		await screen();
+
+		expect(document.querySelector('h1')?.textContent).toBe('Home page');
+		const matches = [
+			{ id: 'routes/_app', loaderData: { orgName: 'Riverbank Trust' } }
+		] as unknown as Parameters<typeof meta>[0]['matches'];
+		expect(meta({ matches } as Parameters<typeof meta>[0])).toEqual([
+			{ title: 'Home page · Riverbank Trust' }
+		]);
 	});
 
 	it('offers Reset to default only while the page holds edits', async () => {

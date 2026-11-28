@@ -2,12 +2,12 @@ import zapierImage from '@better-giving/operator/brand/zapier.png';
 
 /**
  * every destination the staff surface has, in the order an operator works: the state of giving in
- * one look, then the campaigns, the fundraisers supporters start beside them, and the forms that
- * take the money, the donors it came from, the gifts themselves, the ones that repeat, who may
- * sign in, the organisation's settings and its payments, the systems outside that read it, and the
- * books all of it lands in. the dashboard is first
- * because it is the surface's own address and what an operator opens on, and each record after it
- * is a step further from the page or form that produced it.
+ * one look, then the home page and the campaigns, the fundraisers supporters start beside them,
+ * and the forms that take the money, the donors it came from, the gifts themselves, the ones that
+ * repeat, who may sign in, the organisation's settings and its payments, the systems outside that
+ * read it, and the books all of it lands in. the dashboard is first because it is the surface's
+ * own address and what an operator opens on, and each record after it is a step further from the
+ * page or form that produced it.
  *
  * the dashboard states figures, Settings and Payments each describe the one deployment, and every
  * other one is a collection. Settings holds what the organisation holds one of — its profile with
@@ -27,9 +27,9 @@ import zapierImage from '@better-giving/operator/brand/zapier.png';
  * time.
  *
  * the rail's column draws the destinations in five groups: the dashboard alone, the one
- * destination stating figures; the records of giving; Members, Settings and Payments — who may
- * sign in, what the organisation is and what it takes gifts through, none of them a record of a
- * gift; the integrations, the ways a system outside the deployment reaches it; and the books, which
+ * destination stating figures; the home page and the records of giving; Members, Settings and
+ * Payments — who may sign in, what the organisation is and what it takes gifts through, none of
+ * them a record of a gift; the integrations, the ways a system outside the deployment reaches it; and the books, which
  * everything above writes into. a rule is the whole of the separation between the other four. the
  * integrations carry the one heading, because their entries are named after a mechanism rather
  * than a record — API — and that word in a run of records says nothing about what it holds. the
@@ -63,7 +63,16 @@ export const DESTINATION_GROUPS = [
 	},
 	{
 		destinations: [
-			// first of the records of giving: a campaign is what an operator opens most weeks, and its
+			// the deployment's public home page, edited here: the donor's page is at `/` and outside
+			// this surface, so its row opens its editor, directly above the campaigns it
+			// stands beside and for every session, as the page belongs to the deployment rather than
+			// to the deployer (../../routes/_app.admin.donation-page.tsx).
+			{
+				href: '/admin/donation-page',
+				label: 'Home page',
+				mark: 'house'
+			},
+			// the first record of giving: a campaign is what an operator opens most weeks, and its
 			// page is where the gifts it raises come in.
 			{
 				href: '/admin/campaigns',

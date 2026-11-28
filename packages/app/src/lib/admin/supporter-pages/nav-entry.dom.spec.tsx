@@ -21,8 +21,6 @@ function mount(deployer: boolean): HTMLElement {
 				groups={destinationGroupsFor(deployer)}
 				current={{ label: 'Dashboard', kind: 'page' }}
 				staff={{ name: 'Nadia Hart', email: 'nadia@harborlight.example' }}
-				donationPage="/"
-				editDonationPage="/admin/donation-page"
 				onSignOut={() => {}}
 			>
 				<p>the screen</p>
