@@ -1838,23 +1838,16 @@ export function createCard(
 	 * have loaded, and not by a `ResizeObserver`, for the reason the cadence chip is not
 	 * (`placeThumb` below).
 	 */
-	let measuring = 0;
 	function placeFigure(): void {
-		if (measuring !== 0) return;
 		if (quantityFigure.hidden) {
 			toggleAttribute(quantityTray, 'data-figure', null);
 			return;
 		}
 		quantityTray.setAttribute('data-figure', 'inside');
 		const amount = inputTextWidth(quantityInput);
-		// a width is not known yet, so this pass places nothing and the face's arrival places it.
+		// a width is not known yet: a pass places nothing and the face's arrival places it.
 		if (amount === null) {
-			const fonts = doc.fonts;
-			measuring = fonts === undefined ? 0 : 1;
-			fonts?.ready.then(() => {
-				measuring = 0;
-				placeFigure();
-			});
+			doc.fonts?.ready.then(() => placeFigure());
 			return;
 		}
 		const figure = quantityFigure.getBoundingClientRect().width;

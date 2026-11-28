@@ -262,10 +262,11 @@ export function AmountStep({
 	// the document's faces have loaded — an unloaded face's string reads as loaded and its width is
 	// the fallback face's — read and written in one pass so no frame paints the trial.
 	const textWidth = (box: HTMLInputElement): number | null => {
-		const line = document.createElement('canvas').getContext('2d');
-		if (box.value === '' || line === null) return 0;
+		if (box.value === '') return 0;
 		if (document.fonts?.status === 'loading') return null;
-		const face = getComputedStyle(box);
+		const line = document.createElement('canvas').getContext('2d');
+		if (line === null) return 0;
+		const face = window.getComputedStyle(box);
 		line.font = `${face.fontWeight} ${face.fontSize} ${face.fontFamily}`;
 		return line.measureText(box.value).width;
 	};
@@ -274,7 +275,7 @@ export function AmountStep({
 		box: HTMLInputElement,
 		marks: readonly HTMLElement[]
 	): number => {
-		const face = getComputedStyle(row);
+		const face = window.getComputedStyle(row);
 		const sides = (start: string, end: string): number =>
 			(Number.parseFloat(face.getPropertyValue(start)) || 0) +
 			(Number.parseFloat(face.getPropertyValue(end)) || 0);
@@ -286,7 +287,6 @@ export function AmountStep({
 			row.clientWidth - taken - inset - (Number.parseFloat(face.columnGap) || 0) * marks.length
 		);
 	};
-	let measuring = document.fonts?.status === 'loading';
 	useMeasure(() => {
 		const placeFigure = (): void => {
 			const node = tray.current;
@@ -303,12 +303,8 @@ export function AmountStep({
 			if (unit === null || tile === null) return;
 			const amount = textWidth(input);
 			if (amount === null) {
+				document.fonts?.ready.then(() => placeFigure());
 				node.removeAttribute('data-figure');
-				if (!measuring) return;
-				document.fonts.ready.then(() => {
-					measuring = false;
-					placeFigure();
-				});
 				return;
 			}
 			const figureWidth = figure.getBoundingClientRect().width;
