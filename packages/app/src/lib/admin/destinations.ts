@@ -63,6 +63,15 @@ export const DESTINATION_GROUPS = [
 	},
 	{
 		destinations: [
+			// the deployment's public home page, edited here: the donor's page is at `/` and outside
+			// this surface, so the rail's way to it is its editor, directly above the campaigns it
+			// stands beside and for every session, as the page belongs to the deployment rather than
+			// to the deployer (../../routes/_app.admin.donation-page.tsx).
+			{
+				href: '/admin/donation-page',
+				label: 'Home page',
+				mark: 'house'
+			},
 			// first of the records of giving: a campaign is what an operator opens most weeks, and its
 			// page is where the gifts it raises come in.
 			{

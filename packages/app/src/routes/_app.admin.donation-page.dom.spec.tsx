@@ -133,8 +133,15 @@ describe('the Donation page edit page', () => {
 		const banner = document.querySelector('.adm-banner') as HTMLElement;
 		expect(banner.textContent).toContain('Your Donation page is public');
 		expect([...banner.querySelectorAll('button, a')].map((one) => one.textContent?.trim())).toEqual(
-			['View live page']
+			[]
 		);
+		expect(banner.textContent).toContain('Donors can see it at give.example.org/.');
+	});
+
+	it('is titled Home page, heading and tab alike', async () => {
+		await screen();
+
+		expect(document.querySelector('h1')?.textContent).toBe('Home page');
 	});
 
 	it('offers Reset to default only while the page holds edits', async () => {

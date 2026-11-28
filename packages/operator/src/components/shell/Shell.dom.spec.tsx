@@ -519,12 +519,37 @@ describe('the shell around the page', () => {
 		expect(sidebar(withLogo).querySelector('.ds-shell-mark a')?.getAttribute('aria-label')).toBe(
 			'Dashboard'
 		);
+	});
+
+	it('draws the logo alone in the head and the rail, the organisation initials where there is none', () => {
+		const withLogo = render(Shell, props());
+		expect(sidebar(withLogo).querySelector('.ds-shell-mark a')?.textContent).toBe('');
+		expect(sidebar(withLogo).querySelector('.ds-shell-mark-rail a img')).not.toBeNull();
 
 		const without = render(Shell, props({ orgLogo: undefined }));
-		expect(sidebar(without).querySelector('.ds-shell-mark a')?.textContent).toBe(
-			'Greenfield Food Bank'
+		const head = sidebar(without).querySelector('.ds-shell-mark a');
+		const initialsMark = head?.querySelector('.ds-avatar');
+		expect(initialsMark?.textContent).toBe('GF');
+		expect(head?.textContent).toBe('GF');
+		expect(sidebar(without).querySelector('.ds-shell-mark-rail .ds-avatar')?.textContent).toBe(
+			'GF'
 		);
-		expect(sidebar(without).querySelector('.ds-shell-mark-rail')).toBeNull();
+	});
+
+	it('opens the home page from the head and the rail as a document load, named for the home page, for a logo and for initials', () => {
+		for (const orgLogo of ['/logo.png', undefined]) {
+			const root = render(Shell, props({ orgLogo }));
+			for (const selector of [
+				'.ds-shell-mark > a',
+				'.ds-shell-mark-rail > a',
+				'.ds-shell-drawer .ds-shell-mark > a'
+			]) {
+				const link = root.querySelector(selector);
+				expect(link?.getAttribute('href')).toBe('/admin');
+				expect(link?.getAttribute('aria-label')).toBe('Dashboard');
+				expect(link?.querySelector('.ds-avatar') !== null).toBe(orgLogo === undefined);
+			}
+		}
 	});
 
 	// base.css's `img { height: auto }` would draw the logo at its file's own height; the hook is

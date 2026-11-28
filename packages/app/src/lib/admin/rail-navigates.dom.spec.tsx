@@ -1,9 +1,9 @@
 import { Shell } from '@better-giving/operator/components/shell/Shell';
 import { act, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { createRoutesStub } from 'react-router';
+import { createRoutesStub, Outlet, useLocation } from 'react-router';
 import { expect, it, onTestFinished } from 'vitest';
-import { DESTINATION_GROUPS } from './destinations';
+import { currentDestination, DESTINATION_GROUPS } from './destinations';
 import { RouterLink } from './router-link';
 
 // what a press on the rail has to do: hand the navigation to the router.
@@ -36,31 +36,41 @@ function mount(tree: ReactNode): HTMLElement {
 }
 
 const [first] = DESTINATION_GROUPS[0].destinations;
-const [second] = DESTINATION_GROUPS[1].destinations;
+const second = DESTINATION_GROUPS[1].destinations[1];
 
-/** the frame ../../routes/_app.tsx draws, standing at the first destination. */
+/**
+ * the frame ../../routes/_app.tsx draws, under a pathless layout as that route is, drawing the page
+ * that is under it. `/` is the head's address and has no page of its own.
+ */
 function stub() {
 	const Stub = createRoutesStub([
 		{
-			path: first.href,
-			Component: () => (
-				<Shell
-					orgName="Riverside Shelter"
-					home={{ href: '/admin', label: 'Dashboard' }}
-					groups={DESTINATION_GROUPS}
-					current={{ label: first.label, kind: 'page' }}
-					staff={{ name: 'Nadia Hart', email: 'nadia@riverside.example' }}
-					donationPage="/"
-					editDonationPage="/admin/donation-page"
-					onSignOut={() => {}}
-					link={RouterLink}
-				>
-					<p>the screen</p>
-				</Shell>
-			)
-		},
-		{ path: second.href, Component: () => <p>arrived</p> },
-		{ path: '/admin/donation-page', Component: () => <p>the editor</p> }
+			Component: () => {
+				const { pathname } = useLocation();
+				const here = currentDestination(pathname);
+				return (
+					<Shell
+						orgName="Riverside Shelter"
+						home={{ href: '/', label: 'Open home page' }}
+						groups={DESTINATION_GROUPS}
+						current={here}
+						staff={{ name: 'Nadia Hart', email: 'nadia@riverside.example' }}
+						donationPage="/"
+						editDonationPage="/admin/donation-page"
+						onSignOut={() => {}}
+						link={RouterLink}
+					>
+						<Outlet />
+					</Shell>
+				);
+			},
+			children: [
+				{ path: '/admin', Component: () => <p>the screen</p> },
+				{ path: '/admin/campaigns', Component: () => <p>arrived</p> },
+				{ path: '/admin/supporter-pages', Component: () => <p>the supporters</p> },
+				{ path: '/admin/donation-page', Component: () => <p>the editor</p> }
+			]
+		}
 	]);
 	return mount(<Stub initialEntries={[first.href]} />);
 }
@@ -88,7 +98,7 @@ it('arrives at the destination the row names', async () => {
 	const root = stub();
 	await press(root, second.label);
 
-	expect(root.textContent).toBe('arrived');
+	expect(root.querySelector('main')?.textContent).toBe('arrived');
 });
 
 it('routes Enter on the account menu’s Edit donation page as a press would', async () => {
@@ -118,5 +128,5 @@ it('routes Enter on the account menu’s Edit donation page as a press would', a
 	await act(async () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
 
 	expect(claimed).toBe(true);
-	expect(root.textContent).toBe('the editor');
+	expect(root.querySelector('main')?.textContent).toBe('the editor');
 });

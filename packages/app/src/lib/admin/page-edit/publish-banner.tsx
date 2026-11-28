@@ -21,6 +21,8 @@ import { formRefusal, useScreenAnswer, useScreenWrite } from './section-card';
 // public is the done tone; the others are the attention tone, since something stands between the
 // draft and donors. the Donation page is always public and has no Unpublish. the presses post to the
 // screen's action ($lib/server/pages/publish.ts's `answerPublishPress`) against the version drawn.
+// `liveLink` is off for the Donation page alone: its banner carries no View live page, since the shell's
+// top bar opens it, and the sentence alone carries the address.
 
 type PublishBannerProps = {
 	readonly state: BannerState;
@@ -38,6 +40,8 @@ type PublishBannerProps = {
 	readonly unpublishable: boolean;
 	/** Undo publish is offered: a Publish replaced an earlier live page, which Undo puts back. */
 	readonly undoable: boolean;
+	/** View live page is offered: where false, the sentence alone names the address. */
+	readonly liveLink: boolean;
 };
 
 const WORDS: Record<BannerState, (noun: PublishBannerProps['noun']) => string> = {
@@ -55,7 +59,8 @@ export function PublishBanner({
 	livePath,
 	preview,
 	unpublishable,
-	undoable
+	undoable,
+	liveLink
 }: PublishBannerProps) {
 	const { writing, posted } = useScreenWrite();
 	const answer = useScreenAnswer();
@@ -99,7 +104,7 @@ export function PublishBanner({
 		actions.push(press(UNDO_FORM_ID, 'Undo publish', 'default'));
 	}
 	if (unpublishable) actions.push(press(UNPUBLISH_FORM_ID, 'Unpublish', 'default'));
-	if ((state === 'public' || state === 'changed') && livePath !== null) {
+	if (liveLink && (state === 'public' || state === 'changed') && livePath !== null) {
 		actions.push(open(livePath, 'View live page'));
 	}
 

@@ -12,6 +12,7 @@ describe('the rail', () => {
 	it('opens on the dashboard, then goes to a bare path under /admin, one per section', () => {
 		expect(DESTINATIONS.map((d) => d.href)).toEqual([
 			'/admin',
+			'/admin/donation-page',
 			'/admin/campaigns',
 			'/admin/supporter-pages',
 			'/admin/forms',
@@ -34,6 +35,7 @@ describe('the rail', () => {
 		expect(DESTINATION_GROUPS.map((group) => group.destinations.map((d) => d.label))).toEqual([
 			['Dashboard'],
 			[
+				'Home page',
 				'Campaigns',
 				'Supporter pages',
 				'Donation forms',
@@ -70,6 +72,7 @@ describe('who the rail is drawn for', () => {
 		).toEqual([
 			['Dashboard'],
 			[
+				'Home page',
 				'Campaigns',
 				'Supporter pages',
 				'Donation forms',
@@ -105,6 +108,27 @@ describe('the Settings cell', () => {
 		);
 
 		expect(labels).not.toContain('Settings');
+	});
+});
+
+describe('the Home page cell', () => {
+	it('stands directly above Campaigns at the editor, for every session, and is current there', () => {
+		const homePage = {
+			href: '/admin/donation-page',
+			label: 'Home page',
+			mark: 'house'
+		};
+
+		for (const deployer of [true, false]) {
+			const drawn = destinationGroupsFor(deployer).flatMap((group) => group.destinations);
+			const at = drawn.findIndex((d) => d.href === homePage.href);
+			expect(drawn[at]).toEqual(homePage);
+			expect(drawn[at + 1]?.href).toBe('/admin/campaigns');
+		}
+		expect(currentDestination('/admin/donation-page')).toEqual({
+			label: 'Home page',
+			kind: 'page'
+		});
 	});
 });
 

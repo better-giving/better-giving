@@ -50,9 +50,11 @@ import { RouteProgress } from './RouteProgress.jsx';
  *
  * @typedef {object} ShellProps
  * @property {string} orgName drawn as the top bar's title and under the staff name in the account.
- * @property {string | undefined} [orgLogo] the organisation's logo image, the sidebar's mark. absent,
- *   the head names the organisation in words and the rail's head is empty.
- * @property {{ href: string; label: string }} home where the mark goes, and the name it is read by.
+ * @property {string | undefined} [orgLogo] the organisation's logo image, drawn alone in the
+ *   sidebar's head, its rail and the drawer's head. absent, the head draws the organisation's
+ *   initials (`initials` below) in the registry's avatar instead, so the name is never a text link.
+ * @property {{ href: string; label: string }} home where the mark goes as a document load, and the
+ *   name it is read by.
  * @property {readonly NavGroup[]} groups
  * @property {ShellCurrent | undefined} [current]
  * @property {{ name: string; email: string }} staff who is signed in.
@@ -110,7 +112,6 @@ export function Shell({
 	link,
 	children
 }) {
-	const Link = link ?? 'a';
 	const sidebarId = useId();
 	const drawerId = useId();
 	const mainId = useId();
@@ -189,10 +190,11 @@ export function Shell({
 
 	const mark = (
 		<div className="ds-shell-mark">
-			<Link href={home.href} aria-label={orgLogo ? home.label : undefined}>
-				{/* app-shell-css's contract draws the mark 36px tall. */}
-				{orgLogo ? <img className="adm-logo" src={orgLogo} alt="" height={36} /> : orgName}
-			</Link>
+			{/* a plain anchor, never the surface's router link: the head opens a donor's page, which is
+			    outside this shell and follows as a document load. */}
+			<a href={home.href} aria-label={home.label}>
+				<HeadMark orgLogo={orgLogo} orgName={orgName} rail={false} />
+			</a>
 		</div>
 	);
 
@@ -214,14 +216,11 @@ export function Shell({
 			<aside className="ds-shell-sidebar" id={sidebarId}>
 				<div className="ds-shell-head">
 					{mark}
-					{orgLogo ? (
-						<div className="ds-shell-mark-rail">
-							<Link href={home.href} aria-label={home.label}>
-								{/* the rail's box is 1.75rem wide; the canvas draws the symbol 28px. */}
-								<img className="adm-logo adm-logo--rail" src={orgLogo} alt="" height={28} />
-							</Link>
-						</div>
-					) : null}
+					<div className="ds-shell-mark-rail">
+						<a href={home.href} aria-label={home.label}>
+							<HeadMark orgLogo={orgLogo} orgName={orgName} rail />
+						</a>
+					</div>
 				</div>
 				<Nav groups={groups} current={current} link={link} rail={collapsed} />
 				{account}
@@ -648,6 +647,34 @@ function ParentRow({ destination, items, current, link, sidebar }) {
 				</>
 			) : null}
 		</li>
+	);
+}
+
+/**
+ * the head's link to the home page, in the sidebar, the rail and the drawer's head: the
+ * organisation's logo, or its initials in the registry's avatar (avatar-css) where it has none.
+ * `rail` draws the logo in the rail's box, 28px: ./styles/adm.css's `.adm-logo--rail`.
+ *
+ * @param {{ orgLogo: string | undefined; orgName: string; rail: boolean }} props
+ */
+function HeadMark({ orgLogo, orgName, rail }) {
+	const letters = initials(orgName);
+	return (
+		<>
+			{/* app-shell-css's contract draws the mark 36px tall, the rail's box 28px: ./styles/adm.css
+			    sizes each on its hook. */}
+			{orgLogo === undefined ? null : rail ? (
+				<img className="adm-logo adm-logo--rail" src={orgLogo} alt="" height={28} />
+			) : (
+				<img className="adm-logo" src={orgLogo} alt="" height={36} />
+			)}
+			{/* a name with no letter in it draws no initials, so the mark is the logo alone. */}
+			{orgLogo === undefined && letters !== '' ? (
+				<span className="ds-avatar ds-avatar-square ds-avatar-logo" aria-hidden="true">
+					<span aria-hidden="true">{letters}</span>
+				</span>
+			) : null}
+		</>
 	);
 }
 

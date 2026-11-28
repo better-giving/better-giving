@@ -28,9 +28,9 @@ async function mount(tree: ReactNode): Promise<HTMLElement> {
 }
 
 /** what the layout's loader answers, for the deployer or a member, with the rail as the cookie left it. */
-const drawnFor = (deployer: boolean, railCollapsed = false) => ({
+const drawnFor = (deployer: boolean, railCollapsed = false, orgLogo: string | null = null) => ({
 	orgName: 'Riverbank Trust',
-	orgLogo: null,
+	orgLogo,
 	staff: { name: 'Nadia Hart', email: 'nadia@riverbanktrust.org' },
 	deployer,
 	viewerZone: null,
@@ -130,6 +130,56 @@ it.each([
 // the rail's deployer rows: every page behind them answers a member with not-found, and
 // ./_app.admin.integrations.api.db.spec.ts and ./_app.admin.integrations.zapier.db.spec.ts hold
 // the loaders' half.
+
+// the head of the rail opens the home page, for the logo and for the organisation's initials alike,
+// as a document load: / is a donor's page and outside this shell ($lib/admin/destinations.ts).
+it.each([
+	['the logo', '/logo.png'],
+	['the initials', null]
+])('opens / from the rail head drawing %s, named for the home page', async (_, logo) => {
+	const orgLogo = logo as string | null;
+	const Stub = createRoutesStub([
+		layoutRoute(drawnFor(true, false, orgLogo), [
+			{ path: '/admin/forms', Component: () => <p>the list</p> }
+		]) as never
+	]);
+	const root = await mount(<Stub initialEntries={['/admin/forms']} />);
+	const links = ['.ds-shell-mark > a', '.ds-shell-mark-rail > a'].map((selector) =>
+		root.querySelector(selector)
+	);
+
+	for (const link of links) {
+		expect(link?.getAttribute('href')).toBe('/');
+		expect(link?.getAttribute('aria-label')).toBe('Open home page');
+	}
+	expect(links[0]?.querySelector('.ds-avatar') !== null).toBe(orgLogo === null);
+	// a document load, not the router's own move: a press here is the browser's to follow.
+	expect(links[0]?.getAttribute('data-discover')).toBeNull();
+});
+
+it.each([
+	['the deployer', true],
+	['a member', false]
+])(
+	'draws Home page directly above Campaigns for %s, current on the editor',
+	async (_, deployer) => {
+		const atEditor = await frameAt('/admin/donation-page', deployer);
+		const rows = [...atEditor.querySelectorAll('.ds-shell-sidebar .ds-nav-link')];
+		const labels = rows.map((row) => row.textContent);
+		const home = rows.find((row) => row.textContent === 'Home page');
+
+		expect(labels.indexOf('Campaigns')).toBe(labels.indexOf('Home page') + 1);
+		expect(home?.getAttribute('href')).toBe('/admin/donation-page');
+		expect(home?.getAttribute('aria-current')).toBe('page');
+		expect(home?.querySelector('svg')).not.toBeNull();
+
+		const elsewhere = await frameAt('/admin/forms', deployer);
+		const homeElsewhere = [...elsewhere.querySelectorAll('.ds-shell-sidebar .ds-nav-link')].find(
+			(row) => row.textContent === 'Home page'
+		);
+		expect(homeElsewhere?.hasAttribute('aria-current')).toBe(false);
+	}
+);
 
 /** the sidebar's group titles and top-level rows, in the order it draws them. */
 function rail(root: HTMLElement): string[] {

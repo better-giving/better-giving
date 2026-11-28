@@ -52,8 +52,12 @@ export const middleware: Route.MiddlewareFunction[] = [staffGate];
 /** the way out, a route of its own (./_app.admin.sign-out.ts). */
 const SIGN_OUT_PATH = '/admin/sign-out';
 
-/** where the mark at the head of the rail goes. */
-const HOME = { href: '/admin', label: 'Dashboard' } as const;
+/** the deployment's own address, where the rail's head goes as a document load: the home page is a
+ *   donor's page outside this frame ($lib/server/pages/view.ts). */
+const HOME_PAGE = '/' as const;
+
+/** where the mark at the head of the rail goes, and the name it is read by. */
+const HOME = { href: HOME_PAGE, label: 'Open home page' } as const;
 
 /** the Donation page's editor, in the account menu. */
 const DONATION_PAGE_EDITOR = '/admin/donation-page';
@@ -191,7 +195,7 @@ export function ErrorBoundary() {
 				message={message}
 				arrival={arrival}
 				way={
-					<Button as={Link} to={HOME.href} variant="primary">
+					<Button as={Link} to="/admin" variant="primary">
 						Go to dashboard
 					</Button>
 				}

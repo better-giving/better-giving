@@ -4774,7 +4774,7 @@
 	   app-shell-css draws for it instead, in that sheet's own spacing step: nine steps in the sidebar
 	   and drawer head, the rail box's seven on the rail. its width follows the file's ratio, and a file
 	   wider than the head is fitted inside it rather than cropped or stretched.
-	   ./org-logo.spec.ts pins both. */
+	   org-logo.spec.ts, beside this file, pins both. */
 	.adm-logo {
 		block-size: calc(var(--ds-spacing) * 9);
 		inline-size: auto;

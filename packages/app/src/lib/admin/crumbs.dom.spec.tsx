@@ -277,6 +277,7 @@ const handleOf = (module: object): unknown => ('handle' in module ? module.handl
 /** each destination's own page by its address, with the route module that draws it. */
 const PAGES = [
 	['/admin', dashboardModule],
+	['/admin/donation-page', donationPageModule],
 	['/admin/campaigns', campaignsModule],
 	['/admin/supporter-pages', supporterPagesModule],
 	['/admin/forms', formsModule],
@@ -321,11 +322,6 @@ describe('a page with a sidebar entry', () => {
 			await expectSidebarShape(at, module);
 		}
 	);
-
-	it('the Donation page, reached from the globe beside the organisation’s name, draws its h1 hidden and no trail', async () => {
-		expect(currentDestination('/admin/donation-page')).toBeUndefined();
-		await expectSidebarShape('/admin/donation-page', donationPageModule);
-	});
 });
 
 /** the press a browser sends on the section's crumb, and the flush react router does for it. */
