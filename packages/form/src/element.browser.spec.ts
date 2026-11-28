@@ -1744,4 +1744,111 @@ describe('the first step’s unit pill and Continue', () => {
 		expect(unit.right).toBeLessThanOrEqual(tile.right);
 		expect(unit.width).toBeGreaterThan(0);
 	});
+
+	// the edge itself: the room the box leaves its value, and an amount on each side of it. the
+	// face is whatever this browser sets the page in, so the amounts are found against it here
+	// rather than written down, a digit at a time.
+
+	/** a fourteen-character estimate, `≈ $1,234,567.89`, far wider than the box's own spacing. */
+	const WIDE_ESTIMATE = 123_456_789;
+
+	/** the room a box gives its value as it stands: its padding box less its own inline padding. */
+	function roomOf(box: HTMLInputElement): number {
+		const face = getComputedStyle(box);
+		return (
+			box.clientWidth -
+			Number.parseFloat(face.paddingInlineStart) -
+			Number.parseFloat(face.paddingInlineEnd)
+		);
+	}
+
+	/** the width of `text` on one line in the box's computed face, tabular digits included. */
+	function drawnIn(box: HTMLInputElement, text: string): number {
+		const face = getComputedStyle(box);
+		const line = document.createElement('span');
+		for (const name of [
+			'font-family',
+			'font-size',
+			'font-weight',
+			'font-style',
+			'font-stretch',
+			'font-variant-numeric',
+			'font-feature-settings',
+			'font-kerning',
+			'letter-spacing',
+			'word-spacing'
+		]) {
+			line.style.setProperty(name, face.getPropertyValue(name));
+		}
+		line.style.position = 'absolute';
+		line.style.whiteSpace = 'pre';
+		line.textContent = text;
+		(box.getRootNode() as ShadowRoot).append(line);
+		const width = line.getBoundingClientRect().width;
+		line.remove();
+		return width;
+	}
+
+	/**
+	 * the room a card at 375px leaves a coin amount beside the wide estimate, and the longest `1`
+	 * followed by `digit`s that is drawn within it, with the amount one `digit` longer, which is not.
+	 * `spareIfDoubled` is what `fits` leaves of the tile less the unit and the estimate taken twice,
+	 * which is under zero where a placement counting the estimate twice drops it. the card it
+	 * measured on is taken off the page, so the next one lays out alone.
+	 */
+	async function edgeOf(digit: string): Promise<{
+		readonly fits: string;
+		readonly over: string;
+		readonly room: number;
+		readonly spareIfDoubled: number;
+	}> {
+		const root = await pricedAt(375, '1', WIDE_ESTIMATE);
+		const box = root.querySelector('#quantity-entry') as HTMLInputElement;
+		expect(root.querySelector('.tiles.bare')?.getAttribute('data-figure')).toBe('inside');
+		const room = roomOf(box);
+		let fits = '1';
+		while (drawnIn(box, fits + digit) <= room) fits += digit;
+		const tile = box.closest('[part~="amount-input"]') as HTMLElement;
+		const widthOf = (selector: string) =>
+			(root.querySelector(selector) as HTMLElement).getBoundingClientRect().width;
+		const spareIfDoubled =
+			tile.clientWidth - widthOf('.adorn-unit') - 2 * widthOf('.adorn-figure') - drawnIn(box, fits);
+		root.host.remove();
+		return { fits, over: fits + digit, room, spareIfDoubled };
+	}
+
+	it('keeps the estimate in the box while the amount fits beside it, to its last digit', async () => {
+		const { fits, spareIfDoubled } = await edgeOf('0');
+		// an amount within a digit of the edge, where the estimate taken twice leaves it no room.
+		expect(spareIfDoubled).toBeLessThan(0);
+
+		const root = await pricedAt(375, fits, WIDE_ESTIMATE);
+		const box = root.querySelector('#quantity-entry') as HTMLInputElement;
+		expect(root.querySelector('.tiles.bare')?.getAttribute('data-figure')).toBe('inside');
+		expect(drawnIn(box, fits)).toBeLessThanOrEqual(roomOf(box));
+		expect((root.querySelector('.adorn-figure') as HTMLElement).checkVisibility()).toBe(true);
+	});
+
+	it('moves the estimate under the box for an amount a digit too wide beside it, and keeps it whole', async () => {
+		const { over, room } = await edgeOf('0');
+		const root = await pricedAt(375, over, WIDE_ESTIMATE);
+		const box = root.querySelector('#quantity-entry') as HTMLInputElement;
+
+		expect(drawnIn(box, over)).toBeGreaterThan(room);
+		expect(root.querySelector('.tiles.bare')?.getAttribute('data-figure')).toBe('below');
+		expect(drawnIn(box, over)).toBeLessThanOrEqual(roomOf(box));
+	});
+
+	// a `1` is where a face's proportional and tabular digits part furthest, and the box draws
+	// tabular ones, so an amount of `1`s read at its proportional width is read short of the edge.
+	it('places an amount of 1s by its tabular width, on both sides of the edge', async () => {
+		const { fits, over } = await edgeOf('1');
+		const seats: string[] = [];
+		for (const amount of [fits, over]) {
+			const root = await pricedAt(375, amount, WIDE_ESTIMATE);
+			seats.push(root.querySelector('.tiles.bare')?.getAttribute('data-figure') ?? '');
+			root.host.remove();
+		}
+		expect(seats).toEqual(['inside', 'below']);
+	});
 });

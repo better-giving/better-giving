@@ -221,49 +221,60 @@ function setHidden(node: HTMLElement, hidden: boolean): void {
 	if (node.hidden !== hidden) node.hidden = hidden;
 }
 
+/** what sets the width of a line of text, as a box's computed style holds it. */
+const LINE_FACE = [
+	'font-family',
+	'font-size',
+	'font-weight',
+	'font-style',
+	'font-stretch',
+	'font-variant-numeric',
+	'font-feature-settings',
+	'font-kerning',
+	'letter-spacing',
+	'word-spacing'
+] as const;
+
 /**
- * the width of a box's value set on one line, in the box's own face, size and weight.
+ * the width of a box's value set on one line as the box draws it, read off `mirror`: an
+ * out-of-flow span in the same shadow root (`.adorn-measure` in ./styles/parts.css) that takes the
+ * box's computed face for the reading and holds no text after it.
  *
  * the box's `scrollWidth` cannot answer it: a text box laid in a row beside its marks is as wide as
  * the room left to it and scrolls a value too long for that room under the marks, so `scrollWidth`
- * reads the box's own width whether the value fits or not (`placeFigure` below).
+ * reads the box's own width whether the value fits or not (`placeFigure` below). nor can a canvas:
+ * the box draws tabular digits (`[part~='amount-input']` in ./styles/parts.css), a canvas has no
+ * setting for a numeric variant, and in most faces a tabular `1` is wider than a proportional one.
  *
  * `null` until every face the document is still fetching has loaded: an unloaded face's string
  * reads as loaded, and a width taken then is the fallback face's, which is a different answer.
  */
-function inputTextWidth(box: HTMLInputElement): number | null {
+function inputTextWidth(box: HTMLInputElement, mirror: HTMLElement): number | null {
 	const view = box.ownerDocument.defaultView;
 	if (box.value === '' || view === null) return 0;
 	if (view.document.fonts?.status === 'loading') return null;
-	const line = view.document.createElement('canvas').getContext('2d');
-	if (line === null) return 0;
 	const face = view.getComputedStyle(box);
-	// the `font` shorthand reads empty inside a shadow root, so the parts are read on their own.
-	line.font = `${face.fontWeight} ${face.fontSize} ${face.fontFamily}`;
-	return line.measureText(box.value).width;
+	for (const name of LINE_FACE) mirror.style.setProperty(name, face.getPropertyValue(name));
+	mirror.textContent = box.value;
+	const width = mirror.getBoundingClientRect().width;
+	mirror.textContent = '';
+	return width;
 }
 
 /**
- * the room a row leaves its value box beside the `marks` laid in it: `row.clientWidth` is the
- * padding box, so the row's padding and border come off it too, as does the gap before each mark.
- * a mark is taken at its own box's width, which already holds its padding. with no marks the value
- * has the box itself, which is what it has while the tray draws no estimate (`placeFigure`
- * below) — the trailing group is absolute over the value then, not beside it.
+ * the inline room a box gives its value: its padding box less its own inline padding. a text box
+ * laid as a flex item beside its marks is as wide as they leave it, so this is the room the value
+ * has beside them, with every gap and inset between already taken out by the layout.
  */
-function rowRoom(row: HTMLElement, box: HTMLInputElement, marks: readonly HTMLElement[]): number {
+function contentWidth(box: HTMLElement): number {
 	const view = box.ownerDocument.defaultView;
 	if (view === null) return box.clientWidth;
-	const face = view.getComputedStyle(row);
-	const sides = (start: string, end: string): number =>
-		(Number.parseFloat(face.getPropertyValue(start)) || 0) +
-		(Number.parseFloat(face.getPropertyValue(end)) || 0);
-	const gap = Number.parseFloat(face.columnGap) || 0;
-	if (marks.length === 0) return box.clientWidth;
-	const taken = marks.reduce((width, mark) => width + mark.getBoundingClientRect().width, 0);
-	const inset =
-		sides('padding-inline-start', 'padding-inline-end') +
-		sides('border-inline-start-width', 'border-inline-end-width');
-	return row.clientWidth - taken - inset - gap * marks.length;
+	const face = view.getComputedStyle(box);
+	return (
+		box.clientWidth -
+		(Number.parseFloat(face.getPropertyValue('padding-inline-start')) || 0) -
+		(Number.parseFloat(face.getPropertyValue('padding-inline-end')) || 0)
+	);
 }
 
 /** puts a node in or out of a parent, touching the tree only when that changes. */
@@ -1795,12 +1806,14 @@ export function createCard(
 	});
 	const quantityFigure = make(doc, 'span', { class: 'adorn-figure', hidden: true });
 	const quantityUnit = make(doc, 'span', { class: 'adorn-unit' });
+	const quantityMeasure = make(doc, 'span', { class: 'adorn-measure', 'aria-hidden': 'true' });
 	const quantityTile = make(doc, 'div', { part: part('amount-input'), class: 'tile entry' }, [
 		quantityInput,
 		make(doc, 'span', { class: 'adorn-trail', 'aria-hidden': 'true' }, [
 			quantityFigure,
 			quantityUnit
-		])
+		]),
+		quantityMeasure
 	]);
 	// the estimate again, under the box, for where the typed amount and the estimate cannot share
 	// it; the tray's `data-figure` says which of the two is drawn (`placeFigure` below).
@@ -1832,11 +1845,11 @@ export function createCard(
 	 * measured rather than declared: no CSS selector reads the width of a value in a box. the box's
 	 * own `scrollWidth` answers nothing here — a text box laid in a row beside its marks reports its
 	 * own width in both states, and scrolls the value that does not fit under the marks rather than
-	 * past them. the room left to the value is the box's row less the marks' (`rowRoom` above), and
-	 * the value's own width on one line in the box's face (`inputTextWidth` above) is what is laid
-	 * against it. placed on every patch, on the window changing size and once the document's faces
-	 * have loaded, and not by a `ResizeObserver`, for the reason the cadence chip is not
-	 * (`placeThumb` below).
+	 * past them. with the estimate inside, the box is the flex item beside the marks, so the room
+	 * left to the value is the box's own content width (`contentWidth` above), and the value's width
+	 * on one line as the box draws it (`inputTextWidth` above) is what is laid against it. placed on
+	 * every patch, on the window changing size and once the document's faces have loaded, and not by
+	 * a `ResizeObserver`, for the reason the cadence chip is not (`placeThumb` below).
 	 */
 	function placeFigure(): void {
 		if (quantityFigure.hidden) {
@@ -1844,16 +1857,13 @@ export function createCard(
 			return;
 		}
 		quantityTray.setAttribute('data-figure', 'inside');
-		const amount = inputTextWidth(quantityInput);
+		const amount = inputTextWidth(quantityInput, quantityMeasure);
 		// a width is not known yet: a pass places nothing and the face's arrival places it.
 		if (amount === null) {
 			doc.fonts?.ready.then(() => placeFigure());
 			return;
 		}
-		const figure = quantityFigure.getBoundingClientRect().width;
-		if (amount + figure > rowRoom(quantityTile, quantityInput, [quantityFigure, quantityUnit])) {
-			quantityTray.setAttribute('data-figure', 'below');
-		}
+		if (amount > contentWidth(quantityInput)) quantityTray.setAttribute('data-figure', 'below');
 	}
 
 	function updateUnitEntry(api: DomApi): void {

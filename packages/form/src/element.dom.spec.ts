@@ -7132,19 +7132,23 @@ describe('what the donor gives, on the first step', () => {
 	});
 
 	it('moves the estimate under the box where the typed amount and it cannot share the box', async () => {
-		// happy-dom lays nothing out: the box's row is 100 wide here and a typed character 12, so a
-		// ten-character amount leaves no room beside the estimate and a five-character one does.
+		// happy-dom lays nothing out: the box is 200 wide here and a character set in the span the
+		// value is read in 10, so a 24-character amount is wider than the box with whatever inline
+		// padding happy-dom computes for it, and a five-character one leaves room beside the estimate.
 		const proto = HTMLElement.prototype;
-		const canvas = HTMLCanvasElement.prototype;
 		const own = {
 			clientWidth: Object.getOwnPropertyDescriptor(proto, 'clientWidth'),
-			getContext: Object.getOwnPropertyDescriptor(canvas, 'getContext')
+			getBoundingClientRect: Object.getOwnPropertyDescriptor(proto, 'getBoundingClientRect')
 		};
-		Object.defineProperty(proto, 'clientWidth', { configurable: true, get: () => 100 });
-		Object.defineProperty(canvas, 'getContext', {
+		const laid = proto.getBoundingClientRect;
+		Object.defineProperty(proto, 'clientWidth', { configurable: true, get: () => 200 });
+		Object.defineProperty(proto, 'getBoundingClientRect', {
 			configurable: true,
 			writable: true,
-			value: () => ({ measureText: (text: string) => ({ width: text.length * 12 }) })
+			value(this: HTMLElement): DOMRect {
+				if (!this.classList.contains('adorn-measure')) return laid.call(this);
+				return new DOMRect(0, 0, (this.textContent ?? '').length * 10, 0);
+			}
 		});
 		try {
 			const card = await mount({ config: WITH_CRYPTO, ports: UNIT_PORTS });
@@ -7156,7 +7160,7 @@ describe('what the donor gives, on the first step', () => {
 			await priced();
 			expect(tray.getAttribute('data-figure')).toBe('inside');
 
-			type(quantity(card), '1234.56789');
+			type(quantity(card), '1234.5678901234567890123');
 			await priced();
 			expect(tray.getAttribute('data-figure')).toBe('below');
 			expect(shows(card, '.unit-figure')).toBe('≈ $482.10');

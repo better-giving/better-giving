@@ -1437,6 +1437,21 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
 }
 
 /*
+ * the span the typed amount is set in to read its width (`inputTextWidth` in ../views.ts): out of
+ * the flow and unseen, so it moves nothing, and laid out rather than `display: none`, since a box
+ * that is not laid out has no width to read. one line, so its width is the value's on the box's
+ * one line. it holds text only for the reading.
+ */
+.adorn-measure {
+	position: absolute;
+	inset-block-start: 0;
+	inset-inline-start: 0;
+	visibility: hidden;
+	white-space: pre;
+	pointer-events: none;
+}
+
+/*
  * a group that could not proceed says which decision is missing, in a sentence rather than in a
  * colour: the control the sentence names takes the danger edge — its border where it has one and an
  * inset shadow where it does not, and no fill anywhere — this line renders under the group, and
