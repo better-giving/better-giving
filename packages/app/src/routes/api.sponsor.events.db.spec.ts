@@ -221,9 +221,8 @@ async function payoutGroups(): Promise<number> {
 }
 
 async function paymentStatus(providerTxnId: string): Promise<unknown> {
-	return (
-		await first(stmt(`select status from payment where provider_txn_id = ?`, providerTxnId))
-	)?.status;
+	return (await first(stmt(`select status from payment where provider_txn_id = ?`, providerTxnId)))
+		?.status;
 }
 
 /** a gift recorded at authorization, its payment row `pending` under `providerTxnId`. */
@@ -622,10 +621,9 @@ describe('POST /api/sponsor/events', () => {
 		const sent = JSON.stringify(settled('po_sent_b', 1).payload);
 		const headers = new Headers(deliveryHeaders(SECRET, signed, Math.floor(Date.now() / 1000)));
 
-		const response = await route(
-			new Request(ADDRESS, { method: 'POST', headers, body: sent }),
-			{ env: configured() }
-		);
+		const response = await route(new Request(ADDRESS, { method: 'POST', headers, body: sent }), {
+			env: configured()
+		});
 
 		expect(response.status).toBe(400);
 		expect(await payoutLines('settled:po_sent_b')).toEqual([]);
