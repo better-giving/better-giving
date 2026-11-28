@@ -1480,11 +1480,9 @@ describe('the labels on the pair under the name', () => {
 	// inset is a token rather than the step every other box pads by: resting, the label starts
 	// exactly where the words that replace it will.
 	//
-	// floated it comes in to the corner the box is drawn with and no further, which is the one end
-	// of this axis a declaration cannot settle: a label flush with the control's own edge leaves the
-	// top-left arc standing outside the knockout as a stub beside the first letter, and what says
-	// the arc is clear is the used radius of the box itself.
-	it('starts the label on the words\u2019 own inset resting and clear of the corner floated', async () => {
+	// floated it starts at the box's own inline-start edge and no further, so the name lines up
+	// with the group's legend over the pair.
+	it('starts the label on the words\u2019 own inset resting and at the box\u2019s edge floated', async () => {
 		const { shadow } = await mount();
 		await atDetails(shadow);
 		const { box, label, words } = field(shadow, '#first-name');
@@ -1502,17 +1500,14 @@ describe('the labels on the pair under the name', () => {
 		fill(shadow, '#first-name', 'Ada');
 		await landed(label);
 
-		// the notch starts where the arc ends, and the words stand inside it.
-		const arc = corner(box);
-		expect(arc).toBeGreaterThan(0);
-		expect(ink(words).left - box.getBoundingClientRect().left).toBeGreaterThan(arc);
-		seated(words.getBoundingClientRect().left, box.getBoundingClientRect().left + arc);
+		// the band starts at the box's own edge, over the arc of its corner.
+		expect(corner(box)).toBeGreaterThan(0);
+		seated(words.getBoundingClientRect().left, box.getBoundingClientRect().left);
+		seated(ink(words).left, box.getBoundingClientRect().left);
 	});
 
-	// under `square` the box has no arc to clear, and a band starting flush with the box would take
-	// the top of its inline-start edge with it and leave the corner open. so the band starts where
-	// `soft`'s inner corner ends, and the edge stays drawn up to the corner.
-	it('starts the floated band clear of the edge under square', async () => {
+	// and under `square`, which has no arc to cover, at the same edge.
+	it('starts the floated band at the edge under square too', async () => {
 		page('body { --donate-corner: square; }');
 		const { shadow } = await mount();
 		await atDetails(shadow);
@@ -1522,7 +1517,26 @@ describe('the labels on the pair under the name', () => {
 		await landed(label);
 
 		expect(corner(box)).toBe(0);
-		seated(words.getBoundingClientRect().left, box.getBoundingClientRect().left + 6);
+		seated(words.getBoundingClientRect().left, box.getBoundingClientRect().left);
+	});
+
+	// the band is square, whatever corner the box draws: a rounded patch would leave the arc of the
+	// box's top-start corner standing outside it as a stub above or beside the first letter.
+	it('draws the floated band square over a rounded box\u2019s corner', async () => {
+		const { shadow } = await mount();
+		await atDetails(shadow);
+		const { box, label, words } = field(shadow, '#first-name');
+
+		fill(shadow, '#first-name', 'Ada');
+		await landed(label);
+
+		expect(corner(box)).toBeGreaterThan(0);
+		for (const drawn of [words, label]) {
+			expect(getComputedStyle(drawn).borderStartStartRadius).toBe('0px');
+			expect(getComputedStyle(drawn).borderStartEndRadius).toBe('0px');
+			expect(getComputedStyle(drawn).borderEndStartRadius).toBe('0px');
+			expect(getComputedStyle(drawn).borderEndEndRadius).toBe('0px');
+		}
 	});
 
 	// standing on the edge, the label has to be painted behind or the edge reads through its words.
@@ -1685,17 +1699,17 @@ describe('the labels on the pair under the name', () => {
 		});
 	});
 
-	// and the name stands inside the gap rather than at its ends: the same room at both, so the edge
-	// stops a little short of the first letter and picks up a little past the last.
-	it('keeps the name clear of both ends of the gap, in every state the edge takes', async () => {
+	// and the band starts at the first letter and picks up a little past the last: the name stands
+	// at the start of the gap, so it lines up with the group's legend, and the room is kept at the
+	// end where the edge picks up again.
+	it('keeps the name at the start of the gap and clear of its end, in every state the edge takes', async () => {
 		await throughEveryEdge((state, _box, words) => {
 			const span = words.getBoundingClientRect();
 			const drawn = ink(words);
 			const before = drawn.left - span.left;
 			const after = span.right - drawn.right;
-			expect(before, `${state}: room before the name`).toBeGreaterThanOrEqual(DEVICE_PIXEL);
+			expect(before, `${state}: room before the name`).toBeLessThan(0.5);
 			expect(after, `${state}: room after the name`).toBeGreaterThanOrEqual(DEVICE_PIXEL);
-			expect(before, `${state}: the two ends`).toBeCloseTo(after, 0);
 		});
 	});
 
@@ -1766,6 +1780,24 @@ describe('the labels on the pair under the name', () => {
 		expect(refusal.getBoundingClientRect().top).toBeGreaterThanOrEqual(
 			box.getBoundingClientRect().bottom
 		);
+	});
+
+	// the refusal is regular, as the registry's own `.ds-field-error` draws it (`../registry/styles/
+	// field-css.css`), and none of the boxes it stands under leaves it bold: measured on the card's
+	// base and on a row whose label is drawn at a label's weight, in both constructions.
+	it('draws every refusal at the regular weight, under a label over the box and one inside it', async () => {
+		const { shadow, card } = await mount();
+		await atDetails(shadow);
+		onward(shadow);
+		await settle();
+
+		for (const id of ['#first-name', '#last-name', '#email']) {
+			const { refusal } = field(shadow, id);
+			expect(refusal.hidden).toBe(false);
+			expect(getComputedStyle(refusal).fontWeight).toBe(weight(shadow, '--_w-normal'));
+			expect(getComputedStyle(refusal).fontWeight).not.toBe(weight(shadow, '--_w-bold'));
+		}
+		expect(getComputedStyle(card).fontWeight).not.toBe(weight(shadow, '--_w-bold'));
 	});
 
 	// and the box that is not in the pair is drawn the way every other single box on the card is:

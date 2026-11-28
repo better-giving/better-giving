@@ -413,10 +413,11 @@ textarea[part~='field'] {
  * control's, whatever the root resolved to. nothing here restates the control's height or its
  * padding, and neither one moving can put the two out of step.
  *
- * on the inline axis it hugs its words instead: it starts at the box's own inline start and is held
- * to the box's width, so a name longer than its box is cut at the box's end rather than running past
- * it. that is what lets the knockout below cover the words alone — a band as wide as the box is a
- * box drawn with no top edge at all.
+ * on the inline axis it hugs its words instead: it starts at the box's own inline start — resting
+ * at the inset the value's own text starts at, floated at the box's edge — and is held to the box's
+ * width, so a name longer than its box is cut at the box's end rather than running past it. that is
+ * what lets the knockout below cover the words alone — a band as wide as the box is a box drawn
+ * with no top edge at all.
  *
  * the box reserves nothing for either state and is drawn at one height in both, so the step's
  * height never depends on what a donor has typed.
@@ -459,13 +460,12 @@ textarea[part~='field'] {
  * the floated step that half stays inside the gap the group leaves over the box — at the resting
  * step it does not, which is the clearance the band is drawn at the words' own line to keep.
  *
- * floated, the band starts at the corner the box is drawn with and no closer to it: a band flush with
- * the box's inline start leaves the arc of that corner standing outside it as a stub beside the gap,
- * so the inset is the box's own radius and the edge runs unbroken from the corner to the gap and on
- * from its other side. a square box has no arc and holds `soft`'s inset instead, because a band
- * flush with it takes the top of its inline-start edge (`--_label-inset` in ./tokens.css). the
- * other end takes the same inset, which is where a name too long for its box is cut — the arc at
- * that corner is what the band would otherwise run over.
+ * floated, the band starts at the box's own inline-start edge, so the first letter of the name
+ * stands at the same inset as the group's own legend over the pair, and the edge keeps the square
+ * corner it is drawn with: the band is a square patch, and where the box is rounded it covers the
+ * arc at that corner rather than leaving the top of it standing outside as a stub beside the gap.
+ * the other end keeps `--_label-inset`'s inset (./tokens.css), which is where a name too long for
+ * its box is cut — the arc at that corner is what the band would otherwise run over.
  *
  * the band is a notch and nothing more: the edge stops a little short of the name and picks up a
  * little past it (`.label-words` below), and nothing of the edge is drawn over, beside or under the
@@ -509,8 +509,11 @@ textarea[part~='field'] {
 	max-inline-size: 100%;
 	display: flex;
 	align-items: center;
-	/* clear of the corner the box is drawn with, at both ends of it. */
-	padding-inline: var(--_label-inset);
+	/*
+	 * floated at the box's inline-start edge and no further, so the name lines up with the group's
+	 * legend; the other end is clear of the corner the box is drawn with, where a long name is cut.
+	 */
+	padding-inline: 0 var(--_label-inset);
 	/* the card's base, so the span's own step resolves against the root rather than compounding. */
 	font-size: var(--_t-md);
 	/*
@@ -542,10 +545,17 @@ textarea[part~='field'] {
 	 * raw-length-ok: the floor, for that reason.
 	 */
 	font-size: max(12px, var(--_t-xs));
-	/* the gap the edge leaves either side of the name, the same at both ends. */
-	padding-inline: var(--_sp1);
-	/* one colour as an image, because a `background-color` takes no size and the band is one line. */
+	/*
+	 * the gap the edge leaves past the name; none before it, so the first letter stands where the
+	 * label starts.
+	 */
+	padding-inline: 0 var(--_sp1);
+	/*
+	 * one colour as an image, because a `background-color` takes no size and the band is one line.
+	 * it is square, so the floated label never draws a rounded patch over the box's corner.
+	 */
 	background: linear-gradient(var(--_n1), var(--_n1)) 0 50% / 100% 1lh no-repeat;
+	border-radius: 0;
 }
 
 /*
@@ -594,6 +604,7 @@ textarea[part~='field'] {
 	font-weight: var(--_w-normal);
 	padding-inline: 0;
 	background-image: none;
+	border-radius: inherit;
 }
 
 /*
@@ -1409,12 +1420,17 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * one size, one weight and one ink wherever it is drawn, and one seat with it: under the box, in the
  * row's own column, on every row the card draws. a row whose label stands inside its box is no
  * exception — `.floating` above moves the label and says nothing about this sentence.
+ *
+ * the weight is the registry's for its own refusal (`.ds-field-error` in
+ * ../registry/styles/field-css.css, which states none and so draws the text it stands under at its
+ * own weight): the sentence is regular, and declared so rather than left to inherit whichever box
+ * it stands under.
  */
 .message {
 	margin: 0;
 	color: var(--_bad);
 	font-size: var(--_t-xs);
-	font-weight: var(--_w-bold);
+	font-weight: var(--_w-normal);
 }
 
 /*

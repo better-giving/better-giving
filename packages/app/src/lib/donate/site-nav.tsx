@@ -13,9 +13,13 @@ import type { PageLogo } from './page-view';
 
 // the top of every donor page, and of the supporter's own screens: the registry's site-nav
 // (packages/operator/src/registry/styles/site-nav-css.usage.md), its skip link first in the tab
-// order, the organisation's logo and name as the home link, and one link, Donate, to `/`. the
-// registry hides the bar's links under 40rem and offers no rule that keeps a single one drawn, so
-// there the link folds behind the registry's menu button and its panel.
+// order and the organisation's logo and name as the home link, then, on every page but `/`, the
+// nav's one link, Donate, to `/`. `/` is the donation page itself, so there it draws no links and
+// no menu button or panel: only a panel with a row and the actions in it is drawn, and without
+// either the bar is the home link alone at both widths.
+//
+// the registry hides the bar's links under 40rem, so where they are drawn they fold behind the
+// registry's menu button and its panel.
 //
 // the panel is a disclosure, as the usage note's Behavior section has it: no focus trap, and it
 // closes on Escape (focus back on the button), on a press on its row, on a pointer down outside it
@@ -33,7 +37,7 @@ export type SiteNavProps = {
 	readonly name: string | null;
 	/** the organisation's logo, beside its name; null where it has none. */
 	readonly logo: PageLogo | null;
-	/** whether this page is `/`, which marks the Donate link as the current page. */
+	/** whether this page is `/`, which draws no Donate link. */
 	readonly current: boolean;
 	/**
 	 * the bar's actions, a signed-in supporter's account on their own screens: drawn at the bar's end
@@ -114,7 +118,7 @@ export function SiteNav({ name, logo, current, actions }: SiteNavProps) {
 		if (next instanceof Node && (panel.current?.contains(next) || button.current === next)) return;
 		setOpen(false);
 	};
-	const currentPage = current ? ('page' as const) : undefined;
+	const links = !current;
 	const toggle = (
 		<MenuToggle
 			open={open}
@@ -133,17 +137,21 @@ export function SiteNav({ name, logo, current, actions }: SiteNavProps) {
 			<header className="ds-site-nav">
 				<div className="ds-site-nav-bar">
 					{name === null ? null : <Brand name={name} logo={logo} />}
-					<nav className="ds-site-nav-links" aria-label="Main">
-						<ul>
-							<li>
-								<a className="ds-site-nav-link" href="/" aria-current={currentPage}>
-									Donate
-								</a>
-							</li>
-						</ul>
-					</nav>
+					{links ? (
+						<nav className="ds-site-nav-links" aria-label="Main">
+							<ul>
+								<li>
+									<a className="ds-site-nav-link" href="/">
+										Donate
+									</a>
+								</li>
+							</ul>
+						</nav>
+					) : null}
 					{actions === undefined ? (
-						toggle
+						links ? (
+							toggle
+						) : null
 					) : (
 						<div className="ds-site-nav-end">
 							<div className="ds-site-nav-actions">{actions}</div>
@@ -151,35 +159,34 @@ export function SiteNav({ name, logo, current, actions }: SiteNavProps) {
 						</div>
 					)}
 				</div>
-				<nav
-					ref={panel}
-					id={menuId}
-					className="ds-site-nav-menu"
-					aria-label="Main"
-					hidden={!open}
-					onKeyDown={closeOnEscape}
-					onBlur={closeOnLeave}
-				>
-					<ul>
-						<li>
-							<a
-								className="ds-site-nav-menu-link"
-								href="/"
-								aria-current={currentPage}
-								onClick={() => setOpen(false)}
-							>
-								Donate
-							</a>
-						</li>
-					</ul>
-					{actions === undefined ? null : (
-						// biome-ignore lint/a11y/noStaticElementInteractions: a press on an action inside closes the panel, as a row's does (site-nav-css.usage.md).
-						// biome-ignore lint/a11y/useKeyWithClickEvents: the click is the action's own, keyboard included; this only hears it bubble.
-						<div className="ds-site-nav-menu-actions" onClick={() => setOpen(false)}>
-							{actions}
-						</div>
-					)}
-				</nav>
+				{links || actions !== undefined ? (
+					<nav
+						ref={panel}
+						id={menuId}
+						className="ds-site-nav-menu"
+						aria-label="Main"
+						hidden={!open}
+						onKeyDown={closeOnEscape}
+						onBlur={closeOnLeave}
+					>
+						{links ? (
+							<ul>
+								<li>
+									<a className="ds-site-nav-menu-link" href="/" onClick={() => setOpen(false)}>
+										Donate
+									</a>
+								</li>
+							</ul>
+						) : null}
+						{actions === undefined ? null : (
+							// biome-ignore lint/a11y/noStaticElementInteractions: a press on an action inside closes the panel, as a row's does (site-nav-css.usage.md).
+							// biome-ignore lint/a11y/useKeyWithClickEvents: the click is the action's own, keyboard included; this only hears it bubble.
+							<div className="ds-site-nav-menu-actions" onClick={() => setOpen(false)}>
+								{actions}
+							</div>
+						)}
+					</nav>
+				) : null}
 			</header>
 		</>
 	);

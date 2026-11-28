@@ -4,8 +4,8 @@ import { describe, expect, it, onTestFinished } from 'vitest';
 import { MAIN_ID, SiteNav, type SiteNavProps } from './site-nav';
 
 // the site nav, mounted: the skip link first, the organisation as the home link, the one Donate
-// link marked current on / alone, and the folded menu's disclosure. whether the bar's links or
-// the menu button show at a width is the registry's sheet's, which happy-dom does not lay out.
+// link on every page but /, and the folded menu's disclosure. whether the bar's links or the menu
+// button show at a width is the registry's sheet's, which happy-dom does not lay out.
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -51,13 +51,24 @@ describe('the links', () => {
 			(a) => a.textContent === 'Donate'
 		);
 
-	it('marks Donate as the current page on /, in the bar and in the menu', () => {
-		const links = donateLinks(nav({ current: true }));
-		expect(links).toHaveLength(2);
-		expect(links.map((a) => a.getAttribute('aria-current'))).toEqual(['page', 'page']);
+	it('draws no Donate link, no menu button and no nav on /, which is the page itself', () => {
+		const root = nav({ current: true });
+		expect(donateLinks(root)).toHaveLength(0);
+		expect(root.querySelector('nav')).toBeNull();
+		expect(root.querySelector('.ds-site-nav-toggle')).toBeNull();
+		expect(root.querySelector('.ds-site-nav-menu')).toBeNull();
+		expect(root.querySelector('.ds-site-nav-skip')).not.toBeNull();
+		expect(root.querySelector('.ds-site-nav-brand')?.getAttribute('href')).toBe('/');
 	});
 
-	it('marks nothing current anywhere else', () => {
+	it('still folds the actions into a menu on / when there are actions', () => {
+		const root = nav({ current: true, actions: <button type="button">Sign out</button> });
+		expect(donateLinks(root)).toHaveLength(0);
+		expect(root.querySelector('.ds-site-nav-toggle')).not.toBeNull();
+		expect(root.querySelector('.ds-site-nav-menu :is(a, button)')?.textContent).toBe('Sign out');
+	});
+
+	it('draws Donate in the bar and in the menu, marking nothing current', () => {
 		const root = nav({ current: false });
 		expect(donateLinks(root)).toHaveLength(2);
 		expect(root.querySelector('[aria-current]')).toBeNull();

@@ -969,11 +969,10 @@
 	--_r-box: var(--_r-in);
 
 	/*
-	 * where the band behind a floated label starts (`.floating > [part~='label']` in ./parts.css):
-	 * the inner corner's end, so the words knock the edge out past the arc and not through it. under
-	 * `square` there is no arc, and a band flush with the box would take the top of its inline-start
-	 * edge with it and leave the corner open — so `square` holds it at the registry's control corner
-	 * below, which the preset leaves declared.
+	 * how far short of its end a floated label's band is cut
+	 * (`.floating > [part~='label']` in ./parts.css): the end the box draws an arc at, so the band
+	 * knocks the edge out past the arc and not through it. the inline-start end is the box's own
+	 * edge and takes no inset, whatever corner the box is drawn with.
 	 */
 	--_label-inset: var(--_r-in);
 }
@@ -984,7 +983,6 @@
 		--radius: 0;
 		--radius-card: 0;
 		--_r-tray: 0;
-		--_label-inset: var(--radius-control);
 	}
 }
 

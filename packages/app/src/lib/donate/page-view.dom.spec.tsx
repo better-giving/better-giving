@@ -139,17 +139,25 @@ describe('the whole layout a campaign is drawn in', () => {
 
 describe('the site chrome', () => {
 	it.each([
-		['campaign', defaultCampaign(), null],
-		['donation_page', defaultDonationPage(), 'page']
-	] as const)('heads the %s with the site nav, Donate marked %s', (type, page, current) => {
-		const root = mount(<PageView {...props(type, page)} />);
-		const first = root.querySelector('a[href], button');
-		expect(first?.className).toBe('ds-site-nav-skip');
-		expect(root.querySelector(first?.getAttribute('href') ?? '')).toBe(root.querySelector('main'));
-		const link = root.querySelector('.ds-site-nav-link');
-		expect(link?.getAttribute('aria-current')).toBe(current);
-		expect(root.querySelector('.ds-site-nav-brand')?.textContent).toBe('Northside Neighbors');
-	});
+		['campaign', defaultCampaign(), true],
+		['donation_page', defaultDonationPage(), false]
+	] as const)(
+		'heads the %s with the site nav, which draws Donate only on the campaign (%s)',
+		(type, page, drawsDonate) => {
+			const root = mount(<PageView {...props(type, page)} />);
+			const first = root.querySelector('a[href], button');
+			expect(first?.className).toBe('ds-site-nav-skip');
+			expect(root.querySelector(first?.getAttribute('href') ?? '')).toBe(
+				root.querySelector('main')
+			);
+			expect(root.querySelector('.ds-site-nav-link')?.getAttribute('href')).toBe(
+				drawsDonate ? '/' : undefined
+			);
+			// without a link to fold, the bar draws no menu button under 40rem either.
+			expect(root.querySelector('.ds-site-nav-toggle') !== null).toBe(drawsDonate);
+			expect(root.querySelector('.ds-site-nav-brand')?.textContent).toBe('Northside Neighbors');
+		}
+	);
 
 	it('states the legal block once, in the site footer, after the share row', () => {
 		const root = mount(<PageView {...props('campaign', CARD)} />);
