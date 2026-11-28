@@ -118,8 +118,9 @@ import { sendRefundNotice } from './refund-notice';
 // `('adjustment', refund row)`, expensed or given back. won with no opening recorded, it writes no
 // row, because every later delivery reads won too: where the close names a fee kept and the books
 // hold the gift, that fee is settled up under `('adjustment', disputed payment)` and staff are told
-// once, and otherwise nothing is written and staff are told on each delivery. a dispute reported
-// closed one way after it was recorded closed the other changes nothing and is told to staff.
+// once, and otherwise nothing is written and staff are told on each delivery, except for the
+// sponsor's, below. a dispute reported closed one way after it was recorded closed the other
+// changes nothing and is told to staff.
 //
 // a refund of a gift whose open dispute holds the money closes that dispute `refunded` at the
 // refund's figure, through the same close and settle-up as a loss, and never a second withdrawal
@@ -153,7 +154,9 @@ import { sendRefundNotice } from './refund-notice';
 //
 // a withdrawal of a gift whose donee is the sponsor (`paidOutByDonee` in ../payments/provider.ts)
 // is its row alone: no group, no notice owed and none sent, since the sponsor mails the notice and
-// books the money at the payout. the row is what reads the gift as refunded.
+// books the money at the payout. the row is what reads the gift as refunded. a dispute of one won
+// with no opening recorded writes nothing and tells nobody, answered `ignored`
+// (`wonUnheardForDonee`): the sponsor bears the fee, and the books hold nothing to correct.
 //
 // ---------------------------------------------------------------------------
 // a reversal, its settle-up included, owes QuickBooks a row only where the group it answers holds
@@ -1167,13 +1170,16 @@ async function reinstate(
 		);
 	}
 	if (refundRow === null) {
-		return reversal.kind === 'dispute_won'
-			? wonUnheard(deps, reversal, reversed, keptMinor)
-			: {
-					ok: true,
-					outcome: 'ignored',
-					detail: `refund ${reversal.providerReversalId} is not recorded here, so there is nothing to put back.`
-				};
+		if (reversal.kind === 'refund_failed') {
+			return {
+				ok: true,
+				outcome: 'ignored',
+				detail: `refund ${reversal.providerReversalId} is not recorded here, so there is nothing to put back.`
+			};
+		}
+		return paidOutByDonee(deps.provider.processor)
+			? wonUnheardForDonee(reversal)
+			: wonUnheard(deps, reversal, reversed, keptMinor);
 	}
 	if (Number.isNaN(reversal.occurredAt.getTime())) {
 		return refundRefused(
@@ -1325,6 +1331,21 @@ async function reinstate(
 				outcome: 'posted',
 				detail: `refund ${refundRow.id} did not stand and was put back.`
 			};
+}
+
+/**
+ * a dispute won, never heard open here, of a gift whose donee is the sponsor: nothing is written and
+ * nobody is told. the sponsor bears the fee and the books never held the gift, so there is nothing
+ * to correct. `ignored`, never `not_yet`: the sponsor's reversal is read live (`readReversal` in
+ * ../payments/sponsor.ts), so the opening's own event reads won too, and a `not_yet` would stop the
+ * hourly pull (../payouts/pull.ts) at it on every run.
+ */
+function wonUnheardForDonee(reversal: WonDisputeRead): SettleResult {
+	return {
+		ok: true,
+		outcome: 'ignored',
+		detail: `dispute ${reversal.providerReversalId} was won and never recorded open here; the sponsor took the gift, so nothing was written.`
+	};
 }
 
 /**

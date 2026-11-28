@@ -37,6 +37,7 @@ beforeEach(async () => {
 		'quickbooks_connection',
 		'ledger_entry',
 		'entry_group',
+		'dispute',
 		'payment',
 		'line_item',
 		'gift_match',
@@ -106,8 +107,12 @@ async function pendingGift(): Promise<string> {
 	return donationId;
 }
 
-/** the sponsor's partner API, answering each read from what this case holds. */
-function sponsor(giftId: string) {
+/**
+ * the sponsor's partner API, answering each read from what this case holds. `reversalKind` is what
+ * the sponsor reads the reversal as now: its read is live, so every event naming a dispute reads
+ * the dispute's current state.
+ */
+function sponsor(giftId: string, reversalKind: string) {
 	const payment = {
 		id: PAYMENT_ID,
 		gift_id: giftId,
@@ -122,7 +127,7 @@ function sponsor(giftId: string) {
 		id: 'rev_1',
 		payment_id: PAYMENT_ID,
 		gift_id: giftId,
-		kind: 'refund',
+		kind: reversalKind,
 		amount: { gift: 9_670, gift_fee_cover: 330, contribution: 0, contribution_fee_cover: 0 },
 		currency: 'usd',
 		occurred_at: '2026-11-28T10:00:00Z'
@@ -147,8 +152,8 @@ function mailer() {
 	return { port, sent };
 }
 
-function deps(giftId: string, email: EmailProvider) {
-	const provider = sponsor(giftId);
+function deps(giftId: string, email: EmailProvider, reversalKind = 'refund') {
+	const provider = sponsor(giftId, reversalKind);
 	return { db, provider, processors: soleProcessor(provider), email };
 }
 
@@ -161,6 +166,9 @@ function event(id: string, type: string, data: unknown): PaymentEvent {
 
 const SETTLED = () => event('evt_1', 'payment.settled', { id: PAYMENT_ID });
 const REFUNDED = () => event('evt_2', 'payment.refunded', { id: 'rev_1', payment_id: PAYMENT_ID });
+const DISPUTED = () => event('evt_3', 'payment.disputed', { id: 'rev_1', payment_id: PAYMENT_ID });
+const DISPUTE_CLOSED = () =>
+	event('evt_4', 'payment.dispute_closed', { id: 'rev_1', payment_id: PAYMENT_ID });
 
 async function counts() {
 	const [row] = await all<{ groups: number; owed: number; refunds: number }>(
@@ -260,5 +268,51 @@ describe('settleEvent() — a refund of a gift the sponsor took', () => {
 
 		expect(result).toMatchObject({ ok: true, outcome: 'not_yet' });
 		expect(await counts()).toEqual({ groups: 0, owed: 0, refunds: 0 });
+	});
+});
+
+describe('settleEvent() — a dispute of a gift the sponsor took', () => {
+	it('writes nothing and tells nobody for a dispute won with no opening recorded', async () => {
+		const giftId = await pendingGift();
+		await settleEvent(deps(giftId, mailer().port), SETTLED());
+		const mail = mailer();
+
+		const result = await settleEvent(deps(giftId, mail.port, 'dispute_won'), DISPUTE_CLOSED());
+
+		expect(result).toMatchObject({ ok: true, outcome: 'ignored' });
+		expect(mail.sent).toEqual([]);
+		expect(await counts()).toEqual({ groups: 0, owed: 0, refunds: 0 });
+	});
+
+	it('answers the opening the same once the dispute reads won, so the pull passes it', async () => {
+		const giftId = await pendingGift();
+		await settleEvent(deps(giftId, mailer().port), SETTLED());
+		const mail = mailer();
+
+		const result = await settleEvent(deps(giftId, mail.port, 'dispute_won'), DISPUTED());
+
+		expect(result).toMatchObject({ ok: true, outcome: 'ignored' });
+		expect(mail.sent).toEqual([]);
+		expect(await counts()).toEqual({ groups: 0, owed: 0, refunds: 0 });
+	});
+
+	it('puts back a dispute won after its opening, posting nothing and mailing nobody', async () => {
+		const giftId = await pendingGift();
+		await settleEvent(deps(giftId, mailer().port), SETTLED());
+		const opened = await settleEvent(deps(giftId, mailer().port, 'dispute_opened'), DISPUTED());
+		expect(opened).toMatchObject({ ok: true, outcome: 'updated' });
+		const mail = mailer();
+
+		const result = await settleEvent(deps(giftId, mail.port, 'dispute_won'), DISPUTE_CLOSED());
+
+		expect(result).toMatchObject({ ok: true, outcome: 'updated' });
+		const row = await first<{ status: string; outcome: string | null }>(
+			stmt(`select payment.status, dispute.outcome from payment
+			 join dispute on dispute.payment_id = payment.id
+			 where payment.provider_txn_id = 'rev_1'`)
+		);
+		expect(row).toEqual({ status: 'cancelled', outcome: 'won' });
+		expect(await counts()).toEqual({ groups: 0, owed: 0, refunds: 1 });
+		expect(mail.sent).toEqual([]);
 	});
 });
