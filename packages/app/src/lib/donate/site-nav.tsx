@@ -13,10 +13,11 @@ import type { PageLogo } from './page-view';
 
 // the top of every donor page, and of the supporter's own screens: the registry's site-nav
 // (packages/operator/src/registry/styles/site-nav-css.usage.md), its skip link first in the tab
-// order and the organisation's logo and name as the home link, then, on every page but `/`, the
-// nav's one link, Donate, to `/`. `/` is the donation page itself, so there it draws no links and
-// no menu button or panel: only a panel with a row and the actions in it is drawn, and without
-// either the bar is the home link alone at both widths.
+// order and the organisation's logo and name as the home link, then, on every page but the
+// Donation page, the nav's one link, Donate, to `/`. `/` is the Donation page itself, so there,
+// and on its draft preview, it draws no Donate link. the menu button and its panel are drawn only
+// where there is a link or an action to fold into them, so the Donation page, which no caller
+// gives actions, is the home link alone at both widths.
 //
 // the registry hides the bar's links under 40rem, so where they are drawn they fold behind the
 // registry's menu button and its panel.
@@ -37,7 +38,7 @@ export type SiteNavProps = {
 	readonly name: string | null;
 	/** the organisation's logo, beside its name; null where it has none. */
 	readonly logo: PageLogo | null;
-	/** whether this page is `/`, which draws no Donate link. */
+	/** whether this is the Donation page, at `/` or its draft preview, which draws no Donate link. */
 	readonly current: boolean;
 	/**
 	 * the bar's actions, a signed-in supporter's account on their own screens: drawn at the bar's end
@@ -149,9 +150,7 @@ export function SiteNav({ name, logo, current, actions }: SiteNavProps) {
 						</nav>
 					) : null}
 					{actions === undefined ? (
-						links ? (
-							toggle
-						) : null
+						links && toggle
 					) : (
 						<div className="ds-site-nav-end">
 							<div className="ds-site-nav-actions">{actions}</div>

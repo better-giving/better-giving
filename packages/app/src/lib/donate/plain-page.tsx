@@ -125,11 +125,12 @@ export function PlainDonationPage({
 }
 
 /**
- * an ended campaign's address, and an ended supporter fundraiser's: the site nav as `/` draws
- * it, then the campaign's name, that it has ended, what the caller states under that, and the way
- * on to `/` — at the page's reading measure, in the campaign's own published look (`donorLook`
- * in $lib/server/pages/view.ts), with no donation box — and the compact site footer under it. a
- * deployment with no organisation name yet draws no home link in the nav, logo or not.
+ * an ended campaign's address, and an ended supporter fundraiser's: the site nav with its Donate
+ * link, as a live campaign draws it, then the campaign's name, that it has ended, what the caller
+ * states under that, and the way on to `/` — at the page's reading measure, in the campaign's own
+ * published look (`donorLook` in $lib/server/pages/view.ts), with no donation box — and the
+ * compact site footer under it. a deployment with no organisation name yet draws no home link in
+ * the nav, logo or not.
  */
 export function EndedCampaignPage({
 	name,

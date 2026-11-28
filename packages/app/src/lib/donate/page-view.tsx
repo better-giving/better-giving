@@ -77,10 +77,11 @@ import { isWordmark, MAIN_ID, SiteNav } from './site-nav';
 // the box is drawn exactly once, and no ancestor of it clips or transforms it.
 //
 // the site nav (./site-nav.tsx) stands over every page, the Donation page under its profile head
-// included, and on the Donation page at `/` it draws no link: `/` is that page, so it is told apart
-// from a campaign there (`type` below). a program's photo
-// stands on its chooser option. every image arrives by stored image id, drawn from the deployment's
-// own image route and never from an address a page carries.
+// included. on the Donation page it draws the home link and no Donate link, since `/` is that
+// page; the check is the page's `type` below, so the Donation page's draft preview, which is not at
+// `/`, draws none either. a program's photo stands on its chooser option. every image arrives by
+// stored image id, drawn from the deployment's own image route and never from an address a page
+// carries.
 
 export type PageLook = {
 	/** lowercase `#rrggbb`, the page's only accent, or null for the registry's default accent. */
