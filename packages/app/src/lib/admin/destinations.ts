@@ -2,7 +2,7 @@ import zapierImage from '@better-giving/operator/brand/zapier.png';
 
 /**
  * every destination the staff surface has, in the order an operator works: the state of giving in
- * one look, then the campaigns, the fundraisers supporters start beside them, and the forms that
+ * one look, then the home page and the campaigns, the fundraisers supporters start beside them, and the forms that
  * take the money, the donors it came from, the gifts themselves, the ones that repeat, who may
  * sign in, the organisation's settings and its payments, the systems outside that read it, and the
  * books all of it lands in. the dashboard is first
@@ -27,7 +27,7 @@ import zapierImage from '@better-giving/operator/brand/zapier.png';
  * time.
  *
  * the rail's column draws the destinations in five groups: the dashboard alone, the one
- * destination stating figures; the records of giving; Members, Settings and Payments — who may
+ * destination stating figures; the home page and the records of giving; Members, Settings and Payments — who may
  * sign in, what the organisation is and what it takes gifts through, none of them a record of a
  * gift; the integrations, the ways a system outside the deployment reaches it; and the books, which
  * everything above writes into. a rule is the whole of the separation between the other four. the
@@ -72,7 +72,7 @@ export const DESTINATION_GROUPS = [
 				label: 'Home page',
 				mark: 'house'
 			},
-			// first of the records of giving: a campaign is what an operator opens most weeks, and its
+			// the first record of giving: a campaign is what an operator opens most weeks, and its
 			// page is where the gifts it raises come in.
 			{
 				href: '/admin/campaigns',

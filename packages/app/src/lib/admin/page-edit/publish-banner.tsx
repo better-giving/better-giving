@@ -19,9 +19,9 @@ import { formRefusal, useScreenAnswer, useScreenWrite } from './section-card';
 // - ended: the campaign's page shows its ended screen; Publish puts it back up as drafted.
 //
 // public is the done tone; the others are the attention tone, since something stands between the
-// draft and donors. the Donation page is always public and has no Unpublish. the presses post to the
+// draft and donors. the home page is always public and has no Unpublish. the presses post to the
 // screen's action ($lib/server/pages/publish.ts's `answerPublishPress`) against the version drawn.
-// `liveLink` is off for the Donation page alone: its banner carries no View live page, since the shell's
+// `liveLink` is off for the home page alone: its banner carries no View live page, since the shell's
 // top bar opens it, and the sentence alone carries the address.
 
 type PublishBannerProps = {

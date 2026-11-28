@@ -653,7 +653,7 @@ function ParentRow({ destination, items, current, link, sidebar }) {
 /**
  * the head's link to the home page, in the sidebar, the rail and the drawer's head: the
  * organisation's logo, or its initials in the registry's avatar (avatar-css) where it has none.
- * `rail` draws the logo in the rail's box, 28px: ./styles/adm.css's `.adm-logo--rail`.
+ * `rail` draws the logo in the rail's box, 28px: ../../styles/adm.css's `.adm-logo--rail`.
  *
  * @param {{ orgLogo: string | undefined; orgName: string; rail: boolean }} props
  */
@@ -661,16 +661,16 @@ function HeadMark({ orgLogo, orgName, rail }) {
 	const letters = initials(orgName);
 	return (
 		<>
-			{/* app-shell-css's contract draws the mark 36px tall, the rail's box 28px: ./styles/adm.css
-			    sizes each on its hook. */}
+			{/* app-shell-css's contract draws the mark 36px tall, the rail's box 28px:
+			    ../../styles/adm.css sizes each on its hook. */}
 			{orgLogo === undefined ? null : rail ? (
 				<img className="adm-logo adm-logo--rail" src={orgLogo} alt="" height={28} />
 			) : (
 				<img className="adm-logo" src={orgLogo} alt="" height={36} />
 			)}
-			{/* a name with no letter in it draws no initials, so the mark is the logo alone. the rail's
-			    box is 1.75rem wide (app-shell-css.usage.md), so the 32px avatar would clip there:
-			    avatar-css's `ds-avatar-sm` is 24px. */}
+			{/* with no logo, a name with no letter in it draws no initials, and the link shows nothing
+			    but keeps its name. the rail's box is 1.75rem wide (app-shell-css.usage.md), so the
+			    32px avatar would clip there: avatar-css's `ds-avatar-sm` is 24px. */}
 			{orgLogo === undefined && letters !== '' ? (
 				<span
 					className={`ds-avatar${rail ? ' ds-avatar-sm' : ''} ds-avatar-square ds-avatar-logo`}

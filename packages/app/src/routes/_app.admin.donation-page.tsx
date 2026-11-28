@@ -38,10 +38,11 @@ import type { Route } from './+types/_app.admin.donation-page';
 // Settings — under the banner that says whether donors see the draft, and Reset to default at the
 // foot while there is something to reset. the page is always at the deployment's own address (`/`)
 // and always public, so it has no name, no link and no Unpublish. its banner carries no press that
-// opens the live page: the top bar's Open donation page already does (../../operator Shell).
+// opens the live page: the top bar's Open donation page already does (@better-giving/operator's
+// Shell.jsx).
 //
 // **the loader makes the page on first need** (`ensureDonationPage` in
-// $lib/server/pages/donation-page.ts), so on a fresh deployment the globe opens this page rather
+// $lib/server/pages/donation-page.ts), so on a fresh deployment the Home page row opens this page rather
 // than a 404, as `/` answers before anyone has opened it.
 //
 // **every Save writes the draft**, a card at a time ($lib/server/pages/section-saves.ts, and the
