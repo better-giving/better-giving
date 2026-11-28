@@ -668,9 +668,14 @@ function HeadMark({ orgLogo, orgName, rail }) {
 			) : (
 				<img className="adm-logo" src={orgLogo} alt="" height={36} />
 			)}
-			{/* a name with no letter in it draws no initials, so the mark is the logo alone. */}
+			{/* a name with no letter in it draws no initials, so the mark is the logo alone. the rail's
+			    box is 1.75rem wide (app-shell-css.usage.md), so the 32px avatar would clip there:
+			    avatar-css's `ds-avatar-sm` is 24px. */}
 			{orgLogo === undefined && letters !== '' ? (
-				<span className="ds-avatar ds-avatar-square ds-avatar-logo" aria-hidden="true">
+				<span
+					className={`ds-avatar${rail ? ' ds-avatar-sm' : ''} ds-avatar-square ds-avatar-logo`}
+					aria-hidden="true"
+				>
 					<span aria-hidden="true">{letters}</span>
 				</span>
 			) : null}

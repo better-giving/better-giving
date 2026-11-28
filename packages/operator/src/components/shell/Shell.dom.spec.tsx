@@ -552,6 +552,19 @@ describe('the shell around the page', () => {
 		}
 	});
 
+	// app-shell-css's rail box is 1.75rem wide; avatar-css's bare 32px tile would clip in it.
+	it('draws the initials at the small size in the rail and at the default size in the heads', () => {
+		const root = render(Shell, props({ orgLogo: undefined }));
+		const rail = sidebar(root).querySelector('.ds-shell-mark-rail .ds-avatar');
+		const head = sidebar(root).querySelector('.ds-shell-mark .ds-avatar');
+		const drawerHead = drawer(root).querySelector('.ds-shell-mark .ds-avatar');
+		expect(rail?.classList.contains('ds-avatar-sm')).toBe(true);
+		expect(head).not.toBeNull();
+		expect(head?.classList.contains('ds-avatar-sm')).toBe(false);
+		expect(drawerHead).not.toBeNull();
+		expect(drawerHead?.classList.contains('ds-avatar-sm')).toBe(false);
+	});
+
 	// base.css's `img { height: auto }` would draw the logo at its file's own height; the hook is
 	// what ../../styles/adm.css sizes it by (../../styles/org-logo.spec.ts).
 	it.each([

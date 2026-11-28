@@ -40,7 +40,7 @@ export function UnreadableDraft({
 }: {
 	readonly version: number;
 	readonly discardable: boolean;
-	readonly noun: 'campaign' | 'Donation page';
+	readonly noun: 'campaign' | 'Home page';
 }) {
 	const [asking, setAsking] = useState(false);
 	const discard = usePagePress(DISCARD_FORM_ID, version);

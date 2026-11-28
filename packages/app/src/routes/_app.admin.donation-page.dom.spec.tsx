@@ -131,7 +131,8 @@ describe('the Donation page edit page', () => {
 		expect(document.querySelector('iframe')).toBeNull();
 		expect(headings()).toEqual(['General', 'Videos', 'Donation settings', 'Settings']);
 		const banner = document.querySelector('.adm-banner') as HTMLElement;
-		expect(banner.textContent).toContain('Your Donation page is public');
+		expect(banner.textContent).toContain('Your Home page is public');
+		expect(banner.textContent).not.toContain('Donation page');
 		expect([...banner.querySelectorAll('button, a')].map((one) => one.textContent?.trim())).toEqual(
 			[]
 		);

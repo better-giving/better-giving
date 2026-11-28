@@ -148,7 +148,7 @@ export default function DonationPageEditPage({ loaderData }: Route.ComponentProp
 			<PublishBanner
 				state={banner.state}
 				version={version}
-				noun="Donation page"
+				noun="Home page"
 				address={host}
 				livePath="/"
 				preview={banner.preview}
@@ -165,7 +165,7 @@ export default function DonationPageEditPage({ loaderData }: Route.ComponentProp
 				<UnreadableDraft
 					version={version}
 					discardable={loaderData.discardable}
-					noun="Donation page"
+					noun="Home page"
 				/>
 			) : (
 				<>

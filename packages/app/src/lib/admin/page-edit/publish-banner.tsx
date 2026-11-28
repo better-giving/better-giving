@@ -28,8 +28,8 @@ type PublishBannerProps = {
 	readonly state: BannerState;
 	/** the page's version the screen was drawn at. */
 	readonly version: number;
-	/** what the page is called in the banner's words: "campaign", "Donation page". */
-	readonly noun: 'campaign' | 'Donation page';
+	/** what the page is called in the banner's words: "campaign", "Home page". */
+	readonly noun: 'campaign' | 'Home page';
 	/** where donors reach it, host included — `example.org/winter-coats`. */
 	readonly address: string | null;
 	/** the path the live page answers on. */
