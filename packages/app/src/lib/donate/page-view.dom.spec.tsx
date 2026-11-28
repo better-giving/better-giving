@@ -172,7 +172,10 @@ describe('the site chrome', () => {
 	it.each([
 		['its own layout', null],
 		['the card under a profile head', BARE],
-		['the letter under a profile head', { ...BARE, messages: { messages: [], total: 3, next: null } }]
+		[
+			'the letter under a profile head',
+			{ ...BARE, messages: { messages: [], total: 3, next: null } }
+		]
 	] as const)('heads the Donation page in %s with the home link alone', (_layout, profile) => {
 		const root = mount(
 			<PageView {...props('donation_page', defaultDonationPage(), { profile })} />

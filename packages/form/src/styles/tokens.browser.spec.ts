@@ -421,7 +421,9 @@ describe('the corner seed', () => {
 		const corner = name.includes(' ') ? 'pill' : name;
 		seed(`--donate-corner: ${corner};`);
 
-		expect(['--_r', '--_r-in', '--radius', '--_r-box', '--_label-inset'].map(lengthOf)).toEqual(corners);
+		expect(['--_r', '--_r-in', '--radius', '--_r-box', '--_label-inset'].map(lengthOf)).toEqual(
+			corners
+		);
 	});
 });
 
