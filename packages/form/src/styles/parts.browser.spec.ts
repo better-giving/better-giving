@@ -1500,14 +1500,13 @@ describe('the labels on the pair under the name', () => {
 		fill(shadow, '#first-name', 'Ada');
 		await landed(label);
 
-		// the band starts at the box's own edge, over the arc of its corner.
+		// the words start at the box's own edge, whatever arc its corner is drawn with.
 		expect(corner(box)).toBeGreaterThan(0);
-		seated(words.getBoundingClientRect().left, box.getBoundingClientRect().left);
 		seated(ink(words).left, box.getBoundingClientRect().left);
 	});
 
-	// and under `square`, which has no arc to cover, at the same edge.
-	it('starts the floated band at the edge under square too', async () => {
+	// and under `square`, which has no arc, at the same edge.
+	it('starts the floated words at the edge under square too', async () => {
 		page('body { --donate-corner: square; }');
 		const { shadow } = await mount();
 		await atDetails(shadow);
@@ -1517,27 +1516,41 @@ describe('the labels on the pair under the name', () => {
 		await landed(label);
 
 		expect(corner(box)).toBe(0);
-		seated(words.getBoundingClientRect().left, box.getBoundingClientRect().left);
+		seated(ink(words).left, box.getBoundingClientRect().left);
 	});
 
-	// the band is square, whatever corner the box draws: a rounded patch would leave the arc of the
-	// box's top-start corner standing outside it as a stub above or beside the first letter.
-	it('draws the floated band square over a rounded box\u2019s corner', async () => {
-		const { shadow } = await mount();
-		await atDetails(shadow);
-		const { box, label, words } = field(shadow, '#first-name');
+	// the ring is drawn outside the border box, so a band that starts at the box's edge leaves the
+	// ring's leg standing beside or above the first letter. the band reaches past the edge by the
+	// ring's own width while the words stay at the edge. the ring is widened to the strong border, as
+	// `throughEveryEdge` below does, so a band that reaches a pixel out at the token file's own
+	// values without following the ring does not pass.
+	for (const preset of ['soft', 'square'] as const) {
+		it(`carries the floated band past the box\u2019s edge by the ring\u2019s width, under ${preset}`, async () => {
+			if (preset === 'square') page('body { --donate-corner: square; }');
+			const { shadow } = await mount();
+			await atDetails(shadow);
+			const { box, label, words } = field(shadow, '#first-name');
+			const floating = box.closest('.floating') as HTMLElement;
+			floating.style.setProperty('--_focus-width', 'var(--_border-strong)');
 
-		fill(shadow, '#first-name', 'Ada');
-		await landed(label);
+			fill(shadow, '#first-name', 'Ada');
+			await caretOn(box);
+			await landed(box);
+			await landed(label);
 
-		expect(corner(box)).toBeGreaterThan(0);
-		for (const drawn of [words, label]) {
-			expect(getComputedStyle(drawn).borderStartStartRadius).toBe('0px');
-			expect(getComputedStyle(drawn).borderStartEndRadius).toBe('0px');
-			expect(getComputedStyle(drawn).borderEndStartRadius).toBe('0px');
-			expect(getComputedStyle(drawn).borderEndEndRadius).toBe('0px');
-		}
-	});
+			const drawn = getComputedStyle(box);
+			const ring = parseFloat(/(-?[\d.]+)px\s*$/.exec(drawn.boxShadow)?.[1] ?? '0');
+			const edge = box.getBoundingClientRect().left;
+
+			if (preset === 'square') expect(corner(box)).toBe(0);
+			else expect(corner(box)).toBeGreaterThan(0);
+			expect(ring, 'the widened ring').toBeGreaterThan(parseFloat(drawn.borderTopWidth));
+			expect(words.getBoundingClientRect().left, 'the band past the ring').toBeLessThanOrEqual(
+				edge - ring
+			);
+			seated(ink(words).left, edge);
+		});
+	}
 
 	// standing on the edge, the label has to be painted behind or the edge reads through its words.
 	// one fill: the half above the edge covers the card and the half below covers the box, and a
@@ -1699,18 +1712,15 @@ describe('the labels on the pair under the name', () => {
 		});
 	});
 
-	// and the band starts at the first letter and picks up a little past the last: the name stands
-	// at the start of the gap, so it lines up with the group's legend, and the room is kept at the
-	// end where the edge picks up again.
+	// and the name stands at the box's own edge and the band picks up a little past the last letter:
+	// the name lines up with the group's legend, and the room is kept at the end where the edge
+	// picks up again.
 	it('keeps the name at the start of the gap and clear of its end, in every state the edge takes', async () => {
-		await throughEveryEdge((state, _box, words) => {
+		await throughEveryEdge((state, box, words) => {
 			const span = words.getBoundingClientRect();
 			const drawn = ink(words);
-			const before = drawn.left - span.left;
 			const after = span.right - drawn.right;
-			// a box's edge is drawn on the whole device pixel it rounds to, so a band started at it
-			// lands anywhere within half a pixel of it.
-			expect(before, `${state}: room before the name`).toBeLessThanOrEqual(0.5);
+			seated(drawn.left, box.getBoundingClientRect().left);
 			expect(after, `${state}: room after the name`).toBeGreaterThanOrEqual(DEVICE_PIXEL);
 		});
 	});
@@ -1784,9 +1794,10 @@ describe('the labels on the pair under the name', () => {
 		);
 	});
 
-	// the refusal is regular, as the registry's own `.ds-field-error` draws it (`../registry/styles/
-	// field-css.css`), and none of the boxes it stands under leaves it bold: measured on the card's
-	// base and on a row whose label is drawn at a label's weight, in both constructions.
+	// the refusal is regular, and none of the boxes it stands under leaves it bold: measured on the
+	// card's base and on a row whose label is drawn at a label's weight, in both constructions. the
+	// registry's in-flow refusal (`.ds-field-err` in `../registry/styles/field-css.css`) states no
+	// weight of its own.
 	it('draws every refusal at the regular weight, under a label over the box and one inside it', async () => {
 		const { shadow, card } = await mount();
 		await atDetails(shadow);

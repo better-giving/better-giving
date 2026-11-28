@@ -460,20 +460,23 @@ textarea[part~='field'] {
  * the floated step that half stays inside the gap the group leaves over the box — at the resting
  * step it does not, which is the clearance the band is drawn at the words' own line to keep.
  *
- * floated, the band starts at the box's own inline-start edge, so the first letter of the name
- * stands at the same inset as the group's own legend over the pair, and the edge keeps the square
- * corner it is drawn with: the band is a square patch, and where the box is rounded it covers the
- * arc at that corner rather than leaving the top of it standing outside as a stub beside the gap.
- * the other end keeps `--_label-inset`'s inset (./tokens.css), which is where a name too long for
- * its box is cut — the arc at that corner is what the band would otherwise run over.
+ * floated, the first letter of the name stands at the box's own inline-start edge, at the same
+ * inset as the group's own legend over the pair. the band starts `--_focus-width` further out than
+ * that letter, past the edge: the ring, the refused ring and the outline forced colours paint are
+ * each drawn that wide outside the border box, so a band starting at the edge would leave the leg
+ * of each standing beside or above the first letter. the start of the edge is knocked out from the
+ * ring's outer line inward, at the top-start corner as well, so under every corner the box takes
+ * the leg of the edge ends at the band's lower side. the other end keeps `--_label-inset`'s inset
+ * (./tokens.css), which is where a name too long for its box is cut.
  *
- * the band is a notch and nothing more: the edge stops a little short of the name and picks up a
- * little past it (`.label-words` below), and nothing of the edge is drawn over, beside or under the
+ * the band is a notch and nothing more: the edge runs into it at the corner and picks up a little
+ * past the name (`.label-words` below), and nothing of the edge is drawn over, beside or under the
  * words. it is the same notch in every state the edge takes — at rest, under the pointer, with the
  * caret in it, refused — so a refused box's red line breaks around the name as the resting hairline
  * does. the band is centred on the box's top and half a line deep either side of it, which clears
- * the ring outside the border and the refusal's mark inside it, so no part of any of them runs
- * through the words.
+ * the ring above the box and the border and the refusal's mark inside it, so no part of any of them
+ * runs through the words. half a line is shallower than `round`'s corner, so there the arc's lower
+ * part stays drawn below the band, within a pixel of the box's start side.
  *
  * the label's rise is transitioned and nothing else about the move is (./motion.css): the band is painted
  * from the first frame rather than fading in over it, and that costs nothing, because for the length
@@ -511,7 +514,7 @@ textarea[part~='field'] {
 	align-items: center;
 	/*
 	 * floated at the box's inline-start edge and no further, so the name lines up with the group's
-	 * legend; the other end is clear of the corner the box is drawn with, where a long name is cut.
+	 * legend; the other end is held in by the box's inner corner, where a long name is cut.
 	 */
 	padding-inline: 0 var(--_label-inset);
 	/* the card's base, so the span's own step resolves against the root rather than compounding. */
@@ -546,16 +549,13 @@ textarea[part~='field'] {
 	 */
 	font-size: max(12px, var(--_t-xs));
 	/*
-	 * the gap the edge leaves past the name; none before it, so the first letter stands where the
-	 * label starts.
+	 * the gap the edge leaves past the name, and before it the ring's width taken back out by the
+	 * margin, so the first letter stands where the label starts and the band reaches past the edge.
 	 */
-	padding-inline: 0 var(--_sp1);
-	/*
-	 * one colour as an image, because a `background-color` takes no size and the band is one line.
-	 * it is square, so the floated label never draws a rounded patch over the box's corner.
-	 */
+	padding-inline: var(--_focus-width) var(--_sp1);
+	margin-inline-start: calc(-1 * var(--_focus-width));
+	/* one colour as an image, because a `background-color` takes no size and the band is one line. */
 	background: linear-gradient(var(--_n1), var(--_n1)) 0 50% / 100% 1lh no-repeat;
-	border-radius: 0;
 }
 
 /*
@@ -595,16 +595,16 @@ textarea[part~='field'] {
 /* standing in the value's place, and drawn there as a placeholder is: the value's reading size, at a
  * placeholder's weight. the ink is the placeholder's as well and is on the label above; these two
  * cannot follow it, because a host's one rule on the part is what sets the ink in both positions.
- * the knockout and the room kept inside it go with the movement — resting the words stand on the
- * box's own fill and there is no edge behind them to knock out. */
+ * the knockout, the room kept inside it and its reach past the edge go with the movement — resting
+ * the words stand on the box's own fill and there is no edge behind them to knock out. */
 .floating:not(:focus-within):has(> [part~='field']:placeholder-shown)
 	> [part~='label']
 	> .label-words {
 	font-size: var(--_t-md);
 	font-weight: var(--_w-normal);
 	padding-inline: 0;
+	margin-inline-start: 0;
 	background-image: none;
-	border-radius: inherit;
 }
 
 /*
@@ -1421,10 +1421,9 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * row's own column, on every row the card draws. a row whose label stands inside its box is no
  * exception — `.floating` above moves the label and says nothing about this sentence.
  *
- * the weight is the registry's for its own refusal (`.ds-field-error` in
- * ../registry/styles/field-css.css, which states none and so draws the text it stands under at its
- * own weight): the sentence is regular, and declared so rather than left to inherit whichever box
- * it stands under.
+ * the weight is regular, and declared so rather than left to inherit whichever box it stands under.
+ * the registry's in-flow refusal (`.ds-field-err` in ../registry/styles/field-css.css) states no
+ * weight of its own.
  */
 .message {
 	margin: 0;

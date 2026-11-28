@@ -969,10 +969,10 @@
 	--_r-box: var(--_r-in);
 
 	/*
-	 * how far short of its end a floated label's band is cut
-	 * (`.floating > [part~='label']` in ./parts.css): the end the box draws an arc at, so the band
-	 * knocks the edge out past the arc and not through it. the inline-start end is the box's own
-	 * edge and takes no inset, whatever corner the box is drawn with.
+	 * how far short of the box's inline end a floated label's band is cut
+	 * (`.floating > [part~='label']` in ./parts.css): the box's inner corner radius, so 0 under
+	 * `square`. the inline-start end takes no inset: the words start at the box's own edge, and the
+	 * band reaches `--_focus-width` past it, the width of every ring and outline a floating box takes.
 	 */
 	--_label-inset: var(--_r-in);
 }
