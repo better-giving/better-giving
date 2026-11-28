@@ -52,18 +52,16 @@ export const middleware: Route.MiddlewareFunction[] = [staffGate];
 /** the way out, a route of its own (./_app.admin.sign-out.ts). */
 const SIGN_OUT_PATH = '/admin/sign-out';
 
-/** the deployment's own address, where the rail's head goes as a document load: the home page is a
- *   donor's page outside this frame ($lib/server/pages/view.ts). */
+/** the published home page at the deployment's own address (./_index.tsx), opened from the rail's
+ *   head as a document load, since it is a donor's page outside this frame
+ *   ($lib/server/pages/view.ts), and from the top bar and the account menu. */
 const HOME_PAGE = '/' as const;
 
 /** where the mark at the head of the rail goes, and the name it is read by. */
 const HOME = { href: HOME_PAGE, label: 'Open home page' } as const;
 
-/** the Donation page's editor, in the account menu. */
+/** the home page's editor, in the account menu. */
 const DONATION_PAGE_EDITOR = '/admin/donation-page';
-
-/** the published Donation page (./_index.tsx), in the top bar and the account menu. */
-const DONATION_PAGE = '/';
 
 // the sheet every screen beneath this layout wears, linked once here rather than by each of them.
 export const links = operatorLinks;
@@ -144,7 +142,7 @@ function Frame({ data, children }: { readonly data: LayoutData; readonly childre
 			groups={destinationGroupsFor(data.deployer)}
 			current={currentDestination(pathname)}
 			staff={data.staff}
-			donationPage={DONATION_PAGE}
+			donationPage={HOME_PAGE}
 			editDonationPage={DONATION_PAGE_EDITOR}
 			// a form post and not a call: writes are actions in this app (AGENTS.md → Boundaries). the
 			// action is a route of its own (./_app.admin.sign-out.ts) because the way out is on every
