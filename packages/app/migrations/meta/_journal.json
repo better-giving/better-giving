@@ -316,6 +316,13 @@
       "when": 1795677054749,
       "tag": "0044_sponsor_payouts",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "6",
+      "when": 1795738768365,
+      "tag": "0045_sponsor_event_cursor",
+      "breakpoints": true
     }
   ]
 }

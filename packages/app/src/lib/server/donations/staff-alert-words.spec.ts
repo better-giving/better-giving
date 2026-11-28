@@ -577,7 +577,8 @@ describe('staff alerts', () => {
 			'donations/settle.ts',
 			'donations/settled-notice.ts',
 			'donations/ticker-refresh.ts',
-			'donations/tribute-notice.ts'
+			'donations/tribute-notice.ts',
+			'ledger/record-payout.ts'
 		]);
 		// a phrase written only in ./entries.ts's missingFeeCorrection.
 		expect(

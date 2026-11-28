@@ -71,11 +71,12 @@ import type { PostableAccountId } from './postable';
 //             exceptions: `form.id` is a prefixed random string, for the reasons on the
 //             `formId` helper; `pledge.id` is the uuid the donor's form minted, which the
 //             gift a received pledge becomes takes as its `donation.id`
-//             (../donations/receive-pledge.ts); `org_profile` and `quickbooks_connection`
-//             are singletons with a fixed id; `dispute`, `quickbooks_sync` and
-//             `image_bytes` are keyed by their parent row's id; and `webhook_delivery`,
-//             `supporter_link`, `supporter_session`, `pledge_rail` and `ticker` are keyed
-//             by a value of their own (a `msg_` id, a token hash, a method, a symbol).
+//             (../donations/receive-pledge.ts); `org_profile`, `quickbooks_connection` and
+//             `sponsor_event_cursor` are singletons with a fixed id; `dispute`,
+//             `quickbooks_sync` and `image_bytes` are keyed by their parent row's id; and
+//             `webhook_delivery`, `supporter_link`, `supporter_session`, `pledge_rail` and
+//             `ticker` are keyed by a value of their own (a `msg_` id, a token hash, a
+//             method, a symbol).
 //             sqlite has no gen_random_uuid(), so generation is ours either way; v7 is
 //             time-ordered, which keeps index locality on the append-only tables.
 //             text(36), not blob(16) — legibility beats index size at nonprofit scale.
@@ -4183,6 +4184,35 @@ export const ticker = sqliteTable(
 
 export type Ticker = typeof ticker.$inferSelect;
 export type NewTicker = typeof ticker.$inferInsert;
+
+/**
+ * how far a hosted site's hourly pull has applied its fiscal sponsor's event feed: the sponsor
+ * numbers each site's events in commit order, and `seq` is the last one applied through.
+ *
+ * exactly one row, ever, and the check below is what makes that true rather than a habit —
+ * `quickbooks_connection` is the precedent. one site, one sponsor, one feed.
+ *
+ * no seeded row: the pull writes it with an upsert the first time it applies anything, and a
+ * reader takes an absent row as 0, where the sponsor's feed starts.
+ */
+export const sponsorEventCursor = sqliteTable(
+	'sponsor_event_cursor',
+	{
+		// not a uuidv7 and deliberately not `$defaultFn`: the row is a singleton, and the check
+		// below is what keeps it one.
+		id: text('id').primaryKey(),
+		seq: integer('seq').notNull().default(0),
+		updatedAt: updatedAt()
+		// append new columns below this line — see rule 1 at the top of this file.
+	},
+	(t) => [
+		check('sponsor_event_cursor_id_check', sql`${t.id} = 'sponsor'`),
+		check('sponsor_event_cursor_seq_check', sql`${t.seq} >= 0`)
+	]
+);
+
+export type SponsorEventCursor = typeof sponsorEventCursor.$inferSelect;
+export type NewSponsorEventCursor = typeof sponsorEventCursor.$inferInsert;
 
 export type Supporter = typeof supporter.$inferSelect;
 export type NewSupporter = typeof supporter.$inferInsert;

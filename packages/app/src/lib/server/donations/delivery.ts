@@ -5,7 +5,13 @@ import { sqliteResultCode } from '../db/rejection';
 import type { MailDeps } from '../email/alert';
 import type { GiftOrigin } from '../matching/links';
 import type { Processors } from '../payments/factory';
-import { PROCESSOR_LABELS, type PayableCoin, type PaymentProvider } from '../payments/provider';
+import {
+	PROCESSOR_LABELS,
+	type PayableCoin,
+	type PaymentProvider,
+	type PaymentResult,
+	type SponsorFeed
+} from '../payments/provider';
 
 // what one verified delivery may answer with, the one way this app tells an operator about a
 // delivery it could not finish (`alert`, stated in ../email/alert.ts and re-exported here), and
@@ -18,12 +24,14 @@ import { PROCESSOR_LABELS, type PayableCoin, type PaymentProvider } from '../pay
 // stated here once, they cannot drift, and no writer has to import another to say "posted".
 
 /**
- * what one delivery did, all of which are answered 200.
+ * what one delivery did, all of which are answered 200 but `not_yet`, which the sponsor's route
+ * answers 409.
  *
  *   ignored        — a delivery this app subscribes to nothing for, one about a repeating gift
  *                    this deployment holds no record of, a refund or a dispute that has moved no
- *                    money yet, or the failure of a refund never recorded here. answered and
- *                    logged.
+ *                    money yet, the failure of a refund never recorded here, or a sponsored
+ *                    dispute won with no opening recorded (`wonUnheardForDonee` in
+ *                    ./reverse.ts). answered and logged.
  *   posted         — money moved: the gift is in the books, or a refund or a dispute of it is, or
  *                    a refund that did not stand or a dispute won is put back, or a dispute lost
  *                    after it opened is settled up at its close.
@@ -63,6 +71,11 @@ import { PROCESSOR_LABELS, type PayableCoin, type PaymentProvider } from '../pay
  *                    because a collection has no row waiting for it to correct, and the rail's own
  *                    retry schedule is what tries again.
  *   stopped        — a commitment recorded as having stopped: cancelled, or given up on.
+ *   not_yet        — a sponsor's event naming a gift that has not settled here yet, like a refund
+ *                    before its payment, or a payment the sponsor still reads back as `pending`.
+ *                    nothing was written; the sponsor sends it again, answered 409
+ *                    (`paidOutByDonee` in ../payments/provider.ts). every other processor's is the
+ *                    `incomplete` failure below, which its webhook redelivers on.
  */
 export const SETTLE_OUTCOMES = [
 	'ignored',
@@ -73,7 +86,8 @@ export const SETTLE_OUTCOMES = [
 	'unactionable',
 	'unnamed',
 	'uncollected',
-	'stopped'
+	'stopped',
+	'not_yet'
 ] as const;
 export type SettleOutcome = (typeof SETTLE_OUTCOMES)[number];
 
@@ -112,6 +126,11 @@ export type SettleFailure = (typeof SETTLE_FAILURES)[number];
  */
 export type SettleDeps = MailDeps & {
 	readonly provider: PaymentProvider;
+	/**
+	 * the sponsor's feed, where this run is its hourly pull (../../payouts/pull.ts): reads the events
+	 * after a sequence. absent on every delivery route, which acts on the body it was sent.
+	 */
+	readonly sponsorFeed?: (after: number) => Promise<PaymentResult<SponsorFeed>>;
 	/**
 	 * every processor this deployment holds, which a disputed gift's repeating plan is stopped through
 	 * (./reverse.ts): the plan lives on whichever processor collected it. required, so a webhook

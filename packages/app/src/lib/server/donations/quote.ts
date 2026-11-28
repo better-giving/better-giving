@@ -48,8 +48,10 @@ import {
 	processorOf,
 	PROCESSOR_LABELS,
 	type QuotedRail,
-	type RecurringInterval
+	type RecurringInterval,
+	type SponsoredGift
 } from '../payments/provider';
+import { clientIp } from '../runtime/client-ip';
 import { alert } from './delivery';
 import { depositQr } from './deposit-qr';
 import { commitDonor } from './donor';
@@ -478,7 +480,15 @@ export async function mintQuote(deps: QuoteDeps, attempt: QuoteAttempt): Promise
 			[GIFT_MINOR_METADATA_KEY]: String(priced.chargeMinor - priced.feeMinor),
 			[FEE_COVERED_METADATA_KEY]: submission.coversFee ? 'true' : 'false',
 			[FEE_RAIL_METADATA_KEY]: submission.method
-		}
+		},
+		...(await sponsoredFor(deps, provider.processor, {
+			donationId,
+			form,
+			submission,
+			attempt,
+			totalMinor: priced.chargeMinor,
+			feeMinor: priced.feeMinor
+		}))
 	});
 	if (!intent.ok) {
 		return paymentRefusal(
@@ -1060,7 +1070,15 @@ async function mintGrant(
 		method: 'daf',
 		idempotencyKey: donationId,
 		deploymentOrigin: origin,
-		authorizedSessionId: authorization.id
+		authorizedSessionId: authorization.id,
+		...(await sponsoredFor(deps, provider.processor, {
+			donationId,
+			form,
+			submission,
+			attempt,
+			totalMinor: total,
+			feeMinor: split.feeMinor
+		}))
 	});
 	if (!created.ok) {
 		// no answer settled whether Chariot created the grant. a donor who tries again records it,
@@ -1480,6 +1498,65 @@ function hostnamesOf(origins: readonly string[]): string[] {
 function attributedOrigin(request: Request, allowedOrigins: readonly string[]): string | null {
 	const origin = request.headers.get('origin');
 	return origin !== null && allowedOrigins.includes(origin) ? origin : null;
+}
+
+/**
+ * `IntentRequest.sponsored`, spread into the request for the sponsor's adapter and empty for every
+ * other: a processor is told a pointer, and the sponsor, which is the donee and mails the receipt,
+ * is told the donor and the gift's parts. no contribution is offered on this path, so its two parts
+ * are 0. a donor with no email address gets no `sponsored` part, and the adapter refuses the
+ * payment.
+ */
+async function sponsoredFor(
+	deps: QuoteDeps,
+	processor: ProcessorName,
+	gift: {
+		readonly donationId: string;
+		readonly form: FormRecord;
+		readonly submission: ParsedQuoteRequest;
+		readonly attempt: QuoteAttempt;
+		readonly totalMinor: number;
+		readonly feeMinor: number;
+	}
+): Promise<{ readonly sponsored?: SponsoredGift }> {
+	const { donationId, form, submission, attempt } = gift;
+	const { primaryEmail, firstName, lastName } = submission.donor;
+	if (processor !== 'sponsor' || primaryEmail === null) return {};
+	const programId = creditedProgram(form, submission);
+	const program = programId === null ? null : await readProgram(deps.db, programId);
+	const tribute = submission.tribute;
+	const pageOrigin = attributedOrigin(attempt.request, form.allowedOrigins);
+	const donorIp = clientIp(attempt.request);
+	return {
+		sponsored: {
+			giftId: donationId,
+			amount: {
+				gift: gift.totalMinor - gift.feeMinor,
+				giftFeeCover: gift.feeMinor,
+				contribution: 0,
+				contributionFeeCover: 0
+			},
+			contributionOffered: false,
+			donor: {
+				email: primaryEmail,
+				...(firstName === null ? {} : { firstName }),
+				...(lastName === null ? {} : { lastName })
+			},
+			form: { id: form.id, name: form.name },
+			...(program === null ? {} : { program: { id: program.id, name: program.name } }),
+			...(tribute === null
+				? {}
+				: {
+						tribute: {
+							kind: tribute.kind,
+							honoree: tribute.honoree,
+							...(tribute.notify === null ? {} : { notify: tribute.notify })
+						}
+					}),
+			...(pageOrigin === null ? {} : { pageOrigin }),
+			...(donorIp === null ? {} : { donorIp })
+		}
+	};
 }
 
 /** whether an unparsed body names a pledge rail. */

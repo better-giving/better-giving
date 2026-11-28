@@ -173,9 +173,11 @@ export type AccountingResult<T> = { readonly ok: true; readonly value: T } | Acc
  *   undepositedFunds — a gift received in hand, cash or a cheque, or a stock or IRA (QCD) pledge
  *                      marked received (../donations/receive-pledge.ts), until somebody banks it.
  *
- * **none of them is the bank.** this app hears no payout, so nothing it sends can say money reached
- * a bank account: the bookkeeper records each payout off the bank feed as a transfer out of the
- * holding account it came from, and what a holding account still holds is what that party owes.
+ * **none of them is the bank.** the one payout this app hears is the sponsor's, which posts to the
+ * local books alone (../ledger/record-payout.ts) and reaches no QuickBooks, so nothing it sends can
+ * say money reached a bank account: the bookkeeper records each payout off the bank feed as a
+ * transfer out of the holding account it came from, and what a holding account still holds is what
+ * that party owes.
  */
 export const HOLDING_ROLES = [
 	'stripeBalance',
@@ -191,7 +193,10 @@ export const HOLDING_OF: Readonly<Record<ProcessorName, HoldingRole>> = {
 	stripe: 'stripeBalance',
 	paypal: 'paypalBalance',
 	chariot: 'chariotBalance',
-	nowpayments: 'nowpaymentsBalance'
+	nowpayments: 'nowpaymentsBalance',
+	// a sponsored gift posts no income at the gift: the books take the payout when it settles
+	// (../ledger/payouts.ts), so no gift line waits in a sponsor holding.
+	sponsor: 'undepositedFunds'
 };
 
 /** which of the operator's accounts a line belongs in: income, the processor's cut, or a holding. */

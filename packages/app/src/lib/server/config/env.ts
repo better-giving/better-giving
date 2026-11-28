@@ -89,6 +89,13 @@ export interface ConfigEnv {
 	 */
 	readonly NOWPAYMENTS_OUTCOME_CURRENCY?: string;
 	/**
+	 * the partner key a fiscal sponsor issued this site, which its gifts are taken through. set by
+	 * provisioning with `SPONSOR_EVENTS_SECRET`, and the sponsor is on only where both are.
+	 */
+	readonly SPONSOR_API_KEY?: string;
+	/** the `whsec_` secret the sponsor signs this site's events with. */
+	readonly SPONSOR_EVENTS_SECRET?: string;
+	/**
 	 * the client id of the org's own Intuit app, which is the half of the pair that names it.
 	 *
 	 * not a credential, for `STRIPE_PUBLISHABLE_KEY`'s reason: connecting a company sends the
@@ -206,6 +213,8 @@ export const CONFIG_VAR_NAMES = [
 	'NOWPAYMENTS_API_KEY',
 	'NOWPAYMENTS_IPN_SECRET',
 	'NOWPAYMENTS_OUTCOME_CURRENCY',
+	'SPONSOR_API_KEY',
+	'SPONSOR_EVENTS_SECRET',
 	'QUICKBOOKS_CLIENT_ID',
 	'QUICKBOOKS_CLIENT_SECRET',
 	'QUICKBOOKS_API_URL'

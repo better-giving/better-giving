@@ -38,6 +38,8 @@ export const ENV_VAR_NAMES = [
 	'NOWPAYMENTS_API_KEY',
 	'NOWPAYMENTS_IPN_SECRET',
 	'NOWPAYMENTS_OUTCOME_CURRENCY',
+	'SPONSOR_API_KEY',
+	'SPONSOR_EVENTS_SECRET',
 	'QUICKBOOKS_CLIENT_ID',
 	'QUICKBOOKS_CLIENT_SECRET',
 	'QUICKBOOKS_API_URL',
@@ -96,6 +98,8 @@ declare global {
 		readonly NOWPAYMENTS_API_KEY?: string;
 		readonly NOWPAYMENTS_IPN_SECRET?: string;
 		readonly NOWPAYMENTS_OUTCOME_CURRENCY?: string;
+		readonly SPONSOR_API_KEY?: string;
+		readonly SPONSOR_EVENTS_SECRET?: string;
 		readonly QUICKBOOKS_CLIENT_ID?: string;
 		readonly QUICKBOOKS_CLIENT_SECRET?: string;
 		readonly QUICKBOOKS_API_URL?: string;

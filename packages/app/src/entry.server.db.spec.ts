@@ -27,6 +27,7 @@ import * as layout from './routes/_app';
 import * as dashboard from './routes/_app.admin._index';
 import * as donorPage from './routes/_index';
 import * as stripeWebhook from './routes/api.stripe.webhook';
+import * as sponsorEvents from './routes/api.sponsor.events';
 import * as publicApi from './routes/api.v1';
 import * as servedConfig from './routes/api.v1.forms.$id.config';
 import * as startFundraiser from './routes/fundraise._index';
@@ -214,6 +215,12 @@ const handle = createRequestHandler(
 			parentId: 'root',
 			path: 'api/stripe/webhook',
 			module: stripeWebhook
+		},
+		{
+			id: 'routes/api.sponsor.events',
+			parentId: 'root',
+			path: 'api/sponsor/events',
+			module: sponsorEvents
 		}
 	]),
 	'production'

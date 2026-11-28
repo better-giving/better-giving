@@ -90,12 +90,17 @@ const allSet = (config: ConfigEnv, names: readonly (keyof ConfigEnv)[]): boolean
  *
  * a pair rather than a flat list of everything payments needs, because the four are alternatives:
  * an organisation on any one of them alone holds no key for the other three and is set up.
+ *
+ * the sponsor's pair is the one that holds its events value: provisioning sets the key and the
+ * secret together, and the sponsor is on only where both are (`PROCESSORS` in
+ * ../payments/factory.ts).
  */
 const CHARGE_PAIRS: Readonly<Record<ProcessorName, readonly (keyof ConfigEnv)[]>> = {
 	stripe: ['STRIPE_SECRET_KEY', 'STRIPE_PUBLISHABLE_KEY'],
 	paypal: ['PAYPAL_CLIENT_ID', 'PAYPAL_CLIENT_SECRET'],
 	chariot: ['CHARIOT_API_KEY', 'CHARIOT_CONNECT_ID'],
-	nowpayments: ['NOWPAYMENTS_API_KEY', 'NOWPAYMENTS_OUTCOME_CURRENCY']
+	nowpayments: ['NOWPAYMENTS_API_KEY', 'NOWPAYMENTS_OUTCOME_CURRENCY'],
+	sponsor: ['SPONSOR_API_KEY', 'SPONSOR_EVENTS_SECRET']
 };
 
 /**

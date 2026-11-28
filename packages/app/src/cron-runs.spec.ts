@@ -10,6 +10,7 @@ import { parseCron } from '$lib/server/runtime/scheduler';
 import { sendDueWebhooks } from '$lib/server/webhooks/deliver';
 import { mailPause } from '$lib/server/webhooks/paused-mail';
 import { sendDueZapierEvents } from '$lib/server/zapier/deliver';
+import { pullSponsorEvents } from '$lib/server/payouts/pull';
 import { CRON_RUNS } from './cron-runs';
 import type { Db } from '$lib/server/db/client';
 
@@ -27,7 +28,7 @@ import type { Db } from '$lib/server/db/client';
 // $lib/server/matching/reminders.db.spec.ts, $lib/server/matching/pack.db.spec.ts,
 // $lib/server/accounting/deliver.db.spec.ts, $lib/server/zapier/deliver.db.spec.ts,
 // $lib/server/webhooks/deliver.db.spec.ts and $lib/server/donations/ticker-refresh.db.spec.ts,
-// against a real database.
+// against a real database; the hourly sponsor pull is ./routes/api.sponsor.events.db.spec.ts.
 
 vi.mock('$lib/server/donations/pending-crypto-read', () => ({
 	readPendingCryptoGifts: vi.fn(async () => {})
@@ -37,6 +38,9 @@ vi.mock('$lib/server/donations/refund-notice', () => ({
 }));
 vi.mock('$lib/server/donations/ticker-refresh', () => ({
 	refreshTickers: vi.fn(async () => {})
+}));
+vi.mock('$lib/server/payouts/pull', () => ({
+	pullSponsorEvents: vi.fn(async () => {})
 }));
 vi.mock('$lib/server/matching/reminders', () => ({
 	sendDueReminders: vi.fn(async () => {})
@@ -71,7 +75,7 @@ function* minutesOf2028(): Generator<Date> {
 const SCHEDULED_AT = new Date('2026-09-20T12:30:00.000Z');
 
 /** the env a run is handed. nothing below reaches configuration: every job is mocked. */
-const env = {} as Env;
+const env = { SPONSOR_API_KEY: 'spk_test' } as Env;
 
 /** the database handle a run is handed, never read: every job is mocked. */
 const db = {} as Db;
@@ -91,7 +95,8 @@ const JOBS = [
 	sendDueEntries,
 	sendDueZapierEvents,
 	sendDueWebhooks,
-	refreshTickers
+	refreshTickers,
+	pullSponsorEvents
 ] as const;
 
 // `restoreMocks` in ../vitest.config.ts restores a spy's implementation and leaves a module mock's
@@ -193,6 +198,44 @@ describe('which run an expression reaches', () => {
 			expect(sendDueEntries).not.toHaveBeenCalled();
 		}
 	);
+
+	it('pulls the sponsor’s events on the hour, through the sponsor provider and a reader of its feed', async () => {
+		await fires('0 * * * *');
+
+		expect(pullSponsorEvents).toHaveBeenCalledExactlyOnceWith(
+			{
+				db,
+				provider: expect.objectContaining({ processor: 'sponsor' }),
+				processors: expect.anything(),
+				email: expect.anything(),
+				giftOrigin: null,
+				sponsorFeed: expect.any(Function)
+			},
+			SCHEDULED_AT
+		);
+		expect(sendDueEntries).not.toHaveBeenCalled();
+	});
+
+	it('reads the feed after the cursor it is handed, with SPONSOR_API_KEY as the bearer', async () => {
+		const read = vi
+			.spyOn(globalThis, 'fetch')
+			.mockResolvedValue(Response.json({ events: [], has_more: false }));
+		await fires('0 * * * *');
+		const sponsorFeed = vi.mocked(pullSponsorEvents).mock.calls[0]?.[0].sponsorFeed;
+
+		const result = await sponsorFeed?.(7);
+
+		expect(result).toMatchObject({ ok: true, value: { events: [], next: 7, more: false } });
+		const [url, init] = read.mock.calls[0] ?? [];
+		expect(String(url)).toBe('https://better.giving/api/partner/v1/events?after=7');
+		expect(new Headers(init?.headers).get('authorization')).toBe('Bearer spk_test');
+	});
+
+	it('pulls nothing on the hour where SPONSOR_API_KEY is unset', async () => {
+		await fires('0 * * * *', {} as Env);
+
+		expect(pullSponsorEvents).not.toHaveBeenCalled();
+	});
 
 	it('sends what the books, the Zaps and the destinations are owed every minute, from the run’s own time', async () => {
 		await fires('* * * * *');

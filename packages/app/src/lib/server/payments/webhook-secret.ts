@@ -95,7 +95,9 @@ const VERIFICATION: Readonly<
 	// Chariot signs a delivery with the subscription's secret, as Stripe does, so only digests cross.
 	chariot: { variable: 'CHARIOT_WEBHOOK_SECRET', stamp: secretFingerprint },
 	// an IPN is signed with the account's IPN secret, so only digests cross here too.
-	nowpayments: { variable: 'NOWPAYMENTS_IPN_SECRET', stamp: secretFingerprint }
+	nowpayments: { variable: 'NOWPAYMENTS_IPN_SECRET', stamp: secretFingerprint },
+	// the sponsor signs this site's events with the `whsec_` secret provisioning set.
+	sponsor: { variable: 'SPONSOR_EVENTS_SECRET', stamp: secretFingerprint }
 });
 
 /**
@@ -117,7 +119,10 @@ const REPAIR: Readonly<Record<ProcessorName, string>> = Object.freeze({
 	nowpayments:
 		'generate an IPN secret under Payment Settings in the NOWPayments dashboard, which shows it ' +
 		'once and replaces the old one, and put it in `.env` as ' +
-		`\`${envLine('NOWPAYMENTS_IPN_SECRET')}\``
+		`\`${envLine('NOWPAYMENTS_IPN_SECRET')}\``,
+	sponsor:
+		'ask Better Giving for this site’s events secret and put it in `.env` as ' +
+		`\`${envLine('SPONSOR_EVENTS_SECRET')}\``
 });
 
 /**

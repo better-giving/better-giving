@@ -141,6 +141,15 @@ describe('one job at a time left undone', () => {
 		expect(line({ config: { ...mailSet, ...noOutcome } }, 'payments').state).toBe('todo');
 	});
 
+	it("reads payments done on the sponsor's two values, and incomplete on either alone", () => {
+		const sponsor = { SPONSOR_API_KEY: 'spk_key', SPONSOR_EVENTS_SECRET: 'whsec_secret' };
+		const { SPONSOR_API_KEY: _key, ...noKey } = sponsor;
+		const { SPONSOR_EVENTS_SECRET: _secret, ...noSecret } = sponsor;
+		expect(line({ config: { ...mailSet, ...sponsor } }, 'payments').state).toBe('ready');
+		expect(line({ config: { ...mailSet, ...noKey } }, 'payments').state).toBe('todo');
+		expect(line({ config: { ...mailSet, ...noSecret } }, 'payments').state).toBe('todo');
+	});
+
 	it('holds payments incomplete where neither processor holds a whole pair', () => {
 		// half of each is not one of either, which is the case a flat list of everything payments
 		// needs would have read as done.

@@ -21,6 +21,7 @@ import {
 	paypalSdkUrl,
 	unusablePaypalAddress
 } from './paypal';
+import { createSponsorProvider } from './sponsor';
 import { createStripeProvider } from './stripe';
 import { noticeVariable } from './webhook-secret';
 import type { StripeUnreadableReason } from '@better-giving/operator/console/stripe-read';
@@ -80,6 +81,11 @@ type Processor = {
 	 * own default.
 	 */
 	readonly sdkUrl?: (env: ConfigEnv) => string | null;
+	/**
+	 * `true` where provisioning sets this processor's values rather than an operator, so a sentence
+	 * to a deployment that holds none of them names none of them.
+	 */
+	readonly provisioned?: true;
 };
 
 /**
@@ -201,6 +207,22 @@ const PROCESSORS: Readonly<Record<ProcessorName, Processor>> = Object.freeze({
 				ipnSecret: env.NOWPAYMENTS_IPN_SECRET ?? null
 			});
 		}
+	},
+	sponsor: {
+		// the events secret is required beside the key, unlike every other processor's notice value:
+		// provisioning sets the two together, and the sponsor is on only where both are.
+		requires: ['SPONSOR_API_KEY', 'SPONSOR_EVENTS_SECRET'],
+		build: (env) => {
+			const apiKey = env.SPONSOR_API_KEY;
+			const eventsSecret = env.SPONSOR_EVENTS_SECRET;
+			if (apiKey === undefined || eventsSecret === undefined) return null;
+			return createSponsorProvider({
+				apiKey,
+				eventsSecret,
+				fetch: (input, init) => fetch(input, init)
+			});
+		},
+		provisioned: true
 	}
 });
 
@@ -255,12 +277,17 @@ export function requiredCredentials(name: ProcessorName): readonly (keyof Config
  * script is started on the donor's page. null means no browser half is owed, so it is never named
  * as short, and never an entry in `ServedProcessors.providers` — `Provider.publishableKey` in
  * packages/form/src/v1.ts is what an adapter on the donor's page starts an SDK with.
+ *
+ * the sponsor's is null too, though its gifts do start an SDK: the browser halves are the sponsor's
+ * readiness `clients`, which no env value carries, so a sponsor deployment serves once its two
+ * values are set and names no provider entry until something serves those clients.
  */
 const BROWSER_VARS: Readonly<Record<ProcessorName, keyof ConfigEnv | null>> = Object.freeze({
 	stripe: 'STRIPE_PUBLISHABLE_KEY',
 	paypal: 'PAYPAL_CLIENT_ID',
 	chariot: 'CHARIOT_CONNECT_ID',
-	nowpayments: null
+	nowpayments: null,
+	sponsor: null
 });
 
 /** which processors a donation form may be served on here, and what to say where there are none. */
@@ -330,7 +357,7 @@ export function servedProcessors(source: unknown): ServedProcessors {
 			configured: [],
 			serves: false,
 			shortfall: 'this deployment’s configuration could not be read',
-			fix: processorSetupFix(PROCESSOR_NAMES)
+			fix: processorSetupFix(PROCESSOR_NAMES.filter((name) => !PROCESSORS[name].provisioned))
 		};
 	}
 
@@ -365,10 +392,14 @@ export function servedProcessors(source: unknown): ServedProcessors {
  * either is enough, rather than picking for them.
  */
 function startedOn(env: ConfigEnv): readonly ProcessorName[] {
-	const started = PROCESSOR_NAMES.filter((name) =>
-		setupVars(name).some((variable) => env[variable])
-	);
-	return started.length === 0 ? PROCESSOR_NAMES : started;
+	const started = PROCESSOR_NAMES.filter((name) => isStartedOn(env, name));
+	return started.length === 0
+		? PROCESSOR_NAMES.filter((name) => !PROCESSORS[name].provisioned)
+		: started;
+}
+
+function isStartedOn(env: ConfigEnv, name: ProcessorName): boolean {
+	return setupVars(name).some((variable) => env[variable]);
 }
 
 /**
@@ -443,7 +474,8 @@ const SETUP_FIXES: Readonly<Record<ProcessorName, string>> = Object.freeze({
 		'the payout wallet under Payment Settings (such as `usdttrc20`). Generate ' +
 		'`NOWPAYMENTS_IPN_SECRET` once under Payment Settings in the NOWPayments dashboard, then add ' +
 		`\`${envLine('NOWPAYMENTS_API_KEY')}\`, \`${envLine('NOWPAYMENTS_OUTCOME_CURRENCY')}\`, and ` +
-		`\`${envLine('NOWPAYMENTS_IPN_SECRET')}\` to \`.env\`, then recreate the app: \`${RECREATE_APP}\`.`
+		`\`${envLine('NOWPAYMENTS_IPN_SECRET')}\` to \`.env\`, then recreate the app: \`${RECREATE_APP}\`.`,
+	sponsor: `Ask Better Giving for this site’s key and events secret, add \`${envLine('SPONSOR_API_KEY')}\` and \`${envLine('SPONSOR_EVENTS_SECRET')}\` to \`.env\`, then recreate the app: \`${RECREATE_APP}\`.`
 });
 
 /**
@@ -465,7 +497,8 @@ const NOTICE_ONLY: Readonly<Record<ProcessorName, string>> = Object.freeze({
 		`to \`.env\`, then recreate the app: \`${RECREATE_APP}\`.`,
 	nowpayments:
 		'Generate `NOWPAYMENTS_IPN_SECRET` under Payment Settings in the NOWPayments dashboard, add ' +
-		`\`${envLine('NOWPAYMENTS_IPN_SECRET')}\` to \`.env\`, then recreate the app: \`${RECREATE_APP}\`.`
+		`\`${envLine('NOWPAYMENTS_IPN_SECRET')}\` to \`.env\`, then recreate the app: \`${RECREATE_APP}\`.`,
+	sponsor: `Ask Better Giving for this site’s events secret, add \`${envLine('SPONSOR_EVENTS_SECRET')}\` to \`.env\`, then recreate the app: \`${RECREATE_APP}\`.`
 });
 
 /**
@@ -511,13 +544,18 @@ export function processorSetupFix(
 }
 
 function shortfall(env: ConfigEnv): string {
-	const lines = PROCESSOR_NAMES.map((name) => {
-		const unset = setupVars(name).filter((variable) => !env[variable]);
-		if (unset.length > 0) {
-			return `\`${unset.join('` and `')}\` ${unset.length === 1 ? 'is' : 'are'} not set`;
-		}
-		return PROCESSORS[name].unusable?.(env)?.clause ?? null;
-	}).filter((line) => line !== null);
+	const named = PROCESSOR_NAMES.filter(
+		(name) => !PROCESSORS[name].provisioned || isStartedOn(env, name)
+	);
+	const lines = named
+		.map((name) => {
+			const unset = setupVars(name).filter((variable) => !env[variable]);
+			if (unset.length > 0) {
+				return `\`${unset.join('` and `')}\` ${unset.length === 1 ? 'is' : 'are'} not set`;
+			}
+			return PROCESSORS[name].unusable?.(env)?.clause ?? null;
+		})
+		.filter((line) => line !== null);
 
 	return lines.join(', and ');
 }
@@ -557,7 +595,8 @@ export type Processors = {
 	 */
 	for(name: ProcessorName): PaymentProvider;
 	/**
-	 * the adapter that settles this rail, through `processorOf` at the port.
+	 * the adapter that settles this rail: the sponsor's for every rail but crypto where this
+	 * deployment holds both its values, and otherwise `processorOf`'s at the port.
 	 *
 	 * the one way a rail a donor picked selects an adapter. a caller choosing by hand is a caller
 	 * holding a second copy of that table.
@@ -611,10 +650,12 @@ export function createPaymentProviders(source: unknown): Processors {
 		built.set(name, made);
 		return made;
 	};
+	// a sponsored site takes every gift the sponsor takes through it; crypto is not one of them.
+	const sponsored = env !== null && configuredFor(env, 'sponsor');
 	return {
 		configured: env === null ? [] : PROCESSOR_NAMES.filter((name) => configuredFor(env, name)),
 		for: adapter,
-		forRail: (rail) => adapter(processorOf(rail)),
+		forRail: (rail) => adapter(sponsored && rail !== 'crypto' ? 'sponsor' : processorOf(rail)),
 		// a configuration that could not be read is every variable unset rather than none: the answer a
 		// caller acts on is "this cannot be called", and an empty list there would read as a processor
 		// that is ready.

@@ -181,6 +181,31 @@ describe('a deployment with no processor set up', () => {
 			{ processor: 'chariot', label: 'Chariot' },
 			{ processor: 'nowpayments', label: 'NOWPayments' }
 		]);
+		expect(screen.sponsored).toBe(false);
+	});
+});
+
+describe('a deployment whose gifts the sponsor takes', () => {
+	const SPONSOR_VALUES = {
+		SPONSOR_API_KEY: 'spk_notarealkey',
+		SPONSOR_EVENTS_SECRET: 'whsec_bm90YXJlYWxzZWNyZXQ='
+	};
+
+	it('draws the sponsor alone, with no card for keys it routes nothing to and nothing to set up', async () => {
+		// the deployment still holds Stripe's keys, and no gift reaches Stripe while the sponsor is on.
+		const screen = await drawn(deployed(SPONSOR_VALUES));
+
+		expect(screen.sponsored).toBe(true);
+		expect(screen.cards).toEqual([]);
+		expect(screen.others).toEqual([]);
+	});
+
+	it('carries neither the sponsor’s key nor its events secret in its answer', async () => {
+		const said = await (await get(deployer, deployed(SPONSOR_VALUES))).text();
+
+		expect((JSON.parse(said) as Drawn).sponsored).toBe(true);
+		expect(said).not.toContain(SPONSOR_VALUES.SPONSOR_API_KEY);
+		expect(said).not.toContain(SPONSOR_VALUES.SPONSOR_EVENTS_SECRET);
 	});
 });
 

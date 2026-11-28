@@ -79,6 +79,18 @@ export function correctionWrites(db: Db, correction: Posting): Writes {
 }
 
 /**
+ * a sponsor's payout, or part of one returned (`payoutSettledPosting` and `payoutReturnedPosting`
+ * in ../ledger/payouts.ts): its group and lines, and nothing else — no queue row, no Zap row and no
+ * destination row. a gift the sponsor took posts nothing of its own (`paidOutByDonee` in
+ * ../payments/provider.ts), so the payout is where the organisation's books first see that money.
+ * the organisation's QuickBooks, Zaps and destinations never hear of a payout.
+ */
+export function payoutWrites(db: Db, payout: Posting): Writes {
+	inSlot(payout, 'payout', 'payout', '$lib/server/ledger/payouts.ts');
+	return [...postingStatements(db, payout)];
+}
+
+/**
  * money leaving a gift already in the books, or coming back to it, by the port's own kind of
  * reversal (`Reversal` in ../payments/provider.ts), and the settle-up of a dispute's fee at its
  * close, lost or won.

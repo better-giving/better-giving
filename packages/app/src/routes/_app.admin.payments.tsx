@@ -281,11 +281,11 @@ export function clientAction({ request, serverAction }: Route.ClientActionArgs) 
 }
 
 export default function Payments({ loaderData }: Route.ComponentProps) {
-	const { cards, others } = loaderData;
+	const { cards, others, sponsored } = loaderData;
 	return (
 		<Column>
 			<ScreenHeading title={SCREEN_TITLE} />
-			{cards.length === 0 ? <NoProcessor /> : null}
+			{sponsored ? <SponsorCard /> : cards.length === 0 ? <NoProcessor /> : null}
 			{cards.map((card) => (
 				<ProcessorCard key={card.processor} card={card} />
 			))}
@@ -307,8 +307,16 @@ const TAKES: Record<Processor, string> = {
 	stripe: 'Cards, Apple Pay, Google Pay, bank transfer',
 	paypal: 'PayPal and Venmo',
 	chariot: 'Gifts from a donor-advised fund',
-	nowpayments: 'Crypto'
+	nowpayments: 'Crypto',
+	// no card of its own reads this: the sponsor draws `SponsorCard` below (`readPaymentsScreen`).
+	sponsor: 'Better Giving takes your gifts and pays them out.'
 };
+
+/** where a sponsored organisation sees its payouts and bank details. */
+const SPONSOR_ACCOUNT = 'https://better.giving';
+
+/** how a sponsored deployment names its sponsor where it draws the one card it has. */
+const SPONSOR_TITLE = 'Better Giving';
 
 /** where DEPLOY.md says how a processor's keys go into `.env`. */
 const HOW_TO_ADD = 'https://github.com/better-giving/better-giving/blob/main/DEPLOY.md#payments';
@@ -378,6 +386,12 @@ function noticesSteps(card: Card): ServerStepsProps {
 				says: `Generate an IPN secret under Payment Settings in your NOWPayments dashboard and put it in \`.env\` as \`${envLine('NOWPAYMENTS_IPN_SECRET')}\`. NOWPayments shows it once, and generating a new one replaces the old. Then recreate the app:`,
 				commands: [RECREATE_APP]
 			};
+		// no sponsor card is drawn (`SponsorCard` stands in for it); provisioning sets the secret.
+		case 'sponsor':
+			return {
+				says: `Ask Better Giving for this site’s events secret and put it in \`.env\` as \`${envLine('SPONSOR_EVENTS_SECRET')}\`, then recreate the app:`,
+				commands: [RECREATE_APP]
+			};
 	}
 }
 
@@ -423,6 +437,25 @@ function NoProcessor() {
 			No donation form can go live until one is. Ask whoever set up this site to add one. The steps
 			below are for them.
 		</Banner>
+	);
+}
+
+/**
+ * the one card a sponsored deployment gets: the sponsor holds the account, so there is nothing here
+ * to read, register or set up, and payouts and bank details are on the sponsor's own site.
+ */
+function SponsorCard() {
+	return (
+		<Section card>
+			<div className="adm-record__head">
+				<h2>{SPONSOR_TITLE}</h2>
+				<StatusWord tone="done">Set up</StatusWord>
+			</div>
+			<p className="adm-hint">{TAKES.sponsor}</p>
+			<p>
+				<a href={SPONSOR_ACCOUNT}>Payouts and bank details</a>
+			</p>
+		</Section>
 	);
 }
 
