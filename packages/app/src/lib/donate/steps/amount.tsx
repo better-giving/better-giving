@@ -103,6 +103,21 @@ export type AmountStepProps = {
  */
 const useMeasure = typeof document === 'undefined' ? useEffect : useLayoutEffect;
 
+/** the computed properties that set a line's drawn width, copied from the box onto its mirror. */
+const DRAWN_TEXT = [
+	'font-family',
+	'font-size',
+	'font-weight',
+	'font-style',
+	'font-stretch',
+	'font-variant-numeric',
+	'font-feature-settings',
+	'font-variation-settings',
+	'font-kerning',
+	'letter-spacing',
+	'text-transform'
+] as const;
+
 export function AmountStep({
 	api,
 	config,
@@ -256,35 +271,39 @@ export function AmountStep({
 	// cannot share it, on the form's terms (`placeFigure` in packages/form/src/views.ts). the box's
 	// own `scrollWidth` cannot say which: the page draws the form's `[data-figure='inside']` rules,
 	// so the input is a flex item beside its marks and scrolls a value too long for it under them
-	// rather than reporting it. what is measured instead is the value's width on one line, set in
-	// the box's own face, against the room the tile's content box leaves once the row's gap, the
-	// figure and the unit are taken out of it. placed before paint, again on every resize, and once
-	// the document's faces have loaded — an unloaded face's string reads as loaded and its width is
-	// the fallback face's — read and written in one pass so no frame paints the trial.
+	// rather than reporting it. what is measured instead is the value's width on one line, as the
+	// box draws it, against the box's own content box: with `inside` set the marks already hold
+	// their room beside it, so `clientWidth` less the box's inline padding is exactly the value's
+	// room. placed before paint, again on every resize, and once the document's faces have loaded —
+	// an unloaded face's string reads as loaded and its width is the fallback face's — read and
+	// written in one pass so no frame paints the trial.
 	const textWidth = (box: HTMLInputElement): number | null => {
 		if (box.value === '') return 0;
 		if (document.fonts?.status === 'loading') return null;
-		const line = document.createElement('canvas').getContext('2d');
-		if (line === null) return 0;
+		// a mirror rather than a canvas: canvas has no `font-variant-numeric`, and the box draws
+		// tabular digits (the amount-input rule in packages/form/src/styles/parts.css).
 		const face = window.getComputedStyle(box);
-		line.font = `${face.fontWeight} ${face.fontSize} ${face.fontFamily}`;
-		return line.measureText(box.value).width;
+		const mirror = document.createElement('span');
+		for (const name of DRAWN_TEXT) {
+			mirror.style.setProperty(name, face.getPropertyValue(name));
+		}
+		mirror.style.setProperty('position', 'absolute');
+		mirror.style.setProperty('visibility', 'hidden');
+		mirror.style.setProperty('white-space', 'pre');
+		mirror.style.setProperty('padding', '0');
+		mirror.style.setProperty('border', '0');
+		mirror.textContent = box.value;
+		document.body.append(mirror);
+		const width = mirror.getBoundingClientRect().width;
+		mirror.remove();
+		return width;
 	};
-	const rowRoom = (
-		row: HTMLElement,
-		box: HTMLInputElement,
-		marks: readonly HTMLElement[]
-	): number => {
-		const face = window.getComputedStyle(row);
-		const sides = (start: string, end: string): number =>
-			(Number.parseFloat(face.getPropertyValue(start)) || 0) +
-			(Number.parseFloat(face.getPropertyValue(end)) || 0);
-		const taken = marks.reduce((width, mark) => width + mark.getBoundingClientRect().width, 0);
-		const inset =
-			sides('padding-inline-start', 'padding-inline-end') +
-			sides('border-inline-start-width', 'border-inline-end-width');
+	const contentRoom = (box: HTMLInputElement): number => {
+		const face = window.getComputedStyle(box);
 		return (
-			row.clientWidth - taken - inset - (Number.parseFloat(face.columnGap) || 0) * marks.length
+			box.clientWidth -
+			(Number.parseFloat(face.getPropertyValue('padding-inline-start')) || 0) -
+			(Number.parseFloat(face.getPropertyValue('padding-inline-end')) || 0)
 		);
 	};
 	useMeasure(() => {
@@ -298,17 +317,12 @@ export function AmountStep({
 				return;
 			}
 			node.setAttribute('data-figure', 'inside');
-			const unit = node.querySelector<HTMLElement>('.adorn-unit');
-			const tile = input.closest<HTMLElement>('[part~="amount-input"]');
-			if (unit === null || tile === null) return;
 			const amount = textWidth(input);
 			if (amount === null) {
 				document.fonts?.ready.then(() => placeFigure());
-				node.removeAttribute('data-figure');
 				return;
 			}
-			const figureWidth = figure.getBoundingClientRect().width;
-			if (amount + figureWidth > rowRoom(tile, input, [figure, unit])) {
+			if (amount > contentRoom(input)) {
 				node.setAttribute('data-figure', 'below');
 			}
 		};

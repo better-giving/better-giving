@@ -2984,22 +2984,34 @@ describe('what the donor gives, on the first step', () => {
 		expect(quantity(root).hasAttribute('aria-describedby')).toBe(false);
 	});
 
-	it('moves the dollar value under the box where the typed amount and it cannot share it', async () => {
-		// happy-dom lays nothing out, so the row the placement reads is given: 100 wide on the box
-		// that holds it and 12 per typed character, which leaves a ten-character amount no room
-		// beside the figure and a five-character one room.
-		const proto = HTMLElement.prototype;
-		const canvas = HTMLCanvasElement.prototype;
-		const row = Object.getOwnPropertyDescriptors(proto);
-		const own = {
-			getContext: Object.getOwnPropertyDescriptor(canvas, 'getContext')
-		};
-		Object.defineProperty(proto, 'clientWidth', { configurable: true, get: () => 100 });
-		Object.defineProperty(canvas, 'getContext', {
-			configurable: true,
-			writable: true,
-			value: () => ({ measureText: (text: string) => ({ width: text.length * 12 }) })
+	// happy-dom draws every box at width 0, so a drawn line is given: 12 per character of its text.
+	const lineWidth = (text: string | null): number => (text ?? '').length * 12;
+	const drawsTwelveEach = (): void => {
+		vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (
+			this: Element
+		) {
+			const width = lineWidth(this.textContent);
+			return {
+				x: 0,
+				y: 0,
+				top: 0,
+				left: 0,
+				bottom: 0,
+				right: width,
+				width,
+				height: 0,
+				toJSON: () => ({})
+			};
 		});
+	};
+
+	it('moves the dollar value under the box where the typed amount and it cannot share it', async () => {
+		// the box is given 100 wide with no padding, which leaves a ten-character amount (120) no
+		// room and a five-character one (60) room.
+		const proto = HTMLElement.prototype;
+		const row = Object.getOwnPropertyDescriptors(proto);
+		Object.defineProperty(proto, 'clientWidth', { configurable: true, get: () => 100 });
+		drawsTwelveEach();
 		try {
 			deployment();
 			const { root } = await card(WITH_CRYPTO);
@@ -3022,13 +3034,74 @@ describe('what the donor gives, on the first step', () => {
 			await priced();
 			expect(tray.getAttribute('data-figure')).toBe('inside');
 		} finally {
-			for (const [name, descriptor] of Object.entries(own)) {
-				if (descriptor === undefined) Reflect.deleteProperty(canvas, name);
-				else Object.defineProperty(canvas, name, descriptor);
-			}
 			if (row.clientWidth === undefined) Reflect.deleteProperty(proto, 'clientWidth');
 			else Object.defineProperty(proto, 'clientWidth', row.clientWidth);
 		}
+	});
+
+	// a laid-out row, given since happy-dom lays nothing out: every line is 12 per character, so the
+	// figure `≈ $482.10` is 108 and `BTC` 36; the tile is 300 and the box beside its marks 136, with
+	// 12 and 8 of inline padding, which leaves the value 116 of room.
+	const laidOut = async (amount: string): Promise<HTMLElement> => {
+		const proto = HTMLElement.prototype;
+		const canvas = HTMLCanvasElement.prototype;
+		const row = Object.getOwnPropertyDescriptor(proto, 'clientWidth');
+		const context = Object.getOwnPropertyDescriptor(canvas, 'getContext');
+		onTestFinished(() => {
+			if (context === undefined) Reflect.deleteProperty(canvas, 'getContext');
+			else Object.defineProperty(canvas, 'getContext', context);
+			if (row === undefined) Reflect.deleteProperty(proto, 'clientWidth');
+			else Object.defineProperty(proto, 'clientWidth', row);
+		});
+		Object.defineProperty(proto, 'clientWidth', {
+			configurable: true,
+			get(this: HTMLElement) {
+				return this instanceof HTMLInputElement ? 136 : 300;
+			}
+		});
+		// a canvas measures the same, so a placement that went back to one would not read 0 and pass.
+		Object.defineProperty(canvas, 'getContext', {
+			configurable: true,
+			writable: true,
+			value: () => ({ measureText: (text: string) => ({ width: lineWidth(text) }) })
+		});
+		drawsTwelveEach();
+		const computed = window.getComputedStyle.bind(window);
+		const padding: Readonly<Record<string, string>> = {
+			'padding-inline-start': '12px',
+			'padding-inline-end': '8px'
+		};
+		vi.spyOn(window, 'getComputedStyle').mockImplementation((element, pseudo) => {
+			const face = computed(element, pseudo);
+			if (!(element instanceof HTMLInputElement)) return face;
+			return new Proxy(face, {
+				get(target, key) {
+					if (key === 'getPropertyValue') {
+						return (name: string) => padding[name] ?? target.getPropertyValue(name);
+					}
+					const value: unknown = Reflect.get(target, key);
+					return typeof value === 'function' ? value.bind(target) : value;
+				}
+			});
+		});
+		deployment();
+		const { root } = await card(WITH_CRYPTO);
+		await give(root, 'coin:btc');
+		type(quantity(root), amount);
+		await priced();
+		return quantity(root).closest('.tiles') as HTMLElement;
+	};
+
+	it('keeps the dollar value in the box while the typed amount fits the box’s own content', async () => {
+		// nine characters, 108, inside 116; the marks hold their own room beside the box.
+		const tray = await laidOut('0.0051234');
+		expect(tray.getAttribute('data-figure')).toBe('inside');
+	});
+
+	it('moves the dollar value under the box once the typed amount outgrows the box’s content', async () => {
+		// ten characters, 120, past 116 though within the box's 136 before its padding.
+		const tray = await laidOut('0.00512345');
+		expect(tray.getAttribute('data-figure')).toBe('below');
 	});
 
 	it('takes a share count in the same box, with nothing under it', async () => {
