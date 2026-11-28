@@ -177,8 +177,9 @@ const NO_COINS = 'Crypto gifts do not go through the sponsor.';
  * `GET /events?after=<seq>`, this site's events in commit order — the hourly pull's read, where a
  * delivery was missed (`SPONSOR_EVENTS_SECRET` signs what arrives, and this read is what its key
  * authenticates instead). the envelopes are handed over unread: the caller reads each through
- * `sponsorEvent`. a page with no envelope in it is `unreadable`, since a feed that answers that is
- * one this app cannot page through.
+ * `sponsorEvent`. an empty page that says more follow is `unreadable`, as is one whose sequence
+ * numbers do not follow `after`, since a feed that answers either is one this app cannot page
+ * through.
  */
 export async function readSponsorFeed(
 	credentials: Pick<SponsorCredentials, 'apiKey' | 'fetch'>,

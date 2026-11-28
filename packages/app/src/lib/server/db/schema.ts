@@ -73,9 +73,10 @@ import type { PostableAccountId } from './postable';
 //             gift a received pledge becomes takes as its `donation.id`
 //             (../donations/receive-pledge.ts); `org_profile`, `quickbooks_connection` and
 //             `sponsor_event_cursor` are singletons with a fixed id; `dispute`,
-//             `quickbooks_sync` and `image_bytes` are keyed by their parent row's id; and `webhook_delivery`,
-//             `supporter_link`, `supporter_session`, `pledge_rail` and `ticker` are keyed
-//             by a value of their own (a `msg_` id, a token hash, a method, a symbol).
+//             `quickbooks_sync` and `image_bytes` are keyed by their parent row's id; and
+//             `webhook_delivery`, `supporter_link`, `supporter_session`, `pledge_rail` and
+//             `ticker` are keyed by a value of their own (a `msg_` id, a token hash, a
+//             method, a symbol).
 //             sqlite has no gen_random_uuid(), so generation is ours either way; v7 is
 //             time-ordered, which keeps index locality on the append-only tables.
 //             text(36), not blob(16) — legibility beats index size at nonprofit scale.

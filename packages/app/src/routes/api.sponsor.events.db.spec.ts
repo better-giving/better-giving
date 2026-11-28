@@ -19,7 +19,7 @@ import * as sponsorEvents from './api.sponsor.events';
 // the hourly pull of a hosted site's sponsor events and the delivery route they also arrive on, at
 // exactly `/api/sponsor/events`: what the pull applies, the cursor it keeps, and that an event —
 // a settlement or a payout — is applied once however many ways it reaches this deployment. what a
-// sponsored gift settles and refunds to is them here.
+// sponsored gift settles and refunds to is $lib/server/donations/sponsored.db.spec.ts's.
 //
 // the route runs through react router (../route-request.testing.ts), so the raw body reaches the
 // handler unread and the real verifier in ../payments/sponsor.ts is the one that checks it.
@@ -98,7 +98,6 @@ function partnerApi(payments: readonly unknown[] = [], reversals: readonly unkno
 	};
 }
 
-/** a feed answering each page from `events`, the way `readSponsorFeed` pages one. */
 type Envelope = { readonly seq: number; readonly payload: Record<string, unknown> };
 
 /** a body the sponsor never pushed, with the sequence the feed gives it: `seq` on the body. */
@@ -106,6 +105,7 @@ function envelope(seq: number, payload: Record<string, unknown>): Envelope {
 	return { seq, payload: { ...payload, seq } };
 }
 
+/** a feed answering each page from `events`, the way `readSponsorFeed` pages one. */
 function feed(events: readonly Envelope[], pageSize = 2) {
 	const asked: number[] = [];
 	const sponsorFeed: Feed = async (after) => {
@@ -316,7 +316,7 @@ describe('pullSponsorEvents()', () => {
 	it('stops at an event worth sending again, keeping the cursor at the event applied', async () => {
 		const giftId = crypto.randomUUID();
 		await pendingGift(giftId, 'frm_pull_refund', 'pay_unsettled');
-		// a body this app never saw pushed, and the reversal it names.
+		// a settlement this app never saw pushed, of a payment the sponsor still reads as pending.
 		const { sponsorFeed } = feed([
 			settled('po_before', 1),
 			envelope(2, {
@@ -487,7 +487,8 @@ describe('pullSponsorEvents()', () => {
 		const read = sponsorEvent(event.payload);
 		if (!read.ok) throw new Error(read.detail);
 		await settleEvent(deps(provider, feed([]).sponsorFeed), read.value);
-		// the delivery moved the cursor; this run begins there and the sponsor hands the event back.
+		// a delivery never moves the cursor; it stands at 1 here as a run that already passed this
+		// event would leave it, and the sponsor hands the event back.
 		await run(
 			stmt(`insert into sponsor_event_cursor (id, seq, updated_at) values ('sponsor', 1, 0)`)
 		);
@@ -711,7 +712,8 @@ describe('POST /api/sponsor/events — a gift the sponsor took', () => {
 				occurred_at: '2026-11-27T09:00:00Z'
 			}
 		]);
-		// the route builds its own provider from the environment, so it is the one read it makes.
+		// the route builds its provider from the environment over the global `fetch`, so the
+		// payment read is scripted there.
 		const original = globalThis.fetch;
 		globalThis.fetch = held.fetch;
 		let response: Response;

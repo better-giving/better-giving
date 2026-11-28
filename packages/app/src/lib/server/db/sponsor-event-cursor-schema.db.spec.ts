@@ -12,7 +12,7 @@ import { rejectionCode } from './rejection.testing';
 const clear = () => run(stmt('delete from sponsor_event_cursor'));
 
 describe('the sponsor event cursor', () => {
-	it('starts at sequence 0 when the pull writes it without one', async () => {
+	it('defaults seq to 0 on a row written without one', async () => {
 		await run(stmt(`insert into sponsor_event_cursor (id, updated_at) values ('sponsor', 0)`));
 		const row = await first(stmt(`select seq from sponsor_event_cursor where id = 'sponsor'`));
 		expect(row).toEqual({ seq: 0 });

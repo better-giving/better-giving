@@ -14,17 +14,20 @@ import { sponsorEvent } from '../payments/sponsor';
 // (`sponsor_event_cursor`, ../db/schema.ts) is written after each event has been dealt with, so a
 // restart resumes there; an event already applied answers `already_posted` and is passed again.
 //
-// one event's fault does not stop the page: an event this app could not read, a settlement it
-// could not write, or a refund that names a gift not settled here yet stops the walk at that
-// event, because the cursor may not pass one that was not applied. the next run picks it up. an
-// event that was handled — posted, or found already in the books — moves the cursor past it. a
-// read the sponsor did not answer ends the run, logged only: an hourly run that could not reach
-// the sponsor is a sponsor outage, not something to mail.
+// the walk ends the run at the first event not applied, because the cursor may not pass one. a
+// read or write worth making again (`incomplete`) or a gift not settled here yet (`not_yet`) is
+// asked for again on the next run, from that event. an envelope the adapter cannot read
+// (`sponsorEvent` in ../payments/sponsor.ts) reads the same on every run, so the pull stops there
+// each hour, logged and mailed to nobody, and applies nothing past it. every other answer —
+// posted, already in the books, ignored, told to staff — moves the cursor past the event. a read
+// the sponsor did not answer ends the run, logged only: an hourly run that could not reach the
+// sponsor is a sponsor outage, not something to mail.
 //
 // a gift or a payout arrives twice — once by delivery, once through this read — and that is the
 // point rather than a waste. both writes are keyed on the processor's own id
-// (`entry_group_source_idx` and `payment_provider_txn_idx` in ../db/schema.ts), so the second is a
-// no-op and answers 200.
+// (`entry_group_source_idx` and `payment_provider_txn_idx` in ../db/schema.ts), so the second
+// writes nothing. an outcome that only tells staff, such as a payout the ledger refuses
+// (../ledger/record-payout.ts), tells them again.
 
 /** pages asked for in one run. a backlog past this is read on the next run. */
 const PAGES_PER_RUN = 10;
@@ -55,8 +58,9 @@ export async function pullSponsorEvents(deps: SettleDeps, now: Date): Promise<vo
 			const result = known.ok
 				? await settleEvent(deps, known.value)
 				: { ok: false as const, detail: known.detail };
-			// a settlement worth sending again (`incomplete`) and a refund before its payment
-			// (`not_yet`) both stop the walk here: the cursor may not pass an event not applied.
+			// an envelope that cannot be read, a read or write worth making again (`incomplete`) and
+			// a gift not settled here yet (`not_yet`) all stop the walk here: the cursor may not pass
+			// an event not applied.
 			if (!result.ok || result.outcome === 'not_yet') {
 				console.error('the sponsor’s event was not applied:', seq, result.detail);
 				return;
@@ -91,7 +95,7 @@ async function writeCursor(deps: SettleDeps, seq: number, now: Date): Promise<nu
 	return seq;
 }
 
-/** the envelope's own sequence, which the adapter has checked is past the cursor. */
+/** the envelope's own sequence, which `readSponsorFeed` has checked is a sequence number. */
 function sequenceOf(envelope: unknown): number {
 	const seq =
 		typeof envelope === 'object' && envelope !== null

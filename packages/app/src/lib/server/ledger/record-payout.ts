@@ -14,7 +14,7 @@ import { PostingError } from './posting';
 // batch comes back from `commit` as `already_posted` and is answered 200, as a redelivered
 // settlement is. nothing is read before the write, for `post()`'s reason.
 //
-// a body the ledger refuses — a negative amount, a currency it does not hold, an empty id — is a
+// a body the ledger refuses — an amount of nothing, a currency it does not hold — is a
 // `PostingError` and is a payout this app cannot book rather than a fault worth a retry: staff are
 // told and the event is answered 200, as anything a redelivery reads the same way is.
 //

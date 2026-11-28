@@ -475,7 +475,7 @@ const SETUP_FIXES: Readonly<Record<ProcessorName, string>> = Object.freeze({
 		'`NOWPAYMENTS_IPN_SECRET` once under Payment Settings in the NOWPayments dashboard, then add ' +
 		`\`${envLine('NOWPAYMENTS_API_KEY')}\`, \`${envLine('NOWPAYMENTS_OUTCOME_CURRENCY')}\`, and ` +
 		`\`${envLine('NOWPAYMENTS_IPN_SECRET')}\` to \`.env\`, then recreate the app: \`${RECREATE_APP}\`.`,
-	sponsor: `Ask the sponsor for this site’s key and events secret, add \`${envLine('SPONSOR_API_KEY')}\` and \`${envLine('SPONSOR_EVENTS_SECRET')}\` to \`.env\`, then recreate the app: \`${RECREATE_APP}\`.`
+	sponsor: `Ask Better Giving for this site’s key and events secret, add \`${envLine('SPONSOR_API_KEY')}\` and \`${envLine('SPONSOR_EVENTS_SECRET')}\` to \`.env\`, then recreate the app: \`${RECREATE_APP}\`.`
 });
 
 /**
@@ -498,7 +498,7 @@ const NOTICE_ONLY: Readonly<Record<ProcessorName, string>> = Object.freeze({
 	nowpayments:
 		'Generate `NOWPAYMENTS_IPN_SECRET` under Payment Settings in the NOWPayments dashboard, add ' +
 		`\`${envLine('NOWPAYMENTS_IPN_SECRET')}\` to \`.env\`, then recreate the app: \`${RECREATE_APP}\`.`,
-	sponsor: `Ask the sponsor for this site’s events secret, add \`${envLine('SPONSOR_EVENTS_SECRET')}\` to \`.env\`, then recreate the app: \`${RECREATE_APP}\`.`
+	sponsor: `Ask Better Giving for this site’s events secret, add \`${envLine('SPONSOR_EVENTS_SECRET')}\` to \`.env\`, then recreate the app: \`${RECREATE_APP}\`.`
 });
 
 /**

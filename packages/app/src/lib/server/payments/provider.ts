@@ -785,14 +785,7 @@ export type CoinValue = {
 	readonly amountMinor: number;
 };
 
-/**
- * what a transaction turned out to be, read from the processor rather than reconstructed from an
- * event.
- *
- * the webhook's whole answer. events carry no ordering guarantee, so a handler that rebuilt state
- * from the sequence it happened to receive would be wrong for any donor whose bank was slow; this
- * is the re-read that replaces that.
- */
+/** one page of the sponsor's event feed (`readSponsorFeed` in ./sponsor.ts). */
 export type SponsorFeed = {
 	/** the events after `after`, in the sponsor's commit order, at most a page's worth. */
 	readonly events: readonly unknown[];
@@ -802,6 +795,14 @@ export type SponsorFeed = {
 	readonly more: boolean;
 };
 
+/**
+ * what a transaction turned out to be, read from the processor rather than reconstructed from an
+ * event.
+ *
+ * the webhook's whole answer. events carry no ordering guarantee, so a handler that rebuilt state
+ * from the sequence it happened to receive would be wrong for any donor whose bank was slow; this
+ * is the re-read that replaces that.
+ */
 export type Settlement = {
 	readonly providerTxnId: string;
 	/** the row's own vocabulary — `PAYMENT_STATUSES` in ../db/schema.ts. */

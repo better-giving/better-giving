@@ -121,7 +121,7 @@ const REPAIR: Readonly<Record<ProcessorName, string>> = Object.freeze({
 		'once and replaces the old one, and put it in `.env` as ' +
 		`\`${envLine('NOWPAYMENTS_IPN_SECRET')}\``,
 	sponsor:
-		'ask the sponsor for this site’s events secret and put it in `.env` as ' +
+		'ask Better Giving for this site’s events secret and put it in `.env` as ' +
 		`\`${envLine('SPONSOR_EVENTS_SECRET')}\``
 });
 

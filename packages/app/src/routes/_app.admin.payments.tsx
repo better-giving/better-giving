@@ -389,7 +389,7 @@ function noticesSteps(card: Card): ServerStepsProps {
 		// no sponsor card is drawn (`SponsorCard` stands in for it); provisioning sets the secret.
 		case 'sponsor':
 			return {
-				says: `Ask the sponsor for this site’s events secret and put it in \`.env\` as \`${envLine('SPONSOR_EVENTS_SECRET')}\`, then recreate the app:`,
+				says: `Ask Better Giving for this site’s events secret and put it in \`.env\` as \`${envLine('SPONSOR_EVENTS_SECRET')}\`, then recreate the app:`,
 				commands: [RECREATE_APP]
 			};
 	}

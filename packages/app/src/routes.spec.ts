@@ -111,8 +111,8 @@ const PROCESSOR_CALLBACKS: Readonly<Record<string, string>> = {
 	'routes/api.paypal.webhook.ts': PAYPAL_WEBHOOK_PATH,
 	'routes/api.chariot.webhook.ts': CHARIOT_WEBHOOK_PATH,
 	'routes/api.nowpayments.webhook.ts': NOWPAYMENTS_IPN_PATH,
-	// the sponsor sets this address itself, so it is spelled here rather than built from a constant
-	// ($lib/server/payments/sponsor.ts's header).
+	// provisioning sets this address on the sponsor's side, so it is spelled here rather than built
+	// from a constant (./routes/api.sponsor.events.ts's header).
 	'routes/api.sponsor.events.ts': '/api/sponsor/events'
 };
 

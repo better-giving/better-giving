@@ -1504,7 +1504,8 @@ function attributedOrigin(request: Request, allowedOrigins: readonly string[]): 
  * `IntentRequest.sponsored`, spread into the request for the sponsor's adapter and empty for every
  * other: a processor is told a pointer, and the sponsor, which is the donee and mails the receipt,
  * is told the donor and the gift's parts. no contribution is offered on this path, so its two parts
- * are 0. a donor with no address is sent without it, and the adapter refuses the payment.
+ * are 0. a donor with no email address gets no `sponsored` part, and the adapter refuses the
+ * payment.
  */
 async function sponsoredFor(
 	deps: QuoteDeps,

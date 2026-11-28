@@ -24,12 +24,14 @@ import {
 // stated here once, they cannot drift, and no writer has to import another to say "posted".
 
 /**
- * what one delivery did, all of which are answered 200.
+ * what one delivery did, all of which are answered 200 but `not_yet`, which the sponsor's route
+ * answers 409.
  *
  *   ignored        — a delivery this app subscribes to nothing for, one about a repeating gift
  *                    this deployment holds no record of, a refund or a dispute that has moved no
- *                    money yet, or the failure of a refund never recorded here. answered and
- *                    logged.
+ *                    money yet, the failure of a refund never recorded here, or a sponsored
+ *                    dispute won with no opening recorded (`wonUnheardForDonee` in
+ *                    ./reverse.ts). answered and logged.
  *   posted         — money moved: the gift is in the books, or a refund or a dispute of it is, or
  *                    a refund that did not stand or a dispute won is put back, or a dispute lost
  *                    after it opened is settled up at its close.

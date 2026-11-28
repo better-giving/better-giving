@@ -18,7 +18,7 @@ import type { Route } from './+types/api.sponsor.events';
 //
 // a delivery that never arrived is not lost: the hourly pull reads what the sponsor holds
 // ($lib/server/payouts/pull.ts), so the two reach `settleEvent` with the same event and the second
-// one is a no-op.
+// writes nothing. an outcome that only tells staff tells them again.
 
 export async function action({ context, request }: Route.ActionArgs): Promise<Response> {
 	if (request.method !== 'POST') return methodNotAllowed(request.method);
@@ -38,8 +38,8 @@ export async function action({ context, request }: Route.ActionArgs): Promise<Re
 	);
 
 	if (result.ok) {
-		// 409: the event names money the sponsor holds, not one it has taken. nothing was written
-		// and the cursor stays before it, so the sponsor sends it again.
+		// 409: the event names a gift not settled here yet. nothing was written, so the sponsor
+		// sends it again, and the pull's cursor stays before it.
 		const status = result.outcome === 'not_yet' ? 409 : 200;
 		return Response.json({ outcome: result.outcome, message: result.detail }, { status });
 	}
@@ -65,17 +65,16 @@ function methodNotAllowed(method: string): Response {
 }
 
 /**
- * what the sponsor is told: a 2xx stops it and anything else is sent again, as
- * ./api.stripe.webhook.ts argues — 409 `not_yet` included, which is a 2xx's opposite and still
- * worth the next delivery rather than a repeat of this one.
+ * what the sponsor is told: a 2xx stops it and anything else, 409 `not_yet` included, is sent
+ * again, as ./api.stripe.webhook.ts argues.
  *
  * - 400, the signature: `webhook-id`, `webhook-timestamp` and `webhook-signature` were not all
  *   there, the timestamp was more than five minutes off, or no signature verified against
  *   `SPONSOR_EVENTS_SECRET`. nothing in the body is believed, and the sponsor's dashboard shows it
  *   as a failed delivery.
- * - 409, `not_yet`: the event names a payment or a refund the sponsor reads back as still
- *   `pending`, or a refund before its payment. nothing was written and the cursor stays before it;
- *   the sponsor sends it again (`not_yet` in $lib/server/donations/delivery.ts).
+ * - 409, `not_yet`: the event names a payment the sponsor reads back as still `pending`, or a
+ *   refund or dispute of a gift not settled here yet. nothing was written, and the sponsor sends
+ *   it again (`not_yet` in $lib/server/donations/delivery.ts).
  * - 503, verified and something this deployment depends on did not answer — the sponsor
  *   unreachable, a read that did not come back, a write the database refused. repeating it is safe:
  *   `entry_group_source_idx` and `payment_provider_txn_idx` in $lib/server/db/schema.ts make the
