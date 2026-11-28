@@ -181,21 +181,37 @@ describe('the entry for a gift in kind', () => {
 			name: 'Amount',
 			unitLabel: 'BTC',
 			estimate: null,
-			note: 'Your gift is valued in US dollars when it arrives.',
+			estimateDescription: null,
 			unpriced: COIN_PRICE_FAILED
 		});
 		expect(unitEntry(CONFIG, BTC_UNIT, { status: 'pricing' })?.unpriced).toBeNull();
 		expect(unitEntry(CONFIG, BTC_UNIT, null)?.unpriced).toBeNull();
-		expect(unitEntry(CONFIG, BTC_UNIT, { status: 'priced', minor: 48_210 })).toEqual({
-			name: 'Amount',
-			unitLabel: 'BTC',
-			estimate: 'About $482.10',
-			note: 'Your gift is valued in US dollars when it arrives.',
-			unpriced: null
-		});
 		expect(
 			unitEntry(CONFIG, { kind: 'stock', ticker: 'AAPL' }, { status: 'unpriced' })?.unpriced
 		).toBeNull();
+	});
+
+	it('draws a priced coin amount’s figure in the box and describes the box in words', () => {
+		expect(unitEntry(CONFIG, BTC_UNIT, { status: 'priced', minor: 48_210 })).toEqual({
+			name: 'Amount',
+			unitLabel: 'BTC',
+			estimate: '≈ $482.10',
+			estimateDescription: 'About $482.10 in US dollars',
+			unpriced: null
+		});
+		expect(
+			unitEntry({ ...CONFIG, currency: 'eur' }, BTC_UNIT, { status: 'priced', minor: 48_210 })
+		).toMatchObject({ estimate: '≈ €482.10', estimateDescription: 'About €482.10' });
+	});
+
+	it('states no valuation sentence and no figure under a share count', () => {
+		expect(unitEntry(CONFIG, { kind: 'stock', ticker: 'AAPL' }, null)).toEqual({
+			name: 'Number of shares',
+			unitLabel: 'shares',
+			estimate: null,
+			estimateDescription: null,
+			unpriced: null
+		});
 	});
 });
 

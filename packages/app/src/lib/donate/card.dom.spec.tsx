@@ -28,7 +28,6 @@ import {
 import { formatOffer } from '@better-giving/form/money';
 import { TICKER_DEBOUNCE_MS } from '@better-giving/form/ticker-search';
 import {
-	aboutEstimate,
 	APPLE_SRC,
 	CHANGE_WHAT_YOU_GIVE,
 	COIN_PRICE_FAILED,
@@ -40,8 +39,7 @@ import {
 	ONE_TIME_ONLY,
 	SHARES,
 	UNIT_PANEL_NAME,
-	unitPill,
-	VALUED_IN_USD
+	unitPill
 } from '@better-giving/form/unit';
 import type { FeeRules, FormConfig, Pledge, Quote } from '@better-giving/form/v1';
 import { readFileSync } from 'node:fs';
@@ -2950,24 +2948,160 @@ describe('what the donor gives, on the first step', () => {
 		expect(discs(host)).toEqual([FLAG_SRC.us]);
 	});
 
-	it('takes a coin amount in one box named Amount, with the estimate and the note under it', async () => {
+	it('takes a coin amount in one box named Amount, its dollar value in the box before the unit', async () => {
 		deployment();
 		const { root } = await card(WITH_CRYPTO);
 		await give(root, 'coin:btc');
-		const notes = () => every(root, '.unit-estimate > p').map((line) => line.textContent ?? '');
+		const trail = () =>
+			quantity(root)
+				.closest('[part~="amount-input"]')
+				?.querySelector('.adorn-trail') as HTMLElement;
 
 		expect(root.querySelector('[part~="amount-option"]')).toBeNull();
 		expect(one(root, 'label[for="quantity-entry"]').textContent).toBe('Amount');
-		expect(
-			quantity(root).closest('[part~="amount-input"]')?.querySelector('.adorn-trail')?.textContent
-		).toBe('BTC');
-		expect(notes()).toEqual([VALUED_IN_USD]);
+		expect(trail().getAttribute('aria-hidden')).toBe('true');
+		expect(one(trail(), '.adorn-figure').hidden).toBe(true);
+		expect(trail().querySelector('.adorn-unit')?.textContent).toBe('BTC');
+		expect(quantity(root).hasAttribute('aria-describedby')).toBe(false);
 
 		type(quantity(root), '0.005');
 		await priced();
 
-		expect(notes()).toEqual([aboutEstimate(48_210, WITH_CRYPTO), VALUED_IN_USD]);
-		expect(one(root, '.unit-estimate > .unit-figure').textContent).toBe('About $482.10');
+		expect(trail().querySelector('.adorn-figure + .adorn-unit')).not.toBeNull();
+		expect(one(root, '.adorn-figure').hidden).toBe(false);
+		expect(one(root, '.adorn-figure').textContent).toBe('≈ $482.10');
+		expect(one(root, '.adorn-unit').textContent).toBe('BTC');
+		expect(root.querySelector('.unit-estimate')).toBeNull();
+		expect(root.textContent).not.toContain('valued in US dollars');
+
+		// the marks the box hides from a screen reader are read back to it as a description.
+		expect(quantity(root).getAttribute('aria-describedby')).toBe('amount-estimate');
+		expect(one(root, '#amount-estimate').textContent).toBe('About $482.10 in US dollars');
+
+		type(quantity(root), '');
+		await priced();
+		expect(one(trail(), '.adorn-figure').hidden).toBe(true);
+		expect(quantity(root).hasAttribute('aria-describedby')).toBe(false);
+	});
+
+	// happy-dom draws every box at width 0, so a drawn line is given: 12 per character of its text.
+	const lineWidth = (text: string | null): number => (text ?? '').length * 12;
+	const drawsTwelveEach = (): void => {
+		vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (
+			this: Element
+		) {
+			const width = lineWidth(this.textContent);
+			return {
+				x: 0,
+				y: 0,
+				top: 0,
+				left: 0,
+				bottom: 0,
+				right: width,
+				width,
+				height: 0,
+				toJSON: () => ({})
+			};
+		});
+	};
+
+	it('moves the dollar value under the box where the typed amount and it cannot share it', async () => {
+		// the box is given 100 wide with no padding, which leaves a ten-character amount (120) no
+		// room and a five-character one (60) room.
+		const proto = HTMLElement.prototype;
+		const row = Object.getOwnPropertyDescriptors(proto);
+		Object.defineProperty(proto, 'clientWidth', { configurable: true, get: () => 100 });
+		drawsTwelveEach();
+		try {
+			deployment();
+			const { root } = await card(WITH_CRYPTO);
+			await give(root, 'coin:btc');
+			const tray = quantity(root).closest('.tiles') as HTMLElement;
+			expect(tray.hasAttribute('data-figure')).toBe(false);
+
+			type(quantity(root), '0.005');
+			await priced();
+			expect(tray.getAttribute('data-figure')).toBe('inside');
+
+			type(quantity(root), '1234.56789');
+			await priced();
+			expect(tray.getAttribute('data-figure')).toBe('below');
+			const under = one(root, '.unit-figure');
+			expect(under.textContent).toBe('≈ $482.10');
+			expect(under.getAttribute('aria-hidden')).toBe('true');
+
+			type(quantity(root), '0.005');
+			await priced();
+			expect(tray.getAttribute('data-figure')).toBe('inside');
+		} finally {
+			if (row.clientWidth === undefined) Reflect.deleteProperty(proto, 'clientWidth');
+			else Object.defineProperty(proto, 'clientWidth', row.clientWidth);
+		}
+	});
+
+	// a laid-out row, given since happy-dom lays nothing out: every line is 12 per character, so the
+	// figure `≈ $482.10` is 108 and `BTC` 36; the tile is 300 and the box beside its marks 136, with
+	// 12 and 8 of inline padding, which leaves the value 116 of room.
+	const laidOut = async (amount: string): Promise<HTMLElement> => {
+		const proto = HTMLElement.prototype;
+		const canvas = HTMLCanvasElement.prototype;
+		const row = Object.getOwnPropertyDescriptor(proto, 'clientWidth');
+		const context = Object.getOwnPropertyDescriptor(canvas, 'getContext');
+		onTestFinished(() => {
+			if (context === undefined) Reflect.deleteProperty(canvas, 'getContext');
+			else Object.defineProperty(canvas, 'getContext', context);
+			if (row === undefined) Reflect.deleteProperty(proto, 'clientWidth');
+			else Object.defineProperty(proto, 'clientWidth', row);
+		});
+		Object.defineProperty(proto, 'clientWidth', {
+			configurable: true,
+			get(this: HTMLElement) {
+				return this instanceof HTMLInputElement ? 136 : 300;
+			}
+		});
+		// a canvas measures the same, so a placement that went back to one would not read 0 and pass.
+		Object.defineProperty(canvas, 'getContext', {
+			configurable: true,
+			writable: true,
+			value: () => ({ measureText: (text: string) => ({ width: lineWidth(text) }) })
+		});
+		drawsTwelveEach();
+		const computed = window.getComputedStyle.bind(window);
+		const padding: Readonly<Record<string, string>> = {
+			'padding-inline-start': '12px',
+			'padding-inline-end': '8px'
+		};
+		vi.spyOn(window, 'getComputedStyle').mockImplementation((element, pseudo) => {
+			const face = computed(element, pseudo);
+			if (!(element instanceof HTMLInputElement)) return face;
+			return new Proxy(face, {
+				get(target, key) {
+					if (key === 'getPropertyValue') {
+						return (name: string) => padding[name] ?? target.getPropertyValue(name);
+					}
+					const value: unknown = Reflect.get(target, key);
+					return typeof value === 'function' ? value.bind(target) : value;
+				}
+			});
+		});
+		deployment();
+		const { root } = await card(WITH_CRYPTO);
+		await give(root, 'coin:btc');
+		type(quantity(root), amount);
+		await priced();
+		return quantity(root).closest('.tiles') as HTMLElement;
+	};
+
+	it('keeps the dollar value in the box while the typed amount fits the box’s own content', async () => {
+		// nine characters, 108, inside 116; the marks hold their own room beside the box.
+		const tray = await laidOut('0.0051234');
+		expect(tray.getAttribute('data-figure')).toBe('inside');
+	});
+
+	it('moves the dollar value under the box once the typed amount outgrows the box’s content', async () => {
+		// ten characters, 120, past 116 though within the box's 136 before its padding.
+		const tray = await laidOut('0.00512345');
+		expect(tray.getAttribute('data-figure')).toBe('below');
 	});
 
 	it('takes a share count in the same box, with nothing under it', async () => {
@@ -3581,7 +3715,7 @@ describe('a crypto gift', () => {
 				expect(underBox(root)).toBe(COIN_PRICE_FAILED);
 				expect(quantity(root).getAttribute('aria-describedby')).toBe('amount-problem');
 				expect(said(root)).toBe(COIN_PRICE_FAILED);
-				expect(root.querySelector('.unit-figure')).toBeNull();
+				expect(one(root, '.adorn-figure').hidden).toBe(true);
 
 				await onward(root);
 
@@ -3596,7 +3730,7 @@ describe('a crypto gift', () => {
 			['retyped', (root: HTMLElement) => type(quantity(root), '30')],
 			['picked again', (root: HTMLElement) => give(root, 'coin:usdttrc20')]
 		])(
-			'drops the sentence while the amount %s is checked, and for the estimate once it prices',
+			'drops the sentence while the amount %s is checked, and prices the estimate after it',
 			async (_, retry) => {
 				pricing(
 					() => json({ estimateMinor: null }),
@@ -3617,8 +3751,9 @@ describe('a crypto gift', () => {
 				await priced();
 
 				expect(underBox(root)).toBeNull();
-				expect(quantity(root).hasAttribute('aria-describedby')).toBe(false);
-				expect(one(root, '.unit-figure').textContent).toBe(aboutEstimate(2500, CRYPTO));
+				expect(one(root, '.adorn-figure').textContent).toBe('≈ $25.00');
+				expect(quantity(root).getAttribute('aria-describedby')).toBe('amount-estimate');
+				expect(one(root, '#amount-estimate').textContent).toBe('About $25.00 in US dollars');
 				expect(said(root)).not.toContain(COIN_PRICE_FAILED);
 			}
 		);
@@ -3687,7 +3822,8 @@ describe('a crypto gift', () => {
 		expect(one(root, '#amount-problem').textContent).toBe(
 			copy.amountProblem((figure) => formatOffer(figure, 'en-US', 'usd'), 500, 500000)
 		);
-		expect(quantity(root).getAttribute('aria-describedby')).toBe('amount-problem');
+		// the box keeps its estimate's words beside the refusal: the two stand together under it.
+		expect(quantity(root).getAttribute('aria-describedby')).toBe('amount-estimate amount-problem');
 		expect(quantity(root).getAttribute('aria-invalid')).toBe('true');
 		expect(quantity(root).closest('[part~="amount-input"]')?.getAttribute('part')).toContain(
 			'invalid'
@@ -4133,7 +4269,7 @@ describe('a crypto gift', () => {
 			)
 		);
 		expect(document.activeElement).toBe(quantity(root));
-		expect(quantity(root).getAttribute('aria-describedby')).toBe('amount-problem');
+		expect(quantity(root).getAttribute('aria-describedby')).toBe('amount-estimate amount-problem');
 		expect(quantity(root).getAttribute('aria-invalid')).toBe('true');
 
 		type(quantity(root), '50');

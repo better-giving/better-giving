@@ -103,6 +103,21 @@ export type AmountStepProps = {
  */
 const useMeasure = typeof document === 'undefined' ? useEffect : useLayoutEffect;
 
+/** the computed properties that set a line's drawn width, copied from the box onto its mirror. */
+const DRAWN_TEXT = [
+	'font-family',
+	'font-size',
+	'font-weight',
+	'font-style',
+	'font-stretch',
+	'font-variant-numeric',
+	'font-feature-settings',
+	'font-variation-settings',
+	'font-kerning',
+	'letter-spacing',
+	'text-transform'
+] as const;
+
 export function AmountStep({
 	api,
 	config,
@@ -147,6 +162,12 @@ export function AmountStep({
 	// priced outside the bounds with the bounds sentence, which is the currency's (`AmountDecision` in
 	// @better-giving/form/value). a coin amount whose price check failed is described by `unpriced`.
 	const { pill, entry: unitEntry, cadenceNote, next } = api.unit;
+	// the box is described by its estimate in words while one is drawn, and by the refusal beside it.
+	const quantityDescribed =
+		[
+			...(unitEntry?.estimateDescription ? ['amount-estimate'] : []),
+			...(amountDescribed === undefined ? [] : [amountDescribed])
+		].join(' ') || undefined;
 	const quantityRefused =
 		unitEntry !== null && (missing.includes('quantity') || missingAmount || refusedAmount);
 	// a coin the account no longer takes is fixed on the pill, where its arrival puts the caret.
@@ -185,6 +206,7 @@ export function AmountStep({
 	const chipAt = useRef<{ x: number; y: number } | null>(null);
 	/** a pointer went down on Other and the change it brings has not arrived yet. */
 	const pointed = useRef(false);
+	const tray = useRef<HTMLDivElement | null>(null);
 
 	useMeasure(() => {
 		/**
@@ -236,6 +258,81 @@ export function AmountStep({
 			frame = window.requestAnimationFrame(() => {
 				frame = 0;
 				placeThumb(true);
+			});
+		};
+		window.addEventListener('resize', rewrapped);
+		return () => {
+			window.removeEventListener('resize', rewrapped);
+			if (frame !== 0) window.cancelAnimationFrame(frame);
+		};
+	});
+
+	// the estimate in the box's trailing group, or under the box where the typed amount and it
+	// cannot share it, on the form's terms (`placeFigure` in packages/form/src/views.ts). the box's
+	// own `scrollWidth` cannot say which: the page draws the form's `[data-figure='inside']` rules,
+	// so the input is a flex item beside its marks and scrolls a value too long for it under them
+	// rather than reporting it. what is measured instead is the value's width on one line, as the
+	// box draws it, against the box's own content box: with `inside` set the marks already hold
+	// their room beside it, so `clientWidth` less the box's inline padding is exactly the value's
+	// room. placed before paint, again on every resize, and once the document's faces have loaded —
+	// an unloaded face's string reads as loaded and its width is the fallback face's — read and
+	// written in one pass so no frame paints the trial.
+	const textWidth = (box: HTMLInputElement): number | null => {
+		if (box.value === '') return 0;
+		if (document.fonts?.status === 'loading') return null;
+		// a mirror rather than a canvas: canvas has no `font-variant-numeric`, and the box draws
+		// tabular digits (the amount-input rule in packages/form/src/styles/parts.css).
+		const face = window.getComputedStyle(box);
+		const mirror = document.createElement('span');
+		for (const name of DRAWN_TEXT) {
+			mirror.style.setProperty(name, face.getPropertyValue(name));
+		}
+		mirror.style.setProperty('position', 'absolute');
+		mirror.style.setProperty('visibility', 'hidden');
+		mirror.style.setProperty('white-space', 'pre');
+		mirror.style.setProperty('padding', '0');
+		mirror.style.setProperty('border', '0');
+		mirror.textContent = box.value;
+		document.body.append(mirror);
+		const width = mirror.getBoundingClientRect().width;
+		mirror.remove();
+		return width;
+	};
+	const contentRoom = (box: HTMLInputElement): number => {
+		const face = window.getComputedStyle(box);
+		return (
+			box.clientWidth -
+			(Number.parseFloat(face.getPropertyValue('padding-inline-start')) || 0) -
+			(Number.parseFloat(face.getPropertyValue('padding-inline-end')) || 0)
+		);
+	};
+	useMeasure(() => {
+		const placeFigure = (): void => {
+			const node = tray.current;
+			const input = refs.quantity.current;
+			const figure = node?.querySelector<HTMLElement>('.adorn-figure') ?? null;
+			if (node === null || input === null) return;
+			if (figure === null || figure.hidden) {
+				node.removeAttribute('data-figure');
+				return;
+			}
+			node.setAttribute('data-figure', 'inside');
+			const amount = textWidth(input);
+			if (amount === null) {
+				document.fonts?.ready.then(() => placeFigure());
+				return;
+			}
+			if (amount > contentRoom(input)) {
+				node.setAttribute('data-figure', 'below');
+			}
+		};
+		placeFigure();
+		let frame = 0;
+		const rewrapped = (): void => {
+			if (frame !== 0) return;
+			frame = window.requestAnimationFrame(() => {
+				frame = 0;
+				placeFigure();
 			});
 		};
 		window.addEventListener('resize', rewrapped);
@@ -330,7 +427,7 @@ export function AmountStep({
 				</div>
 				{unitEntry !== null ? (
 					<>
-						<div className="tiles bare">
+						<div className="tiles bare" ref={tray}>
 							<div
 								part={partWhen('amount-input', { invalid: quantityRefused })}
 								className="tile entry"
@@ -343,25 +440,25 @@ export function AmountStep({
 									inputMode="decimal"
 									autoComplete="off"
 									aria-invalid={quantityRefused ? true : undefined}
-									aria-describedby={amountDescribed}
+									aria-describedby={quantityDescribed}
 								/>
-								{/* hidden as the code is; the box's name (`UnitEntry.name`) says what it counts. */}
 								<span className="adorn-trail" aria-hidden="true">
-									{unitEntry.unitLabel}
+									<span className="adorn-figure" hidden={unitEntry.estimate === null}>
+										{unitEntry.estimate ?? ''}
+									</span>
+									<span className="adorn-unit">{unitEntry.unitLabel}</span>
 								</span>
 							</div>
+							<p className="unit-figure" aria-hidden="true" hidden={unitEntry.estimate === null}>
+								{unitEntry.estimate ?? ''}
+							</p>
 						</div>
 						<label part={part('label')} className="vh" htmlFor="quantity-entry">
 							{unitEntry.name}
 						</label>
-						{unitEntry.estimate === null && unitEntry.note === null ? null : (
-							<div className="unit-estimate">
-								{unitEntry.estimate === null ? null : (
-									<p className="unit-figure">{unitEntry.estimate}</p>
-								)}
-								{unitEntry.note === null ? null : <p className="unit-note">{unitEntry.note}</p>}
-							</div>
-						)}
+						<span className="vh" id="amount-estimate">
+							{unitEntry.estimateDescription ?? ''}
+						</span>
 					</>
 				) : (
 					<>

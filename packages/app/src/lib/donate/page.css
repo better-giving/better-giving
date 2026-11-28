@@ -229,6 +229,21 @@ body {
 	min-block-size: var(--page-field-block);
 }
 
+/* the amount tray's flow here, and the estimate under a coin amount's box where the typed amount
+   and it cannot share it. the tray is no shadow root, so `.tiles` in
+   packages/form/src/styles/layout.css, which makes it a grid, does not reach it; this states the
+   grid, and the line the fallback stands on — a row of the tray's own, and its trailing edge, as
+   `placeFigure` in ./steps/amount.tsx places it. */
+.tiles.bare {
+	display: grid;
+	gap: var(--_sp2);
+}
+
+.tiles > .unit-figure {
+	grid-column: 1 / -1;
+	text-align: end;
+}
+
 .page > .page-ground {
 	--page-display: clamp(1.625rem, 1.2rem + 2.4cqi, 3rem);
 	--page-display-long: clamp(1.1875rem, 0.7rem + 2cqi, 1.625rem);
@@ -2692,4 +2707,11 @@ body {
 .page-ground .amount-label {
 	color: var(--_n11);
 	font-size: var(--_t-sm);
+}
+
+/* `hidden` is a UA declaration and every `display` above outranks it, as the form's own rule says
+   (packages/form/src/styles/layout.css); that rule is scoped to `:host, :root` and reaches no
+   node of this page. this rule is last in the file on purpose. */
+[hidden] {
+	display: none;
 }

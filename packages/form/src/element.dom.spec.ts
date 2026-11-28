@@ -7090,39 +7090,106 @@ describe('what the donor gives, on the first step', () => {
 	/** whether the currency's tiles are on the step. */
 	const tilesShown = (card: Mounted) =>
 		card.all('[part~="amount-option"]').every((tile) => tile.closest('[hidden]') === null);
+	/** the box's trailing group, as each of its marks shows: an unshown one reads as nothing. */
+	const trailGroup = (card: Mounted) =>
+		quantity(card).closest('[part~="amount-input"]')?.querySelector('.adorn-trail') as HTMLElement;
 	const trail = (card: Mounted) =>
-		quantity(card).closest('[part~="amount-input"]')?.querySelector('.adorn-trail')?.textContent;
+		[...trailGroup(card).children].map((mark) =>
+			(mark as HTMLElement).hidden ? '' : (mark.textContent ?? '')
+		);
 
-	it('takes a coin amount in one box named Amount, with the estimate and the note under it', async () => {
+	it('takes a coin amount in one box named Amount, its estimate in the box before the unit', async () => {
 		const card = await mount({ config: WITH_CRYPTO, ports: UNIT_PORTS });
 		await give(card, 'coin:btc');
 
 		expect(tilesShown(card)).toBe(false);
 		expect(card.find(`label[for="quantity-entry"]`).textContent).toBe('Amount');
-		expect(trail(card)).toBe('BTC');
-		expect(shows(card, '.unit-estimate .unit-figure')).toBe('');
-		expect(shows(card, '.unit-estimate')).toBe(
-			'Your gift is valued in US dollars when it arrives.'
-		);
+		expect(trail(card)).toEqual(['', 'BTC']);
 
 		type(quantity(card), '0.005');
 		await priced();
 
-		expect(shows(card, '.unit-estimate')).toBe(
-			'About $482.10Your gift is valued in US dollars when it arrives.'
-		);
+		expect(trailGroup(card).getAttribute('aria-hidden')).toBe('true');
+		expect(trailGroup(card).querySelector('.adorn-figure + .adorn-unit')).not.toBeNull();
+		expect(trail(card)).toEqual(['≈ $482.10', 'BTC']);
+		expect(card.shadow.textContent).not.toContain('valued in US dollars');
 	});
 
-	it('takes a share count in the same box, with nothing under it', async () => {
+	it('describes the coin amount’s box by its estimate in words while one is drawn', async () => {
+		const card = await mount({ config: WITH_CRYPTO, ports: UNIT_PORTS });
+		await give(card, 'coin:btc');
+		expect(quantity(card).hasAttribute('aria-describedby')).toBe(false);
+
+		type(quantity(card), '0.005');
+		await priced();
+
+		expect(quantity(card).getAttribute('aria-describedby')).toBe('quantity-estimate');
+		expect(card.find('#quantity-estimate').textContent).toBe('About $482.10 in US dollars');
+
+		type(quantity(card), '');
+		await priced();
+		expect(quantity(card).hasAttribute('aria-describedby')).toBe(false);
+	});
+
+	it('moves the estimate under the box where the typed amount and it cannot share the box', async () => {
+		// happy-dom lays nothing out: the box is 200 wide here and a character set in the span the
+		// value is read in 10, so a 24-character amount is wider than the box with whatever inline
+		// padding happy-dom computes for it, and a five-character one leaves room beside the estimate.
+		const proto = HTMLElement.prototype;
+		const own = {
+			clientWidth: Object.getOwnPropertyDescriptor(proto, 'clientWidth'),
+			getBoundingClientRect: Object.getOwnPropertyDescriptor(proto, 'getBoundingClientRect')
+		};
+		const laid = proto.getBoundingClientRect;
+		Object.defineProperty(proto, 'clientWidth', { configurable: true, get: () => 200 });
+		Object.defineProperty(proto, 'getBoundingClientRect', {
+			configurable: true,
+			writable: true,
+			value(this: HTMLElement): DOMRect {
+				if (!this.classList.contains('adorn-measure')) return laid.call(this);
+				return new DOMRect(0, 0, (this.textContent ?? '').length * 10, 0);
+			}
+		});
+		try {
+			const card = await mount({ config: WITH_CRYPTO, ports: UNIT_PORTS });
+			await give(card, 'coin:btc');
+			const tray = quantity(card).closest('.tiles') as HTMLElement;
+			expect(tray.hasAttribute('data-figure')).toBe(false);
+
+			type(quantity(card), '0.005');
+			await priced();
+			expect(tray.getAttribute('data-figure')).toBe('inside');
+
+			type(quantity(card), '1234.5678901234567890123');
+			await priced();
+			expect(tray.getAttribute('data-figure')).toBe('below');
+			expect(shows(card, '.unit-figure')).toBe('≈ $482.10');
+			expect(trail(card)).toEqual(['≈ $482.10', 'BTC']);
+
+			type(quantity(card), '0.005');
+			await priced();
+			expect(tray.getAttribute('data-figure')).toBe('inside');
+		} finally {
+			for (const [name, descriptor] of Object.entries(own)) {
+				if (descriptor === undefined) Reflect.deleteProperty(proto, name);
+				else Object.defineProperty(proto, name, descriptor);
+			}
+		}
+	});
+
+	it('takes a share count in the same box, with no estimate and nothing under it', async () => {
 		const card = await giveStock();
 		type(quantity(card), '50');
 		await priced();
 
 		expect(tilesShown(card)).toBe(false);
 		expect(card.find(`label[for="quantity-entry"]`).textContent).toBe('Number of shares');
-		expect(trail(card)).toBe('shares');
-		expect(shows(card, '.unit-estimate')).toBe('');
+		expect(trail(card)).toEqual(['', 'shares']);
+		expect(quantity(card).closest('.tiles')?.hasAttribute('data-figure')).toBe(false);
+		expect(shows(card, '.unit-figure')).toBe('');
+		expect(quantity(card).hasAttribute('aria-describedby')).toBe(false);
 		expect(pill(card).getAttribute('aria-label')).toBe('Stock: AAPL');
+		expect(card.shadow.textContent).not.toContain('valued in US dollars');
 	});
 
 	const cadences = (card: Mounted) =>
@@ -7872,14 +7939,16 @@ describe('a crypto gift', () => {
 		expect(shows(card, '#amount-problem')).toBe('Enter an amount between $5 and $50,000');
 		expect(card.shadow.activeElement).toBe(quantity(card));
 		expect(quantity(card).getAttribute('aria-invalid')).toBe('true');
-		expect(quantity(card).getAttribute('aria-describedby')).toBe('amount-problem');
+		expect(quantity(card).getAttribute('aria-describedby')).toBe(
+			'quantity-estimate amount-problem'
+		);
 
 		type(quantity(card), '0.005');
 		expect(shows(card, '#amount-problem')).toBe('Enter an amount between $5 and $50,000');
 		await priced();
 
 		expect(shows(card, '#amount-problem')).toBe('');
-		expect(quantity(card).hasAttribute('aria-describedby')).toBe(false);
+		expect(quantity(card).getAttribute('aria-describedby')).toBe('quantity-estimate');
 		expect(quantity(card).hasAttribute('aria-invalid')).toBe(false);
 	});
 
@@ -7906,7 +7975,7 @@ describe('a crypto gift', () => {
 		type(quantity(card), '0.005');
 		await priced();
 		expect(shows(card, '#amount-problem')).toBe('');
-		expect(shows(card, '.unit-estimate .unit-figure')).toBe('About $25.00');
+		expect(shows(card, '.adorn-figure')).toBe('≈ $25.00');
 	});
 
 	// the two never stand together: the bounds are said of an amount that priced, this of one that did not.
@@ -7918,6 +7987,11 @@ describe('a crypto gift', () => {
 		await priced();
 		proceed(card);
 		expect(shows(card, '#amount-problem')).toBe('Enter an amount between $5 and $50,000');
+		expect(shows(card, '.adorn-figure')).toBe('≈ $0.95');
+		expect(quantity(card).getAttribute('aria-describedby')).toBe(
+			'quantity-estimate amount-problem'
+		);
+		expect(card.find('#quantity-estimate').textContent).toBe('About $0.95 in US dollars');
 
 		answer = async () => null;
 		type(quantity(card), '0.00002');
@@ -7954,7 +8028,7 @@ describe('a crypto gift', () => {
 		type(quantity(card), '0.005');
 		await priced();
 		expect(asked).toEqual(['0.005']);
-		expect(shows(card, '.unit-estimate .unit-figure')).toBe('');
+		expect(shows(card, '.adorn-figure')).toBe('');
 
 		answer = async () => 2500;
 		await give(card, KEYS.USDT ?? '');
@@ -7964,16 +8038,16 @@ describe('a crypto gift', () => {
 		await priced();
 
 		expect(asked).toEqual(['0.005', '0.005']);
-		expect(shows(card, '.unit-estimate .unit-figure')).toBe('About $25.00');
+		expect(shows(card, '.adorn-figure')).toBe('≈ $25.00');
 
-		const estimate = shows(card, '.unit-estimate');
+		const estimate = shows(card, '.adorn-figure');
 		const named = pill(card).getAttribute('aria-label');
 		await give(card, KEYS.USDT ?? '');
 		await priced();
 
 		expect(asked).toEqual(['0.005', '0.005']);
 		expect(quantity(card).value).toBe('0.005');
-		expect(shows(card, '.unit-estimate')).toBe(estimate);
+		expect(shows(card, '.adorn-figure')).toBe(estimate);
 		expect(pill(card).getAttribute('aria-label')).toBe(named);
 
 		proceed(card);
@@ -8557,7 +8631,9 @@ describe('a crypto gift', () => {
 			'Enter at least $12 in Tether USD (Tron), or choose another coin'
 		);
 		expect(card.shadow.activeElement).toBe(quantity(card));
-		expect(quantity(card).getAttribute('aria-describedby')).toBe('amount-problem');
+		expect(quantity(card).getAttribute('aria-describedby')).toBe(
+			'quantity-estimate amount-problem'
+		);
 		expect(card.shadow.querySelector('[role="alert"]')).toBeNull();
 
 		type(quantity(card), '50');
