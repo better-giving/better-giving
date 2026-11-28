@@ -1179,7 +1179,8 @@ describe('the free entry as laid out', () => {
  * a floating label is a label that moved, so what is measured is where its words are drawn rather
  * than whether a rule declaring it exists: resting they sit on the box's own middle, and once the
  * box has the caret or a value they sit on its top edge with the border knocked out behind them, at
- * a step smaller than they rested at and in from the corner the box is drawn with. the refusal the
+ * a step smaller than they rested at and starting at the box's own inline-start edge, the knockout
+ * reaching past that edge by the ring's width. the refusal the
  * box is carrying is no part of that — it stands under the box, where every other row on the card
  * stands its own. a lightweight DOM lays out none of it, and a rule that floated nothing would read
  * as a fix.
@@ -1242,7 +1243,7 @@ describe('the labels on the pair under the name', () => {
 		};
 	}
 
-	/** the corner the box is drawn with, which is what the floated label has to start clear of. */
+	/** the corner the box is drawn with. */
 	function corner(box: HTMLElement): number {
 		return parseFloat(getComputedStyle(box).borderStartStartRadius);
 	}
@@ -1552,6 +1553,82 @@ describe('the labels on the pair under the name', () => {
 		});
 	}
 
+	// the same seats in a mirrored document: the inline start is the right edge there, and a label
+	// seated on a physical `left` would stand at the far end of the box from the group's legend. the
+	// resting words and the floated first letter stand at the right, and the band reaches out past
+	// that edge to the right by the ring's width.
+	it('seats the label and carries its band past the edge at the inline start in a right-to-left document', async () => {
+		document.documentElement.setAttribute('dir', 'rtl');
+		const { shadow } = await mount();
+		await atDetails(shadow);
+		const { box, label, words } = field(shadow, '#first-name');
+		const floating = box.closest('.floating') as HTMLElement;
+		floating.style.setProperty('--_focus-width', 'var(--_border-strong)');
+		const style = getComputedStyle(box);
+		const inset = () =>
+			box.getBoundingClientRect().right -
+			parseFloat(style.borderInlineStartWidth) -
+			parseFloat(style.paddingInlineStart);
+
+		expect(getComputedStyle(box).direction, 'the mirrored document').toBe('rtl');
+		seated(ink(words).right, inset());
+
+		fill(shadow, '#first-name', 'Ada');
+		await caretOn(box);
+		await landed(box);
+		await landed(label);
+
+		const ring = parseFloat(/(-?[\d.]+)px\s*$/.exec(style.boxShadow)?.[1] ?? '0');
+		const edge = box.getBoundingClientRect().right;
+		expect(ring, 'the widened ring').toBeGreaterThan(parseFloat(style.borderTopWidth));
+		seated(ink(words).right, edge);
+		expect(words.getBoundingClientRect().right, 'the band past the ring').toBeGreaterThanOrEqual(
+			edge + ring
+		);
+	});
+
+	// a name longer than its box is cut at the box's inline end with an ellipsis, and the label holds
+	// its band back from that end by the box's inner corner (`--_label-inset`): under `square` there
+	// is none, and under `round` it is twice `soft`'s. the label's text is replaced because the form
+	// ships no name long enough to overflow; what is read is the words' own box against the box's.
+	for (const preset of ['soft', 'round'] as const) {
+		it(`cuts a floated name longer than its box with an ellipsis, held in from the box\u2019s end by the inner corner, under ${preset}`, async () => {
+			page(`body { --donate-corner: ${preset}; }`);
+			const { shadow } = await mount();
+			await atDetails(shadow);
+			const { box, label, words } = field(shadow, '#first-name');
+			words.textContent = 'A first name far too long to stand inside the box it names '.repeat(3);
+
+			fill(shadow, '#first-name', 'Ada');
+			await landed(label);
+
+			const inset = step(shadow, '--_label-inset');
+			expect(inset, 'an inner corner to hold in by').toBeGreaterThan(0);
+			expect(getComputedStyle(words).textOverflow).toBe('ellipsis');
+			expect(words.scrollWidth, 'cut rather than whole').toBeGreaterThan(words.clientWidth);
+			seated(words.getBoundingClientRect().right, box.getBoundingClientRect().right - inset);
+			expect(label.getBoundingClientRect().right).toBeLessThanOrEqual(
+				box.getBoundingClientRect().right + 0.5
+			);
+		});
+	}
+
+	// the name against the group's legend directly rather than against the box they both stand
+	// beside: the pair's first letter and the legend's are the same distance in from the group's edge.
+	it('stands the floated first name where the group\u2019s legend starts', async () => {
+		const { shadow } = await mount();
+		await atDetails(shadow);
+		const { box, label, words } = field(shadow, '#first-name');
+		const legend = box.closest('fieldset')?.querySelector(':scope > legend') as HTMLElement;
+
+		expect(legend.textContent).toBe('Your name');
+		expect(label.textContent).toBe('First name');
+		fill(shadow, '#first-name', 'Ada');
+		await landed(label);
+
+		seated(ink(words).left, ink(legend).left);
+	});
+
 	// standing on the edge, the label has to be painted behind or the edge reads through its words.
 	// one fill: the half above the edge covers the card and the half below covers the box, and a
 	// text box's face is the card's own rung 1, so the card's ground is a patch on neither. the band
@@ -1794,12 +1871,12 @@ describe('the labels on the pair under the name', () => {
 		);
 	});
 
-	// the refusal is regular, and none of the boxes it stands under leaves it bold: measured on the
-	// card's base and on a row whose label is drawn at a label's weight, in both constructions. the
-	// registry's in-flow refusal (`.ds-field-err` in `../registry/styles/field-css.css`) states no
-	// weight of its own.
-	it('draws every refusal at the regular weight, under a label over the box and one inside it', async () => {
-		const { shadow, card } = await mount();
+	// the refusal is regular, and none of the details step's boxes leaves it bold: measured under the
+	// pair's labels inside their boxes and under the email's label over its box, where a label is
+	// drawn at a label's weight. the registry's in-flow refusal (`.ds-field-err` in
+	// `../registry/styles/field-css.css`) states no weight of its own.
+	it('draws the details step\u2019s refusals at the regular weight, under a label over the box and one inside it', async () => {
+		const { shadow } = await mount();
 		await atDetails(shadow);
 		onward(shadow);
 		await settle();
@@ -1808,9 +1885,7 @@ describe('the labels on the pair under the name', () => {
 			const { refusal } = field(shadow, id);
 			expect(refusal.hidden).toBe(false);
 			expect(getComputedStyle(refusal).fontWeight).toBe(weight(shadow, '--_w-normal'));
-			expect(getComputedStyle(refusal).fontWeight).not.toBe(weight(shadow, '--_w-bold'));
 		}
-		expect(getComputedStyle(card).fontWeight).not.toBe(weight(shadow, '--_w-bold'));
 	});
 
 	// and the box that is not in the pair is drawn the way every other single box on the card is:

@@ -138,10 +138,11 @@ describe('the logo in the site nav', () => {
 			expect(home?.textContent).toBe('');
 		});
 
-		it('none: the name alone, and Donate not marked current', () => {
+		it('none: the name alone, with the Donate link to / and its menu button drawn', () => {
 			const root = ended(null);
 			expect(root.querySelector('.ds-site-nav-brand')?.textContent).toBe(ORG);
-			expect(root.querySelector('[aria-current]')).toBeNull();
+			expect(root.querySelector('.ds-site-nav-link')?.getAttribute('href')).toBe('/');
+			expect(root.querySelector('.ds-site-nav-toggle')).not.toBeNull();
 		});
 
 		it('draws a plain page with no site nav', () => {
