@@ -448,7 +448,7 @@ async function withdraw(
 		);
 		return (
 			stopHeldOpen(stop, reversal) ??
-			(posting === null
+			(paidOut
 				? recordedForDonee(reversal, refundId)
 				: problem === null
 					? {
@@ -463,7 +463,7 @@ async function withdraw(
 						})
 		);
 	}
-	if (posting === null) return recordedForDonee(reversal, refundId);
+	if (paidOut) return recordedForDonee(reversal, refundId);
 	if (tellsDonor) {
 		await sendRefundNotice(deps, {
 			giftPaymentId: reversed.id,

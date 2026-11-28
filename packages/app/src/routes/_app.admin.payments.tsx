@@ -308,11 +308,15 @@ const TAKES: Record<Processor, string> = {
 	paypal: 'PayPal and Venmo',
 	chariot: 'Gifts from a donor-advised fund',
 	nowpayments: 'Crypto',
+	// no card of its own reads this: the sponsor draws `SponsorCard` below (`readPaymentsScreen`).
 	sponsor: 'Better Giving takes your gifts and pays them out.'
 };
 
 /** where a sponsored organisation sees its payouts and bank details. */
 const SPONSOR_ACCOUNT = 'https://better.giving';
+
+/** how a sponsored deployment names its sponsor where it draws the one card it has. */
+const SPONSOR_TITLE = 'Better Giving';
 
 /** where DEPLOY.md says how a processor's keys go into `.env`. */
 const HOW_TO_ADD = 'https://github.com/better-giving/better-giving/blob/main/DEPLOY.md#payments';
@@ -444,7 +448,7 @@ function SponsorCard() {
 	return (
 		<Section card>
 			<div className="adm-record__head">
-				<h2>{PROCESSOR_LABELS.sponsor}</h2>
+				<h2>{SPONSOR_TITLE}</h2>
 				<StatusWord tone="done">Set up</StatusWord>
 			</div>
 			<p className="adm-hint">{TAKES.sponsor}</p>
