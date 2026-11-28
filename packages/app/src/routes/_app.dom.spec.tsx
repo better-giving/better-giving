@@ -1,4 +1,5 @@
-import { act, createElement, type ReactNode } from 'react';
+import { Mark } from '@better-giving/operator/components/status/Mark';
+import { act, type ComponentProps, createElement, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createRoutesStub, data, Link, useLoaderData } from 'react-router';
 import { expect, it, onTestFinished } from 'vitest';
@@ -25,6 +26,16 @@ async function mount(tree: ReactNode): Promise<HTMLElement> {
 		root.remove();
 	});
 	return root;
+}
+
+/** the inner markup of the svg `Mark` draws for `name`. */
+function glyphDrawing(name: ComponentProps<typeof Mark>['name']): string {
+	const holder = document.createElement('div');
+	const mounted = createRoot(holder);
+	act(() => mounted.render(<Mark name={name} />));
+	const drawing = holder.querySelector('svg')?.innerHTML ?? '';
+	act(() => mounted.unmount());
+	return drawing;
 }
 
 /** what the layout's loader answers, for the deployer or a member, with the rail as the cookie left it. */
@@ -144,17 +155,36 @@ it.each([
 		]) as never
 	]);
 	const root = await mount(<Stub initialEntries={['/admin/forms']} />);
-	const links = ['.ds-shell-mark > a', '.ds-shell-mark-rail > a'].map((selector) =>
-		root.querySelector(selector)
-	);
+	const links = [
+		'.ds-shell-mark > a',
+		'.ds-shell-mark-rail > a',
+		'.ds-shell-drawer .ds-shell-mark > a'
+	].map((selector) => root.querySelector(selector));
+
+	// the router's link prevents the default of a plain press to move in-app; a document load leaves
+	// it alone. read at the document, after the router's handler has run, then prevented here so
+	// happy-dom does not follow the address itself.
+	let prevented: boolean | undefined;
+	const observe = (event: Event) => {
+		prevented = event.defaultPrevented;
+		event.preventDefault();
+	};
+	document.addEventListener('click', observe);
+	onTestFinished(() => document.removeEventListener('click', observe));
 
 	for (const link of links) {
+		expect(link, 'a head anchor is drawn').not.toBeNull();
 		expect(link?.getAttribute('href')).toBe('/');
 		expect(link?.getAttribute('aria-label')).toBe('Open home page');
+		// a document load, not the router's own move: a press here is the browser's to follow.
+		expect(link?.getAttribute('data-discover')).toBeNull();
+		prevented = undefined;
+		await act(async () => {
+			link?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }));
+		});
+		expect(prevented).toBe(false);
 	}
 	expect(links[0]?.querySelector('.ds-avatar') !== null).toBe(orgLogo === null);
-	// a document load, not the router's own move: a press here is the browser's to follow.
-	expect(links[0]?.getAttribute('data-discover')).toBeNull();
 });
 
 it.each([
@@ -171,7 +201,10 @@ it.each([
 		expect(labels.indexOf('Campaigns')).toBe(labels.indexOf('Home page') + 1);
 		expect(home?.getAttribute('href')).toBe('/admin/donation-page');
 		expect(home?.getAttribute('aria-current')).toBe('page');
-		expect(home?.querySelector('svg')).not.toBeNull();
+		// the house glyph by its drawing, which another glyph's would not match.
+		const drawnMark = home?.querySelector('svg')?.innerHTML;
+		expect(drawnMark).toBe(glyphDrawing('house'));
+		expect(drawnMark).not.toBe(glyphDrawing('globe'));
 
 		const elsewhere = await frameAt('/admin/forms', deployer);
 		const homeElsewhere = [...elsewhere.querySelectorAll('.ds-shell-sidebar .ds-nav-link')].find(

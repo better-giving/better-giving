@@ -514,7 +514,7 @@ describe('the shell around the page', () => {
 		expect(line?.getAttribute('aria-valuenow')).toBe('5');
 	});
 
-	it('names the mark by where it goes, or the organisation in words where there is no logo', () => {
+	it('names the head mark for the home label it is given', () => {
 		const withLogo = render(Shell, props());
 		expect(sidebar(withLogo).querySelector('.ds-shell-mark a')?.getAttribute('aria-label')).toBe(
 			'Dashboard'

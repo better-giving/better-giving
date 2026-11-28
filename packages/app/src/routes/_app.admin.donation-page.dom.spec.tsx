@@ -4,9 +4,9 @@ import { createRoutesStub, useLoaderData } from 'react-router';
 import { beforeEach, describe, expect, it, onTestFinished } from 'vitest';
 import { RECORD_VERSION, WHICH_FORM } from '$lib/forms/definition';
 import type { BannerState } from '$lib/page/edit-forms';
-import DonationPageEditPage, { clientAction } from './_app.admin.donation-page';
+import DonationPageEditPage, { clientAction, meta } from './_app.admin.donation-page';
 
-// the Donation page's edit page as the route mounts it: its three section cards under the publish
+// the Home page's edit page as the route mounts it: its three section cards under the publish
 // banner, each Save held until its card changes, no Unpublish, and Reset to default while there is
 // something to reset. the loader and the server's action are stand-ins; what the real ones do is
 // ./_app.admin.donation-page.db.spec.ts's.
@@ -124,7 +124,7 @@ async function type(box: HTMLInputElement, text: string) {
 	});
 }
 
-describe('the Donation page edit page', () => {
+describe('the Home page edit page', () => {
 	it('is a form of its cards, Videos after General, with no preview and no Unpublish', async () => {
 		await screen();
 
@@ -143,6 +143,24 @@ describe('the Donation page edit page', () => {
 		await screen();
 
 		expect(document.querySelector('h1')?.textContent).toBe('Home page');
+		const matches = [
+			{ id: 'routes/_app', loaderData: { orgName: 'Riverbank Trust' } }
+		] as unknown as Parameters<typeof meta>[0]['matches'];
+		expect(meta({ matches } as Parameters<typeof meta>[0])).toEqual([
+			{ title: 'Home page · Riverbank Trust' }
+		]);
+	});
+
+	it('offers no View live page while saved changes wait, only the sentence naming the address', async () => {
+		drawn = fixture('changed', true);
+		await screen();
+
+		const banner = document.querySelector('.adm-banner') as HTMLElement;
+		expect(banner.textContent).toContain('Changes not public yet');
+		expect([...banner.querySelectorAll('a')].map((one) => one.textContent?.trim())).toEqual([]);
+		expect(
+			[...banner.querySelectorAll('button')].map((one) => one.textContent?.trim())
+		).not.toContain('View live page');
 	});
 
 	it('offers Reset to default only while the page holds edits', async () => {
