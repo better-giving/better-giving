@@ -172,12 +172,13 @@ export function Shell({
 		return () => wide.removeEventListener('change', widened);
 	}, [drawerOpen]);
 
-	const account = <Account orgName={orgName} staff={staff} onSignOut={onSignOut} link={link} />;
+	const account = <Account orgName={orgName} staff={staff} onSignOut={onSignOut} />;
 
 	const mark = (
 		<div className="ds-shell-mark">
-			{/* a plain anchor, never the surface's router link: the head opens a donor's page, which is
-			    outside this shell and follows as a document load. */}
+			{/* a plain anchor, never the surface's router link: `home.href` is the home page, a donor's
+			    page outside this shell that follows as a document load, or the dashboard while that
+			    page cannot show. the shell is not told which it holds, so both load as a document. */}
 			<a href={home.href} aria-label={home.label}>
 				<HeadMark orgLogo={orgLogo} orgName={orgName} rail={false} />
 			</a>
@@ -255,7 +256,7 @@ export function Shell({
 					if (event.target === event.currentTarget) closeDrawer();
 				}}
 				onClickCapture={(event) => {
-					// any link in it, a row or the account menu's, closes it as it is followed
+					// any link in it, the head's or a row's, closes it as it is followed
 					// (app-shell-css's note). heard in capture, so no handler inside that stops the
 					// click keeps it open; a click that opens a new tab leaves the page, and the
 					// drawer, where they are.
@@ -666,17 +667,15 @@ function HeadMark({ orgLogo, orgName, rail }) {
  * @property {string} orgName
  * @property {{ name: string; email: string }} staff
  * @property {() => void} onSignOut
- * @property {ComponentType<ShellLinkProps> | undefined} link
  */
 
 /* the sidebar's foot: who is signed in, opening the account menu above it, starts aligned. */
 /** @param {AccountProps} props */
-function Account({ orgName, staff, onSignOut, link }) {
+function Account({ orgName, staff, onSignOut }) {
 	return (
 		<div className="ds-shell-account">
 			<ActionMenu
 				placement="above-start"
-				link={link}
 				header={{ title: staff.name, meta: staff.email }}
 				runs={[[{ label: 'Sign out', mark: 'log-out', onSelect: onSignOut }]]}
 				trigger={
