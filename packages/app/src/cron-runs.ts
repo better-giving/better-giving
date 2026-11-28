@@ -16,6 +16,8 @@ import { sweepSupporterLeftovers } from '$lib/server/supporters/sweep';
 import { sendDueWebhooks } from '$lib/server/webhooks/deliver';
 import { mailPause } from '$lib/server/webhooks/paused-mail';
 import { sendDueZapierEvents } from '$lib/server/zapier/deliver';
+import { pullSponsorEvents } from '$lib/server/payouts/pull';
+import { readSponsorFeed } from '$lib/server/payments/sponsor';
 
 /**
  * this deployment's whole schedule: each expression, the work it runs, keyed by that expression.
@@ -26,7 +28,9 @@ import { sendDueZapierEvents } from '$lib/server/zapier/deliver';
  * quarter to, in a run of their own, the donor notices of refunds that did not send are sent
  * again; at a quarter past, the connector's and the supporters' spent links, codes and sessions
  * are swept with them. at 04:20 each day, the stock step's ticker list is fetched again from the
- * SEC ($lib/server/donations/ticker-refresh.ts). every ten minutes, the employer match reminders
+ * SEC ($lib/server/donations/ticker-refresh.ts). every hour, a hosted site reads back what its
+ * fiscal sponsor holds past the cursor it keeps, so a delivery that never arrived is not lost
+ * ($lib/server/payouts/pull.ts). every ten minutes, the employer match reminders
  * that fell due are sent ($lib/server/matching/reminders.ts), and the match packs owed and never
  * tried, or that failed an hour or more before, are sent ($lib/server/matching/pack.ts). every
  * minute, in one run, what this deployment owes is sent: the organisation's books, its Zaps and
@@ -61,6 +65,25 @@ export const CRON_RUNS: Readonly<Record<string, (env: Env, db: Db, now: Date) =>
 			sweepSupporterLeftovers(db, now)
 		]),
 	'45 * * * *': (env, db, now) => owedRefundNotices(env, db, now),
+
+	// a hosted site's hourly pull of what its fiscal sponsor holds past the cursor: a delivery that
+	// never arrived is never sent again, so this is the one that reads it back.
+	'0 * * * *': (env, db, now) => {
+		const apiKey = env.SPONSOR_API_KEY;
+		if (apiKey === undefined) return Promise.resolve();
+		const processors = createPaymentProviders(env);
+		return pullSponsorEvents(
+			{
+				db,
+				provider: processors.for('sponsor'),
+				processors,
+				email: createEmailProvider(env),
+				giftOrigin: giftLinkOrigin(env, null),
+				sponsorFeed: (after) => readSponsorFeed({ apiKey, fetch }, after)
+			},
+			now
+		);
+	},
 
 	'20 4 * * *': (env, db, now) =>
 		refreshTickers(

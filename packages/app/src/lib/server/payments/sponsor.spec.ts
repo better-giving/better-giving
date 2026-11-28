@@ -1,7 +1,7 @@
 import { createHmac } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import type { IntentRequest } from './provider';
-import { createSponsorProvider, sponsorEvent } from './sponsor';
+import { createSponsorProvider, readSponsorFeed, sponsorEvent } from './sponsor';
 
 // the sponsor adapter, driven through the `fetch` it is handed: what it sends is what the sponsor
 // would receive, and what it answers is read off a scripted reply.
@@ -491,5 +491,58 @@ describe('what an event is about', () => {
 			ok: true,
 			value: { kind: 'settlement', providerTxnId: 'pay_1' }
 		});
+	});
+});
+
+describe('readSponsorFeed', () => {
+	const after = (seq: number) => ({ id: `evt_${seq}`, seq, type: 'payment.settled', data: {} });
+
+	it('asks after the cursor it is given and answers the last sequence on the page', async () => {
+		const { fetch, calls } = scripted([
+			{ status: 200, json: { events: [after(7), after(8)], has_more: true } }
+		]);
+
+		const result = await readSponsorFeed({ apiKey: 'spk_test', fetch }, 6);
+
+		expect(calls[0]?.url).toBe('https://better.giving/api/partner/v1/events?after=6');
+		expect(calls[0]?.headers.get('authorization')).toBe('Bearer spk_test');
+		expect(result).toMatchObject({ ok: true, value: { next: 8, more: true } });
+	});
+
+	it('answers the same cursor and no more for an empty page', async () => {
+		const { fetch } = scripted([{ status: 200, json: { events: [], has_more: false } }]);
+
+		const result = await readSponsorFeed({ apiKey: 'spk_test', fetch }, 6);
+
+		expect(result).toMatchObject({ ok: true, value: { events: [], next: 6, more: false } });
+	});
+
+	it.each([
+		[{ events: [after(3)], has_more: false }, 'a page whose last sequence is behind the cursor'],
+		[{ events: [{ id: 'evt_x' }], has_more: false }, 'an event with no sequence'],
+		[{ events: [], has_more: true }, 'an empty page that says more follow'],
+		[{ events: [] }, 'a page with no has_more']
+	])('refuses %s', async (body, _what) => {
+		const { fetch } = scripted([{ status: 200, json: body }]);
+		const result = await readSponsorFeed({ apiKey: 'spk_test', fetch }, 6);
+		expect(result.ok ? null : result.reason).toBe('provider_error');
+	});
+
+	it('answers a refused key as not_configured, naming the variable', async () => {
+		const { fetch } = scripted([{ status: 401, json: { code: 'key_invalid' } }]);
+		const result = await readSponsorFeed({ apiKey: 'spk_bad', fetch }, 0);
+		expect(result).toMatchObject({
+			ok: false,
+			reason: 'not_configured',
+			detail: expect.stringContaining('SPONSOR_API_KEY')
+		});
+	});
+
+	it('answers a call that never came back as unreachable', async () => {
+		const fetch = (async () => {
+			throw new TypeError('fetch failed');
+		}) as typeof globalThis.fetch;
+		const result = await readSponsorFeed({ apiKey: 'spk_test', fetch }, 0);
+		expect(result.ok ? null : result.reason).toBe('unreachable');
 	});
 });

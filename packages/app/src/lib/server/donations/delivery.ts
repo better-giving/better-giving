@@ -5,7 +5,13 @@ import { sqliteResultCode } from '../db/rejection';
 import type { MailDeps } from '../email/alert';
 import type { GiftOrigin } from '../matching/links';
 import type { Processors } from '../payments/factory';
-import { PROCESSOR_LABELS, type PayableCoin, type PaymentProvider } from '../payments/provider';
+import {
+	PROCESSOR_LABELS,
+	type PayableCoin,
+	type PaymentProvider,
+	type PaymentResult,
+	type SponsorFeed
+} from '../payments/provider';
 
 // what one verified delivery may answer with, the one way this app tells an operator about a
 // delivery it could not finish (`alert`, stated in ../email/alert.ts and re-exported here), and
@@ -64,7 +70,8 @@ import { PROCESSOR_LABELS, type PayableCoin, type PaymentProvider } from '../pay
  *                    retry schedule is what tries again.
  *   stopped        — a commitment recorded as having stopped: cancelled, or given up on.
  *   not_yet        — a sponsor's event naming a gift that has not settled here yet, like a refund
- *                    before its payment. nothing was written; the sponsor sends it again
+ *                    before its payment, or a payment the sponsor still reads back as `pending`.
+ *                    nothing was written; the sponsor sends it again, answered 409
  *                    (`paidOutByDonee` in ../payments/provider.ts). every other processor's is the
  *                    `incomplete` failure below, which its webhook redelivers on.
  */
@@ -117,6 +124,11 @@ export type SettleFailure = (typeof SETTLE_FAILURES)[number];
  */
 export type SettleDeps = MailDeps & {
 	readonly provider: PaymentProvider;
+	/**
+	 * the sponsor's feed, where this run is its hourly pull (../../payouts/pull.ts): reads the events
+	 * after a sequence. absent on every delivery route, which acts on the body it was sent.
+	 */
+	readonly sponsorFeed?: (after: number) => Promise<PaymentResult<SponsorFeed>>;
 	/**
 	 * every processor this deployment holds, which a disputed gift's repeating plan is stopped through
 	 * (./reverse.ts): the plan lives on whichever processor collected it. required, so a webhook

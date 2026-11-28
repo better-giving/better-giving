@@ -24,6 +24,7 @@ import {
 import type { CryptoReceived } from '../email/receipt';
 import { renderUncollectedNotice } from '../email/uncollected';
 import { findEntryGroup } from '../ledger/queries';
+import { recordPayout } from '../ledger/record-payout';
 import { readOrgProfile } from '../org/queries';
 import {
 	DONATION_METADATA_KEY,
@@ -316,14 +317,8 @@ export async function settleEvent(deps: SettleDeps, event: PaymentEvent): Promis
 	if (event.kind === 'reversal') return reverseDelivery(deps, event);
 
 	// a payout names no transaction to settle: it is booked from its own body by
-	// ../ledger/payouts.ts, which a processor's webhook route never reaches.
-	if (event.kind === 'payout') {
-		return {
-			ok: true,
-			outcome: 'ignored',
-			detail: `event ${event.id} (${event.type}) is a payout, which this delivery path does not book.`
-		};
-	}
+	// ../ledger/record-payout.ts, which the sponsor's delivery route and its hourly pull both reach.
+	if (event.kind === 'payout') return recordPayout(deps, event);
 
 	if (event.kind === 'ignored') {
 		return {
@@ -557,7 +552,10 @@ async function settleTarget(
 		}
 		return {
 			ok: true,
-			outcome: 'updated',
+			outcome:
+				paidOutByDonee(deps.provider.processor) && settlement.status === 'pending'
+					? 'not_yet'
+					: 'updated',
 			detail: `payment ${target.payment.id} is ${settlement.status}; nothing was posted.`
 		};
 	}

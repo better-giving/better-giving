@@ -19,6 +19,7 @@ import {
 	type ReversalRead,
 	type SettledRail,
 	type Settlement,
+	type SponsorFeed,
 	type SponsoredGift,
 	type WebhookDelivery
 } from './provider';
@@ -171,6 +172,56 @@ const NO_ENDPOINT =
 	'The sponsor posts this site’s events to an address provisioning set, so there is no endpoint to register or read.';
 const NO_WALLETS = 'This release asks the sponsor nothing about wallet hosts.';
 const NO_COINS = 'Crypto gifts do not go through the sponsor.';
+
+/**
+ * `GET /events?after=<seq>`, this site's events in commit order — the hourly pull's read, where a
+ * delivery was missed (`SPONSOR_EVENTS_SECRET` signs what arrives, and this read is what its key
+ * authenticates instead). the envelopes are handed over unread: the caller reads each through
+ * `sponsorEvent`. a page with no envelope in it is `unreadable`, since a feed that answers that is
+ * one this app cannot page through.
+ */
+export async function readSponsorFeed(
+	credentials: Pick<SponsorCredentials, 'apiKey' | 'fetch'>,
+	after: number
+): Promise<PaymentResult<SponsorFeed>> {
+	let response: Response;
+	try {
+		response = await credentials.fetch(`${SPONSOR_API_URL}/events?after=${after}`, {
+			method: 'GET',
+			headers: { authorization: `Bearer ${credentials.apiKey}`, accept: 'application/json' },
+			signal: AbortSignal.timeout(TIMEOUT_MS)
+		});
+	} catch (error) {
+		return unreachable(error);
+	}
+	let body: unknown = null;
+	try {
+		body = await response.json();
+	} catch {
+		body = null;
+	}
+	if (response.status !== 200) return refusal({ status: response.status, body });
+	const events = field(body, 'events');
+	const more = field(body, 'has_more');
+	if (!Array.isArray(events) || typeof more !== 'boolean') {
+		return unreadable(`the events after ${after}`);
+	}
+	if (events.length === 0) {
+		return more
+			? unreadable(`an empty page of events after ${after} that says more follow`)
+			: { ok: true, value: { events, next: after, more: false } };
+	}
+	const sequences = events.map((envelope) => field(envelope, 'seq'));
+	const last = sequences[events.length - 1];
+	if (!sequences.every((seq) => isSeq(seq)) || !isSeq(last) || last < after) {
+		return unreadable(`a page of events after ${after} whose sequence numbers do not follow it`);
+	}
+	return { ok: true, value: { events, next: last, more } };
+}
+
+function isSeq(value: unknown): value is number {
+	return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+}
 
 /** how far a delivery's `webhook-timestamp` may be from this server's clock, either way. */
 const TOLERANCE_MS = 5 * 60_000;

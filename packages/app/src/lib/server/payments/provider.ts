@@ -793,6 +793,15 @@ export type CoinValue = {
  * from the sequence it happened to receive would be wrong for any donor whose bank was slow; this
  * is the re-read that replaces that.
  */
+export type SponsorFeed = {
+	/** the events after `after`, in the sponsor's commit order, at most a page's worth. */
+	readonly events: readonly unknown[];
+	/** the sequence to ask after next; `after` itself where the page was empty. */
+	readonly next: number;
+	/** whether the feed holds events past this page, which the pull should ask for next. */
+	readonly more: boolean;
+};
+
 export type Settlement = {
 	readonly providerTxnId: string;
 	/** the row's own vocabulary — `PAYMENT_STATUSES` in ../db/schema.ts. */
