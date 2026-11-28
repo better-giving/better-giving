@@ -1708,7 +1708,9 @@ describe('the labels on the pair under the name', () => {
 			const drawn = ink(words);
 			const before = drawn.left - span.left;
 			const after = span.right - drawn.right;
-			expect(before, `${state}: room before the name`).toBeLessThan(0.5);
+			// a box's edge is drawn on the whole device pixel it rounds to, so a band started at it
+			// lands anywhere within half a pixel of it.
+			expect(before, `${state}: room before the name`).toBeLessThanOrEqual(0.5);
 			expect(after, `${state}: room after the name`).toBeGreaterThanOrEqual(DEVICE_PIXEL);
 		});
 	});
