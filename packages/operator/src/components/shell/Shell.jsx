@@ -84,10 +84,9 @@ const WIDE = '(width >= 48rem)';
 
 /* the operator shell, drawn with app-shell-css 2.0.0 and the sheets it reads: the sidebar (mark,
    destinations, account), the top bar (menu button on a phone, rail toggle from 48rem, the
-   organisation's name), the page, and on a phone the same destinations in a
-   modal `<dialog>` drawer. no script ships with the registry item; what its note asks the page to
-   wire is here: the toggle and its storage, the drawer, the account menu, the rail's tooltip and a
-   parent's flyout.
+   organisation's name), the page, and on a phone the same destinations in a modal `<dialog>`
+   drawer. no script ships with the registry item; what its note asks the page to wire is here: the
+   toggle and its storage, the drawer, the account menu, the rail's tooltip and a parent's flyout.
 
    the first render, on the server and in the browser alike, draws the rail as `initialCollapsed`
    says, which the surface reads from the request's cookie with ../../rail-preference.ts: a first
@@ -630,7 +629,7 @@ function ParentRow({ destination, items, current, link, sidebar }) {
 }
 
 /**
- * the head's link to the home page, in the sidebar, the rail and the drawer's head: the
+ * what the head's link (`home`) draws, in the sidebar, the rail and the drawer's head: the
  * organisation's logo, or its initials in the registry's avatar (avatar-css) where it has none.
  * `rail` draws the logo in the rail's box, 28px: ../../styles/adm.css's `.adm-logo--rail`.
  *
@@ -647,7 +646,7 @@ function HeadMark({ orgLogo, orgName, rail }) {
 			) : (
 				<img className="adm-logo" src={orgLogo} alt="" height={36} />
 			)}
-			{/* with no logo, a name with no letter in it draws no initials, and the link shows nothing
+			{/* with no logo, a name with no word in it draws no initials, and the link shows nothing
 			    but keeps its name. the rail's box is 1.75rem wide (app-shell-css.usage.md), so the
 			    32px avatar would clip there: avatar-css's `ds-avatar-sm` is 24px. */}
 			{orgLogo === undefined && letters !== '' ? (
@@ -695,8 +694,8 @@ function Account({ orgName, staff, onSignOut }) {
 	);
 }
 
-/** the first letter of a name's first and last word, which the avatar draws uppercase
- *   (avatar-css.usage.md); one word gives one letter, and a name with no word gives none. */
+/** the first character of a name's first and last word, which the avatar draws uppercase
+ *   (avatar-css.usage.md); one word gives one, and a name with no word gives none. */
 export function initials(/** @type {string} */ name) {
 	const words = name.trim().split(/\s+/).filter(Boolean);
 	const first = words[0] ?? '';

@@ -216,8 +216,8 @@ const panelOf = (tab: HTMLElement) =>
 	document.getElementById(tab.getAttribute('aria-controls') ?? '') as HTMLElement;
 
 describe('the edit page as it opens', () => {
-	// the Donation page's banner drops the press, since the shell's top bar opens the page; a
-	// campaign keeps it ($lib/admin/page-edit/publish-banner.tsx).
+	// a campaign's banner words its press View live page; the home page's says Open donation page
+	// ($lib/admin/page-edit/publish-banner.tsx's `liveLink`).
 	it('opens the live page from the banner while it is public', async () => {
 		drawn = fixture('public');
 		await screen();

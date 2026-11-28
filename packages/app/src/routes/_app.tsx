@@ -97,9 +97,9 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 	// back to the browser's own zone, or to UTC where this runtime cannot write in that one
 	// (`LocalTime`).
 	//
-	// `homePage` is whether `/` shows the page or sends a visitor to the dashboard
-	// (`identityMissing`, the question ./_index.tsx asks), so the rail's head goes where a press can
-	// arrive. no row, or a read that did not land, is the dashboard: `/` answers the same way.
+	// `homePage` is false while `/` sends a visitor to the dashboard (`identityMissing`, the question
+	// ./_index.tsx asks), so the rail's head goes where a press can arrive. no row is the dashboard,
+	// as `/` answers; a read that did not land is too, since it is no proof the page can show.
 	//
 	// `railCollapsed` is the rail as the shell's own cookie left it (@better-giving/operator's
 	// rail-preference.ts), so the server draws it that way and the first client render matches.

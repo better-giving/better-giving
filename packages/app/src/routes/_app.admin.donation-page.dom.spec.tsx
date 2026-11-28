@@ -139,8 +139,9 @@ describe('the Home page edit page', () => {
 		expect(banner.textContent).toContain('Donors can see it at give.example.org/.');
 	});
 
-	// this screen is the one place that opens the live home page: the top bar and the account menu
-	// carry no press for it, and the rail's head goes to the dashboard until the page can show.
+	// this screen is the one place that opens the live home page in a new tab: the top bar and the
+	// account menu carry no press for it, and the rail's head opens it in place only once it can
+	// show, going to the dashboard until then.
 	//
 	// the page is made live and has no Unpublish or End (`editBanner` in
 	// $lib/server/pages/section-seeds.ts reads those off campaigns only), so public and changed are
