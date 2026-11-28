@@ -253,11 +253,40 @@ export function AmountStep({
 	});
 
 	// the estimate in the box's trailing group, or under the box where the typed amount and it
-	// cannot share it, on the form's terms (`placeFigure` in packages/form/src/views.ts): the box's
-	// row is a trailing group with no fixed place beside the input, so the box overflowing once the
-	// figure is inside it is the answer. measured rather than declared, because no selector reads
-	// the width of a value in a box. placed before paint and again on every resize, read and
-	// written in one pass so no frame paints the trial.
+	// cannot share it, on the form's terms (`placeFigure` in packages/form/src/views.ts). the box's
+	// own `scrollWidth` cannot say which: the page draws the form's `[data-figure='inside']` rules,
+	// so the input is a flex item beside its marks and scrolls a value too long for it under them
+	// rather than reporting it. what is measured instead is the value's width on one line, set in
+	// the box's own face, against the room the tile's content box leaves once the row's gap, the
+	// figure and the unit are taken out of it. placed before paint, again on every resize, and once
+	// the document's faces have loaded — an unloaded face's string reads as loaded and its width is
+	// the fallback face's — read and written in one pass so no frame paints the trial.
+	const textWidth = (box: HTMLInputElement): number | null => {
+		const line = document.createElement('canvas').getContext('2d');
+		if (box.value === '' || line === null) return 0;
+		if (document.fonts?.status === 'loading') return null;
+		const face = getComputedStyle(box);
+		line.font = `${face.fontWeight} ${face.fontSize} ${face.fontFamily}`;
+		return line.measureText(box.value).width;
+	};
+	const rowRoom = (
+		row: HTMLElement,
+		box: HTMLInputElement,
+		marks: readonly HTMLElement[]
+	): number => {
+		const face = getComputedStyle(row);
+		const sides = (start: string, end: string): number =>
+			(Number.parseFloat(face.getPropertyValue(start)) || 0) +
+			(Number.parseFloat(face.getPropertyValue(end)) || 0);
+		const taken = marks.reduce((width, mark) => width + mark.getBoundingClientRect().width, 0);
+		const inset =
+			sides('padding-inline-start', 'padding-inline-end') +
+			sides('border-inline-start-width', 'border-inline-end-width');
+		return (
+			row.clientWidth - taken - inset - (Number.parseFloat(face.columnGap) || 0) * marks.length
+		);
+	};
+	let measuring = document.fonts?.status === 'loading';
 	useMeasure(() => {
 		const placeFigure = (): void => {
 			const node = tray.current;
@@ -269,7 +298,23 @@ export function AmountStep({
 				return;
 			}
 			node.setAttribute('data-figure', 'inside');
-			if (input.scrollWidth > input.clientWidth) node.setAttribute('data-figure', 'below');
+			const unit = node.querySelector<HTMLElement>('.adorn-unit');
+			const tile = input.closest<HTMLElement>('[part~="amount-input"]');
+			if (unit === null || tile === null) return;
+			const amount = textWidth(input);
+			if (amount === null) {
+				node.removeAttribute('data-figure');
+				if (!measuring) return;
+				document.fonts.ready.then(() => {
+					measuring = false;
+					placeFigure();
+				});
+				return;
+			}
+			const figureWidth = figure.getBoundingClientRect().width;
+			if (amount + figureWidth > rowRoom(tile, input, [figure, unit])) {
+				node.setAttribute('data-figure', 'below');
+			}
 		};
 		placeFigure();
 		let frame = 0;

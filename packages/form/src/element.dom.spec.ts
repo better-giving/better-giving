@@ -7132,19 +7132,19 @@ describe('what the donor gives, on the first step', () => {
 	});
 
 	it('moves the estimate under the box where the typed amount and it cannot share the box', async () => {
-		// happy-dom lays nothing out: the box is 100 wide here and a typed character 12, so a ten-character
-		// amount overflows it with the estimate inside and a five-character one does not.
-		const proto = HTMLInputElement.prototype;
+		// happy-dom lays nothing out: the box's row is 100 wide here and a typed character 12, so a
+		// ten-character amount leaves no room beside the estimate and a five-character one does.
+		const proto = HTMLElement.prototype;
+		const canvas = HTMLCanvasElement.prototype;
 		const own = {
 			clientWidth: Object.getOwnPropertyDescriptor(proto, 'clientWidth'),
-			scrollWidth: Object.getOwnPropertyDescriptor(proto, 'scrollWidth')
+			getContext: Object.getOwnPropertyDescriptor(canvas, 'getContext')
 		};
 		Object.defineProperty(proto, 'clientWidth', { configurable: true, get: () => 100 });
-		Object.defineProperty(proto, 'scrollWidth', {
+		Object.defineProperty(canvas, 'getContext', {
 			configurable: true,
-			get(this: HTMLInputElement) {
-				return this.value.length * 12;
-			}
+			writable: true,
+			value: () => ({ measureText: (text: string) => ({ width: text.length * 12 }) })
 		});
 		try {
 			const card = await mount({ config: WITH_CRYPTO, ports: UNIT_PORTS });

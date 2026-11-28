@@ -221,6 +221,51 @@ function setHidden(node: HTMLElement, hidden: boolean): void {
 	if (node.hidden !== hidden) node.hidden = hidden;
 }
 
+/**
+ * the width of a box's value set on one line, in the box's own face, size and weight.
+ *
+ * the box's `scrollWidth` cannot answer it: a text box laid in a row beside its marks is as wide as
+ * the room left to it and scrolls a value too long for that room under the marks, so `scrollWidth`
+ * reads the box's own width whether the value fits or not (`placeFigure` below).
+ *
+ * `null` until every face the document is still fetching has loaded: an unloaded face's string
+ * reads as loaded, and a width taken then is the fallback face's, which is a different answer.
+ */
+function inputTextWidth(box: HTMLInputElement): number | null {
+	const view = box.ownerDocument.defaultView;
+	if (box.value === '' || view === null) return 0;
+	if (view.document.fonts?.status === 'loading') return null;
+	const line = view.document.createElement('canvas').getContext('2d');
+	if (line === null) return 0;
+	const face = view.getComputedStyle(box);
+	// the `font` shorthand reads empty inside a shadow root, so the parts are read on their own.
+	line.font = `${face.fontWeight} ${face.fontSize} ${face.fontFamily}`;
+	return line.measureText(box.value).width;
+}
+
+/**
+ * the room a row leaves its value box beside the `marks` laid in it: `row.clientWidth` is the
+ * padding box, so the row's padding and border come off it too, as does the gap before each mark.
+ * a mark is taken at its own box's width, which already holds its padding. with no marks the value
+ * has the box itself, which is what it has while the tray draws no estimate (`placeFigure`
+ * below) — the trailing group is absolute over the value then, not beside it.
+ */
+function rowRoom(row: HTMLElement, box: HTMLInputElement, marks: readonly HTMLElement[]): number {
+	const view = box.ownerDocument.defaultView;
+	if (view === null) return box.clientWidth;
+	const face = view.getComputedStyle(row);
+	const sides = (start: string, end: string): number =>
+		(Number.parseFloat(face.getPropertyValue(start)) || 0) +
+		(Number.parseFloat(face.getPropertyValue(end)) || 0);
+	const gap = Number.parseFloat(face.columnGap) || 0;
+	if (marks.length === 0) return box.clientWidth;
+	const taken = marks.reduce((width, mark) => width + mark.getBoundingClientRect().width, 0);
+	const inset =
+		sides('padding-inline-start', 'padding-inline-end') +
+		sides('border-inline-start-width', 'border-inline-end-width');
+	return row.clientWidth - taken - inset - gap * marks.length;
+}
+
 /** puts a node in or out of a parent, touching the tree only when that changes. */
 function presentIn(
 	parent: HTMLElement,
@@ -1784,19 +1829,36 @@ export function createCard(
 	 * the estimate inside the box before the unit, or under the box where the typed amount would not
 	 * fit beside it — the amount a donor typed is never cut short or covered.
 	 *
-	 * measured rather than declared: no CSS selector reads the width of a value in a box. the estimate
-	 * is put inside first, so every check measures the same layout whichever way the last one went, and
-	 * the box overflowing then is the answer. the attribute is written and read in one task, so a
-	 * frame never paints the trial. placed on every patch and on the window changing size, and not by
-	 * a `ResizeObserver`, for the reason the cadence chip is not (`placeThumb` below).
+	 * measured rather than declared: no CSS selector reads the width of a value in a box. the box's
+	 * own `scrollWidth` answers nothing here — a text box laid in a row beside its marks reports its
+	 * own width in both states, and scrolls the value that does not fit under the marks rather than
+	 * past them. the room left to the value is the box's row less the marks' (`rowRoom` above), and
+	 * the value's own width on one line in the box's face (`inputTextWidth` above) is what is laid
+	 * against it. placed on every patch, on the window changing size and once the document's faces
+	 * have loaded, and not by a `ResizeObserver`, for the reason the cadence chip is not
+	 * (`placeThumb` below).
 	 */
+	let measuring = 0;
 	function placeFigure(): void {
+		if (measuring !== 0) return;
 		if (quantityFigure.hidden) {
 			toggleAttribute(quantityTray, 'data-figure', null);
 			return;
 		}
 		quantityTray.setAttribute('data-figure', 'inside');
-		if (quantityInput.scrollWidth > quantityInput.clientWidth) {
+		const amount = inputTextWidth(quantityInput);
+		// a width is not known yet, so this pass places nothing and the face's arrival places it.
+		if (amount === null) {
+			const fonts = doc.fonts;
+			measuring = fonts === undefined ? 0 : 1;
+			fonts?.ready.then(() => {
+				measuring = 0;
+				placeFigure();
+			});
+			return;
+		}
+		const figure = quantityFigure.getBoundingClientRect().width;
+		if (amount + figure > rowRoom(quantityTile, quantityInput, [quantityFigure, quantityUnit])) {
 			quantityTray.setAttribute('data-figure', 'below');
 		}
 	}

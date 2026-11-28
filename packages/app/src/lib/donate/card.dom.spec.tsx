@@ -2985,19 +2985,20 @@ describe('what the donor gives, on the first step', () => {
 	});
 
 	it('moves the dollar value under the box where the typed amount and it cannot share it', async () => {
-		// happy-dom lays nothing out: the box is 100 wide here and a typed character 12, so a
-		// ten-character amount overflows it with the figure inside and a five-character one does not.
-		const proto = HTMLInputElement.prototype;
+		// happy-dom lays nothing out, so the row the placement reads is given: 100 wide on the box
+		// that holds it and 12 per typed character, which leaves a ten-character amount no room
+		// beside the figure and a five-character one room.
+		const proto = HTMLElement.prototype;
+		const canvas = HTMLCanvasElement.prototype;
+		const row = Object.getOwnPropertyDescriptors(proto);
 		const own = {
-			clientWidth: Object.getOwnPropertyDescriptor(proto, 'clientWidth'),
-			scrollWidth: Object.getOwnPropertyDescriptor(proto, 'scrollWidth')
+			getContext: Object.getOwnPropertyDescriptor(canvas, 'getContext')
 		};
 		Object.defineProperty(proto, 'clientWidth', { configurable: true, get: () => 100 });
-		Object.defineProperty(proto, 'scrollWidth', {
+		Object.defineProperty(canvas, 'getContext', {
 			configurable: true,
-			get(this: HTMLInputElement) {
-				return this.value.length * 12;
-			}
+			writable: true,
+			value: () => ({ measureText: (text: string) => ({ width: text.length * 12 }) })
 		});
 		try {
 			deployment();
@@ -3022,9 +3023,11 @@ describe('what the donor gives, on the first step', () => {
 			expect(tray.getAttribute('data-figure')).toBe('inside');
 		} finally {
 			for (const [name, descriptor] of Object.entries(own)) {
-				if (descriptor === undefined) Reflect.deleteProperty(proto, name);
-				else Object.defineProperty(proto, name, descriptor);
+				if (descriptor === undefined) Reflect.deleteProperty(canvas, name);
+				else Object.defineProperty(canvas, name, descriptor);
 			}
+			if (row.clientWidth === undefined) Reflect.deleteProperty(proto, 'clientWidth');
+			else Object.defineProperty(proto, 'clientWidth', row.clientWidth);
 		}
 	});
 
