@@ -271,8 +271,8 @@ describe('the rail toggle', () => {
 describe('the phone’s drawer', () => {
 	const menu = (root: HTMLElement) => button(root, '.ds-shell-menu');
 
-	function opened() {
-		const root = render(Shell, props({ current: { label: 'Gifts', kind: 'page' } }));
+	function opened(over: Parameters<typeof props>[0] = {}) {
+		const root = render(Shell, props({ current: { label: 'Gifts', kind: 'page' }, ...over }));
 		act(() => menu(root).click());
 		return root;
 	}
@@ -325,8 +325,8 @@ describe('the phone’s drawer', () => {
 				document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
 			});
 		}
-		async function accountOpened() {
-			const root = opened();
+		async function accountOpened(onSignOut = vi.fn()) {
+			const root = opened(props({ onSignOut }));
 			act(() => button(drawer(root), '.ds-shell-account-btn').focus());
 			await press('ArrowDown');
 			return root;
@@ -335,20 +335,24 @@ describe('the phone’s drawer', () => {
 		// the drawer shuts on a link row's own click (the capture handler above), not on the menu's
 		// selection, so a row that runs something and follows nothing is held to what it does.
 		it('runs its one row from the keyboard', async () => {
-			const root = await accountOpened();
+			const onSignOut = vi.fn();
+			const root = await accountOpened(onSignOut);
 			expect(drawer(root).querySelector('[data-highlighted]')?.textContent).toBe('Sign out');
 
 			await press('Enter');
 
+			expect(onSignOut).toHaveBeenCalledOnce();
 			expect(drawer(root).open).toBe(true);
 		});
 
 		it('runs its one row on a press', async () => {
-			const root = await accountOpened();
+			const onSignOut = vi.fn();
+			const root = await accountOpened(onSignOut);
 			const out = drawer(root).querySelector<HTMLElement>('[role="menuitem"]');
 
 			await act(async () => out?.click());
 
+			expect(onSignOut).toHaveBeenCalledOnce();
 			expect(drawer(root).open).toBe(true);
 		});
 	});

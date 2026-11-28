@@ -141,14 +141,19 @@ describe('the Home page edit page', () => {
 
 	// this screen is the one place that opens the live home page: the top bar and the account menu
 	// carry no press for it, and the rail's head goes to the dashboard until the page can show.
+	//
+	// the page is made live and has no Unpublish or End (`editBanner` in
+	// $lib/server/pages/section-seeds.ts reads those off campaigns only), so public and changed are
+	// the only states this loader reaches; no other state is drawn here.
 	it.each([
-		['public', 'public', false],
-		['waiting on saved changes', 'changed', true]
-	])('offers Open donation page in its banner while it is %s', async (_, state, hasEdits) => {
+		['public', 'public', false, 'Your Home page is public'],
+		['waiting on saved changes', 'changed', true, 'Changes not public yet']
+	])('offers only Open donation page in its banner while it is %s', async (_, state, hasEdits, word) => {
 		drawn = fixture(state as BannerState, hasEdits);
 		await screen();
 
 		const banner = document.querySelector('.adm-banner') as HTMLElement;
+		expect(banner.textContent).toContain(word);
 		const links = [...banner.querySelectorAll('a')].map((one) => [
 			one.textContent?.trim(),
 			one.getAttribute('href'),
@@ -167,20 +172,6 @@ describe('the Home page edit page', () => {
 		expect(meta({ matches } as Parameters<typeof meta>[0])).toEqual([
 			{ title: 'Home page · Riverbank Trust' }
 		]);
-	});
-
-	it('offers no View live page while saved changes wait, only Open donation page', async () => {
-		drawn = fixture('changed', true);
-		await screen();
-
-		const banner = document.querySelector('.adm-banner') as HTMLElement;
-		expect(banner.textContent).toContain('Changes not public yet');
-		expect([...banner.querySelectorAll('a')].map((one) => one.textContent?.trim())).toEqual([
-			'Open donation page'
-		]);
-		expect(
-			[...banner.querySelectorAll('button')].map((one) => one.textContent?.trim())
-		).not.toContain('View live page');
 	});
 
 	it('offers Reset to default only while the page holds edits', async () => {

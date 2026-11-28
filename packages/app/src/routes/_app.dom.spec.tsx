@@ -161,21 +161,8 @@ it.each([
 // dashboard, named for it. the layout reads that question once (`homePage` on its own loader,
 // held against the same profile in ./_app.db.spec.ts), so the rows below are its answers.
 it.each([
-	[
-		'a saved profile',
-		{ orgName: 'Riverbank Trust', homePage: true, profile: undefined },
-		'/',
-		'Open home page'
-	],
-	['a profile with no EIN', { orgName: 'Riverbank Trust', homePage: false }, '/admin', 'Dashboard'],
-	['a profile with no registered name', { orgName: null, homePage: false }, '/admin', 'Dashboard'],
-	[
-		'a profile of blank spaces',
-		{ orgName: 'Riverbank Trust', homePage: false },
-		'/admin',
-		'Dashboard'
-	],
-	['no profile', { orgName: null, homePage: false }, '/admin', 'Dashboard']
+	['homePage true', { orgName: 'Riverbank Trust', homePage: true }, '/', 'Open home page'],
+	['homePage false', { orgName: 'Riverbank Trust', homePage: false }, '/admin', 'Dashboard']
 ])('opens the rail head under %s to %s, named %s', async (_, over, href, label) => {
 	const root = await frameAt('/admin/forms', true, { ...drawnFor(true), ...over });
 	for (const selector of [

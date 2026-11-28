@@ -178,9 +178,11 @@ describe('the identity band', () => {
 	it.each([
 		['a registered name and an EIN', { tax_id: '12-3456789' }, { homePage: true }],
 		['a registered name and no EIN', {}, { homePage: false }],
-		['neither', undefined, { homePage: false }]
+		// the column's not-blank check strips only ASCII whitespace and U+00A0 (0000_initial_schema.sql),
+		// so an em space is stored, and `present` (receipt-fields.ts) trims it as JS does.
+		['a registered name and an EIN of an em space', { tax_id: ' ' }, { homePage: false }]
 	])('asks the same question of a profile with %s', async (_, columns, expected) => {
-		if (columns !== undefined) await writeOrgRow(client, columns);
+		await writeOrgRow(client, columns);
 		const cookie = await signInAsDeployer(db, DEPLOYMENT);
 
 		const page = await drawn(cookie);
