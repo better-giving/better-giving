@@ -1179,10 +1179,10 @@ describe('the free entry as laid out', () => {
  * a floating label is a label that moved, so what is measured is where its words are drawn rather
  * than whether a rule declaring it exists: resting they sit on the box's own middle, and once the
  * box has the caret or a value they sit on its top edge with the border knocked out behind them, at
- * a step smaller than they rested at and in from the corner the box is drawn with. the refusal the
- * box is carrying is no part of that — it stands under the box, where every other row on the card
- * stands its own. a lightweight DOM lays out none of it, and a rule that floated nothing would read
- * as a fix.
+ * a step smaller than they rested at, starting at the box's own inline-start edge with the knockout
+ * reaching past that edge by the ring's width. the refusal the box is carrying is no part of that —
+ * it stands under the box, where every other row on the card stands its own. a lightweight DOM lays
+ * out none of it, and a rule that floated nothing would read as a fix.
  */
 describe('the labels on the pair under the name', () => {
 	/**
@@ -1242,7 +1242,7 @@ describe('the labels on the pair under the name', () => {
 		};
 	}
 
-	/** the corner the box is drawn with, which is what the floated label has to start clear of. */
+	/** the used radius of the box's start-start corner, in pixels; 0 under `square`. */
 	function corner(box: HTMLElement): number {
 		return parseFloat(getComputedStyle(box).borderStartStartRadius);
 	}
@@ -1480,11 +1480,9 @@ describe('the labels on the pair under the name', () => {
 	// inset is a token rather than the step every other box pads by: resting, the label starts
 	// exactly where the words that replace it will.
 	//
-	// floated it comes in to the corner the box is drawn with and no further, which is the one end
-	// of this axis a declaration cannot settle: a label flush with the control's own edge leaves the
-	// top-left arc standing outside the knockout as a stub beside the first letter, and what says
-	// the arc is clear is the used radius of the box itself.
-	it('starts the label on the words\u2019 own inset resting and clear of the corner floated', async () => {
+	// floated it starts at the box's own inline-start edge and no further, so the name lines up
+	// with the group's legend over the pair.
+	it('starts the label on the words\u2019 own inset resting and at the box\u2019s edge floated', async () => {
 		const { shadow } = await mount();
 		await atDetails(shadow);
 		const { box, label, words } = field(shadow, '#first-name');
@@ -1502,17 +1500,13 @@ describe('the labels on the pair under the name', () => {
 		fill(shadow, '#first-name', 'Ada');
 		await landed(label);
 
-		// the notch starts where the arc ends, and the words stand inside it.
-		const arc = corner(box);
-		expect(arc).toBeGreaterThan(0);
-		expect(ink(words).left - box.getBoundingClientRect().left).toBeGreaterThan(arc);
-		seated(words.getBoundingClientRect().left, box.getBoundingClientRect().left + arc);
+		// the words start at the box's own edge, whatever arc its corner is drawn with.
+		expect(corner(box)).toBeGreaterThan(0);
+		seated(ink(words).left, box.getBoundingClientRect().left);
 	});
 
-	// under `square` the box has no arc to clear, and a band starting flush with the box would take
-	// the top of its inline-start edge with it and leave the corner open. so the band starts where
-	// `soft`'s inner corner ends, and the edge stays drawn up to the corner.
-	it('starts the floated band clear of the edge under square', async () => {
+	// and under `square`, which has no arc, at the same edge.
+	it('starts the floated words at the edge under square too', async () => {
 		page('body { --donate-corner: square; }');
 		const { shadow } = await mount();
 		await atDetails(shadow);
@@ -1522,7 +1516,116 @@ describe('the labels on the pair under the name', () => {
 		await landed(label);
 
 		expect(corner(box)).toBe(0);
-		seated(words.getBoundingClientRect().left, box.getBoundingClientRect().left + 6);
+		seated(ink(words).left, box.getBoundingClientRect().left);
+	});
+
+	// the ring is drawn outside the border box, so a band that starts at the box's edge leaves the
+	// ring's leg standing beside or above the first letter. the band reaches past the edge by the
+	// ring's own width while the words stay at the edge. the ring is widened to the strong border, as
+	// `throughEveryEdge` below does, so a band that reaches a pixel out at the token file's own
+	// values without following the ring does not pass.
+	for (const preset of ['soft', 'square'] as const) {
+		it(`carries the floated band past the box\u2019s edge by the ring\u2019s width, under ${preset}`, async () => {
+			if (preset === 'square') page('body { --donate-corner: square; }');
+			const { shadow } = await mount();
+			await atDetails(shadow);
+			const { box, label, words } = field(shadow, '#first-name');
+			const floating = box.closest('.floating') as HTMLElement;
+			floating.style.setProperty('--_focus-width', 'var(--_border-strong)');
+
+			fill(shadow, '#first-name', 'Ada');
+			await caretOn(box);
+			await landed(box);
+			await landed(label);
+
+			const drawn = getComputedStyle(box);
+			const ring = parseFloat(/(-?[\d.]+)px\s*$/.exec(drawn.boxShadow)?.[1] ?? '0');
+			const edge = box.getBoundingClientRect().left;
+
+			if (preset === 'square') expect(corner(box)).toBe(0);
+			else expect(corner(box)).toBeGreaterThan(0);
+			expect(ring, 'the widened ring').toBeGreaterThan(parseFloat(drawn.borderTopWidth));
+			expect(words.getBoundingClientRect().left, 'the band past the ring').toBeLessThanOrEqual(
+				edge - ring
+			);
+			seated(ink(words).left, edge);
+		});
+	}
+
+	// the same seats in a mirrored document: the inline start is the right edge there, and a label
+	// seated on a physical `left` would stand at the far end of the box from the group's legend. the
+	// resting words and the floated first letter stand at the right, and the band reaches out past
+	// that edge to the right by the ring's width.
+	it('seats the label and carries its band past the edge at the inline start in a right-to-left document', async () => {
+		document.documentElement.setAttribute('dir', 'rtl');
+		const { shadow } = await mount();
+		await atDetails(shadow);
+		const { box, label, words } = field(shadow, '#first-name');
+		const floating = box.closest('.floating') as HTMLElement;
+		floating.style.setProperty('--_focus-width', 'var(--_border-strong)');
+		const style = getComputedStyle(box);
+		const inset = () =>
+			box.getBoundingClientRect().right -
+			parseFloat(style.borderInlineStartWidth) -
+			parseFloat(style.paddingInlineStart);
+
+		expect(getComputedStyle(box).direction, 'the mirrored document').toBe('rtl');
+		seated(ink(words).right, inset());
+
+		fill(shadow, '#first-name', 'Ada');
+		await caretOn(box);
+		await landed(box);
+		await landed(label);
+
+		const ring = parseFloat(/(-?[\d.]+)px\s*$/.exec(style.boxShadow)?.[1] ?? '0');
+		const edge = box.getBoundingClientRect().right;
+		expect(ring, 'the widened ring').toBeGreaterThan(parseFloat(style.borderTopWidth));
+		seated(ink(words).right, edge);
+		expect(words.getBoundingClientRect().right, 'the band past the ring').toBeGreaterThanOrEqual(
+			edge + ring
+		);
+	});
+
+	// a name longer than its box is cut at the box's inline end with an ellipsis, and the label holds
+	// its band back from that end by the box's inner corner (`--_label-inset`): under `square` there
+	// is none, and under `round` it is twice `soft`'s. the label's text is replaced because the form
+	// ships no name long enough to overflow; what is read is the words' own box against the box's.
+	for (const preset of ['soft', 'round'] as const) {
+		it(`cuts a floated name longer than its box with an ellipsis, held in from the box\u2019s end by the inner corner, under ${preset}`, async () => {
+			page(`body { --donate-corner: ${preset}; }`);
+			const { shadow } = await mount();
+			await atDetails(shadow);
+			const { box, label, words } = field(shadow, '#first-name');
+			words.textContent = 'A first name far too long to stand inside the box it names '.repeat(3);
+
+			fill(shadow, '#first-name', 'Ada');
+			await landed(label);
+
+			const inset = step(shadow, '--_label-inset');
+			expect(inset, 'an inner corner to hold in by').toBeGreaterThan(0);
+			expect(getComputedStyle(words).textOverflow).toBe('ellipsis');
+			expect(words.scrollWidth, 'cut rather than whole').toBeGreaterThan(words.clientWidth);
+			seated(words.getBoundingClientRect().right, box.getBoundingClientRect().right - inset);
+			expect(label.getBoundingClientRect().right).toBeLessThanOrEqual(
+				box.getBoundingClientRect().right + 0.5
+			);
+		});
+	}
+
+	// the name against the group's legend directly rather than against the box they both stand
+	// beside: the pair's first letter and the legend's are the same distance in from the group's edge.
+	it('stands the floated first name where the group\u2019s legend starts', async () => {
+		const { shadow } = await mount();
+		await atDetails(shadow);
+		const { box, label, words } = field(shadow, '#first-name');
+		const legend = box.closest('fieldset')?.querySelector(':scope > legend') as HTMLElement;
+
+		expect(legend.textContent).toBe('Your name');
+		expect(label.textContent).toBe('First name');
+		fill(shadow, '#first-name', 'Ada');
+		await landed(label);
+
+		seated(ink(words).left, ink(legend).left);
 	});
 
 	// standing on the edge, the label has to be painted behind or the edge reads through its words.
@@ -1685,17 +1788,15 @@ describe('the labels on the pair under the name', () => {
 		});
 	});
 
-	// and the name stands inside the gap rather than at its ends: the same room at both, so the edge
-	// stops a little short of the first letter and picks up a little past the last.
-	it('keeps the name clear of both ends of the gap, in every state the edge takes', async () => {
-		await throughEveryEdge((state, _box, words) => {
+	// and the name starts at the box's own edge, in line with the group's legend, with room kept
+	// past its last letter, where the edge picks up again.
+	it('keeps the name at the start of the gap and clear of its end, in every state the edge takes', async () => {
+		await throughEveryEdge((state, box, words) => {
 			const span = words.getBoundingClientRect();
 			const drawn = ink(words);
-			const before = drawn.left - span.left;
 			const after = span.right - drawn.right;
-			expect(before, `${state}: room before the name`).toBeGreaterThanOrEqual(DEVICE_PIXEL);
+			seated(drawn.left, box.getBoundingClientRect().left);
 			expect(after, `${state}: room after the name`).toBeGreaterThanOrEqual(DEVICE_PIXEL);
-			expect(before, `${state}: the two ends`).toBeCloseTo(after, 0);
 		});
 	});
 
@@ -1766,6 +1867,23 @@ describe('the labels on the pair under the name', () => {
 		expect(refusal.getBoundingClientRect().top).toBeGreaterThanOrEqual(
 			box.getBoundingClientRect().bottom
 		);
+	});
+
+	// the refusal is drawn at the regular weight under every box on the details step: the pair's,
+	// whose labels stand inside them, and the email's, whose label stands over it at a label's
+	// weight. the registry's in-flow refusal (`.ds-field-err` in `../registry/styles/field-css.css`)
+	// states no weight of its own.
+	it('draws the details step\u2019s refusals at the regular weight, under a label over the box and one inside it', async () => {
+		const { shadow } = await mount();
+		await atDetails(shadow);
+		onward(shadow);
+		await settle();
+
+		for (const id of ['#first-name', '#last-name', '#email']) {
+			const { refusal } = field(shadow, id);
+			expect(refusal.hidden).toBe(false);
+			expect(getComputedStyle(refusal).fontWeight).toBe(weight(shadow, '--_w-normal'));
+		}
 	});
 
 	// and the box that is not in the pair is drawn the way every other single box on the card is:

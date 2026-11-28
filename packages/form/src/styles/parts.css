@@ -413,10 +413,11 @@ textarea[part~='field'] {
  * control's, whatever the root resolved to. nothing here restates the control's height or its
  * padding, and neither one moving can put the two out of step.
  *
- * on the inline axis it hugs its words instead: it starts at the box's own inline start and is held
- * to the box's width, so a name longer than its box is cut at the box's end rather than running past
- * it. that is what lets the knockout below cover the words alone — a band as wide as the box is a
- * box drawn with no top edge at all.
+ * on the inline axis it hugs its words instead: it starts at the box's own inline start — resting
+ * at the inset the value's own text starts at, floated at the box's edge — and is held to the box's
+ * width, so a name longer than its box is cut at the box's end rather than running past it. that is
+ * what lets the knockout below cover the words alone — a band as wide as the box is a box drawn
+ * with no top edge at all.
  *
  * the box reserves nothing for either state and is drawn at one height in both, so the step's
  * height never depends on what a donor has typed.
@@ -459,21 +460,23 @@ textarea[part~='field'] {
  * the floated step that half stays inside the gap the group leaves over the box — at the resting
  * step it does not, which is the clearance the band is drawn at the words' own line to keep.
  *
- * floated, the band starts at the corner the box is drawn with and no closer to it: a band flush with
- * the box's inline start leaves the arc of that corner standing outside it as a stub beside the gap,
- * so the inset is the box's own radius and the edge runs unbroken from the corner to the gap and on
- * from its other side. a square box has no arc and holds `soft`'s inset instead, because a band
- * flush with it takes the top of its inline-start edge (`--_label-inset` in ./tokens.css). the
- * other end takes the same inset, which is where a name too long for its box is cut — the arc at
- * that corner is what the band would otherwise run over.
+ * floated, the first letter of the name stands at the box's own inline-start edge, at the same
+ * inset as the group's own legend over the pair. the band starts `--_focus-width` further out than
+ * that letter, past the edge: the ring, the refused ring and the outline painted under forced
+ * colours are each drawn that wide outside the border box, so a band starting at the edge would
+ * leave the leg of each standing beside or above the first letter. the start of the edge is
+ * knocked out from the ring's outer line inward, at the top-start corner as well, so whatever
+ * corner the box takes, the edge's leg ends at the band's lower side. the other end keeps
+ * `--_label-inset`'s inset (./tokens.css), which is where a name too long for its box is cut.
  *
- * the band is a notch and nothing more: the edge stops a little short of the name and picks up a
- * little past it (`.label-words` below), and nothing of the edge is drawn over, beside or under the
+ * the band is a notch and nothing more: the edge runs into it at the corner and picks up a little
+ * past the name (`.label-words` below), and nothing of the edge is drawn over, beside or under the
  * words. it is the same notch in every state the edge takes — at rest, under the pointer, with the
  * caret in it, refused — so a refused box's red line breaks around the name as the resting hairline
  * does. the band is centred on the box's top and half a line deep either side of it, which clears
- * the ring outside the border and the refusal's mark inside it, so no part of any of them runs
- * through the words.
+ * the ring outside the border box as well as the border and the refusal's mark inside it, so no
+ * part of any of them runs through the words. half a line is shallower than `round`'s corner, so
+ * there the arc's lower part stays drawn below the band, within a pixel of the box's start side.
  *
  * the label's rise is transitioned and nothing else about the move is (./motion.css): the band is painted
  * from the first frame rather than fading in over it, and that costs nothing, because for the length
@@ -509,8 +512,11 @@ textarea[part~='field'] {
 	max-inline-size: 100%;
 	display: flex;
 	align-items: center;
-	/* clear of the corner the box is drawn with, at both ends of it. */
-	padding-inline: var(--_label-inset);
+	/*
+	 * floated at the box's inline-start edge and no further, so the name lines up with the group's
+	 * legend; the other end is held in by the box's inner corner, where a long name is cut.
+	 */
+	padding-inline: 0 var(--_label-inset);
 	/* the card's base, so the span's own step resolves against the root rather than compounding. */
 	font-size: var(--_t-md);
 	/*
@@ -542,8 +548,12 @@ textarea[part~='field'] {
 	 * raw-length-ok: the floor, for that reason.
 	 */
 	font-size: max(12px, var(--_t-xs));
-	/* the gap the edge leaves either side of the name, the same at both ends. */
-	padding-inline: var(--_sp1);
+	/*
+	 * the gap the edge leaves past the name, and before it the ring's width taken back out by the
+	 * margin, so the first letter stands where the label starts and the band reaches past the edge.
+	 */
+	padding-inline: var(--_focus-width) var(--_sp1);
+	margin-inline-start: calc(-1 * var(--_focus-width));
 	/* one colour as an image, because a `background-color` takes no size and the band is one line. */
 	background: linear-gradient(var(--_n1), var(--_n1)) 0 50% / 100% 1lh no-repeat;
 }
@@ -585,14 +595,15 @@ textarea[part~='field'] {
 /* standing in the value's place, and drawn there as a placeholder is: the value's reading size, at a
  * placeholder's weight. the ink is the placeholder's as well and is on the label above; these two
  * cannot follow it, because a host's one rule on the part is what sets the ink in both positions.
- * the knockout and the room kept inside it go with the movement — resting the words stand on the
- * box's own fill and there is no edge behind them to knock out. */
+ * the knockout, the room kept inside it and its reach past the edge go with the movement — resting
+ * the words stand on the box's own fill and there is no edge behind them to knock out. */
 .floating:not(:focus-within):has(> [part~='field']:placeholder-shown)
 	> [part~='label']
 	> .label-words {
 	font-size: var(--_t-md);
 	font-weight: var(--_w-normal);
 	padding-inline: 0;
+	margin-inline-start: 0;
 	background-image: none;
 }
 
@@ -1409,12 +1420,16 @@ button.step-dot:not([aria-disabled='true']):hover .step-mark {
  * one size, one weight and one ink wherever it is drawn, and one seat with it: under the box, in the
  * row's own column, on every row the card draws. a row whose label stands inside its box is no
  * exception — `.floating` above moves the label and says nothing about this sentence.
+ *
+ * the weight is regular, and declared so rather than left to inherit whichever box it stands under.
+ * the registry's in-flow refusal (`.ds-field-err` in ../registry/styles/field-css.css) states no
+ * weight of its own.
  */
 .message {
 	margin: 0;
 	color: var(--_bad);
 	font-size: var(--_t-xs);
-	font-weight: var(--_w-bold);
+	font-weight: var(--_w-normal);
 }
 
 /*

@@ -409,11 +409,11 @@ describe('the card the form draws for itself', () => {
 
 describe('the corner seed', () => {
 	// the card's corner, the corner of a control inside a box on it — the registry's own controls
-	// read it as `--radius` — the tick box the form draws, which follows the inner corner up to
-	// `soft`'s and no further so it never rounds toward a radio, and where a floated label's band
-	// starts, which follows it down to `soft`'s and no further so a square box keeps its edge.
+	// read it as `--radius` — and the tick box the form draws, which follows the inner corner up to
+	// `soft`'s and no further so it never rounds toward a radio. `--_label-inset` is the inner corner
+	// itself, which is where a floated name too long for its box is cut (`.floating` in ./parts.css).
 	it.each([
-		['square', ['0px', '0px', '0px', '0px', '6px']],
+		['square', ['0px', '0px', '0px', '0px', '0px']],
 		['soft', ['12px', '6px', '6px', '6px', '6px']],
 		['round', ['24px', '12px', '12px', '6px', '12px']],
 		['a corner off the list', ['12px', '6px', '6px', '6px', '6px']]

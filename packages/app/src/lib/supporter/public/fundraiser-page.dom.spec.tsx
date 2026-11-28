@@ -204,12 +204,12 @@ describe('a live fundraiser, part way', () => {
 		expect(start?.closest('aside')).not.toBeNull();
 	});
 
-	it('heads the page with the site nav, Donate not marked current', () => {
+	it('heads the page with the site nav, drawing the Donate link to / and its menu button', () => {
 		const root = mount(<FundraiserPage {...props(PART_WAY)} />);
 		const nav = root.querySelector('.ds-site-nav');
 		expect(nav?.querySelector('.ds-site-nav-brand')?.textContent).toBe('Harbor Light');
 		expect(nav?.querySelector('.ds-site-nav-link')?.getAttribute('href')).toBe('/');
-		expect(root.querySelector('[aria-current]')).toBeNull();
+		expect(nav?.querySelector('.ds-site-nav-toggle')).not.toBeNull();
 		expect(root.querySelector('main')?.id).toBe('main');
 	});
 

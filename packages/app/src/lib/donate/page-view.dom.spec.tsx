@@ -8,6 +8,7 @@ import type { PageType } from '../page/keys';
 import type { RichTextDocument } from '../rich-text/document';
 import { brandScopeSelector, PageRoot } from './page-root';
 import { initials, PageView, type PageViewProps, TITLE_LONG } from './page-view';
+import type { DonateProfile } from './profile';
 
 // the page's renderer, mounted: which whole layout a campaign is drawn in, which sections each
 // layout draws and in what order, that a section with nothing in it is left out, and that the
@@ -138,17 +139,52 @@ describe('the whole layout a campaign is drawn in', () => {
 });
 
 describe('the site chrome', () => {
-	it.each([
-		['campaign', defaultCampaign(), null],
-		['donation_page', defaultDonationPage(), 'page']
-	] as const)('heads the %s with the site nav, Donate marked %s', (type, page, current) => {
-		const root = mount(<PageView {...props(type, page)} />);
+	const skipLinkTargetsMain = (root: HTMLElement) => {
 		const first = root.querySelector('a[href], button');
 		expect(first?.className).toBe('ds-site-nav-skip');
 		expect(root.querySelector(first?.getAttribute('href') ?? '')).toBe(root.querySelector('main'));
-		const link = root.querySelector('.ds-site-nav-link');
-		expect(link?.getAttribute('aria-current')).toBe(current);
 		expect(root.querySelector('.ds-site-nav-brand')?.textContent).toBe('Northside Neighbors');
+	};
+
+	it('heads the campaign with the site nav, drawing Donate, its menu button and its nav', () => {
+		const root = mount(<PageView {...props('campaign', defaultCampaign())} />);
+		skipLinkTargetsMain(root);
+		expect(root.querySelector('.ds-site-nav-link')?.getAttribute('href')).toBe('/');
+		expect(root.querySelector('.ds-site-nav-toggle')).not.toBeNull();
+		expect(root.querySelector('header nav')).not.toBeNull();
+	});
+
+	// a profile head with nothing written beyond the name draws the card, and a few donor messages
+	// with nothing else draw the letter; ./profile-head.dom.spec.tsx holds the layouts themselves.
+	const BARE: DonateProfile = {
+		name: 'Northside Neighbors',
+		taxId: '84-2913377',
+		banner: null,
+		logo: null,
+		mission: null,
+		vision: null,
+		messages: { messages: [], total: 0, next: null },
+		videos: []
+	};
+
+	// `/` is the Donation page itself, so no Donate link points back at it, and with nothing else to
+	// fold the bar draws no nav landmark and no menu button under 40rem either.
+	it.each([
+		['its own layout', null],
+		['the card under a profile head', BARE],
+		[
+			'the letter under a profile head',
+			{ ...BARE, messages: { messages: [], total: 3, next: null } }
+		]
+	] as const)('heads the Donation page in %s with the home link alone', (_layout, profile) => {
+		const root = mount(
+			<PageView {...props('donation_page', defaultDonationPage(), { profile })} />
+		);
+		skipLinkTargetsMain(root);
+		expect(root.querySelector('.ds-site-nav-link')).toBeNull();
+		expect(root.querySelector('.ds-site-nav-toggle')).toBeNull();
+		expect(root.querySelector('header nav')).toBeNull();
+		expect(root.querySelector('.ds-site-nav-menu')).toBeNull();
 	});
 
 	it('states the legal block once, in the site footer, after the share row', () => {
