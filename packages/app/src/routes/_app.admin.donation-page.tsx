@@ -163,11 +163,7 @@ export default function DonationPageEditPage({ loaderData }: Route.ComponentProp
 				</Banner>
 			)}
 			{loaderData.unreadable ? (
-				<UnreadableDraft
-					version={version}
-					discardable={loaderData.discardable}
-					noun="Home page"
-				/>
+				<UnreadableDraft version={version} discardable={loaderData.discardable} noun="Home page" />
 			) : (
 				<>
 					<DonationPageGeneralCard seed={loaderData.seeds.general} version={version} />
